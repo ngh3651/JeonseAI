@@ -50,3 +50,41 @@ uvicorn app.main:app --reload
 
 실행 후 브라우저에서 <http://127.0.0.1:8000> 으로 접속하면 `{"status":"ok"}` 가 보입니다.
 API 문서는 <http://127.0.0.1:8000/docs> 에서 확인할 수 있습니다.
+
+### 이미지 업로드 엔드포인트 테스트 (curl)
+
+`POST /api/upload` 는 이미지 1개를 multipart/form-data로 받아 메타데이터를 돌려줍니다.
+(현재 단계에서는 OCR을 하지 않고 "받았다"는 응답만 합니다.)
+
+```bash
+# test.jpg 를 실제 이미지 경로로 바꿔서 실행하세요.
+curl -X POST http://127.0.0.1:8000/api/upload \
+  -F "file=@test.jpg;type=image/jpeg"
+```
+
+정상 응답 예시:
+
+```json
+{
+  "filename": "test.jpg",
+  "content_type": "image/jpeg",
+  "size_bytes": 123456,
+  "message": "이미지를 정상적으로 수신했습니다"
+}
+```
+
+- 허용 형식: `image/jpeg`, `image/png`, `image/webp` (그 외에는 400, 한국어 메시지)
+- 용량 상한: 10MB (초과 시 413, 한국어 메시지)
+
+## 앱(프론트엔드) 실행 방법
+
+```bash
+cd frontend
+flutter pub get
+flutter run            # 연결된 에뮬레이터/실기기에서 실행
+```
+
+- 백엔드 주소는 [frontend/lib/main.dart](frontend/lib/main.dart) 상단의 `baseUrl` 상수로 분리되어 있습니다.
+  - **Android 에뮬레이터**: PC의 localhost는 `10.0.2.2` 로 접근 (기본값 `http://10.0.2.2:8000`)
+  - **iOS 시뮬레이터**: `http://127.0.0.1:8000`
+  - **실기기(같은 와이파이)**: PC의 LAN IP, 예 `http://192.168.0.10:8000`

@@ -8,11 +8,13 @@ import 'package:image_picker/image_picker.dart';
 // ===== 백엔드 주소 =====
 // 나중에 바꾸기 쉽도록 상수로 분리합니다.
 //
-// 주의(에뮬레이터별 localhost 접근 방법):
-//  - Android 에뮬레이터: PC의 localhost 는 10.0.2.2 로 접근해야 합니다. (기본값)
-//  - iOS 시뮬레이터:     localhost(127.0.0.1) 그대로 사용 → 'http://127.0.0.1:8000'
-//  - 실기기(같은 와이파이): PC의 LAN IP 사용 → 예: 'http://192.168.0.10:8000'
-const String baseUrl = 'http://10.0.2.2:8000';
+// 이 프로젝트는 안드로이드 실기기 전용입니다. (웹/에뮬레이터 기준 아님)
+// 실기기는 PC의 Wi-Fi LAN IP로 접근해야 하며, 휴대폰과 PC가 같은 Wi-Fi에 있어야 합니다.
+//
+// !! 주의: PC가 다른 네트워크로 바뀌면 LAN IP가 달라집니다.
+//          그때는 PC에서 `ipconfig`로 IPv4 주소를 재확인한 뒤 아래 baseUrl을 갱신하세요.
+const String baseUrl = 'http://172.30.1.39:8000'; // 실기기용 (PC의 LAN IP)
+// const String baseUrl = "http://10.0.2.2:8000";   // 안드로이드 에뮬레이터용 (주석 보관)
 
 void main() {
   runApp(const JeonseAiApp());

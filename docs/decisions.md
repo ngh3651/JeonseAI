@@ -50,3 +50,13 @@
 - **결정**: 업로드 이미지는 **앱(프론트엔드)에서 항상 JPEG로 변환**한 뒤 백엔드로 전송한다. 변환은 `flutter_image_compress`(안드로이드 네이티브 코덱, HEIC/HEIF 디코딩 가능, quality 90)로 하고, 업로드 시 **Content-Type을 `image/jpeg`로 명시**한다.
 - **이유**: 갤럭시 기본 카메라가 사진을 HEIC/HEIF로 저장하는데 백엔드 허용 형식(JPEG/PNG/WEBP)에 없어 "지원하지 않는 파일 형식" 에러가 발생했다. 백엔드 허용 목록을 늘리는 대신 어떤 형식이 들어오든 앱 단에서 JPEG로 통일하면 백엔드(향후 OCR 포함)를 단순하게 유지할 수 있다. Content-Type을 명시하지 않으면 `application/octet-stream`으로 전송되어 백엔드가 거부하므로 함께 명시한다.
 - **출처**: 팀 내부 결정 (실기기 HEIC 업로드 실패 대응).
+
+### [2026-07-01] 정보추출 도구: Upstage Information Extract 채택 (스키마 기반 구조화 추출)
+- **결정**: 등기부등본에서 필드를 뽑을 때 단순 OCR(텍스트만)이 아니라 **Upstage Information Extract**로 **스키마 기반 구조화 추출**을 한다. 추출 스키마는 `backend/app/schemas/registry_schema.py`에 정의하고, 설명 문서는 `docs/registry-schema.md`에 둔다.
+- **이유**: 스키마로 "무엇을 뽑을지"를 직접 정의하면 텍스트 파싱 로직 부담이 크게 줄고, **말소 여부·필드 의미까지 LLM이 해석**해 구조화된 JSON으로 돌려준다. 등기부의 핵심 난점인 "말소사항 구분"을 각 항목의 `is_canceled` 필드로 표현하도록 설계했다.
+- **출처**: 팀 내부 결정. (Information Extract 스키마 전달 형식 등 세부는 STEP 2-B에서 Upstage 공식 문서로 검증 예정 — `console.upstage.ai/docs`)
+
+### [2026-07-01] Upstage API 키: 현재는 개발자 개인 발급 키(무료 크레딧) 사용
+- **결정**: 현재 사용하는 Upstage API 키는 대회 협업 지원 키가 아니라, 지원 승인 지연으로 **개발자가 개인 명의로 Upstage Console에서 직접 발급한 키(무료 크레딧)**다. 키는 `backend/.env`의 `UPSTAGE_API_KEY`로만 관리한다. **향후 대회 공식 지원 키가 도착하면 `.env` 값만 교체**하며, 코드 구조 변경은 불필요하다.
+- **이유**: 지원 키를 기다리며 개발을 멈추지 않기 위해 개인 키로 선진행한다. 키를 `.env`(git 미추적)로 분리해 두면 교체가 값 하나 바꾸는 것으로 끝난다.
+- **출처**: 팀 내부 결정 (지원 키 승인 지연 대응).

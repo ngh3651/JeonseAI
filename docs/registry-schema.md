@@ -133,28 +133,38 @@ Extract 제약 때문에 **최상위 평면 구조로 바꿨다**:
 | Model | `information-extract` |
 | 스키마 전달 | `response_format` (type=`json_schema`) — `build_response_format()` 형태가 맞음 |
 | 이미지 전달 | base64 data URL을 `messages` content에 `type="image_url"`로 |
+| **멀티 이미지** | 동기 엔드포인트는 **요청당 image_url 1개만** 허용(파일당 최대 100페이지). 여러 장은 **하나의 멀티페이지 PDF로 병합**해 1개 image_url로 보낸다 |
 | 응답 위치 | `choices[0].message.content`에 **JSON 문자열**로 담겨 옴 → 파싱 필요 |
 | 스키마 제약 | **최상위는 scalar/array만, object는 배열 원소로만** / 100페이지·100속성 한도 |
 
 **남은 소소한 확인(실호출로 검증):**
+- PDF(`application/pdf`) data URL 전송이 동작하는지(멀티 이미지 병합 경로). 이미지 1장
+  경로는 이미지 그대로 전송하므로 별도.
 - 배열 원소 object 안의 `boolean`(is_canceled)·`number`(금액)이 타입 그대로 오는지.
   흔들리면(금액이 문자열 등) string으로 받고 후처리. → 검증 스크립트가 자동 요약해 줌.
 
-## 5. 검증 방법 (STEP 2-B-1 스크립트)
+## 5. 검증 방법 (STEP 2-B-1 스크립트, 멀티 이미지)
 
 스크립트: [backend/scripts/test_extract.py](../backend/scripts/test_extract.py)
 
-1. 말소사항이 포함된 실제 등기부등본 이미지 1건을 `backend/test_samples/`에 넣는다.
+1. 말소사항이 포함된 실제 등기부등본 이미지를 `backend/test_samples/`에 넣는다.
+   한 등기부의 **여러 페이지를 각각 촬영한 이미지 여러 장**을 준비한다.
    (이 폴더는 `.gitignore`로 제외 — 개인정보 커밋 방지)
-2. 스크립트 실행 → 반환 JSON을 예쁘게 출력하고, 맨 아래 **검증 요약**을 자동으로 보여준다:
-   - 근저당 개수 / 그중 말소 건수
-   - 채권최고액이 숫자로 왔는지(타입 점검)
-   - 현재 소유자 이름 목록
-   - 가압류/가처분/압류/경매/신탁 각 건수(유효 건수)
-3. **말소 항목이 `is_canceled=true`로 정확히 구분되는지**를 최우선으로 육안 확인한다.
+2. 스크립트에 이미지 경로를 **순서대로 여러 개** 넘긴다. 스크립트가 자동으로:
+   - 이미지 1장이면 그대로, 여러 장이면 **멀티페이지 PDF로 병합**해 1회 호출
+   - 반환 JSON을 예쁘게 출력하고, 맨 아래 **검증 요약**을 자동으로 보여준다:
+     - **전체 항목 카운트**(여러 페이지 정보가 하나로 통합됐는지 한눈에)
+     - 근저당 개수 / 그중 말소 건수, 채권최고액 숫자 타입 점검
+     - 현재 소유자 이름 목록
+     - 가압류/가처분/압류/경매/신탁 각 건수
+3. **말소 항목이 `is_canceled=true`로 정확히 구분되는지**, 그리고 **여러 페이지에 흩어진
+   항목(근저당 등)이 빠짐없이 통합됐는지**를 최우선으로 육안 확인한다.
 
 실행 명령(backend 폴더에서):
 
 ```powershell
+# 여러 페이지를 순서대로
+.\.venv\Scripts\python.exe scripts\test_extract.py test_samples\sample1_p1.jpg test_samples\sample1_p2.jpg
+# 한 장만
 .\.venv\Scripts\python.exe scripts\test_extract.py test_samples\sample_registry.jpg
 ```

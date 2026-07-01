@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 // ===== 백엔드 주소 =====
 // 나중에 바꾸기 쉽도록 상수로 분리합니다.
@@ -52,13 +55,27 @@ class _UploadScreenState extends State<UploadScreen> {
   Map<String, dynamic>? _result; // 백엔드 응답 결과
 
   /// 카메라 또는 갤러리에서 이미지를 선택합니다.
+  ///
+  /// 갤럭시 기본 카메라는 사진을 HEIC/HEIF로 저장할 수 있는데, 백엔드는 JPEG/PNG/WEBP만
+  /// 받습니다. 그래서 어떤 형식이 들어오든 여기서 **항상 JPEG로 변환**한 뒤에 보관·업로드합니다.
   Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? picked = await _picker.pickImage(source: source);
       if (picked == null) return; // 사용자가 취소함
 
+      // 업로드 전에 JPEG로 변환합니다. (HEIC 등 어떤 형식이든 통일)
+      final File? jpeg = await _convertToJpeg(picked.path);
+      if (jpeg == null) {
+        setState(() {
+          _selectedImage = null;
+          _result = null;
+          _errorMessage = '이미지를 변환하지 못했습니다. 다른 사진으로 다시 시도해 주세요.';
+        });
+        return;
+      }
+
       setState(() {
-        _selectedImage = File(picked.path);
+        _selectedImage = jpeg;
         _result = null;
         _errorMessage = null;
       });
@@ -66,6 +83,31 @@ class _UploadScreenState extends State<UploadScreen> {
       setState(() {
         _errorMessage = '이미지를 불러오지 못했습니다. 다시 시도해 주세요.';
       });
+    }
+  }
+
+  /// 입력 이미지를 JPEG로 변환합니다.
+  ///
+  /// 안드로이드 네이티브 코덱을 사용하므로 HEIC/HEIF도 디코딩할 수 있습니다.
+  /// (순수 Dart 이미지 라이브러리는 HEIC 디코딩을 지원하지 않아 flutter_image_compress를 사용)
+  /// 실패 시 null을 반환하고, 호출부에서 한국어 안내 메시지를 표시합니다.
+  Future<File?> _convertToJpeg(String sourcePath) async {
+    try {
+      final Directory tempDir = await getTemporaryDirectory();
+      final String targetPath =
+          '${tempDir.path}/upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      final XFile? converted = await FlutterImageCompress.compressAndGetFile(
+        sourcePath,
+        targetPath,
+        format: CompressFormat.jpeg,
+        quality: 90, // OCR 가독성을 위해 화질을 비교적 높게 유지
+      );
+
+      if (converted == null) return null;
+      return File(converted.path);
+    } catch (e) {
+      return null; // 호출부에서 사용자 안내 처리
     }
   }
 
@@ -82,8 +124,15 @@ class _UploadScreenState extends State<UploadScreen> {
 
     try {
       final uri = Uri.parse('$baseUrl/api/upload');
+      // 항상 JPEG로 변환된 파일이므로 Content-Type을 image/jpeg로 명시합니다.
+      // (명시하지 않으면 application/octet-stream으로 전송되어 백엔드가 거부할 수 있음)
       final request = http.MultipartRequest('POST', uri)
-        ..files.add(await http.MultipartFile.fromPath('file', image.path));
+        ..files.add(await http.MultipartFile.fromPath(
+          'file',
+          image.path,
+          filename: 'upload.jpg',
+          contentType: MediaType('image', 'jpeg'),
+        ));
 
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);

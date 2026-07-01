@@ -21,3 +21,6 @@ Thumbs.db
 
 # 개인 메모
 CLAUDE.local.md
+
+# 테스트용 등기부등본 샘플 (실제 개인정보 포함 — 절대 커밋 금지)
+backend/test_samples/

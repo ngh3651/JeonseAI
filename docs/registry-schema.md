@@ -13,17 +13,29 @@
 - **가압류/가처분/압류/경매/신탁도 boolean이 아니라 배열**이다. 항목마다 말소 여부가
   다를 수 있어서다. 위험판단에서는 "유효한(`is_canceled=false`) 항목이 하나라도
   있는가"로 '여부'를 계산한다.
-- **필드 키는 영문 snake_case, 의미는 한국어 설명(`description`)에 담는다.** JSON 키
-  인코딩/제약 리스크를 피하기 위함. 아래 표가 영문 키 ↔ 한국어 의미 대응표다.
+- **필드 키는 영문 snake_case, 의미는 한국어 설명(`description`)에 담는다.** 아래 표가
+  영문 키 ↔ 한국어 의미 대응표다.
 
-## 1. 표제부 — `property_description`
+### 구조 = "최상위 평면(flat)" (STEP 2-B-1에서 확정)
+
+STEP 2-A에서는 표제부/갑구/을구를 **객체 그룹**으로 묶었으나, Upstage Information
+Extract 제약 때문에 **최상위 평면 구조로 바꿨다**:
+
+> **최상위(first-level) 속성은 `string`/`integer`/`number`/`array`만 허용되고,
+> `object`(중첩 객체)는 배열의 원소로만 허용된다.** (동기 호출 한도: 100페이지 / 100속성)
+
+따라서 표제부 필드는 최상위 scalar로, 갑구/을구 목록은 최상위 array로 두었다.
+어느 구(區)에 속하는지는 아래 표의 그룹 제목과 스키마 파일 주석의 `[표제부]/[갑구]/[을구]`
+접두어로 표시한다. (전체 최상위 필드 12개)
+
+## 1. [표제부] 부동산 기본 표시 (최상위 scalar)
 
 | 필드 | 타입 | 의미 | 어디에 쓰나 |
 |---|---|---|---|
 | `address` | string | 소재지(주소) | 물건 식별, (향후) 실거래가·시세 조회 키 |
 | `exclusive_area_sqm` | number | 건물 전용면적(㎡) | (향후) 면적당 시세로 적정 보증금 판단 |
 
-## 2. 갑구 — `ownership_section` (소유권에 관한 사항)
+## 2. [갑구] 소유권에 관한 사항 (최상위 array/scalar)
 
 ### `current_owners` (배열) — 현재 유효한 소유자
 | 필드 | 타입 | 의미 |
@@ -75,7 +87,7 @@
 - **용도**: 신탁등기가 유효하면 **소유권이 수탁자에게** 있어, 원 소유자와 계약하면
   무효가 될 수 있는 대표적 위험. 유효 신탁은 강하게 경고.
 
-## 3. 을구 — `encumbrance_section` (소유권 이외의 권리)
+## 3. [을구] 소유권 이외의 권리 (최상위 array)
 
 ### `mortgages` (배열) — 근저당권
 | 필드 | 타입 | 의미 |
@@ -113,22 +125,36 @@
 - **용도**: 임차권등기명령이 있었다는 것은 **과거 보증금 미반환 사고 이력**을 뜻하는
   강한 위험 신호.
 
-## 4. 확인이 필요한 부분 (STEP 2-B에서 공식 문서로 검증)
+## 4. 확인된 API 사양 (STEP 2-B-1, Upstage 공식 문서)
 
-아래는 현재 **확실하지 않아** 표시해 둔 항목이다. 실제 API 연동 전에
-`console.upstage.ai/docs`에서 확인한다.
+| 항목 | 확인 결과 |
+|---|---|
+| Endpoint | `POST https://api.upstage.ai/v1/information-extraction` |
+| Model | `information-extract` |
+| 스키마 전달 | `response_format` (type=`json_schema`) — `build_response_format()` 형태가 맞음 |
+| 이미지 전달 | base64 data URL을 `messages` content에 `type="image_url"`로 |
+| 응답 위치 | `choices[0].message.content`에 **JSON 문자열**로 담겨 옴 → 파싱 필요 |
+| 스키마 제약 | **최상위는 scalar/array만, object는 배열 원소로만** / 100페이지·100속성 한도 |
 
-1. 스키마를 넘기는 정확한 형태(본 설계는 OpenAI 호환 `response_format` 가정).
-2. 정확한 endpoint / model 이름.
-3. 깊은 중첩(object→object→array→object) 지원 한계.
-4. 금액(`number`) 추출 신뢰도 — "금 300,000,000원" 표기 대응. 흔들리면 string 후처리로 전환.
-5. `required`/`additionalProperties` 존중 여부.
+**남은 소소한 확인(실호출로 검증):**
+- 배열 원소 object 안의 `boolean`(is_canceled)·`number`(금액)이 타입 그대로 오는지.
+  흔들리면(금액이 문자열 등) string으로 받고 후처리. → 검증 스크립트가 자동 요약해 줌.
 
-## 5. 다음 단계에서의 검증 계획 (요약)
+## 5. 검증 방법 (STEP 2-B-1 스크립트)
 
-실제 검증 방법은 별도로 정리하되, 요지는 다음과 같다.
+스크립트: [backend/scripts/test_extract.py](../backend/scripts/test_extract.py)
 
-1. 말소사항이 포함된 실제 등기부등본 이미지 1~2건으로 호출해 반환 JSON을 육안 대조.
-2. **말소 항목이 `is_canceled=true`로 정확히 구분되는지**를 최우선으로 확인.
-3. 금액이 숫자로 깔끔히 오는지 확인(안 되면 string 후처리).
-4. 항목 개수(근저당 여러 건 등)가 배열로 빠짐없이 잡히는지 확인.
+1. 말소사항이 포함된 실제 등기부등본 이미지 1건을 `backend/test_samples/`에 넣는다.
+   (이 폴더는 `.gitignore`로 제외 — 개인정보 커밋 방지)
+2. 스크립트 실행 → 반환 JSON을 예쁘게 출력하고, 맨 아래 **검증 요약**을 자동으로 보여준다:
+   - 근저당 개수 / 그중 말소 건수
+   - 채권최고액이 숫자로 왔는지(타입 점검)
+   - 현재 소유자 이름 목록
+   - 가압류/가처분/압류/경매/신탁 각 건수(유효 건수)
+3. **말소 항목이 `is_canceled=true`로 정확히 구분되는지**를 최우선으로 육안 확인한다.
+
+실행 명령(backend 폴더에서):
+
+```powershell
+.\.venv\Scripts\python.exe scripts\test_extract.py test_samples\sample_registry.jpg
+```

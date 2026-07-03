@@ -9,6 +9,65 @@
 
 자세한 원칙과 향후 과제는 [CLAUDE.md](CLAUDE.md)와 [docs/decisions.md](docs/decisions.md)를 참고하세요.
 
+## 브랜치 작업 규칙
+
+이 프로젝트는 **main + dev 2단계 브랜치**로 운영합니다.
+
+- **`dev`**: 평소 작업은 전부 여기서 합니다. 팀원 둘 다 기본적으로 `dev`에 머무릅니다.
+- **`main`**: 항상 안정적으로 돌아가는 버전만 유지합니다. 평소에 직접 커밋하지 않고,
+  STEP 하나가 끝나고 정상 동작이 확인되면 그때 `dev → main`으로 병합합니다.
+- **담당 분리**: `backend/`, `frontend/`를 각자 나눠서 작업해 충돌을 최소화합니다.
+- **공용 파일 주의**: `CLAUDE.md`, `docs/decisions.md`처럼 두 사람이 같이 건드릴 수 있는 파일은,
+  수정 전에 팀원과 먼저 이야기하고 진행합니다 (동시에 수정하면 충돌 해결이 번거로움).
+
+### Git 명령어 가이드 (초보자용)
+
+**① 처음 한 번만 — 내 컴퓨터에 레포 받기**
+
+```bash
+git clone https://github.com/ngh3651/JeonseAI.git
+cd JeonseAI
+git checkout dev
+```
+
+**② 작업을 시작하기 전 — 항상 최신 dev로 맞추기**
+
+```bash
+git checkout dev
+git pull origin dev
+```
+
+**③ 작업하기**
+
+평소처럼 코드를 수정하면 됩니다. (`backend/`는 A, `frontend/`는 B, 이런 식으로 담당 폴더 위주로)
+
+**④ 작업한 내용 저장(커밋) & 올리기(푸시)**
+
+```bash
+git add .
+git commit -m "무엇을 했는지 한국어로 간단히 (예: OCR 응답 파싱 로직 추가)"
+git push origin dev
+```
+
+- `git add .` : 바뀐 파일들을 커밋 대상으로 담기
+- `git commit -m "..."` : 담은 내용을 "저장"하기 (메시지는 필수)
+- `git push origin dev` : 내 컴퓨터의 저장 내역을 GitHub의 `dev` 브랜치로 올리기
+
+**⑤ 충돌(conflict)이 뜨면**
+
+`git pull origin dev` 했을 때 충돌 메시지가 뜨면 당황하지 말고, 어떤 파일에서 충돌 났는지
+확인한 뒤 팀원에게 먼저 알려주세요. (파일 안에 `<<<<<<<`, `=======`, `>>>>>>>` 표시가 생깁니다)
+
+**⑥ STEP이 끝나서 `main`에 반영할 때** (둘이 같이 확인 후 진행)
+
+```bash
+git checkout main
+git pull origin main
+git merge dev
+git push origin main
+git checkout dev
+```
+
 ## 폴더 구조
 
 ```

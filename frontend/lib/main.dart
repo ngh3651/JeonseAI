@@ -12,11 +12,13 @@ import 'package:path_provider/path_provider.dart';
 // 나중에 바꾸기 쉽도록 상수로 분리합니다.
 //
 // 이 프로젝트는 안드로이드 실기기 전용입니다. (웹/에뮬레이터 기준 아님)
-// 실기기는 PC의 Wi-Fi LAN IP로 접근해야 하며, 휴대폰과 PC가 같은 Wi-Fi에 있어야 합니다.
+// USB로 연결된 상태에서 `adb reverse tcp:8000 tcp:8000` 을 실행하면
+// 폰의 127.0.0.1:8000 요청이 USB 터널을 통해 PC의 127.0.0.1:8000 으로 전달됩니다.
+// Wi-Fi 경로를 타지 않으므로 PC/폰이 서로 다른 네트워크에 있어도 동작하며,
+// PC의 LAN IP를 매번 재확인할 필요가 없습니다.
 //
-// !! 주의: PC가 다른 네트워크로 바뀌면 LAN IP가 달라집니다.
-//          그때는 PC에서 `ipconfig`로 IPv4 주소를 재확인한 뒤 아래 baseUrl을 갱신하세요.
-const String baseUrl = 'http://172.30.1.39:8000'; // 실기기용 (PC의 LAN IP)
+// !! adb reverse는 USB 재연결/PC 재부팅 시마다 다시 실행해야 합니다.
+const String baseUrl = 'http://127.0.0.1:8000'; // 실기기용 (adb reverse 사용)
 // const String baseUrl = "http://10.0.2.2:8000";   // 안드로이드 에뮬레이터용 (주석 보관)
 
 void main() {

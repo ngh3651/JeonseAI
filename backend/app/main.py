@@ -1,7 +1,8 @@
 """전세AI프 백엔드 (FastAPI).
 
-현재 단계(STEP 1)에서는 헬스체크와 이미지 업로드 수신 엔드포인트를 제공합니다.
-OCR·위험판단·RAG는 다음 단계에서 구현합니다. 지금은 앱↔서버 통신 파이프 검증이 목적입니다.
+현재는 헬스체크와 이미지 업로드 수신 엔드포인트를 제공합니다.
+정보추출(Upstage Information Extract)·규칙 기반 위험판단·향후 RAG는 Phase E에서 교체합니다.
+지금은 앱↔서버 통신 파이프 검증이 목적입니다.
 """
 
 from fastapi import FastAPI, File, HTTPException, UploadFile

@@ -66,6 +66,11 @@
   게 아니라, 분류·기록해 재작업 없이 흡수할 수 있게 하는 것이 목적이다.
 - **가드레일 방향 (향후 파이프라인)**: `규칙 엔진이 판정 → LLM은 판정 JSON을 받아 설명만
   생성 → 검증` 구조를 전제로 한다. 지금 단계 아키텍처가 이 방향과 충돌하지 않게 유지한다.
+- **임시 산출물 정리 규율**: 더미·스캐폴딩·테스트용 임시 파일(더미 리포지토리, 개발용
+  스크립트·챗봇, 파이프 검증 엔드포인트 등)은 **실구현으로 대체되면 더 이상 필요 없어지므로,
+  깔끔한 폴더 구조·엔드포인트를 위해 때가 되면 삭제/교체**한다. 지금 당장 지우는 게 아니라,
+  임시 파일을 만들 때마다 `docs/cleanup-tracker.md`에 "무엇을 / 언제(어느 Phase) 삭제·교체"를
+  기록해 두고, 해당 Phase에 도달하면 그 목록을 근거로 정리를 제안·수행한다.
 
 ## 5. 문서 맵
 
@@ -76,7 +81,8 @@
 | docs/evaluation-criteria.md | 대회 공식 배점표 (judge-reviewer 근거) | Phase A 생성 |
 | docs/IA.md | 정보구조: 화면 트리·네비게이션 맵 | Phase B 예정 |
 | docs/user-scenario.md | 화면→버튼→액션 단위 시나리오 | Phase B 예정 |
-| docs/data-contract.md | 앱↔서버 JSON 계약 — 더미↔실제 교체 기준점 | Phase D 예정 |
+| docs/api-contract.md | 앱↔서버 JSON 계약 — 더미↔실제 교체 기준점 | Phase D-1 생성 |
+| docs/cleanup-tracker.md | 임시·더미·스캐폴딩 정리(삭제·교체) 대상 목록 (living) | Phase D-2 생성 |
 | docs/decisions.md | 아키텍처 결정 로그 (**append-only**) | 유지 |
 | docs/registry-schema.md | 등기부 추출 스키마 설명 | 유지 |
 | docs/draft/ | 브레인스토밍 초안 (**확정 사양 아님**, 참고용) | 유지 |

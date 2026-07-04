@@ -8,7 +8,17 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from .routers import content, reports
+
 app = FastAPI(title="전세AI프 API", description="전세 위험 분석 백엔드")
+
+# 계약(docs/api-contract.md)대로의 더미 응답 엔드포인트 (Phase D-2).
+# NOTE: 이 환경의 fastapi 0.139 + starlette 1.3.1 조합에서 app.include_router()가
+#       라우트를 등록하지 못하는 버그가 있어(@app.get 데코레이터는 정상), 라우터의
+#       이미 완성된 APIRoute 객체를 앱 라우터에 직접 붙인다. 각 라우트는 APIRouter의
+#       prefix="/api"가 이미 반영돼 있어 경로가 완전한 상태다.
+app.router.routes.extend(reports.router.routes)
+app.router.routes.extend(content.router.routes)
 
 # CORS 설정: Flutter 앱(모바일 에뮬레이터/실기기)에서 호출할 수 있도록 허용합니다.
 # 주의: 개발 단계라 모든 origin을 허용합니다.

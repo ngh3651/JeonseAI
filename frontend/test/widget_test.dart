@@ -1,17 +1,13 @@
-// 전세AI프 앱 기본 위젯 테스트.
-
+// 스모크 테스트: 앱이 뜨고 갤러리 화면이 렌더링되는지 확인합니다.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jeonse_ai/main.dart';
 
 void main() {
-  testWidgets('첫 화면에 타이틀과 버튼이 보인다', (WidgetTester tester) async {
-    await tester.pumpWidget(const JeonseAiApp());
+  testWidgets('앱 실행 시 컴포넌트 갤러리가 표시된다 (C-1)', (WidgetTester tester) async {
+    await tester.pumpWidget(const JeonseSafeApp());
+    await tester.pumpAndSettle();
 
-    // 앱 타이틀과 주요 버튼이 화면에 있는지 확인합니다.
-    expect(find.text('전세AI프'), findsOneWidget);
-    expect(find.text('사진 촬영'), findsOneWidget);
-    expect(find.text('갤러리에서 선택'), findsOneWidget);
-    expect(find.text('분석하기'), findsOneWidget);
+    expect(find.text('디자인 시스템 갤러리 (예시 데이터)'), findsOneWidget);
   });
 }

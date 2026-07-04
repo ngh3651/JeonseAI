@@ -1,0 +1,184 @@
+/// 카드 2종: 기본 카드(AppCard) + 근거 카드(EvidenceCard, 접힘/펼침).
+///
+/// EvidenceCard는 "결론 크게 → 근거 펼침" 원칙의 핵심 컴포넌트다 (IA.md §6 S-07):
+/// - 접힘: 상태 뱃지 + 쉬운 질문형 제목 + 전문용어 부제
+/// - 펼침: 쉬운 설명 → 상세 수치 → 출처 + 판정/설명 구분 라벨
+library;
+
+import 'package:flutter/material.dart';
+
+import '../../models/risk_grade.dart';
+import '../tokens/app_colors.dart';
+import '../tokens/app_spacing.dart';
+import '../tokens/app_typography.dart';
+import 'risk_badge.dart';
+import 'source_label.dart';
+
+/// 표면 카드 — 테마의 CardThemeData(테두리·라운드)를 그대로 쓰는 패딩 컨테이너.
+class AppCard extends StatelessWidget {
+  const AppCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(AppSpacing.lg),
+    this.onTap,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final card = Card(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(padding: padding, child: child),
+    );
+    if (onTap == null) return card;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+  }
+}
+
+/// 근거 카드 (접힘/펼침).
+class EvidenceCard extends StatefulWidget {
+  const EvidenceCard({
+    super.key,
+    required this.title,
+    required this.termSubtitle,
+    required this.grade,
+    this.statusLabel,
+    required this.easyExplanation,
+    this.detailText,
+    this.sourceText,
+    this.action,
+    this.initiallyExpanded = false,
+  });
+
+  /// 쉬운 질문형 제목 (예: "나보다 먼저 돈 받아갈 빚이 있나요?")
+  final String title;
+
+  /// 전문용어 부제 (예: "선순위 채권 · 근저당")
+  final String termSubtitle;
+
+  /// 상태 색·뱃지에 쓰일 등급
+  final RiskGrade grade;
+
+  /// 등급 라벨 대신 표시할 상태 (예: "페이지 누락"). null이면 등급 라벨.
+  final String? statusLabel;
+
+  /// 펼침 1단: 쉬운 설명 (AI 생성 문장 슬롯)
+  final String easyExplanation;
+
+  /// 펼침 2단: 상세 수치
+  final String? detailText;
+
+  /// 펼침 3단: 판정 출처 (예: "HUG 전세보증 기준")
+  final String? sourceText;
+
+  /// 다음 행동 버튼.
+  ///
+  /// **사용 규칙 (IA.md §0)**: "확인 필요" 등 보수적 상태로 쓸 때는 반드시 action을
+  /// 함께 전달할 것 — "위험이 없다는 뜻은 아니에요"류 문구 단독 노출 금지.
+  final Widget? action;
+
+  final bool initiallyExpanded;
+
+  @override
+  State<EvidenceCard> createState() => _EvidenceCardState();
+}
+
+class _EvidenceCardState extends State<EvidenceCard> {
+  late bool _expanded = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Semantics(
+        button: true,
+        expanded: _expanded,
+        label: '근거: ${widget.title}',
+        child: InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(widget.title, style: AppTypography.title),
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            widget.termSubtitle,
+                            style: AppTypography.caption,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    RiskBadge(
+                      grade: widget.grade,
+                      labelOverride: widget.statusLabel,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      color: AppColors.textMuted,
+                    ),
+                  ],
+                ),
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 180),
+                  crossFadeState: _expanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstChild: const SizedBox(width: double.infinity),
+                  secondChild: Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.easyExplanation, style: AppTypography.body),
+                        if (widget.detailText != null) ...[
+                          const SizedBox(height: AppSpacing.md),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                            ),
+                            child: Text(
+                              widget.detailText!,
+                              style: AppTypography.bodyStrong,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: AppSpacing.md),
+                        VerdictSourceLabel(verdictSource: widget.sourceText),
+                        if (widget.action != null) ...[
+                          const SizedBox(height: AppSpacing.md),
+                          widget.action!,
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,8 +1,9 @@
-/// S-08 판례 매칭 — IA.md §6. (사용자 노출 명칭: "비슷한 피해 사례" — 지수 리뷰 반영)
+/// S-08 판례 매칭 — IA.md §6. (사용자 노출 명칭: "판례" 유지 — 실제 법원 판결이라는
+/// 신뢰 무게가 플래그십 차별화의 핵심. 화면 첫 등장에 '법원의 실제 판결' 툴팁만 붙임.)
 ///
-/// 현재 매물의 위험 패턴 칩(쉬운 말) → 패턴별 큐레이션 사례 카드.
-/// 사례가 있든 없든 하단에 "질문 챙기기" 다음 행동을 상시 둔다 (공포 뒤 행동 짝짓기).
-/// 사례는 전부 예시(E-3에서 큐레이션·출처 확정).
+/// 현재 매물의 위험 패턴 칩(쉬운 말) → 패턴별 큐레이션 판례 카드.
+/// 판례가 있든 없든 하단에 "질문 챙기기" 다음 행동을 상시 둔다 (공포 뒤 행동 짝짓기).
+/// 판례는 전부 예시(E-3에서 큐레이션·출처 확정).
 library;
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_callout.dart';
 import '../../design_system/components/app_card.dart';
 import '../../design_system/components/app_pill.dart';
+import '../../design_system/components/term_tooltip_sheet.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -40,7 +42,7 @@ class CaseMatchScreen extends StatelessWidget {
     final contentRepo = context.read<ContentRepository>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('비슷한 피해 사례')),
+      appBar: AppBar(title: const Text('판례 매칭')),
       body: FutureBuilder<AnalysisReport?>(
         future: analysisRepo.getReport(reportId),
         builder: (context, snapshot) {
@@ -57,6 +59,24 @@ class CaseMatchScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.screenPadding),
             children: [
+              // '판례' 첫 등장에 툴팁으로 신뢰 무게를 짧게 설명 (용어는 유지)
+              Text.rich(
+                TextSpan(
+                  style: AppTypography.body,
+                  children: [
+                    const TextSpan(text: '이 매물의 위험과 비슷한 상황에서 나온 '),
+                    termSpan(
+                      context,
+                      term: '판례',
+                      description:
+                          '법원의 실제 판결이에요. 실제로 이런 일이 일어나 '
+                          '법정까지 갔다는 뜻이라, 위험을 훨씬 더 무겁게 봐야 해요.',
+                    ),
+                    const TextSpan(text: '를 모았어요.'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
               Text('이 매물에서 눈에 띈 위험', style: AppTypography.title),
               const SizedBox(height: AppSpacing.sm),
               if (patterns.isEmpty)
@@ -79,7 +99,7 @@ class CaseMatchScreen extends StatelessWidget {
                 AppCallout(
                   tone: CalloutTone.neutral,
                   text:
-                      '이 매물의 위험과 딱 맞는 사례가 아직 없어요. '
+                      '이 매물의 위험과 딱 맞는 판례가 아직 없어요. '
                       '위험이 없다는 뜻은 아니니, 중개사에게 확인할 질문을 챙겨 가세요.',
                 )
               else
@@ -101,7 +121,7 @@ class CaseMatchScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
-              Text('사례 데이터는 계속 추가되고 있어요', style: AppTypography.caption),
+              Text('판례 데이터는 계속 추가되고 있어요', style: AppTypography.caption),
               const SizedBox(height: AppSpacing.xxxl),
             ],
           );

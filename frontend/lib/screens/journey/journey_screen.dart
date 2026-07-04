@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../design_system/components/app_card.dart';
+import '../../design_system/components/app_pill.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -137,22 +138,14 @@ class _JourneyScreenState extends State<JourneyScreen> {
           shape: const Border(),
           title: Row(
             children: [
-              if (isCurrent)
-                Container(
-                  margin: const EdgeInsets.only(right: AppSpacing.sm),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                  ),
-                  child: Text(
-                    '현재',
-                    style: AppTypography.label.copyWith(color: Colors.white),
-                  ),
+              if (isCurrent) ...[
+                const AppPill(
+                  label: '현재',
+                  color: AppColors.primary,
+                  background: AppColors.primarySoft,
                 ),
+                const SizedBox(width: AppSpacing.sm),
+              ],
               Expanded(child: Text(stage.title, style: AppTypography.title)),
             ],
           ),

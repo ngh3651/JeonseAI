@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../design_system/components/app_button.dart';
+import '../../design_system/components/app_callout.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -113,6 +114,33 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           Expanded(child: _addressTab ? _addressDummy() : _uploadForm()),
         ],
       ),
+      // 단일 핵심 행동 [분석하기]는 하단 고정 (스크롤·키보드에 가려지지 않게 — design-reviewer)
+      bottomNavigationBar: _addressTab ? null : _analyzeBar(),
+    );
+  }
+
+  Widget _analyzeBar() {
+    return SafeArea(
+      minimum: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_canAnalyze)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Text(
+                '등기부등본 사진과 예정 보증금을 입력하면 분석할 수 있어요',
+                style: AppTypography.caption,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          AppPrimaryButton(
+            label: '분석하기',
+            icon: Icons.search,
+            onPressed: _canAnalyze ? _analyze : null,
+          ),
+        ],
+      ),
     );
   }
 
@@ -177,7 +205,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         // 매매 시세 (선택)
         _fieldLabel('매매 시세 (선택)'),
         Text(
-          '국토부 실거래가·KB시세 등에서 확인한 금액을 넣으면 더 정확해져요',
+          '모르면 비워두셔도 돼요. 넣으면 보증금이 집값에 비해 높은지 더 정확히 알려드려요. '
+          '(국토부 실거래가·KB시세 등에서 확인)',
           style: AppTypography.caption,
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -202,27 +231,13 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         ),
         const SizedBox(height: AppSpacing.xl),
 
-        TextButton(
-          onPressed: () => context.push('/guide'),
-          child: const Text('등기부등본이 없어요 — 발급 가이드'),
-        ),
-        const SizedBox(height: AppSpacing.md),
-
-        AppPrimaryButton(
-          label: '분석하기',
-          icon: Icons.search,
-          onPressed: _canAnalyze ? _analyze : null,
-        ),
-        if (!_canAnalyze)
-          Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.sm),
-            child: Text(
-              '등기부등본 사진과 예정 보증금을 입력하면 분석할 수 있어요',
-              style: AppTypography.caption,
-              textAlign: TextAlign.center,
-            ),
+        Center(
+          child: TextButton(
+            onPressed: () => context.push('/guide'),
+            child: const Text('등기부등본이 없어요 — 발급 가이드'),
           ),
-        const SizedBox(height: AppSpacing.xxxl),
+        ),
+        const SizedBox(height: AppSpacing.xl),
       ],
     );
   }
@@ -268,48 +283,70 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   }
 
   Widget _thumbnails() {
+    // 셀 위·오른쪽에 여백을 둬 48dp 삭제 버튼이 잘리지 않게 한다.
     return SizedBox(
-      height: 96,
+      height: 96 + AppSpacing.xl,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: _images.length,
         separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-        itemBuilder: (context, i) => Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              child: Image.file(
-                File(_images[i].path),
-                width: 72,
-                height: 96,
-                fit: BoxFit.cover,
+        itemBuilder: (context, i) => Padding(
+          padding: const EdgeInsets.only(
+            top: AppSpacing.xl,
+            right: AppSpacing.xl,
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                child: Image.file(
+                  File(_images[i].path),
+                  width: 72,
+                  height: 96,
+                  fit: BoxFit.cover,
+                ),
               ),
-            ),
-            Positioned(
-              top: 2,
-              right: 2,
-              child: GestureDetector(
-                onTap: () => setState(() => _images.removeAt(i)),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: AppColors.dim,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.close,
-                    color: Colors.white,
-                    size: AppSize.iconXs,
+              // 삭제 버튼 — 최소 터치 영역(48dp) + 시맨틱 (design-reviewer)
+              Positioned(
+                top: -AppSpacing.xl,
+                right: -AppSpacing.xl,
+                child: Semantics(
+                  button: true,
+                  label: '${i + 1}번째 사진 삭제',
+                  child: InkWell(
+                    onTap: () => setState(() => _images.removeAt(i)),
+                    customBorder: const CircleBorder(),
+                    child: SizedBox(
+                      width: AppSize.minTouchTarget,
+                      height: AppSize.minTouchTarget,
+                      child: Center(
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: AppColors.dim,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(AppSpacing.xs),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: AppSize.iconXs,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// 주소 검색 탭 — UI만, 로드맵 어필형 안내 (judge-reviewer 반영)
+  /// 주소 검색 탭 — UI만, 로드맵 어필형 안내 (judge-reviewer). 막다른 길 방지로
+  /// 업로드 이동 + 발급 가이드 두 갈래 제공 (지수 리뷰).
   Widget _addressDummy() {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
@@ -323,22 +360,23 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: AppColors.primarySoft,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            child: Text(
-              '주소만 입력하면 등기부를 자동으로 조회하는 기능을 다음 버전에서 '
-              '준비하고 있어요 (공공 데이터 연동). 지금은 등기부등본 사진으로 분석해 주세요.',
-              style: AppTypography.body,
-            ),
+          const AppCallout(
+            tone: CalloutTone.info,
+            icon: Icons.rocket_launch_outlined,
+            title: '준비 중이에요',
+            text:
+                '주소만 입력하면 등기부를 자동으로 조회하는 기능을 다음 버전에서 '
+                '준비하고 있어요 (공공 데이터 연동). 지금은 등기부등본 사진으로 분석해 주세요.',
           ),
           const SizedBox(height: AppSpacing.lg),
-          AppSecondaryButton(
-            label: '등기부 업로드로 이동',
+          AppPrimaryButton(
+            label: '등기부 사진으로 분석하기',
             onPressed: () => setState(() => _addressTab = false),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          AppSecondaryButton(
+            label: '등기부등본이 없어요 — 발급 가이드',
+            onPressed: () => context.push('/guide'),
           ),
         ],
       ),

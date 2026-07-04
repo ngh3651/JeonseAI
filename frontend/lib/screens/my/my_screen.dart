@@ -167,11 +167,23 @@ class _MyScreenState extends State<MyScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(report.alias, style: AppTypography.bodyStrong),
+                Text(
+                  report.alias,
+                  style: AppTypography.bodyStrong,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
                   '${formatDate(report.analyzedAt)} · 보증금 ${formatWon(report.deposit)}',
                   style: AppTypography.caption,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  report.topRiskSummary,
+                  style: AppTypography.caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),

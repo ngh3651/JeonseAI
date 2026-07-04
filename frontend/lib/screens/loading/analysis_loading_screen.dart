@@ -29,16 +29,21 @@ class AnalysisLoadingScreen extends StatefulWidget {
 }
 
 class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
-  // 단계 문구는 판정 주체를 드러낸다 (judge-reviewer 반영)
+  // 단계 문구 — 지수 리뷰 반영: '규칙' 같은 내부 용어 대신 쉬운 말.
+  // (판정/설명 주체 구분은 리포트 근거 카드의 라벨이 담당 — judge-reviewer 요구도 그쪽에서 충족)
   static const _stages = [
     '사진을 올리고 있어요',
-    '문서를 읽는 중이에요 (AI 추출)',
-    '규칙으로 위험 항목을 확인하는 중이에요',
-    'AI가 쉬운 말로 정리하는 중이에요',
+    '등기부를 읽는 중이에요',
+    '위험한 부분을 하나씩 확인하는 중이에요',
+    '쉬운 말로 정리하는 중이에요',
   ];
 
-  // 추출되는 항목이 하나씩 나타나는 연출 (예시)
-  static const _extracted = ['근저당권 2건 발견', '신탁등기 확인', '소유자 정보 확인'];
+  // 추출 항목이 하나씩 나타나는 연출 — 용어 대신 쉬운 말+중립 표현 (지수 리뷰)
+  static const _extracted = [
+    '집에 걸린 빚 정보를 읽었어요',
+    '소유권 정보를 읽었어요',
+    '집주인 정보를 읽었어요',
+  ];
 
   int _stage = 0;
   final List<String> _found = [];
@@ -136,7 +141,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  '보통 1~2분 걸려요',
+                  '보통 1분 내외예요',
                   style: AppTypography.caption,
                   textAlign: TextAlign.center,
                 ),

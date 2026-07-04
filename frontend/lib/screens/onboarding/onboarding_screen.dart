@@ -29,7 +29,10 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   static const _pages = [
     _Page('전세 계약, 도장 찍기 전에', '전세사기·깡통전세는 계약 전에 등기부만 제대로 봐도 상당 부분 걸러낼 수 있어요.'),
-    _Page('조회에서 멈추지 않아요', '판례로 증명하고, 손실액을 숫자로 보여주고, 중개사에게 물어볼 질문까지 만들어 드려요.'),
+    _Page(
+      '무엇을 조심할지까지 알려드려요',
+      '비슷한 피해 사례를 보여주고, 손실액을 숫자로 계산하고, 중개사에게 뭘 물어봐야 하는지까지 챙겨드려요.',
+    ),
     _Page('등기부등본 사진만 있으면 돼요', '어려운 말은 저희가 쉽게 풀어드릴게요. 등기부가 없어도 발급 방법을 안내해 드려요.'),
   ];
 

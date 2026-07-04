@@ -60,7 +60,7 @@ class DummyContentRepository implements ContentRepository {
           riskLabel: '신탁등기',
           items: [
             QuestionItem(
-              question: '신탁원부를 보여주실 수 있나요?',
+              question: '신탁원부(신탁 내용을 적은 서류)를 보여주실 수 있나요?',
               why: '신탁등기가 있으면 집주인 마음대로 계약을 못 할 수 있어요',
               safeAnswer: '신탁원부를 바로 보여주고, 임대 권한이 있음을 확인해 준다',
               riskyAnswer: '보여줄 수 없다거나 얼버무린다',
@@ -207,8 +207,8 @@ class DummyContentRepository implements ContentRepository {
       ],
     ),
     JourneyStage(
-      title: '입주 (전입신고·확정일자)',
-      subtitle: '보증금을 지키는 가장 중요한 단계',
+      title: '입주하고 나서 꼭 할 일',
+      subtitle: '전입신고·확정일자 — 보증금을 지키는 가장 중요한 단계',
       items: [
         JourneyItem(
           text: '이사 당일 바로 전입신고하기',

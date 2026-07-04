@@ -356,7 +356,7 @@ class ReportScreen extends StatelessWidget {
         ),
       (
         icon: Icons.gavel_outlined,
-        label: '판례 보기',
+        label: '비슷한 피해 사례',
         onTap: () => context.push('/cases/${report.id}'),
       ),
       (

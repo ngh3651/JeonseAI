@@ -71,8 +71,8 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
         // 범위 밖 → 거절 + 유도 (가드레일)
         _messages.add(
           const _Msg(
-            '저는 용어를 쉽게 설명해 드리는 챗봇이에요. 매물의 위험 판단은 규칙 기반 '
-            '안전도 리포트가 맡고 있어요.',
+            '저는 용어를 쉽게 설명해 드리는 챗봇이에요. 이 집이 안전한지는 '
+            '‘안전도 리포트’가 분석해 드려요.',
             false,
             outOfScope: true,
           ),
@@ -146,7 +146,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
 
   Widget _recommendedChips(List<String> terms) {
     return SizedBox(
-      height: 44,
+      height: AppSize.minTouchTarget,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(

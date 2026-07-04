@@ -43,13 +43,17 @@ class DummyAnalysisRepository extends AnalysisRepository {
   /// 근저당·신탁 등 등기 근거는 예시 고정이고, 보증금·시세 의존 항목만 입력을 반영한다.
   static AnalysisReport _buildDangerReport({
     required String id,
-    required String alias,
+    String? alias,
     required DateTime analyzedAt,
     required int deposit,
     int? marketPrice,
     String address = '서울 강남구 역삼동 123-45', // 실단계: 표제부 추출 주소
   }) {
     const seniorDebt = 180000000; // 예시 채권최고액
+    // 별칭 미입력 시 표제부 주소를 기본 별칭으로 (문구 "안 쓰면 주소로 저장돼요"와 일치)
+    final String resolvedAlias = (alias?.trim().isNotEmpty ?? false)
+        ? alias!.trim()
+        : address;
 
     // 전세가율 근거 — 시세가 있으면 계산해 보여주고, 없으면 '확인 필요'
     final EvidenceItem jeonseEvidence = marketPrice != null
@@ -87,7 +91,7 @@ class DummyAnalysisRepository extends AnalysisRepository {
 
     return AnalysisReport(
       id: id,
-      alias: alias,
+      alias: resolvedAlias,
       address: address,
       analyzedAt: analyzedAt,
       grade: RiskGrade.danger,
@@ -246,9 +250,7 @@ class DummyAnalysisRepository extends AnalysisRepository {
     // 새 리포트를 만든다. (실단계 E-1에서 규칙 엔진 판정으로 교체)
     final report = _buildDangerReport(
       id: 'analysis-${DateTime.now().millisecondsSinceEpoch}',
-      alias: (request.alias?.trim().isNotEmpty ?? false)
-          ? request.alias!.trim()
-          : '역삼동 오피스텔', // 실단계에선 표제부 추출 주소가 기본 별칭
+      alias: request.alias, // 미입력이면 빌더가 표제부 주소를 기본 별칭으로 사용
       analyzedAt: DateTime.now(),
       deposit: request.deposit,
       marketPrice: request.marketPrice,

@@ -89,6 +89,18 @@ ThemeData buildAppTheme() {
 
     dividerTheme: const DividerThemeData(color: AppColors.line, thickness: 1),
 
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) =>
+            states.contains(WidgetState.selected) ? AppColors.primary : null,
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? AppColors.primaryBright.withValues(alpha: 0.45)
+            : null,
+      ),
+    ),
+
     sliderTheme: SliderThemeData(
       activeTrackColor: AppColors.primary,
       inactiveTrackColor: AppColors.primarySoft,

@@ -41,4 +41,9 @@ abstract final class AppSize {
   static const double iconXs = 14;
   static const double iconSm = 20;
   static const double iconMd = 24;
+  static const double iconLg = 28;
+
+  /// 하단 바 중앙 분석 버튼 (일반 탭보다 크게 + 위로 띄움 — IA §2 중앙 강조)
+  static const double analyzeButton = 56;
+  static const double analyzeButtonLift = 10;
 }

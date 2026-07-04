@@ -19,6 +19,7 @@ class TermText extends StatelessWidget {
     required this.description,
     this.onAskChatbot,
     this.style,
+    this.inline = false,
   });
 
   final String term;
@@ -29,9 +30,24 @@ class TermText extends StatelessWidget {
 
   final TextStyle? style;
 
+  /// 문단 속(termSpan)에서 쓰일 때 true — 줄 흐름 유지를 위해 터치 영역 확장을 하지 않는다.
+  /// (인라인 터치 영역은 C-3에서 재검토)
+  final bool inline;
+
   @override
   Widget build(BuildContext context) {
     final TextStyle base = style ?? AppTypography.body;
+    final Widget label = Text(
+      term,
+      style: base.copyWith(
+        color: AppColors.primary,
+        fontWeight: FontWeight.w600,
+        decoration: TextDecoration.underline,
+        decorationStyle: TextDecorationStyle.dashed,
+        decorationColor: AppColors.primaryBright,
+      ),
+    );
+
     return Semantics(
       button: true,
       label: '$term 용어 설명 보기',
@@ -42,16 +58,16 @@ class TermText extends StatelessWidget {
           description: description,
           onAskChatbot: onAskChatbot,
         ),
-        child: Text(
-          term,
-          style: base.copyWith(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w600,
-            decoration: TextDecoration.underline,
-            decorationStyle: TextDecorationStyle.dashed,
-            decorationColor: AppColors.primaryBright,
-          ),
-        ),
+        child: inline
+            ? label
+            // 단독 사용 시 최소 터치 영역(48dp) 확보 (design-reviewer 반영)
+            : ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minHeight: AppSize.minTouchTarget,
+                  minWidth: AppSize.minTouchTarget,
+                ),
+                child: Center(child: label),
+              ),
       ),
     );
   }

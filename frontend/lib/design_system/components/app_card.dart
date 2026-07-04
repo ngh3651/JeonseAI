@@ -53,6 +53,7 @@ class EvidenceCard extends StatefulWidget {
     required this.grade,
     this.statusLabel,
     required this.easyExplanation,
+    this.explanationSpan,
     this.detailText,
     this.sourceText,
     this.action,
@@ -73,6 +74,10 @@ class EvidenceCard extends StatefulWidget {
 
   /// 펼침 1단: 쉬운 설명 (AI 생성 문장 슬롯)
   final String easyExplanation;
+
+  /// 쉬운 설명을 용어 툴팁(termSpan) 포함 리치 텍스트로 그릴 때 —
+  /// 지정하면 [easyExplanation] 대신 이 스팬을 렌더링한다.
+  final InlineSpan? explanationSpan;
 
   /// 펼침 2단: 상세 수치
   final String? detailText;
@@ -148,7 +153,13 @@ class _EvidenceCardState extends State<EvidenceCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.easyExplanation, style: AppTypography.body),
+                        if (widget.explanationSpan != null)
+                          Text.rich(widget.explanationSpan!)
+                        else
+                          Text(
+                            widget.easyExplanation,
+                            style: AppTypography.body,
+                          ),
                         if (widget.detailText != null) ...[
                           const SizedBox(height: AppSpacing.md),
                           Container(

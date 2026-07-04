@@ -5,15 +5,18 @@
 /// 등급별 색은 디자인 시스템(AppColors)에서 매핑한다 — 모델은 색을 모른다.
 enum RiskGrade {
   /// 위험 — 의사결정 대응: 회피 권고
-  danger('위험'),
+  danger('위험', '계약을 피하는 것을 권해요'),
 
   /// 확인 필요 — 의사결정 대응: 보류·추가 확인
-  caution('확인 필요'),
+  caution('확인 필요', '보류하고 아래 항목을 먼저 확인하세요'),
 
   /// 양호 — 의사결정 대응: 진행 검토 가능 (안전 단정 금지)
-  ok('양호');
+  ok('양호', '진행을 검토할 수 있어요 — 단, 직접 확인은 꼭 필요해요');
 
-  const RiskGrade(this.label);
+  const RiskGrade(this.label, this.decisionLabel);
 
   final String label;
+
+  /// 의사결정 대응 한 줄 (IA.md §6 등급 슬롯 표) — 명칭과 함께 E-1에서 확정
+  final String decisionLabel;
 }

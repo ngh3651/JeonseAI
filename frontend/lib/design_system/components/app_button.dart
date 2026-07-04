@@ -68,7 +68,7 @@ class AppCompactButton extends StatelessWidget {
     final ButtonStyle style = OutlinedButton.styleFrom(
       minimumSize: const Size(0, AppSize.compactButtonHeight),
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      textStyle: AppTypography.button.copyWith(fontSize: 14),
+      textStyle: AppTypography.buttonSmall,
     );
     if (icon != null) {
       return OutlinedButton.icon(

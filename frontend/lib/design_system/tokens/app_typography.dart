@@ -82,6 +82,14 @@ abstract final class AppTypography {
     fontWeight: FontWeight.w600,
   );
 
+  /// 소형(컴팩트) 버튼 라벨
+  static const TextStyle buttonSmall = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 14,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+  );
+
   /// 뱃지·칩 라벨
   static const TextStyle label = TextStyle(
     fontFamily: fontFamily,

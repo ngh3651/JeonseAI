@@ -94,11 +94,11 @@ class AppBottomNav extends StatelessWidget {
   }
 
   Widget _analyzeButton() {
-    // 중앙 강조: 56dp 원형을 바 위로 살짝 띄워 일반 탭보다 크게 (IA §2)
+    // 중앙 강조: 바 위로 살짝 띄워 일반 탭보다 크게 (IA §2)
     return Expanded(
       child: Center(
         child: Transform.translate(
-          offset: const Offset(0, -10),
+          offset: const Offset(0, -AppSize.analyzeButtonLift),
           child: Semantics(
             button: true,
             label: '매물 분석 시작',
@@ -110,9 +110,13 @@ class AppBottomNav extends StatelessWidget {
                 onTap: onAnalyzePressed,
                 customBorder: const CircleBorder(),
                 child: const SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: Icon(Icons.add, color: Colors.white, size: 28),
+                  width: AppSize.analyzeButton,
+                  height: AppSize.analyzeButton,
+                  child: Icon(
+                    Icons.add,
+                    color: Colors.white,
+                    size: AppSize.iconLg,
+                  ),
                 ),
               ),
             ),

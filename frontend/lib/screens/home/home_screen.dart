@@ -17,14 +17,17 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../state/app_session.dart';
 import '../../utils/money_format.dart';
+import '../common/analyze_gate.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final repo = context.read<AnalysisRepository>();
+    // watch: 분석·삭제로 이력이 바뀌면 홈이 갱신되도록 구독
+    final repo = context.watch<AnalysisRepository>();
 
     return Scaffold(
       body: SafeArea(
@@ -36,12 +39,12 @@ class HomeScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.all(AppSpacing.screenPadding),
               children: [
-                _greeting(),
+                _greeting(context),
                 const SizedBox(height: AppSpacing.xxl),
                 AppPrimaryButton(
                   label: '매물 분석 시작하기',
                   icon: Icons.search,
-                  onPressed: () => context.push('/analyze'),
+                  onPressed: () => startAnalysis(context),
                 ),
                 const SizedBox(height: AppSpacing.xxxl),
                 _sectionHeader(
@@ -78,7 +81,12 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _greeting() {
+  Widget _greeting(BuildContext context) {
+    final session = context.watch<AppSession>();
+    final String hello = session.isGuest
+        ? '안녕하세요'
+        : '${session.greetingName}님, 안녕하세요';
+
     return Row(
       children: [
         const MascotSafe(size: 52),
@@ -87,8 +95,7 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // C-3에서: 사용자 이름 연결(S-02) + 비회원 분기(이름 없는 인사, 상단 [로그인] 진입점)
-              const Text('지수님, 안녕하세요', style: AppTypography.headline),
+              Text(hello, style: AppTypography.headline),
               const SizedBox(height: AppSpacing.xs),
               Text(
                 '오늘도 안전한 전세 계약을 도와드릴게요',
@@ -99,6 +106,12 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         ),
+        // 비회원엔 상단 로그인 진입점 (user-scenario C1)
+        if (session.isGuest)
+          TextButton(
+            onPressed: () => context.push('/login?mode=login'),
+            child: const Text('로그인'),
+          ),
       ],
     );
   }
@@ -176,7 +189,7 @@ class HomeScreen extends StatelessWidget {
           // 빈 상태 명세: [분석 시작] + [발급 가이드] (user-scenario.md §6)
           AppPrimaryButton(
             label: '매물 분석 시작하기',
-            onPressed: () => context.push('/analyze'),
+            onPressed: () => startAnalysis(context),
           ),
           const SizedBox(height: AppSpacing.sm),
           AppCompactButton(

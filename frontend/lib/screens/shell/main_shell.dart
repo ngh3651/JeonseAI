@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design_system/components/app_bottom_nav.dart';
+import '../common/analyze_gate.dart';
 
 class MainShell extends StatelessWidget {
   const MainShell({super.key, required this.navigationShell});
@@ -31,7 +32,7 @@ class MainShell extends StatelessWidget {
             index,
             initialLocation: index == navigationShell.currentIndex,
           ),
-          onAnalyzePressed: () => context.push('/analyze'),
+          onAnalyzePressed: () => startAnalysis(context),
         ),
       ),
     );

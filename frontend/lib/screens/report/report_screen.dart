@@ -221,11 +221,7 @@ class ReportScreen extends StatelessWidget {
             AppCompactButton(
               label: '중개사 질문 모아 보기',
               icon: Icons.quiz_outlined,
-              onPressed: () => _pushSoon(
-                context,
-                '질문 생성기',
-                '분석 결과를 바탕으로 중개사에게 물어볼 질문을 만들어 드려요. 곧 만나볼 수 있어요.',
-              ),
+              onPressed: () => context.push('/questions/${report.id}'),
             ),
           ],
         ],
@@ -282,9 +278,18 @@ class ReportScreen extends StatelessWidget {
           ? null
           : AppCompactButton(
               label: evidence.actionLabel!,
-              onPressed: () => _stub(context),
+              onPressed: () => _onEvidenceAction(context, evidence),
             ),
     );
+  }
+
+  void _onEvidenceAction(BuildContext context, EvidenceItem evidence) {
+    if (evidence.actionLabel == '중개사에게 물어볼 질문 보기') {
+      context.push('/questions/$reportId');
+    } else {
+      // 예: "시세 입력하기" — 매물 검색 재진입은 C-3 범위 밖(재분석 흐름). 안내만.
+      _stub(context);
+    }
   }
 
   /// 쉬운 설명에 용어 툴팁(termSpan)을 심는다 (지수·design-reviewer 리뷰 반영).
@@ -332,21 +337,13 @@ class ReportScreen extends StatelessWidget {
             icon: Icons.quiz_outlined,
             label: '질문 생성기',
             caption: '위험 요소별로 중개사에게 물어볼 질문을 만들어 드려요',
-            onTap: () => _pushSoon(
-              context,
-              '질문 생성기',
-              '분석 결과를 바탕으로 중개사에게 물어볼 질문을 만들어 드려요. 곧 만나볼 수 있어요.',
-            ),
+            onTap: () => context.push('/questions/${report.id}'),
           )
         : (
             icon: Icons.fact_check_outlined,
             label: '계약 여정 체크리스트',
             caption: '계약 전부터 보증금 반환까지 단계별 할 일을 확인하세요',
-            onTap: () => _pushSoon(
-              context,
-              '계약 여정 체크리스트',
-              '계약 전부터 보증금 반환까지 단계별 할 일을 알려드려요. 곧 만나볼 수 있어요.',
-            ),
+            onTap: () => context.push('/checklist'),
           );
 
     final others = [
@@ -354,20 +351,12 @@ class ReportScreen extends StatelessWidget {
         (
           icon: Icons.quiz_outlined,
           label: '질문 생성기',
-          onTap: () => _pushSoon(
-            context,
-            '질문 생성기',
-            '분석 결과를 바탕으로 중개사에게 물어볼 질문을 만들어 드려요. 곧 만나볼 수 있어요.',
-          ),
+          onTap: () => context.push('/questions/${report.id}'),
         ),
       (
         icon: Icons.gavel_outlined,
         label: '판례 보기',
-        onTap: () => _pushSoon(
-          context,
-          '판례 매칭',
-          '이 매물과 비슷한 위험에서 실제로 일어난 판례를 보여드려요. 곧 만나볼 수 있어요.',
-        ),
+        onTap: () => context.push('/cases/${report.id}'),
       ),
       (
         icon: Icons.calculate_outlined,
@@ -378,11 +367,7 @@ class ReportScreen extends StatelessWidget {
         (
           icon: Icons.fact_check_outlined,
           label: '체크리스트',
-          onTap: () => _pushSoon(
-            context,
-            '계약 여정 체크리스트',
-            '계약 전부터 보증금 반환까지 단계별 할 일을 알려드려요. 곧 만나볼 수 있어요.',
-          ),
+          onTap: () => context.push('/checklist'),
         ),
     ];
 
@@ -463,15 +448,6 @@ class ReportScreen extends StatelessWidget {
         ],
       ),
     ];
-  }
-
-  void _pushSoon(BuildContext context, String title, String message) {
-    context.push(
-      Uri(
-        path: '/soon',
-        queryParameters: {'title': title, 'message': message},
-      ).toString(),
-    );
   }
 
   void _stub(BuildContext context) {

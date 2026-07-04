@@ -8,6 +8,24 @@ library;
 
 import 'risk_grade.dart';
 
+/// 분석 요청 — S-04 매물 검색이 수집한 입력값 (더미↔실제 공통 계약 원형).
+///
+/// 실단계(E-1)에서는 [imagePaths]가 Upstage Information Extract로 넘어가고,
+/// [marketPrice]는 PriceSource(수동 입력 → 실거래가 API)에서 온다.
+class AnalysisRequest {
+  const AnalysisRequest({
+    required this.imagePaths,
+    required this.deposit,
+    this.marketPrice,
+    this.alias,
+  });
+
+  final List<String> imagePaths;
+  final int deposit;
+  final int? marketPrice;
+  final String? alias;
+}
+
 /// 근거 카드 한 항목 (S-07 근거 카드 목록의 원소).
 class EvidenceItem {
   const EvidenceItem({
@@ -105,4 +123,20 @@ class AnalysisReport {
 
   /// 근거 카드 목록 (S-07 §2)
   final List<EvidenceItem> evidences;
+
+  /// 위험/확인 필요 등급인 근거의 패턴 라벨 — 판례 매칭·질문 생성기 입력.
+  /// evidence id를 사람이 읽는 위험 패턴 이름으로 매핑한다.
+  List<String> get riskLabels {
+    const idToLabel = {
+      'senior_debt': '선순위 채권',
+      'ownership': '신탁등기',
+      'jeonse_ratio': '전세가율',
+      'insurance': '보증보험',
+    };
+    return [
+      for (final e in evidences)
+        if (e.grade != RiskGrade.ok && idToLabel.containsKey(e.id))
+          idToLabel[e.id]!,
+    ];
+  }
 }

@@ -14,6 +14,8 @@ import 'package:provider/provider.dart';
 import 'app/router.dart';
 import 'design_system/theme.dart';
 import 'repositories/analysis_repository.dart';
+import 'repositories/content_repository.dart';
+import 'state/app_session.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,9 +29,17 @@ class JeonseSafeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Provider<AnalysisRepository>(
-      // 더미↔실제 교체 지점: Phase D에서 ApiAnalysisRepository로 교체 (CLAUDE.md 4절)
-      create: (_) => DummyAnalysisRepository(),
+    return MultiProvider(
+      providers: [
+        // 세션(회원/비회원) — 앱 생애 동안 유지
+        ChangeNotifierProvider(create: (_) => AppSession()),
+        // 더미↔실제 교체 지점: Phase D에서 Api* 구현으로 교체 (CLAUDE.md 4절)
+        // 이력 변화(분석·삭제)를 홈이 구독하도록 ChangeNotifierProvider 사용
+        ChangeNotifierProvider<AnalysisRepository>(
+          create: (_) => DummyAnalysisRepository(),
+        ),
+        Provider<ContentRepository>(create: (_) => DummyContentRepository()),
+      ],
       child: MaterialApp.router(
         title: '전세AI프',
         theme: buildAppTheme(),

@@ -321,6 +321,7 @@ class ReportScreen extends StatelessWidget {
           context,
           term: bestTerm,
           description: evidence.termGlossary[bestTerm]!,
+          onAskChatbot: () => context.push('/chatbot'),
         ),
       );
       rest = rest.substring(bestIndex + bestTerm.length);

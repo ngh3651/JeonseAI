@@ -14,8 +14,9 @@ import '../../design_system/components/chat_bubble.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
-import '../../state/app_session.dart';
+import '../common/analyze_gate.dart';
 
 class _Msg {
   const _Msg(this.text, this.isUser, {this.outOfScope = false});
@@ -37,6 +38,17 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   final List<_Msg> _messages = [
     const _Msg('안녕하세요! 어려운 부동산 용어를 쉽게 풀어드려요. 궁금한 용어를 눌러보거나 물어보세요.', false),
   ];
+
+  bool _hasHistory = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 범위 밖 유도 버튼 분기용 (이력 있음 → 리포트 / 없음 → 분석)
+    context.read<AnalysisRepository>().getHistory().then((h) {
+      if (mounted) setState(() => _hasHistory = h.isNotEmpty);
+    });
+  }
 
   @override
   void dispose() {
@@ -83,13 +95,13 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     });
   }
 
-  /// 범위 밖 응답의 유도 버튼 — 이력 있으면 리포트, 없으면 분석 시작 (막다른 길 방지).
-  void _goToAnalysis() {
-    final session = context.read<AppSession>();
-    if (session.isGuest) {
-      context.go('/home'); // 홈에서 분석 시작(로그인 유도 흐름)으로 연결
+  /// 범위 밖 응답의 유도 — 이력 있으면 [내 리포트 보기](마이 탭), 없으면 분석 시작
+  /// (비회원은 startAnalysis가 로그인 유도 시트로 연결 — IA §6 S-12).
+  void _onOutOfScopeAction() {
+    if (_hasHistory) {
+      context.go('/my');
     } else {
-      context.push('/analyze');
+      startAnalysis(context);
     }
   }
 
@@ -117,8 +129,8 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                   isUser: m.isUser,
                   action: m.outOfScope
                       ? AppCompactButton(
-                          label: '매물 분석하러 가기',
-                          onPressed: _goToAnalysis,
+                          label: _hasHistory ? '내 리포트 보기' : '매물 분석하러 가기',
+                          onPressed: _onOutOfScopeAction,
                         )
                       : null,
                 );

@@ -57,46 +57,58 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => context.go('/start'),
-                child: const Text('건너뛰기'),
+    return PopScope(
+      // 2·3장에서 시스템 백 → 이전 장으로, 첫 장에서는 종료 허용 (IA §7)
+      canPop: _index == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _controller.previousPage(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
+        }
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => context.go('/start'),
+                  child: const Text('건너뛰기'),
+                ),
               ),
-            ),
-            Expanded(
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: _pages.length,
-                onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (context, i) => _pageView(_pages[i], i),
+              Expanded(
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: _pages.length,
+                  onPageChanged: (i) => setState(() => _index = i),
+                  itemBuilder: (context, i) => _pageView(_pages[i], i),
+                ),
               ),
-            ),
-            _dots(),
-            const SizedBox(height: AppSpacing.xl),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenPadding,
+              _dots(),
+              const SizedBox(height: AppSpacing.xl),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.screenPadding,
+                ),
+                child: AppPrimaryButton(
+                  label: _isLast ? '시작하기' : '다음',
+                  onPressed: _next,
+                ),
               ),
-              child: AppPrimaryButton(
-                label: _isLast ? '시작하기' : '다음',
-                onPressed: _next,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            if (_isLast)
-              TextButton(
-                onPressed: () => context.push('/guide'),
-                child: const Text('등기부등본이 없다면? 발급 방법 보기'),
-              )
-            else
-              const SizedBox(height: AppSize.buttonHeight - AppSpacing.md),
-            const SizedBox(height: AppSpacing.lg),
-          ],
+              const SizedBox(height: AppSpacing.md),
+              if (_isLast)
+                TextButton(
+                  onPressed: () => context.push('/guide'),
+                  child: const Text('등기부등본이 없다면? 발급 방법 보기'),
+                )
+              else
+                const SizedBox(height: AppSize.buttonHeight - AppSpacing.md),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+          ),
         ),
       ),
     );

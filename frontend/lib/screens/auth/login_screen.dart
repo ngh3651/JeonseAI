@@ -49,11 +49,12 @@ class _LoginScreenState extends State<LoginScreen> {
         : '지수'; // 목업 데모 기본 이름
     context.read<AppSession>().signIn(name: name);
 
+    // 홈으로 리셋해 셸(하단 탭·홈)을 백스택에 두고, next가 있으면 그 위에 push.
+    // (next를 바로 go하면 셸이 스택에서 사라져 홈으로 돌아갈 길이 없어짐 — gap-checker)
     final next = widget.next;
+    context.go('/home');
     if (next != null && next.isNotEmpty) {
-      context.go(next);
-    } else {
-      context.go('/home');
+      context.push(next);
     }
   }
 

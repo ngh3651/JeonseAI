@@ -15,7 +15,6 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/start_screen.dart';
 import '../screens/cases/case_match_screen.dart';
 import '../screens/chatbot/glossary_chatbot_screen.dart';
-import '../screens/common/coming_soon_screen.dart';
 import '../screens/guide/registry_guide_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/journey/journey_screen.dart';
@@ -105,14 +104,7 @@ final appRouter = GoRouter(
       builder: (_, _) => const JourneyScreen(showBack: true),
     ),
 
-    // ── 잔여 스텁 / 카탈로그 ───────────────────────────────────
-    GoRoute(
-      path: '/soon',
-      builder: (_, state) => ComingSoonScreen(
-        title: state.uri.queryParameters['title'] ?? '준비 중',
-        message: state.uri.queryParameters['message'] ?? '곧 만나볼 수 있어요.',
-      ),
-    ),
+    // ── 디자인 시스템 카탈로그 (개발·팀 공유용) ────────────────
     GoRoute(
       path: '/gallery',
       builder: (_, _) => const ComponentGalleryScreen(),

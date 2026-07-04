@@ -18,6 +18,7 @@ import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../state/app_session.dart';
 import '../../utils/money_format.dart';
+import '../common/analyze_gate.dart';
 
 class MyScreen extends StatefulWidget {
   const MyScreen({super.key});
@@ -139,7 +140,7 @@ class _MyScreenState extends State<MyScreen> {
                 const SizedBox(height: AppSpacing.md),
                 AppCompactButton(
                   label: '매물 분석 시작하기',
-                  onPressed: () => context.go('/home'),
+                  onPressed: () => startAnalysis(context),
                 ),
               ],
             ),

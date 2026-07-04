@@ -1,36 +1,61 @@
 /// 메인 셸 — 하단 탭 4개 + 중앙 (＋분석) 버튼 (IA.md §2).
 ///
-/// 뒤로가기 정책 (IA.md §7): 홈 외 탭 루트에서 시스템 백 → 홈 탭으로 이동.
-/// (홈 루트의 "한 번 더 누르면 종료" 확인은 C-3에서)
+/// 뒤로가기 정책 (IA.md §7): 홈 외 탭 루트 → 홈 탭으로 이동.
+/// 홈 탭 루트 → "한 번 더 누르면 종료" (2초 내 재백 시 종료).
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design_system/components/app_bottom_nav.dart';
 import '../common/analyze_gate.dart';
 
-class MainShell extends StatelessWidget {
+class MainShell extends StatefulWidget {
   const MainShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) {
-    final bool onHome = navigationShell.currentIndex == 0;
+  State<MainShell> createState() => _MainShellState();
+}
 
+class _MainShellState extends State<MainShell> {
+  DateTime? _lastBackAt;
+
+  void _onPop() {
+    // 홈이 아니면 홈 탭으로
+    if (widget.navigationShell.currentIndex != 0) {
+      widget.navigationShell.goBranch(0);
+      return;
+    }
+    // 홈이면 double-back으로 종료
+    final now = DateTime.now();
+    if (_lastBackAt == null ||
+        now.difference(_lastBackAt!) > const Duration(seconds: 2)) {
+      _lastBackAt = now;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('한 번 더 누르면 종료돼요')));
+    } else {
+      SystemNavigator.pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return PopScope(
-      canPop: onHome,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) navigationShell.goBranch(0); // 홈 외 탭 → 홈으로
+        if (!didPop) _onPop();
       },
       child: Scaffold(
-        body: navigationShell,
+        body: widget.navigationShell,
         bottomNavigationBar: AppBottomNav(
-          currentIndex: navigationShell.currentIndex,
-          onTabSelected: (index) => navigationShell.goBranch(
+          currentIndex: widget.navigationShell.currentIndex,
+          onTabSelected: (index) => widget.navigationShell.goBranch(
             index,
-            initialLocation: index == navigationShell.currentIndex,
+            initialLocation: index == widget.navigationShell.currentIndex,
           ),
           onAnalyzePressed: () => startAnalysis(context),
         ),

@@ -127,6 +127,8 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                   '경매에서 집이 팔리는 가격이 원래 가치의 몇 %인지를 뜻해요. '
                   '예를 들어 낙찰가율 70%면, 2억짜리 집이 경매에서 1억 4천만원에 팔린다는 뜻이에요.',
               style: AppTypography.caption,
+              inline: true,
+              onAskChatbot: () => context.push('/chatbot'),
             ),
             const SizedBox(width: AppSpacing.xs),
             Text('기준 (예시)', style: AppTypography.caption),

@@ -16,6 +16,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../services/api_client.dart';
 import '../../state/app_session.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
@@ -59,7 +60,24 @@ class _MyScreenState extends State<MyScreen> {
       ),
     );
     if (!(ok ?? false) || !mounted) return;
-    await context.read<AnalysisRepository>().deleteReport(report.id);
+    try {
+      await context.read<AnalysisRepository>().deleteReport(report.id);
+    } on ApiException catch (e) {
+      // 예시 리포트 403, 서버 연결 실패 등 — 서버가 준 한국어 메시지 그대로 표시
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('삭제하지 못했어요. 다시 시도해 주세요')),
+          );
+      }
+    }
     if (mounted) setState(_reload);
   }
 
@@ -128,6 +146,25 @@ class _MyScreenState extends State<MyScreen> {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
             child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          // 서버 연결 실패 — 빈 상태로 위장하지 않음 (D-3: 더미 폴백 금지)
+          return AppCard(
+            padding: const EdgeInsets.all(AppSpacing.xxl),
+            child: Column(
+              children: [
+                const Text('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
+                const SizedBox(height: AppSpacing.xs),
+                Text('서버 연결을 확인해 주세요', style: AppTypography.caption),
+                const SizedBox(height: AppSpacing.lg),
+                AppCompactButton(
+                  label: '다시 시도',
+                  icon: Icons.refresh,
+                  onPressed: () => setState(_reload),
+                ),
+              ],
+            ),
           );
         }
         final history = snapshot.data ?? const [];

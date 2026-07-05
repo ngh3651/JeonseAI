@@ -21,12 +21,17 @@ import '../../state/app_session.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
   Widget build(BuildContext context) {
-    // watch: 분석·삭제로 이력이 바뀌면 홈이 갱신되도록 구독
+    // watch: 분석·삭제로 이력이 바뀌면(notifyListeners) 홈이 다시 서버에서 불러온다
     final repo = context.watch<AnalysisRepository>();
 
     return Scaffold(
@@ -62,6 +67,9 @@ class HomeScreen extends StatelessWidget {
                     padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
                     child: Center(child: CircularProgressIndicator()),
                   )
+                else if (snapshot.hasError)
+                  // 서버 연결 실패 — 빈 상태로 위장하지 않는다 (D-3: 더미 폴백 금지)
+                  _loadError(context)
                 else if (history.isEmpty)
                   _emptyHistory(context)
                 else
@@ -77,6 +85,35 @@ class HomeScreen extends StatelessWidget {
             );
           },
         ),
+      ),
+    );
+  }
+
+  /// 이력 로드 실패 — 인라인 에러 + [다시 시도] (user-scenario §5)
+  Widget _loadError(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.xxl),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.wifi_off,
+            color: AppColors.textMuted,
+            size: AppSize.iconMd,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          const Text('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            '서버 연결을 확인해 주세요',
+            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppCompactButton(
+            label: '다시 시도',
+            icon: Icons.refresh,
+            onPressed: () => setState(() {}), // 재빌드 → getHistory 재호출
+          ),
+        ],
       ),
     );
   }

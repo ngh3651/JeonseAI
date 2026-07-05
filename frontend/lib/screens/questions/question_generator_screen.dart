@@ -14,37 +14,60 @@ import '../../design_system/components/app_card.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
-import '../../models/analysis_report.dart';
 import '../../models/content_models.dart';
-import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 
-class QuestionGeneratorScreen extends StatelessWidget {
+class QuestionGeneratorScreen extends StatefulWidget {
   const QuestionGeneratorScreen({super.key, required this.reportId});
 
   final String reportId;
 
   @override
-  Widget build(BuildContext context) {
-    final analysisRepo = context.read<AnalysisRepository>();
-    final contentRepo = context.read<ContentRepository>();
+  State<QuestionGeneratorScreen> createState() =>
+      _QuestionGeneratorScreenState();
+}
 
+class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
+  late Future<List<QuestionGroup>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    // 서버가 리포트에서 위험 패턴을 파생해 질문을 만든다 (계약 §3.6)
+    _future = context.read<ContentRepository>().questionGroups(widget.reportId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('중개사 질문 생성기')),
-      body: FutureBuilder<AnalysisReport?>(
-        future: analysisRepo.getReport(reportId),
+      body: FutureBuilder<List<QuestionGroup>>(
+        future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final report = snapshot.data;
-          if (report == null) {
+          if (snapshot.hasError) {
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('리포트를 불러올 수 없어요', style: AppTypography.body),
+                  const Text(
+                    '질문을 불러오지 못했어요\n서버 연결을 확인해 주세요',
+                    style: AppTypography.body,
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: AppSpacing.lg),
+                  AppCompactButton(
+                    label: '다시 시도',
+                    icon: Icons.refresh,
+                    onPressed: () => setState(_load),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
                   AppCompactButton(
                     label: '홈으로',
                     onPressed: () => context.go('/home'),
@@ -54,9 +77,7 @@ class QuestionGeneratorScreen extends StatelessWidget {
             );
           }
 
-          final groups = contentRepo.questionGroups(
-            riskLabels: report.riskLabels,
-          );
+          final groups = snapshot.data!;
 
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.screenPadding),

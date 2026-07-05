@@ -1,10 +1,10 @@
 /// 전세AI프 앱 엔트리.
 ///
-/// Phase C 재구축 (docs/plan.md Phase C):
 /// - 디자인 시스템: lib/design_system/ (토큰·테마·컴포넌트·갤러리)
 /// - 화면은 Repository 인터페이스에만 의존: lib/repositories/
-///   (Provider로 주입 — Dummy ↔ Api 교체 지점은 아래 한 곳)
-/// - 검증된 업로드 자산: lib/services/registry_upload_service.dart
+/// - **D-3부터 실제 주입은 서버 구현(Api*)이다.** 서버가 꺼져 있으면 화면이 에러를
+///   보여준다(더미 폴백 없음 — 연결이 진짜임을 확인하기 위한 원칙).
+///   Dummy*는 위젯 테스트에서만 주입한다(아래 생성자 오버라이드).
 library;
 
 import 'package:flutter/material.dart';
@@ -14,6 +14,8 @@ import 'package:provider/provider.dart';
 import 'app/router.dart';
 import 'design_system/theme.dart';
 import 'repositories/analysis_repository.dart';
+import 'repositories/api_analysis_repository.dart';
+import 'repositories/api_content_repository.dart';
 import 'repositories/content_repository.dart';
 import 'state/app_session.dart';
 
@@ -25,7 +27,15 @@ void main() {
 }
 
 class JeonseSafeApp extends StatelessWidget {
-  const JeonseSafeApp({super.key});
+  const JeonseSafeApp({
+    super.key,
+    this.analysisRepository,
+    this.contentRepository,
+  });
+
+  /// 테스트 전용 오버라이드 (null이면 서버 구현 사용). 프로덕션은 항상 Api*.
+  final AnalysisRepository? analysisRepository;
+  final ContentRepository? contentRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -33,12 +43,14 @@ class JeonseSafeApp extends StatelessWidget {
       providers: [
         // 세션(회원/비회원) — 앱 생애 동안 유지
         ChangeNotifierProvider(create: (_) => AppSession()),
-        // 더미↔실제 교체 지점: Phase D에서 Api* 구현으로 교체 (CLAUDE.md 4절)
+        // 저장소 주입 — 서버 구현 (docs/api-contract.md 계약을 호출)
         // 이력 변화(분석·삭제)를 홈이 구독하도록 ChangeNotifierProvider 사용
         ChangeNotifierProvider<AnalysisRepository>(
-          create: (_) => DummyAnalysisRepository(),
+          create: (_) => analysisRepository ?? ApiAnalysisRepository(),
         ),
-        Provider<ContentRepository>(create: (_) => DummyContentRepository()),
+        Provider<ContentRepository>(
+          create: (_) => contentRepository ?? ApiContentRepository(),
+        ),
       ],
       child: MaterialApp.router(
         title: '전세AI프',

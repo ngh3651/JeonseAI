@@ -7,6 +7,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_card.dart';
 import '../../design_system/components/app_pill.dart';
 import '../../design_system/tokens/app_colors.dart';
@@ -26,12 +27,39 @@ class JourneyScreen extends StatefulWidget {
 }
 
 class _JourneyScreenState extends State<JourneyScreen> {
-  late final List<JourneyStage> _stages = context
-      .read<ContentRepository>()
-      .journeyStages();
+  List<JourneyStage> _stages = const [];
+  bool _loading = true;
+  bool _failed = false;
 
   int? _currentStage; // 선택 전 null → "지금 어디쯤이세요?"
   final Set<String> _checked = {}; // "stageIndex:itemIndex"
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    try {
+      final stages = await context.read<ContentRepository>().journeyStages();
+      if (!mounted) return;
+      setState(() {
+        _stages = stages;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _failed = true;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +68,34 @@ class _JourneyScreenState extends State<JourneyScreen> {
         title: const Text('계약 여정'),
         automaticallyImplyLeading: widget.showBack,
       ),
-      body: _currentStage == null ? _stagePicker() : _checklist(),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _failed
+          ? _error()
+          : _currentStage == null
+          ? _stagePicker()
+          : _checklist(),
+    );
+  }
+
+  Widget _error() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            '단계를 불러오지 못했어요\n서버 연결을 확인해 주세요',
+            style: AppTypography.body,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          AppCompactButton(
+            label: '다시 시도',
+            icon: Icons.refresh,
+            onPressed: _load,
+          ),
+        ],
+      ),
     );
   }
 

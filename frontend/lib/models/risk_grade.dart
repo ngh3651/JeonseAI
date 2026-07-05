@@ -19,4 +19,13 @@ enum RiskGrade {
 
   /// 의사결정 대응 한 줄 (IA.md §6 등급 슬롯 표) — 명칭과 함께 E-1에서 확정
   final String decisionLabel;
+
+  /// 서버 계약(api-contract.md §1.4)의 등급 문자열 → enum.
+  /// 모르는 값이면 보수적 편향에 따라 '확인 필요'로 처리한다(안전 단정 금지).
+  static RiskGrade fromLabel(String label) {
+    for (final g in RiskGrade.values) {
+      if (g.label == label) return g;
+    }
+    return RiskGrade.caution;
+  }
 }

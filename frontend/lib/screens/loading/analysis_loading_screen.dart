@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../design_system/components/app_button.dart';
 import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
@@ -49,6 +50,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   final List<String> _found = [];
   Timer? _timer;
   bool _navigated = false;
+  bool _failed = false; // 서버 연결·분석 실패 (user-scenario §4 S-06 네트워크 오류)
 
   @override
   void initState() {
@@ -57,6 +59,12 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   }
 
   Future<void> _run() async {
+    setState(() {
+      _failed = false;
+      _stage = 0;
+      _found.clear();
+    });
+
     // 단계 진행 연출 (더미). 실단계에선 실제 파이프라인 진행에 연동.
     _timer = Timer.periodic(const Duration(milliseconds: 700), (t) {
       if (!mounted) return;
@@ -70,11 +78,21 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
 
     final repo = context.read<AnalysisRepository>();
     final router = GoRouter.of(context); // go+push 전에 참조 확보 (context 무효화 대비)
-    final results = await Future.wait([
-      repo.analyze(widget.request),
-      Future.delayed(const Duration(milliseconds: 2600)),
-    ]);
-    final report = results.first as AnalysisReport;
+
+    final AnalysisReport report;
+    try {
+      final results = await Future.wait([
+        repo.analyze(widget.request),
+        Future.delayed(const Duration(milliseconds: 2600)),
+      ]);
+      report = results.first as AnalysisReport;
+    } catch (_) {
+      // 서버가 꺼져 있거나 네트워크 오류 — 더미로 폴백하지 않고 실패를 그대로 보여준다
+      _timer?.cancel();
+      if (!mounted) return;
+      setState(() => _failed = true);
+      return;
+    }
 
     _timer?.cancel();
     if (!mounted || _navigated) return;
@@ -117,62 +135,104 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     }
   }
 
+  /// 분석 실패 화면 — [다시 시도](사진·입력 재선택 불필요) / [나중에 하기] → S-04 복귀
+  Widget _failedBody() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxxl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Center(child: MascotSafe(size: 96)),
+            const SizedBox(height: AppSpacing.xl),
+            const Text(
+              '분석을 시작하지 못했어요',
+              style: AppTypography.title,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요',
+              style: AppTypography.caption,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.xxl),
+            AppPrimaryButton(
+              label: '다시 시도',
+              icon: Icons.refresh,
+              onPressed: _run,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            AppSecondaryButton(
+              label: '나중에 하기',
+              onPressed: () => context.pop(), // S-04 복귀 (사진·입력값 유지)
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      // 실패 상태에서는 자유롭게 뒤로가기(S-04 복귀), 진행 중에는 취소 확인
+      canPop: _failed,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _confirmCancel();
       },
-      child: Scaffold(
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xxxl),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Center(child: MascotSafe(size: 96)),
-                const SizedBox(height: AppSpacing.xl),
-                Text(
-                  _stages[_stage],
-                  style: AppTypography.title,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  '보통 1분 내외예요',
-                  style: AppTypography.caption,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.xl),
-                LinearProgressIndicator(
-                  value: (_stage + 1) / _stages.length,
-                  backgroundColor: AppColors.line,
-                  color: AppColors.primary,
-                ),
-                const SizedBox(height: AppSpacing.xxl),
-                // 추출 항목 실시간 노출 (동작 실체 증명)
-                for (final item in _found)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: AppColors.primary,
-                          size: AppSize.iconSm,
+      child: _failed
+          ? Scaffold(body: _failedBody())
+          : Scaffold(
+              body: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.xxxl),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Center(child: MascotSafe(size: 96)),
+                      const SizedBox(height: AppSpacing.xl),
+                      Text(
+                        _stages[_stage],
+                        style: AppTypography.title,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        '보통 1분 내외예요',
+                        style: AppTypography.caption,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      LinearProgressIndicator(
+                        value: (_stage + 1) / _stages.length,
+                        backgroundColor: AppColors.line,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(height: AppSpacing.xxl),
+                      // 추출 항목 실시간 노출 (동작 실체 증명)
+                      for (final item in _found)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.check_circle,
+                                color: AppColors.primary,
+                                size: AppSize.iconSm,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Text(item, style: AppTypography.body),
+                            ],
+                          ),
                         ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Text(item, style: AppTypography.body),
-                      ],
-                    ),
+                    ],
                   ),
-              ],
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

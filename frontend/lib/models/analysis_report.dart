@@ -69,6 +69,21 @@ class EvidenceItem {
 
   /// 쉬운 설명 속 용어 → 툴팁 설명 (용어가 easyExplanation 본문에 등장해야 함)
   final Map<String, String> termGlossary;
+
+  /// 서버 JSON(api-contract.md §2.2 Evidence) → 모델.
+  factory EvidenceItem.fromJson(Map<String, dynamic> json) => EvidenceItem(
+    id: json['id'] as String,
+    title: json['title'] as String,
+    termSubtitle: json['termSubtitle'] as String,
+    grade: RiskGrade.fromLabel(json['grade'] as String),
+    statusLabel: json['statusLabel'] as String?,
+    easyExplanation: json['easyExplanation'] as String,
+    detailText: json['detailText'] as String?,
+    sourceText: json['sourceText'] as String?,
+    actionLabel: json['actionLabel'] as String?,
+    termGlossary: (json['termGlossary'] as Map<String, dynamic>? ?? const {})
+        .map((k, v) => MapEntry(k, v as String)),
+  );
 }
 
 class AnalysisReport {
@@ -123,6 +138,26 @@ class AnalysisReport {
 
   /// 근거 카드 목록 (S-07 §2)
   final List<EvidenceItem> evidences;
+
+  /// 서버 JSON(api-contract.md §2.1 Report) → 모델.
+  factory AnalysisReport.fromJson(Map<String, dynamic> json) => AnalysisReport(
+    id: json['id'] as String,
+    alias: json['alias'] as String,
+    address: json['address'] as String,
+    analyzedAt: DateTime.parse(json['analyzedAt'] as String),
+    grade: RiskGrade.fromLabel(json['grade'] as String),
+    headline: json['headline'] as String,
+    nextAction: json['nextAction'] as String,
+    topRiskSummary: json['topRiskSummary'] as String,
+    deposit: json['deposit'] as int,
+    marketPrice: json['marketPrice'] as int?,
+    seniorDebtAmount: json['seniorDebtAmount'] as int,
+    gaugeProgress: (json['gaugeProgress'] as num).toDouble(),
+    evidences: [
+      for (final e in json['evidences'] as List)
+        EvidenceItem.fromJson(e as Map<String, dynamic>),
+    ],
+  );
 
   /// 위험/확인 필요 등급인 근거의 패턴 라벨 — 판례 매칭·질문 생성기 입력.
   /// evidence id를 사람이 읽는 위험 패턴 이름으로 매핑한다.

@@ -1,33 +1,36 @@
 /// 큐레이션 콘텐츠 저장소 — 판례·질문·용어·계약 여정 (인터페이스 + 더미).
 ///
-/// 화면은 이 인터페이스에만 의존한다. Phase E에서 큐레이션/LLM 실데이터로 구현 교체.
-/// 더미 데이터는 전부 **예시**이며, 특히 판례·위험 기준은 E-3에서 출처와 함께 확정한다.
+/// 화면은 이 인터페이스에만 의존한다. D-3부터 실제 주입은 ApiContentRepository(서버)이고,
+/// **DummyContentRepository는 위젯 테스트 전용**으로만 남는다(프로덕션 폴백 아님 —
+/// docs/cleanup-tracker.md 참고). Phase E에서 서버 쪽이 큐레이션/LLM 실데이터로 교체된다.
+///
+/// D-3 인터페이스 변경: 판례·질문은 서버가 리포트 id에서 위험 패턴을 파생하므로
+/// (api-contract.md §2.2 note) reportId 기반 + 전부 Future가 됐다.
 library;
 
 import '../models/content_models.dart';
 
 abstract class ContentRepository {
   /// 리포트의 위험 패턴에 매칭되는 판례 (없으면 빈 리스트 → 빈 상태 처리).
-  List<CaseMatch> matchedCases({required List<String> riskPatterns});
+  Future<List<CaseMatch>> matchedCases(String reportId);
 
-  /// 위험 요소별 질문 그룹. 위험 요소가 없으면 기본 질문 세트.
-  List<QuestionGroup> questionGroups({required List<String> riskLabels});
+  /// 위험 요소별 질문 그룹. 위험 요소가 없어도 기본 질문 세트 포함.
+  Future<List<QuestionGroup>> questionGroups(String reportId);
 
   /// 챗봇 추천 용어 칩.
-  List<GlossaryTerm> glossaryTerms();
+  Future<List<GlossaryTerm>> glossaryTerms();
 
   /// 용어 질문에 대한 답 (용어를 못 찾으면 null → 범위 밖 처리).
-  GlossaryTerm? lookupTerm(String query);
+  Future<GlossaryTerm?> lookupTerm(String query);
 
   /// 계약 여정 단계.
-  List<JourneyStage> journeyStages();
+  Future<List<JourneyStage>> journeyStages();
 }
 
+/// 위젯 테스트 전용 더미 (서버 없이 화면 흐름 테스트). 프로덕션 주입 금지.
 class DummyContentRepository implements ContentRepository {
   @override
-  List<CaseMatch> matchedCases({required List<String> riskPatterns}) {
-    // 위험 패턴이 하나도 없으면 매칭 판례 없음 (빈 상태)
-    if (riskPatterns.isEmpty) return const [];
+  Future<List<CaseMatch>> matchedCases(String reportId) async {
     return const [
       CaseMatch(
         riskPattern: '신탁등기',
@@ -51,7 +54,9 @@ class DummyContentRepository implements ContentRepository {
   }
 
   @override
-  List<QuestionGroup> questionGroups({required List<String> riskLabels}) {
+  Future<List<QuestionGroup>> questionGroups(String reportId) async {
+    // 테스트 전용: 위험 요소 그룹 + 기본 그룹을 항상 반환 (서버는 리포트에서 파생)
+    const riskLabels = ['신탁등기', '선순위 채권'];
     final groups = <QuestionGroup>[];
 
     if (riskLabels.contains('신탁등기')) {
@@ -117,7 +122,7 @@ class DummyContentRepository implements ContentRepository {
   }
 
   @override
-  List<GlossaryTerm> glossaryTerms() => const [
+  Future<List<GlossaryTerm>> glossaryTerms() async => const [
     GlossaryTerm(
       term: '신탁등기',
       description:
@@ -158,16 +163,16 @@ class DummyContentRepository implements ContentRepository {
   ];
 
   @override
-  GlossaryTerm? lookupTerm(String query) {
+  Future<GlossaryTerm?> lookupTerm(String query) async {
     final q = query.trim();
-    for (final t in glossaryTerms()) {
+    for (final t in await glossaryTerms()) {
       if (q.contains(t.term)) return t;
     }
     return null;
   }
 
   @override
-  List<JourneyStage> journeyStages() => const [
+  Future<List<JourneyStage>> journeyStages() async => const [
     JourneyStage(
       title: '계약 전',
       subtitle: '등기부 분석과 안전도 확인',

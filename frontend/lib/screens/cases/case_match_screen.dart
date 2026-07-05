@@ -23,10 +23,17 @@ import '../../models/content_models.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 
-class CaseMatchScreen extends StatelessWidget {
+class CaseMatchScreen extends StatefulWidget {
   const CaseMatchScreen({super.key, required this.reportId});
 
   final String reportId;
+
+  @override
+  State<CaseMatchScreen> createState() => _CaseMatchScreenState();
+}
+
+class _CaseMatchScreenState extends State<CaseMatchScreen> {
+  String get reportId => widget.reportId;
 
   /// 위험 패턴 라벨을 지수도 이해할 쉬운 말로 (매칭 키는 원래 라벨 유지)
   static const _easyLabel = {
@@ -36,25 +43,44 @@ class CaseMatchScreen extends StatelessWidget {
     '보증보험': '보증보험',
   };
 
+  late Future<(AnalysisReport?, List<CaseMatch>)> _future;
+
   @override
-  Widget build(BuildContext context) {
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
     final analysisRepo = context.read<AnalysisRepository>();
     final contentRepo = context.read<ContentRepository>();
+    _future = () async {
+      // 칩(위험 패턴)은 리포트에서, 판례 목록은 서버 파생 결과에서 (계약 §2.2·§3.5)
+      final report = await analysisRepo.getReport(reportId);
+      if (report == null) return (null, const <CaseMatch>[]);
+      final cases = await contentRepo.matchedCases(reportId);
+      return (report, cases);
+    }();
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('판례 매칭')),
-      body: FutureBuilder<AnalysisReport?>(
-        future: analysisRepo.getReport(reportId),
+      body: FutureBuilder<(AnalysisReport?, List<CaseMatch>)>(
+        future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final report = snapshot.data;
+          if (snapshot.hasError) {
+            return _error(context, retryable: true);
+          }
+          final (report, cases) = snapshot.data!;
           if (report == null) {
             return _error(context);
           }
           final patterns = report.riskLabels;
-          final cases = contentRepo.matchedCases(riskPatterns: patterns);
 
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.screenPadding),
@@ -158,14 +184,28 @@ class CaseMatchScreen extends StatelessWidget {
     );
   }
 
-  Widget _error(BuildContext context) {
+  Widget _error(BuildContext context, {bool retryable = false}) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('리포트를 불러올 수 없어요', style: AppTypography.body),
+          Text(
+            retryable ? '데이터를 불러오지 못했어요\n서버 연결을 확인해 주세요' : '리포트를 불러올 수 없어요',
+            style: AppTypography.body,
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: AppSpacing.lg),
-          AppCompactButton(label: '홈으로', onPressed: () => context.go('/home')),
+          if (retryable)
+            AppCompactButton(
+              label: '다시 시도',
+              icon: Icons.refresh,
+              onPressed: () => setState(_load),
+            )
+          else
+            AppCompactButton(
+              label: '홈으로',
+              onPressed: () => context.go('/home'),
+            ),
         ],
       ),
     );

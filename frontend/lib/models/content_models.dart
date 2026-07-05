@@ -29,6 +29,14 @@ class CaseMatch {
 
   /// 우리 매물과의 공통점
   final String commonPoint;
+
+  factory CaseMatch.fromJson(Map<String, dynamic> json) => CaseMatch(
+    riskPattern: json['riskPattern'] as String,
+    caseNo: json['caseNo'] as String,
+    summary: json['summary'] as String,
+    result: json['result'] as String,
+    commonPoint: json['commonPoint'] as String,
+  );
 }
 
 /// S-10 질문 생성기 — 위험 요소별 질문 + 답변 판별 가이드.
@@ -50,6 +58,13 @@ class QuestionItem {
 
   /// 이런 답이면 보류
   final String riskyAnswer;
+
+  factory QuestionItem.fromJson(Map<String, dynamic> json) => QuestionItem(
+    question: json['question'] as String,
+    why: json['why'] as String,
+    safeAnswer: json['safeAnswer'] as String,
+    riskyAnswer: json['riskyAnswer'] as String,
+  );
 }
 
 class QuestionGroup {
@@ -58,6 +73,14 @@ class QuestionGroup {
   /// 위험 요소 이름 (예: "신탁등기")
   final String riskLabel;
   final List<QuestionItem> items;
+
+  factory QuestionGroup.fromJson(Map<String, dynamic> json) => QuestionGroup(
+    riskLabel: json['riskLabel'] as String,
+    items: [
+      for (final i in json['items'] as List)
+        QuestionItem.fromJson(i as Map<String, dynamic>),
+    ],
+  );
 }
 
 /// S-12 용어 챗봇 — 용어 설명.
@@ -66,6 +89,11 @@ class GlossaryTerm {
 
   final String term;
   final String description;
+
+  factory GlossaryTerm.fromJson(Map<String, dynamic> json) => GlossaryTerm(
+    term: json['term'] as String,
+    description: json['description'] as String,
+  );
 }
 
 /// S-11 계약 여정 체크리스트 — 단계별 할 일.
@@ -76,6 +104,9 @@ class JourneyItem {
 
   /// "왜 해야 하나요?" 펼침 설명
   final String why;
+
+  factory JourneyItem.fromJson(Map<String, dynamic> json) =>
+      JourneyItem(text: json['text'] as String, why: json['why'] as String);
 }
 
 class JourneyStage {
@@ -90,4 +121,13 @@ class JourneyStage {
   /// 단계명 아래 쉬운 부제 (예: "나머지 보증금을 보내는 날")
   final String subtitle;
   final List<JourneyItem> items;
+
+  factory JourneyStage.fromJson(Map<String, dynamic> json) => JourneyStage(
+    title: json['title'] as String,
+    subtitle: json['subtitle'] as String,
+    items: [
+      for (final i in json['items'] as List)
+        JourneyItem.fromJson(i as Map<String, dynamic>),
+    ],
+  );
 }

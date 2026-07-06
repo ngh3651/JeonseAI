@@ -5,12 +5,40 @@
 지금은 앱↔서버 통신 파이프 검증이 목적입니다.
 """
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+import logging
+import time
+
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import content, reports
 
+# ── 서버 콘솔 로그 (한국어, 사람이 읽는 용도) ──────────────────────────────────
+# services 쪽도 같은 이름("jeonseai")의 로거를 쓴다. uvicorn 로그와 섞이지 않게 전용 핸들러.
+logger = logging.getLogger("jeonseai")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
 app = FastAPI(title="전세AI프 API", description="전세 위험 분석 백엔드")
+
+_LOG_SKIP_PATHS = {"/docs", "/openapi.json", "/favicon.ico"}
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """모든 요청을 한 줄로 기록: 무엇을 호출했고, 몇 초 걸려, 어떤 상태로 끝났는지."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    if request.url.path not in _LOG_SKIP_PATHS:
+        elapsed = time.perf_counter() - start
+        logger.info(
+            f"[요청] {request.method} {request.url.path} → {response.status_code} ({elapsed:.1f}초)"
+        )
+    return response
 
 # 계약(docs/api-contract.md)대로의 더미 응답 엔드포인트 (Phase D-2).
 # NOTE: 이 환경의 fastapi 0.139 + starlette 1.3.1 조합에서 app.include_router()가

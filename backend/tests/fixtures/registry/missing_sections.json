@@ -1,0 +1,19 @@
+{
+  "name": "missing_sections",
+  "description": "갑구·을구 페이지 누락 시뮬레이션 — 주소·소유자 미추출 + 배열 키 null. 기대: 문서 신뢰도 게이트 발동 → 어떤 항목도 절대 '양호' 없음 (을구 없음을 '근저당 없음'으로 판정 금지)",
+  "inputs": { "deposit": 200000000, "market_price": 400000000 },
+  "registry": {
+    "address": null,
+    "exclusive_area_sqm": null,
+    "current_owners": [],
+    "ownership_changes": null,
+    "provisional_seizures": null,
+    "provisional_dispositions": null,
+    "seizures": null,
+    "auction_commencements": null,
+    "trust_registrations": null,
+    "mortgages": null,
+    "jeonse_rights": null,
+    "lease_registrations": null
+  }
+}

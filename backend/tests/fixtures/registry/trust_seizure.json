@@ -1,0 +1,22 @@
+{
+  "name": "trust_seizure",
+  "description": "신탁등기 + 압류 — 존재 기반 규칙. 기대: 소유권 위험, 보증보험 위험(결격 신호), 종합 위험. 전세가율은 40%로 낮아도 종합은 위험(worst-of)",
+  "inputs": { "deposit": 100000000, "market_price": 250000000 },
+  "blacklist": [{ "name": "명단테스트용가상인물", "is_sample": false }],
+  "registry": {
+    "address": "경기도 ○○시 ○○동 300-3 제2층 제201호",
+    "exclusive_area_sqm": 38.5,
+    "current_owners": [{ "name": "박신탁", "share": "단독소유" }],
+    "ownership_changes": [{ "cause": "신탁", "receipt_date": "2024-03-10", "is_canceled": false }],
+    "provisional_seizures": [],
+    "provisional_dispositions": [],
+    "seizures": [
+      { "rank_number": 5, "claimant": "○○세무서", "cause": "압류", "receipt_date": "2025-11-02", "is_canceled": false }
+    ],
+    "auction_commencements": [],
+    "trust_registrations": [{ "trustee": "○○부동산신탁", "is_canceled": false }],
+    "mortgages": [],
+    "jeonse_rights": [],
+    "lease_registrations": []
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "messy_amounts",
+  "description": "금액 문자열·누락 — 채권최고액이 '금120,000,000원'(파싱 가능), '일억이천만원'(한글 수사·파싱 불가), null(누락). 기대: 미상 2건 → 선순위 '확인 필요'(0 치환 금지), 합계는 파싱된 1.2억만",
+  "inputs": { "deposit": 160000000, "market_price": 400000000 },
+  "blacklist": [{ "name": "명단테스트용가상인물", "is_sample": false }],
+  "registry": {
+    "address": "서울특별시 ○○구 ○○동 500-5 제4층 제402호",
+    "exclusive_area_sqm": 29.8,
+    "current_owners": [{ "name": "최미상", "share": "단독소유" }],
+    "ownership_changes": [{ "cause": "매매", "receipt_date": "2022-12-01", "is_canceled": false }],
+    "provisional_seizures": [],
+    "provisional_dispositions": [],
+    "seizures": [],
+    "auction_commencements": [],
+    "trust_registrations": [],
+    "mortgages": [
+      { "rank_number": 1, "max_claim_amount": "금120,000,000원", "mortgagee": "○○은행", "is_canceled": false },
+      { "rank_number": 2, "max_claim_amount": "일억이천만원", "mortgagee": "○○저축은행", "is_canceled": false },
+      { "rank_number": 3, "max_claim_amount": null, "mortgagee": "○○금고", "is_canceled": false }
+    ],
+    "jeonse_rights": [],
+    "lease_registrations": []
+  }
+}

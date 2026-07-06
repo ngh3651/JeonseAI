@@ -1,0 +1,23 @@
+{
+  "name": "canceled_only",
+  "description": "말소만 존재 — 근저당 2건이 전부 말소(is_canceled=true). 기대: 유효 채권 합계 0원, 선순위 양호, 종합 양호",
+  "inputs": { "deposit": 150000000, "market_price": 300000000 },
+  "blacklist": [{ "name": "명단테스트용가상인물", "is_sample": false }],
+  "registry": {
+    "address": "인천광역시 ○○구 ○○동 400-4 제7층 제701호",
+    "exclusive_area_sqm": 59.1,
+    "current_owners": [{ "name": "이말소", "share": "단독소유" }],
+    "ownership_changes": [{ "cause": "매매", "receipt_date": "2019-05-20", "is_canceled": false }],
+    "provisional_seizures": [],
+    "provisional_dispositions": [],
+    "seizures": [],
+    "auction_commencements": [],
+    "trust_registrations": [],
+    "mortgages": [
+      { "rank_number": 1, "max_claim_amount": 96000000, "mortgagee": "○○은행", "is_canceled": true },
+      { "rank_number": 2, "max_claim_amount": 48000000, "mortgagee": "○○은행", "is_canceled": true }
+    ],
+    "jeonse_rights": [],
+    "lease_registrations": []
+  }
+}

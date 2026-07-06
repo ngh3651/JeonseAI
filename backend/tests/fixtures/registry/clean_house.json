@@ -1,0 +1,20 @@
+{
+  "name": "clean_house",
+  "description": "깨끗한 집 — 유효 채권·처분제한 없음, 시세 입력(전세가율 50%). 기대: 종합 양호 (보험 '확인 필요'는 종합 계산 제외 — decisions.md 2026-07-06)",
+  "inputs": { "deposit": 200000000, "market_price": 400000000 },
+  "blacklist": [{ "name": "명단테스트용가상인물", "is_sample": false }],
+  "registry": {
+    "address": "서울특별시 ○○구 ○○동 100-1 제3층 제301호",
+    "exclusive_area_sqm": 59.9,
+    "current_owners": [{ "name": "홍소유", "share": "단독소유" }],
+    "ownership_changes": [{ "cause": "매매", "receipt_date": "2020-01-15", "is_canceled": false }],
+    "provisional_seizures": [],
+    "provisional_dispositions": [],
+    "seizures": [],
+    "auction_commencements": [],
+    "trust_registrations": [],
+    "mortgages": [],
+    "jeonse_rights": [],
+    "lease_registrations": []
+  }
+}

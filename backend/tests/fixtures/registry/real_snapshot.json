@@ -1,0 +1,85 @@
+{
+  "name": "real_snapshot",
+  "description": "Upstage Information Extract 실호출 스냅샷 (2026-07-06, test_samples 1~5.png). 실응답 형태(필드 구조·금액 타입) 확인용 — 근저당 2건 모두 말소된 실물 등기부. 개인정보(실명·상세주소)는 마스킹함(git 추적 폴더). 입력값(보증금·시세)은 테스트용 가정치.",
+  "inputs": {
+    "deposit": 150000000,
+    "market_price": 300000000
+  },
+  "registry": {
+    "address": "서울특별시 양천구 신정동 12○○ ○○아파트 제1○○동 제○○층 제○○○호",
+    "exclusive_area_sqm": 114.756,
+    "current_owners": [
+      {
+        "name": "김○일",
+        "share": "1/2"
+      },
+      {
+        "name": "김○정",
+        "share": "1/2"
+      }
+    ],
+    "ownership_changes": [
+      {
+        "rank_number": "1",
+        "purpose": "소유권보존",
+        "receipt_date": "2002-09-18",
+        "cause": "",
+        "cause_date": "",
+        "holder": "정○섭",
+        "is_canceled": false
+      },
+      {
+        "rank_number": "2",
+        "purpose": "소유권이전",
+        "receipt_date": "2003-06-16",
+        "cause": "매매",
+        "cause_date": "2003-06-13",
+        "holder": "박○태, 김○연",
+        "is_canceled": false
+      },
+      {
+        "rank_number": "3",
+        "purpose": "2번박○태지분2분의 1 중 일부(4분의1), 2번김○연지분2분의 1 중 일부(4분의1)이전",
+        "receipt_date": "2006-06-23",
+        "cause": "매매",
+        "cause_date": "2006-02-15",
+        "holder": "김○일",
+        "is_canceled": false
+      },
+      {
+        "rank_number": "4",
+        "purpose": "2번박○태지분전부, 2번김○연지분전부 이전",
+        "receipt_date": "2006-06-23",
+        "cause": "매매",
+        "cause_date": "2006-02-15",
+        "holder": "김○정",
+        "is_canceled": false
+      }
+    ],
+    "provisional_seizures": [],
+    "provisional_dispositions": [],
+    "seizures": [],
+    "auction_commencements": [],
+    "trust_registrations": [],
+    "mortgages": [
+      {
+        "rank_number": "1",
+        "max_claim_amount": 36000000,
+        "debtor": "박○태",
+        "mortgagee": "주식회사하나은행",
+        "receipt_date": "2004-06-25",
+        "is_canceled": true
+      },
+      {
+        "rank_number": "2",
+        "max_claim_amount": 75600000,
+        "debtor": "박○태",
+        "mortgagee": "주식회사우리은행",
+        "receipt_date": "2005-06-24",
+        "is_canceled": true
+      }
+    ],
+    "jeonse_rights": [],
+    "lease_registrations": []
+  }
+}

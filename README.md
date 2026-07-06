@@ -16,6 +16,7 @@
 > | 문서 | 역할 |
 > |---|---|
 > | [CLAUDE.md](CLAUDE.md) | 프로젝트 안내·불변 원칙·개발 방법론 (가장 먼저 읽는 문서) |
+> | **[docs/team-setup.md](docs/team-setup.md)** | **pull 받아 앱으로 실제 분석 테스트하는 법 (Upstage 키 발급·실행 순서)** |
 > | [docs/plan.md](docs/plan.md) | Phase A~F 로드맵·진행 현황 |
 > | [docs/IA.md](docs/IA.md) | 화면 트리·네비게이션 맵 |
 > | [docs/user-scenario.md](docs/user-scenario.md) | 화면→버튼→액션 시나리오 |
@@ -144,13 +145,15 @@ curl -X POST http://127.0.0.1:8000/api/upload \
 
 ## 앱(프론트엔드) 실행 방법
 
-이 앱은 **안드로이드 실기기 전용**으로 개발·시연합니다. (에뮬레이터·웹 기준 아님)
+시연은 **안드로이드 실기기 우선**이지만, **에뮬레이터로도 동일하게 테스트**할 수 있습니다.
+팀원용 상세 절차(Upstage 키 발급 포함)는 **[docs/team-setup.md](docs/team-setup.md)**를 보세요.
 
 ```bash
 cd frontend
 flutter pub get
 
-# 실기기를 USB로 연결한 뒤, 앱↔서버 통신이 필요하면 포트를 터널링합니다.
+# 앱↔서버 통신 포트 터널링 — 에뮬레이터/실기기 공통.
+# 앱의 127.0.0.1:8000 요청이 PC의 백엔드로 연결됩니다.
 adb reverse tcp:8000 tcp:8000
 
 flutter run

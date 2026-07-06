@@ -30,6 +30,11 @@ class ApiClient {
 
   static const Duration _timeout = Duration(seconds: 15);
 
+  /// 분석(멀티파트) 전용 상한 — Upstage 추출이 실측 수십 초 + E-2 LLM 생성 예정이라
+  /// 일반 타임아웃(15초)으로는 항상 실패한다. 서버 측 Upstage 호출 상한(300초)보다
+  /// 짧게 두어 앱이 무한정 기다리지 않게 한다. (E-1c, 2026-07-06)
+  static const Duration _analyzeTimeout = Duration(seconds: 180);
+
   Uri _uri(String path, [Map<String, String>? query]) =>
       Uri.parse('$baseUrl$path').replace(queryParameters: query);
 
@@ -78,8 +83,8 @@ class ApiClient {
 
     final http.Response res;
     try {
-      final streamed = await _client.send(request).timeout(_timeout);
-      res = await http.Response.fromStream(streamed);
+      final streamed = await _client.send(request).timeout(_analyzeTimeout);
+      res = await http.Response.fromStream(streamed).timeout(_analyzeTimeout);
     } catch (_) {
       throw const ApiException('서버에 연결하지 못했어요. 네트워크를 확인해 주세요');
     }

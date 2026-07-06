@@ -6,7 +6,18 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import '../app/config.dart';
+
 class AppSession extends ChangeNotifier {
+  /// 개발용 자동 로그인(config.devAutoLogin)이 켜져 있으면 "개발자" 회원으로 시작한다.
+  /// 로그아웃하면 그 세션 동안은 비회원 흐름을 그대로 테스트할 수 있다.
+  AppSession() {
+    if (devAutoLogin) {
+      _isGuest = false;
+      _userName = '개발자';
+    }
+  }
+
   bool _isGuest = true;
   String? _userName;
 

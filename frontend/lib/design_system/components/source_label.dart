@@ -57,10 +57,18 @@ class VerdictSourceLabel extends StatelessWidget {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: AppSize.iconXs, color: color),
           const SizedBox(width: AppSpacing.xs),
-          Text(text, style: AppTypography.label.copyWith(color: color)),
+          // Flexible: 출처가 길면 칩 안에서 줄바꿈 — 화면 밖 오버플로 방지
+          Flexible(
+            child: Text(
+              text,
+              style: AppTypography.label.copyWith(color: color),
+              softWrap: true,
+            ),
+          ),
         ],
       ),
     );

@@ -7,3 +7,11 @@
 ///
 /// !! adb reverse는 USB 재연결/PC 재부팅 시마다 다시 실행해야 합니다.
 const String baseUrl = 'http://127.0.0.1:8000'; // 실기기용 (adb reverse 사용)
+
+/// 개발용 자동 로그인 (팀 테스트 편의).
+///
+/// true면 앱이 "개발자" 회원으로 시작해 분석 진입 게이트(로그인 유도 바텀시트)를
+/// 매번 통과하지 않아도 된다. 게이트·로그인 화면 로직 자체는 그대로 살아 있어서
+/// 이 값을 false로 바꾸면 비회원 흐름을 언제든 다시 확인할 수 있다.
+/// 실 로그인 도입 시 제거 — docs/cleanup-tracker.md 등록.
+const bool devAutoLogin = true;

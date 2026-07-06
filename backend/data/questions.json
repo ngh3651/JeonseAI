@@ -1,0 +1,98 @@
+{
+  "_안내": "중개사 질문 템플릿. 편집 방법·조건(condition)·중괄호 빈칸 사용법은 이 폴더의 README.md 참고. 문구는 현행 앱 더미를 이식한 초안이며 최가은 인터뷰 결과로 다듬는다.",
+  "groups": [
+    {
+      "riskLabel": "신탁등기",
+      "triggerPattern": "신탁등기",
+      "items": [
+        {
+          "question": "신탁원부(신탁 내용을 적은 서류)를 보여주실 수 있나요?",
+          "why": "신탁등기가 있으면 집주인 마음대로 계약을 못 할 수 있어요",
+          "safeAnswer": "신탁원부를 바로 보여주고, 임대 권한이 있음을 확인해 준다",
+          "riskyAnswer": "보여줄 수 없다거나 얼버무린다",
+          "condition": null
+        },
+        {
+          "question": "신탁회사의 임대 동의서가 있나요?",
+          "why": "동의 없이 맺은 계약은 효력을 인정받지 못할 수 있어요",
+          "safeAnswer": "서면 동의서를 제시한다",
+          "riskyAnswer": "구두로 괜찮다고만 한다",
+          "condition": null
+        }
+      ]
+    },
+    {
+      "riskLabel": "선순위 채권 · 근저당",
+      "triggerPattern": "선순위 채권",
+      "items": [
+        {
+          "question": "잔금일에 근저당을 말소해 주실 수 있나요?",
+          "why": "먼저 잡힌 빚이 남아 있으면 보증금을 못 돌려받을 위험이 커요",
+          "safeAnswer": "잔금일에 말소하겠다고 특약으로 넣어 준다",
+          "riskyAnswer": "말소 계획이 없다고 한다",
+          "condition": null
+        },
+        {
+          "question": "등기부에 잡힌 빚(채권최고액 합계)이 {선순위채권합계}인데, 제 보증금 {보증금}을 지킬 안전장치를 특약으로 넣을 수 있나요?",
+          "why": "빚이 커서 집이 경매로 넘어가면 보증금 전액을 돌려받기 어려울 수 있어요",
+          "safeAnswer": "근저당 말소 또는 감액 조건을 계약서 특약으로 넣어 준다",
+          "riskyAnswer": "말로만 괜찮다고 하고 서면 약속은 거부한다",
+          "condition": { "evidenceGrade": "위험" }
+        }
+      ]
+    },
+    {
+      "riskLabel": "전세가율",
+      "triggerPattern": "전세가율",
+      "items": [
+        {
+          "question": "이 집의 최근 실거래가나 시세 자료를 보여주실 수 있나요?",
+          "why": "시세를 알아야 보증금이 집값에 비해 높은지 판단할 수 있어요",
+          "safeAnswer": "국토부 실거래가·KB시세 같은 근거 자료를 보여준다",
+          "riskyAnswer": "자료 없이 말로만 시세를 알려준다",
+          "condition": { "marketPriceProvided": false }
+        },
+        {
+          "question": "보증금이 시세의 {전세가율}인데, 보증금 조정이나 일부 월세 전환이 가능한가요?",
+          "why": "보증금이 집값에 가까울수록 집값이 내리면 돌려받기 어려워져요",
+          "safeAnswer": "조정 여지를 열어 두고 구체적으로 논의해 준다",
+          "riskyAnswer": "시세보다 높은 이유를 설명하지 못한다",
+          "condition": { "marketPriceProvided": true }
+        }
+      ]
+    },
+    {
+      "riskLabel": "보증보험",
+      "triggerPattern": "보증보험",
+      "items": [
+        {
+          "question": "이 집이 전세보증금 반환보증(HUG 등) 가입이 거절된 적이 있나요?",
+          "why": "이전에 가입이 거절된 집이라면 그 이유를 꼭 알아야 해요",
+          "safeAnswer": "거절 이력이 없고, 가입에 협조하겠다고 한다",
+          "riskyAnswer": "잘 모른다고 하거나 가입 얘기를 피한다",
+          "condition": null
+        }
+      ]
+    },
+    {
+      "riskLabel": "어떤 집이든 꼭",
+      "triggerPattern": "항상",
+      "items": [
+        {
+          "question": "전세보증금 반환보증(보증보험)에 가입할 수 있는 집인가요?",
+          "why": "가입이 되면 보증기관이 보증금을 대신 돌려줘요",
+          "safeAnswer": "가입 가능하다고 확인해 준다",
+          "riskyAnswer": "가입이 안 된다거나 모른다고 한다",
+          "condition": null
+        },
+        {
+          "question": "등기부상 소유자와 계약 당사자가 같은 사람인가요?",
+          "why": "실소유자가 아닌 사람과 계약하면 보증금을 지키기 어려워요",
+          "safeAnswer": "신분증과 등기부 소유자가 일치한다",
+          "riskyAnswer": "대리인인데 위임장이 없다",
+          "condition": null
+        }
+      ]
+    }
+  ]
+}

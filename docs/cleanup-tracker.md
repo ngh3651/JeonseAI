@@ -15,6 +15,11 @@
 | `frontend/lib/design_system/gallery/component_gallery_screen.dart` (`/gallery` 라우트) | 디자인 시스템 카탈로그(개발·팀 공유용, 제품 진입점 없음) | **출시/시연 정리 시(Phase F)**: 내부용으로 유지할지 제거할지 결정 | ⏳ |
 | `backend/app/main.py`의 `app.router.routes.extend(...)` 우회 | fastapi 0.139+starlette 1.3.1에서 `include_router`가 깨져 쓴 임시 우회 | **라이브러리 버전 정리 시**: 정상 버전에서 `app.include_router(...)`로 되돌림 | ⏳ |
 | 스크래치패드 검증 스크립트(예: `d2_verify.py`) | API 수동 검증용 임시 스크립트 | 즉시성 산출물 — 스크래치패드에 두고 저장소에 커밋하지 않음(추적 대상 아님) | — |
+| `backend/data/` 안의 `is_sample: true` 항목 | 큐레이션 양식을 보여주는 형식 예시(판례 2건·악성임대인 1건 — 가짜 데이터) | **E-2/E-3**: 팀 실데이터 반영 시 삭제 (README.md에 규칙 명시) | ⏳ |
+| `backend/scripts/run_rules.py` | 규칙 엔진 픽스처 판정표 러너(육안 확인용 임시 개발 도구, E-1b 산출물) | **E-6**: 개발 도구로 유지할지 삭제할지 결정 | ⏳ |
+| `backend/scripts/test_extract.py` | E-1c에서 로직이 `services/extraction.py`로 승격되어 **thin CLI**로 축소됨(실행 시 크레딧 소모) | **E-6**: 개발 도구로 유지할지 삭제할지 결정 | ⏳ |
+| `backend/app/services/store.py`의 dummy_data 예시 시드 import | 예시 리포트 2건을 dummy_data에서 빌려 시드 | **E-6**: dummy_data 삭제 시 예시 시드를 store/data로 이전 | ⏳ |
+| `frontend/lib/app/config.dart`의 `devAutoLogin` | 개발용 자동 로그인("개발자" 회원으로 시작) — 팀 테스트 편의, 게이트 로직은 유지 | **실 로그인 도입 시 제거**. 시연 리허설(F)에서 비회원 연출 필요 시 false로 확인 | ⏳ |
 
 ## 사용 규칙
 - 새 임시/더미/스캐폴딩 파일을 만들면 **이 표에 한 줄 추가**한다(대상·무엇·삭제 시점).

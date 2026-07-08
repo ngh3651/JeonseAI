@@ -11,6 +11,8 @@
 from __future__ import annotations
 
 from ..schemas.internal import EvidenceVerdict, Grade, RuleVerdict
+from .formatting import round_half_up
+from .rule_engine import BLACKLIST_PENDING_LABEL
 
 HEADLINES: dict[Grade, str] = {
     Grade.DANGER: "보증금을 지키기 어려운 신호가 보여요",
@@ -59,6 +61,11 @@ _RISK_SHORT = {
 
 
 def top_risk_summary(verdict: RuleVerdict) -> str:
+    """홈 카드 3번째 줄 — 매물끼리 비교 가능해야 한다 (서연 리뷰 2026-07-07 반영).
+
+    서비스 쪽 사정으로 생긴 '확인 필요'(보험 구조적 한계·명단 미구축)는 매물 고유
+    위험이 아니므로 이 줄을 독점하지 않게 하고, 전부 양호면 매물 고유 수치를 보여준다.
+    """
     dangers = [e for e in verdict.evidences if e.grade is Grade.DANGER]
     if dangers:
         parts = []
@@ -71,10 +78,26 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
         return " · ".join(parts)
     if verdict.market_price is None:
         return "시세를 입력하면 결과가 더 정확해져요"
-    cautions = [e for e in verdict.evidences if e.grade is Grade.CAUTION and e.id != "insurance"]
+    cautions = [
+        e
+        for e in verdict.evidences
+        if e.grade is Grade.CAUTION
+        and e.id != "insurance"  # 등기부만으론 확인 불가(구조적) — 매물 고유 위험 아님
+        and not (e.id == "blacklist" and e.status_label == BLACKLIST_PENDING_LABEL)  # 명단 미구축
+    ]
     if cautions:
         return " · ".join(_RISK_SHORT[e.id] for e in cautions[:2])
-    return "발견된 위험 신호 없음 — 직접 확인 항목 안내"
+    # 전부 양호 — 매물 고유 수치로 홈에서 줄 세워 비교 가능하게
+    senior = next((e for e in verdict.evidences if e.id == "senior_debt"), None)
+    debt_count = 0
+    if senior is not None:
+        debt_count = (
+            (senior.facts.get("mortgage_count") or 0)
+            + (senior.facts.get("jeonse_right_count") or 0)
+            + (senior.facts.get("lease_registration_count") or 0)
+        )
+    pct = round_half_up(verdict.deposit / verdict.market_price * 100)
+    return f"전세가율 {pct}% · 먼저 갚을 빚 {debt_count}건"
 
 
 def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:

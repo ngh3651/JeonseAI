@@ -7,8 +7,8 @@
 - GET    /api/reports/{id}/cases         판례 매칭 (비회원 허용)
 - GET    /api/reports/{id}/questions     질문 생성 (비회원 허용)
 
-E-1c: analyze/이력은 실배선(추출→규칙 엔진→저장, services/) 완료.
-판례·질문 응답은 아직 dummy_data — E-2(질문)·E-3(판례)에서 교체한다.
+E-1c: analyze/이력 실배선(추출→규칙 엔진→저장) 완료.
+E-2: 질문은 data/questions.json 템플릿 실연동 완료. 판례만 아직 dummy_data(E-3에서 교체).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from .. import dummy_data
 from ..dependencies import get_current_user
 from ..schemas.contract import CaseMatch, QuestionGroup, Report
-from ..services import report_builder, store
+from ..services import patterns, questions, report_builder, store
 from ..services.extraction import ExtractionError
 
 router = APIRouter(prefix="/api", tags=["reports"])
@@ -99,7 +99,7 @@ async def report_cases(report_id: str) -> list[CaseMatch]:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
     # 서버가 리포트의 근거에서 위험 패턴을 파생해 매칭 (계약 §2.2 note)
     # 판례 응답은 아직 더미 — E-3에서 data/cases.json 큐레이션 매칭으로 교체
-    return dummy_data.matched_cases(dummy_data.risk_labels(report))
+    return dummy_data.matched_cases(patterns.derive_from_report(report))
 
 
 @router.get("/reports/{report_id}/questions", response_model=list[QuestionGroup])
@@ -107,5 +107,5 @@ async def report_questions(report_id: str) -> list[QuestionGroup]:
     report = store.get(report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
-    # 질문 응답은 아직 더미 — E-2에서 data/questions.json 템플릿+조건부 변형으로 교체
-    return dummy_data.question_groups(dummy_data.risk_labels(report))
+    # E-2 실연동: data/questions.json 템플릿 + 조건부 변형 (LLM 미개입)
+    return questions.build_question_groups(report)

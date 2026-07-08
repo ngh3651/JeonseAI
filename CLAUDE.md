@@ -1,7 +1,7 @@
 # 전세AI프 (JeonseAI)
 
 > Claude Code가 매 세션 가장 먼저 읽는 프로젝트 안내 문서입니다.
-> **현재 Phase: E 진행 중 — E-1c 실배선 완료, 실기기 E2E 대기 (세부는 docs/plan.md)** ← Phase 진행에 따라 이 줄을 갱신한다.
+> **현재 Phase: E 진행 중 — E-2(Solar 설명+질문 템플릿) 구현·검증 완료, 미니 승인 대기 (세부는 docs/plan.md)** ← Phase 진행에 따라 이 줄을 갱신한다.
 
 ## 1. 서비스 한 줄
 

@@ -21,8 +21,6 @@ from .schemas.contract import (
     GlossaryTerm,
     JourneyItem,
     JourneyStage,
-    QuestionGroup,
-    QuestionItem,
     Report,
 )
 
@@ -325,24 +323,8 @@ def remove_report(report_id: str) -> None:
     _HISTORY = [r for r in _HISTORY if r.id != report_id]
 
 
-# ── 위험 패턴 파생 (evidence id → 라벨). 판례·질문 매칭 입력 (계약 §2.2 note) ──
-_ID_TO_LABEL = {
-    "senior_debt": "선순위 채권",
-    "ownership": "신탁등기",
-    "jeonse_ratio": "전세가율",
-    "insurance": "보증보험",
-}
-
-
-def risk_labels(report: Report) -> list[str]:
-    return [
-        _ID_TO_LABEL[e.id]
-        for e in report.evidences
-        if e.grade != "양호" and e.id in _ID_TO_LABEL
-    ]
-
-
-# ── 판례 (content_repository.dart matchedCases 이식) ────────────────────────
+# (위험 패턴 파생은 services/patterns.py로 승격됨 — E-2)
+# ── 판례 (content_repository.dart matchedCases 이식) — E-3에서 data/cases.json으로 교체 ──
 def matched_cases(risk_patterns: list[str]) -> list[CaseMatch]:
     if not risk_patterns:
         return []
@@ -370,67 +352,7 @@ def matched_cases(risk_patterns: list[str]) -> list[CaseMatch]:
     ]
 
 
-# ── 질문 생성기 (content_repository.dart questionGroups 이식) ───────────────
-def question_groups(risk_labels_in: list[str]) -> list[QuestionGroup]:
-    groups: list[QuestionGroup] = []
-
-    if "신탁등기" in risk_labels_in:
-        groups.append(
-            QuestionGroup(
-                riskLabel="신탁등기",
-                items=[
-                    QuestionItem(
-                        question="신탁원부(신탁 내용을 적은 서류)를 보여주실 수 있나요?",
-                        why="신탁등기가 있으면 집주인 마음대로 계약을 못 할 수 있어요",
-                        safeAnswer="신탁원부를 바로 보여주고, 임대 권한이 있음을 확인해 준다",
-                        riskyAnswer="보여줄 수 없다거나 얼버무린다",
-                    ),
-                    QuestionItem(
-                        question="신탁회사의 임대 동의서가 있나요?",
-                        why="동의 없이 맺은 계약은 효력을 인정받지 못할 수 있어요",
-                        safeAnswer="서면 동의서를 제시한다",
-                        riskyAnswer="구두로 괜찮다고만 한다",
-                    ),
-                ],
-            )
-        )
-
-    if "선순위 채권" in risk_labels_in:
-        groups.append(
-            QuestionGroup(
-                riskLabel="선순위 채권 · 근저당",
-                items=[
-                    QuestionItem(
-                        question="잔금일에 근저당을 말소해 주실 수 있나요?",
-                        why="먼저 잡힌 빚이 남아 있으면 보증금을 못 돌려받을 위험이 커요",
-                        safeAnswer="잔금일에 말소하겠다고 특약으로 넣어 준다",
-                        riskyAnswer="말소 계획이 없다고 한다",
-                    ),
-                ],
-            )
-        )
-
-    # 위험 요소가 없어도 기본 질문은 제공 (빈 상태 방지)
-    groups.append(
-        QuestionGroup(
-            riskLabel="어떤 집이든 꼭",
-            items=[
-                QuestionItem(
-                    question="전세보증금 반환보증(보증보험)에 가입할 수 있는 집인가요?",
-                    why="가입이 되면 보증기관이 보증금을 대신 돌려줘요",
-                    safeAnswer="가입 가능하다고 확인해 준다",
-                    riskyAnswer="가입이 안 된다거나 모른다고 한다",
-                ),
-                QuestionItem(
-                    question="등기부상 소유자와 계약 당사자가 같은 사람인가요?",
-                    why="실소유자가 아닌 사람과 계약하면 보증금을 지키기 어려워요",
-                    safeAnswer="신분증과 등기부 소유자가 일치한다",
-                    riskyAnswer="대리인인데 위임장이 없다",
-                ),
-            ],
-        )
-    )
-    return groups
+# (질문 생성기는 services/questions.py + data/questions.json으로 승격됨 — E-2)
 
 
 # ── 용어 챗봇 (content_repository.dart glossaryTerms / lookupTerm 이식) ──────

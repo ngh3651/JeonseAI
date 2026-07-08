@@ -29,14 +29,15 @@ from . import thresholds as T
 from .formatting import format_won, round_half_up
 
 # 판정 출처 문구([판정] sourceText — 계약 §2.2). 리포트 화면 칩에 그대로 노출되므로
-# 사용자용으로 짧게 유지한다. 각 문구의 근거·채택 기록은 전부 decisions.md 2026-07-06
-# 항목들(기준 ①②③·임시 조치)과 thresholds.py 상수 주석에 있다 — rule-auditor 대조 지점.
-_SRC_JEONSE = "HUG 담보인정비율 90% · 부동산원 80% (임시 기준·검증 중)"
+# 사용자 언어로 짧게 유지한다 ("검증 중"·"수동 대조" 같은 내부 프로세스 용어 금지 —
+# 서연 리뷰 2026-07-07). 임시값·검증 대기 추적은 화면이 아니라 thresholds.py 주석과
+# decisions.md(2026-07-06 기준 ①②③·임시 조치)가 담당한다 — rule-auditor 대조 지점.
+_SRC_JEONSE = "HUG 담보인정비율 90% · 부동산원 80% 기준"
 _SRC_SENIOR = "HUG 전세보증금반환보증 가입요건"
 _SRC_OWNERSHIP = "HUG 가입요건(권리침해) · 법제처 생활법령정보(신탁)"
-_SRC_LEASE = "주택임대차보호법 제3조의3 (조문 확인 중)"
+_SRC_LEASE = "주택임대차보호법 제3조의3"
 _SRC_INSURANCE = "HUG 가입요건 — 등기부만으로 최종 확인 불가"
-_SRC_BLACKLIST = "HUG 안심전세포털 공개 명단 (수동 대조)"
+_SRC_BLACKLIST = "HUG 안심전세포털 공개 명단"
 
 _DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
@@ -145,7 +146,7 @@ def _judge_jeonse_ratio(deposit: int, market_price: int | None) -> EvidenceVerdi
         grade = Grade.GOOD
     detail = (
         f"전세가율 {pct}% — 보증금 {format_won(deposit)} / 입력 시세 {format_won(market_price)}"
-        f" (주의 {T.JEONSE_RATIO_CAUTION_PCT}% 초과 · 위험 {T.JEONSE_RATIO_DANGER_PCT}% 초과 — 임시 기준·검증 중)"
+        f" (주의 {T.JEONSE_RATIO_CAUTION_PCT}% 초과 · 위험 {T.JEONSE_RATIO_DANGER_PCT}% 초과)"
     )
     return EvidenceVerdict(
         id="jeonse_ratio",

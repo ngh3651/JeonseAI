@@ -55,6 +55,26 @@ class ExtractionError(Exception):
         self.detail = detail
 
 
+# ── 요약본 거부 (decisions.md 2026-07-07) ────────────────────────────────────
+# '주요 등기사항 요약(참고용)'에는 말소 이력이 없어 유효/말소 구분이 불가능하다.
+# 그대로 분석하면 '깨끗한 집'으로 오판(미탐)할 수 있으므로 분석을 중단한다.
+_SUMMARY_KEYWORDS = ("주요 등기사항 요약", "참고용")
+SUMMARY_REJECT_DETAIL = (
+    "요약본은 판단에 부족해요. '말소사항 포함 등기사항전부증명서'로 다시 올려주세요"
+)
+
+
+def reject_summary_document(raw: dict) -> None:
+    """요약본 문서가 감지되면 ExtractionError(400)를 던진다.
+
+    document_title 필드가 1차 신호이지만, 제목 추출이 실패할 수 있어
+    추출 JSON 전체 문자열에서 키워드를 이중 검사한다(한계는 decisions.md 기록).
+    """
+    haystack = json.dumps(raw, ensure_ascii=False)
+    if any(keyword in haystack for keyword in _SUMMARY_KEYWORDS):
+        raise ExtractionError(400, SUMMARY_REJECT_DETAIL)
+
+
 def _load_api_key() -> str:
     """backend/.env의 UPSTAGE_API_KEY를 읽는다 (하드코딩 금지 — api-design 규칙)."""
     load_dotenv(dotenv_path=_BACKEND_ROOT / ".env")
@@ -127,6 +147,7 @@ def call_information_extract(images: list[tuple[str, bytes]]) -> dict:
         raise ExtractionError(502, "추출 결과를 해석하지 못했어요. 다시 시도해 주세요") from e
     if not isinstance(raw, dict):
         raise ExtractionError(502, "추출 결과를 해석하지 못했어요. 다시 시도해 주세요")
+    reject_summary_document(raw)  # 요약본이면 여기서 분석 중단 (400)
     return raw
 
 

@@ -1,0 +1,247 @@
+"""E-2 가드레일 봉인 — LLM(통역사)이 판정을 바꿀 수 없음을 테스트로 강제한다.
+
+핵심: 목(mock) LLM이 {"grade": "양호"} 같은 판정 조작을 끼워 보내도
+최종 Report의 판정([판정] 필드)은 규칙 엔진 결과에서 한 글자도 변하지 않는다.
+(실 API 호출 없음 — _call_solar를 목으로 대체)
+"""
+
+import json
+from pathlib import Path
+
+import pytest
+import requests
+
+from app.schemas.internal import Grade, RegistryExtract
+from app.services import explanation, fallback_texts, report_builder, rule_engine
+
+FIXTURES = Path(__file__).parent / "fixtures" / "registry"
+
+
+def load_fixture(name: str) -> dict:
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def danger_case():
+    """근저당 과다(위험) 케이스 — 판정 조작 시도가 가장 티 나는 대상."""
+    data = load_fixture("mortgage_heavy")
+    extract = RegistryExtract.from_raw(data["registry"])
+    verdict = rule_engine.evaluate(
+        extract,
+        deposit=data["inputs"]["deposit"],
+        market_price=data["inputs"]["market_price"],
+        blacklist_entries=data["blacklist"],
+    )
+    return data, extract, verdict
+
+
+@pytest.fixture
+def solar_key(monkeypatch):
+    """generate()가 호출 경로로 들어가게 가짜 키 설정 (_call_solar는 목으로 대체됨)."""
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
+
+
+def valid_content(verdict, *, headline="빚이 커서 보증금 회수가 어려울 수 있어요"):
+    return json.dumps(
+        {
+            "headline": headline,
+            "evidences": [
+                {"id": e.id, "easy_explanation": f"{e.id} 항목 설명이에요. 확인이 필요해요."}
+                for e in verdict.evidences
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+# ── ① 판정 조작 차단 ─────────────────────────────────────────────────────────
+
+
+def test_tampered_payload_with_grade_key_falls_back(monkeypatch, solar_key, danger_case):
+    """LLM이 grade·gaugeProgress를 실어 보내면 extra='forbid'가 거부 → 폴백."""
+    data, extract, verdict = danger_case
+    tampered = json.dumps(
+        {
+            "grade": "양호",  # 판정 조작 시도
+            "gaugeProgress": 0.95,
+            "headline": "아주 안전한 집이에요",
+            "top_risk_summary": "위험 없음",
+            "evidences": [],
+        },
+        ensure_ascii=False,
+    )
+    calls: list[int] = []
+
+    def mock_call(messages, api_key):
+        calls.append(1)
+        return tampered
+
+    monkeypatch.setattr(explanation, "_call_solar", mock_call)
+
+    result = explanation.generate(verdict)
+    assert result.source == "폴백"  # 조작 페이로드는 통째로 거부된다
+    assert len(calls) == 2  # 최초 1회 + 재시도 1회 후 폴백
+    assert result.texts["headline"] == fallback_texts.HEADLINES[verdict.grade]
+
+    # Report 조립까지 가도 판정은 규칙 엔진 값 그대로
+    report = report_builder.build_report(
+        extract,
+        deposit=data["inputs"]["deposit"],
+        market_price=data["inputs"]["market_price"],
+        alias=None,
+    )
+    assert report.grade == "위험"
+    assert report.gaugeProgress == verdict.gauge_progress
+    assert report.seniorDebtAmount == verdict.senior_debt_amount
+
+
+def test_valid_payload_merges_but_verdict_fields_untouched(monkeypatch, solar_key, danger_case):
+    """정상 응답이어도 LLM이 채우는 건 설명 슬롯뿐 — 판정 필드는 verdict에서만 복사."""
+    data, extract, verdict = danger_case
+    monkeypatch.setattr(explanation, "_call_solar", lambda m, k: valid_content(verdict))
+
+    result = explanation.generate(verdict)
+    assert result.source == "AI 생성"
+    assert result.texts["headline"] == "빚이 커서 보증금 회수가 어려울 수 있어요"
+    # nextAction·topRiskSummary는 결정적 템플릿 유지 (decisions.md 2026-07-07 + 하네스 조치)
+    assert result.texts["next_action"] == fallback_texts.NEXT_ACTIONS[verdict.grade]
+    assert result.texts["top_risk_summary"] == fallback_texts.top_risk_summary(verdict)
+
+    report = report_builder.build_report(
+        extract,
+        deposit=data["inputs"]["deposit"],
+        market_price=data["inputs"]["market_price"],
+        alias=None,
+    )
+    # build_report는 실제 명단 파일 경로로 평가하므로, 같은 조건의 verdict로 대조한다
+    verdict_for_report = rule_engine.evaluate(
+        extract,
+        deposit=data["inputs"]["deposit"],
+        market_price=data["inputs"]["market_price"],
+    )
+    verdict_by_id = {e.id: e for e in verdict_for_report.evidences}
+    assert report.grade == verdict_for_report.grade.value
+    for ev in report.evidences:
+        assert ev.grade == verdict_by_id[ev.id].grade.value  # [판정] 불변
+        assert ev.detailText == verdict_by_id[ev.id].detail_text
+        assert "설명이에요" in ev.easyExplanation  # [설명]만 LLM 문구
+
+
+# ── ② 금지어·부분 폴백 ───────────────────────────────────────────────────────
+
+
+def test_banned_phrase_replaced_field_level(monkeypatch, solar_key, danger_case):
+    """'안전합니다' 단정이 섞인 필드만 폴백으로 치환 — 나머지 LLM 문구는 유지."""
+    _, _, verdict = danger_case
+    payload = json.loads(valid_content(verdict))
+    payload["evidences"][0]["easy_explanation"] = "이 집은 안전합니다. 걱정 마세요."
+    bad_id = payload["evidences"][0]["id"]
+    monkeypatch.setattr(
+        explanation, "_call_solar", lambda m, k: json.dumps(payload, ensure_ascii=False)
+    )
+
+    result = explanation.generate(verdict)
+    assert result.source == "AI 생성(일부 폴백)"
+    base = fallback_texts.build(verdict)
+    assert result.texts["evidences"][bad_id]["easy_explanation"] == base["evidences"][bad_id]["easy_explanation"]
+    good_ids = [e.id for e in verdict.evidences if e.id != bad_id]
+    assert "설명이에요" in result.texts["evidences"][good_ids[0]]["easy_explanation"]
+
+
+def test_banned_phrase_in_headline_falls_back(monkeypatch, solar_key, danger_case):
+    """headline에 단정 표현("안전 범위" 등) → headline만 폴백 (rule-auditor 지적 봉인)."""
+    _, _, verdict = danger_case
+    monkeypatch.setattr(
+        explanation,
+        "_call_solar",
+        lambda m, k: valid_content(verdict, headline="이 집은 안전 범위예요"),
+    )
+    result = explanation.generate(verdict)
+    assert result.source == "AI 생성(일부 폴백)"
+    assert result.texts["headline"] == fallback_texts.HEADLINES[verdict.grade]
+
+
+def test_overlong_field_falls_back(monkeypatch, solar_key, danger_case):
+    """길이 상한(_MAX_LEN) 초과 필드는 폴백으로 치환 (rule-auditor 지적 봉인)."""
+    _, _, verdict = danger_case
+    payload = json.loads(valid_content(verdict))
+    long_id = payload["evidences"][0]["id"]
+    payload["evidences"][0]["easy_explanation"] = "확인이 필요해요. " * 40  # 240자 초과
+    monkeypatch.setattr(
+        explanation, "_call_solar", lambda m, k: json.dumps(payload, ensure_ascii=False)
+    )
+    result = explanation.generate(verdict)
+    assert result.source == "AI 생성(일부 폴백)"
+    base = fallback_texts.build(verdict)
+    assert result.texts["evidences"][long_id]["easy_explanation"] == base["evidences"][long_id]["easy_explanation"]
+
+
+def test_deterministic_summary_excludes_service_side_cautions():
+    """topRiskSummary(결정적): 전부 양호면 매물 고유 수치로 — 서비스측 '확인 필요'가
+    비교 줄을 독점하지 않는다 (서연 리뷰 반영 봉인)."""
+    data = load_fixture("clean_house")
+    extract = RegistryExtract.from_raw(data["registry"])
+    verdict = rule_engine.evaluate(
+        extract,
+        deposit=data["inputs"]["deposit"],
+        market_price=data["inputs"]["market_price"],
+        blacklist_entries=[],  # 명단 미구축(서비스측 사정)
+    )
+    summary = fallback_texts.top_risk_summary(verdict)
+    assert summary == "전세가율 50% · 먼저 갚을 빚 0건"
+
+
+# ── ③ 실패 시 리포트 항상 완성 ───────────────────────────────────────────────
+
+
+def test_timeout_falls_back_and_report_completes(monkeypatch, solar_key, danger_case):
+    data, extract, verdict = danger_case
+
+    def boom(messages, api_key):
+        raise requests.exceptions.Timeout("모의 타임아웃")
+
+    monkeypatch.setattr(explanation, "_call_solar", boom)
+
+    result = explanation.generate(verdict)
+    assert result.source == "폴백"
+
+    # 분석 실패로 격상되지 않고 리포트가 완성된다
+    report = report_builder.build_report(
+        extract,
+        deposit=data["inputs"]["deposit"],
+        market_price=data["inputs"]["market_price"],
+        alias=None,
+    )
+    assert report.grade == "위험"
+    assert report.headline  # 폴백 문구로 채워짐
+
+
+def test_no_api_key_skips_call_entirely(monkeypatch, danger_case):
+    """키가 없으면 호출 자체를 안 한다 (크레딧 0, 폴백)."""
+    _, _, verdict = danger_case
+    monkeypatch.setenv("UPSTAGE_API_KEY", "")
+    called: list[int] = []
+    monkeypatch.setattr(explanation, "_call_solar", lambda m, k: called.append(1))
+
+    result = explanation.generate(verdict)
+    assert result.source == "폴백"
+    assert called == []
+
+
+def test_llm_input_is_verdict_only(monkeypatch, solar_key, danger_case):
+    """LLM에 넘어가는 내용에 원본 이미지·추출 전체가 아닌 판정 파생 값만 담긴다."""
+    _, _, verdict = danger_case
+    captured: dict = {}
+
+    def capture(messages, api_key):
+        captured["messages"] = messages
+        return valid_content(verdict)
+
+    monkeypatch.setattr(explanation, "_call_solar", capture)
+    explanation.generate(verdict)
+
+    user_content = captured["messages"][1]["content"]
+    assert "판정 JSON" in user_content
+    assert "종합등급" in user_content
+    assert "base64" not in user_content  # 이미지 전달 금지
+    assert "mortgagee" not in user_content  # 추출 원본(채권자명 등) 전달 금지 — 판정 파생만

@@ -19,6 +19,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../services/api_client.dart';
 
 class AnalysisLoadingScreen extends StatefulWidget {
   const AnalysisLoadingScreen({super.key, required this.request});
@@ -51,6 +52,8 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   Timer? _timer;
   bool _navigated = false;
   bool _failed = false; // 서버 연결·분석 실패 (user-scenario §4 S-06 네트워크 오류)
+  String? _errorMessage; // 서버가 보낸 한국어 detail (요약본 거부·크레딧 소진 등)
+  int? _errorStatus; // 상태코드별 복구 동선 분기 (400계열=사진 다시 / 402·429=재시도 없음)
 
   @override
   void initState() {
@@ -86,11 +89,26 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
         Future.delayed(const Duration(milliseconds: 2600)),
       ]);
       report = results.first as AnalysisReport;
-    } catch (_) {
-      // 서버가 꺼져 있거나 네트워크 오류 — 더미로 폴백하지 않고 실패를 그대로 보여준다
+    } on ApiException catch (e) {
+      // 서버가 보낸 진짜 원인(요약본 거부·크레딧 소진 등)을 뭉개지 않고 그대로 보여준다
+      // (gap-checker 2026-07-07 치명 지적 — user-scenario §4 S-06 분기 복원)
       _timer?.cancel();
       if (!mounted) return;
-      setState(() => _failed = true);
+      setState(() {
+        _failed = true;
+        _errorMessage = e.message;
+        _errorStatus = e.statusCode;
+      });
+      return;
+    } catch (_) {
+      // 그 외(네트워크 단절 등) — 더미로 폴백하지 않고 실패를 그대로 보여준다
+      _timer?.cancel();
+      if (!mounted) return;
+      setState(() {
+        _failed = true;
+        _errorMessage = null;
+        _errorStatus = null;
+      });
       return;
     }
 
@@ -135,8 +153,17 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     }
   }
 
-  /// 분석 실패 화면 — [다시 시도](사진·입력 재선택 불필요) / [나중에 하기] → S-04 복귀
+  /// 분석 실패 화면 — 서버가 보낸 원인을 그대로 보여주고, 원인별 복구 동선 분기.
+  /// (user-scenario §4 S-06: 요약본/추출 실패=사진 다시 고르기, 402·429=재시도 미노출)
   Widget _failedBody() {
+    final status = _errorStatus;
+    // 400계열(요약본·형식·용량)은 같은 사진으로 재시도해도 반드시 실패 + 크레딧만 소모
+    final isInputProblem = status == 400 || status == 413 || status == 415;
+    // 크레딧 소진·호출 한도는 재시도 버튼을 주지 않는다 (무한 재시도 루프 방지)
+    final isQuotaProblem = status == 402 || status == 429;
+    final message =
+        _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xxxl),
@@ -147,22 +174,29 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
             const Center(child: MascotSafe(size: 96)),
             const SizedBox(height: AppSpacing.xl),
             const Text(
-              '분석을 시작하지 못했어요',
+              '분석을 진행하지 못했어요',
               style: AppTypography.title,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요',
+              message,
               style: AppTypography.caption,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.xxl),
-            AppPrimaryButton(
-              label: '다시 시도',
-              icon: Icons.refresh,
-              onPressed: _run,
-            ),
+            if (isInputProblem)
+              AppPrimaryButton(
+                label: '사진 다시 고르기',
+                icon: Icons.photo_library_outlined,
+                onPressed: () => context.pop(), // S-04 복귀 (사진·입력값 유지)
+              )
+            else if (!isQuotaProblem)
+              AppPrimaryButton(
+                label: '다시 시도',
+                icon: Icons.refresh,
+                onPressed: _run,
+              ),
             const SizedBox(height: AppSpacing.sm),
             AppSecondaryButton(
               label: '나중에 하기',
@@ -201,13 +235,17 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                       ),
                       const SizedBox(height: AppSpacing.sm),
                       Text(
-                        '보통 1분 내외예요',
+                        '보통 1~2분 걸려요',
                         style: AppTypography.caption,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: AppSpacing.xl),
+                      // 마지막 단계는 실제 서버 응답(최대 3분)을 기다리므로
+                      // 확정형 100%로 멈춰 보이지 않게 물결(indeterminate)로 전환
                       LinearProgressIndicator(
-                        value: (_stage + 1) / _stages.length,
+                        value: _stage >= _stages.length - 1
+                            ? null
+                            : (_stage + 1) / _stages.length,
                         backgroundColor: AppColors.line,
                         color: AppColors.primary,
                       ),

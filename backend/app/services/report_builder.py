@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..schemas.contract import Evidence, Report
 from ..schemas.internal import Grade, RegistryExtract, RuleVerdict
-from . import extraction, fallback_texts, rule_engine, store
+from . import explanation, extraction, fallback_texts, rule_engine, store
 from .formatting import format_won, short_address
 
 KST = timezone(timedelta(hours=9))
@@ -33,12 +33,41 @@ def build_report(
     alias: str | None,
     report_id: str | None = None,
     analyzed_at: datetime | None = None,
+    use_llm: bool = True,
 ) -> Report:
     """추출 결과 + 입력값 → 계약 §2.1 Report. (저장은 하지 않음 — analyze()가 담당)"""
+    report, _ = _build(
+        extract,
+        deposit=deposit,
+        market_price=market_price,
+        alias=alias,
+        report_id=report_id,
+        analyzed_at=analyzed_at,
+        use_llm=use_llm,
+    )
+    return report
+
+
+def _build(
+    extract: RegistryExtract,
+    *,
+    deposit: int,
+    market_price: int | None,
+    alias: str | None,
+    report_id: str | None = None,
+    analyzed_at: datetime | None = None,
+    use_llm: bool = True,
+) -> tuple[Report, str]:
+    """조립 본체 — (Report, 설명 출처 라벨)을 돌려준다."""
     verdict: RuleVerdict = rule_engine.evaluate(
         extract, deposit=deposit, market_price=market_price
     )
-    texts = fallback_texts.build(verdict)  # E-2: explanation(LLM) 성공 시 이 값 대신 사용
+    if use_llm:
+        # LLM은 설명 문장만 — 실패 시 내부에서 폴백으로 완성돼 돌아온다(리포트 항상 완성)
+        explanation_result = explanation.generate(verdict)
+        texts, explain_source = explanation_result.texts, explanation_result.source
+    else:
+        texts, explain_source = fallback_texts.build(verdict), "폴백(강제)"
 
     now = analyzed_at or datetime.now(KST)
     resolved_id = report_id or f"analysis-{int(now.timestamp() * 1000)}"
@@ -69,7 +98,7 @@ def build_report(
             )
         )
 
-    return Report(
+    report = Report(
         id=resolved_id,
         alias=resolved_alias,
         address=address,
@@ -77,13 +106,14 @@ def build_report(
         grade=verdict.grade.value,  # [판정]
         gaugeProgress=verdict.gauge_progress,  # [메타 — 판정 파생 공식]
         headline=texts["headline"],  # [설명]
-        nextAction=texts["next_action"],  # [설명]
+        nextAction=texts["next_action"],  # [설명 — 결정적 템플릿 유지 (decisions.md 2026-07-07)]
         topRiskSummary=texts["top_risk_summary"],  # [설명]
         deposit=verdict.deposit,  # [판정]
         marketPrice=verdict.market_price,  # [판정]
         seniorDebtAmount=verdict.senior_debt_amount,  # [판정]
         evidences=evidences,
     )
+    return report, explain_source
 
 
 def analyze(
@@ -93,13 +123,16 @@ def analyze(
     market_price: int | None,
     alias: str | None,
 ) -> Report:
-    """업로드 이미지 → 추출 → 판정 → 리포트 생성 → 이력 저장. (/api/analyze의 본체)"""
+    """업로드 이미지 → 추출 → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)"""
     t0 = time.perf_counter()
     extract = extraction.extract_registry(images)
-    report = build_report(extract, deposit=deposit, market_price=market_price, alias=alias)
+    report, explain_source = _build(
+        extract, deposit=deposit, market_price=market_price, alias=alias, use_llm=True
+    )
     store.add(report)
     _log.info(
         f"[분석 완료] 주소: {report.address} | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
-        f" | 판정: {report.grade} (게이지 {report.gaugeProgress}) | 총 {time.perf_counter() - t0:.1f}초"
+        f" | 판정: {report.grade} (게이지 {report.gaugeProgress}) | 설명: {explain_source}"
+        f" | 총 {time.perf_counter() - t0:.1f}초"
     )
     return report

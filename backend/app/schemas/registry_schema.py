@@ -98,6 +98,14 @@ def _claim_like_entry(description: str) -> dict[str, Any]:
 REGISTRY_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        # ═══════════ [공통] 문서 식별 (최상위 scalar) ═══════════
+        "document_title": {
+            "type": "string",
+            "description": (
+                "[공통] 문서 최상단의 제목 문구를 그대로. "
+                "예: '등기사항전부증명서(말소사항 포함)', '주요 등기사항 요약(참고용)'"
+            ),
+        },
         # ═══════════ [표제부] 부동산 기본 표시 (최상위 scalar) ═══════════
         "address": {
             "type": "string",

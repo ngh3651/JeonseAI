@@ -1,0 +1,110 @@
+# ── 전세AI프 (JeonseAI) 핵심 아키텍처 ──
+# 레이아웃: ELK (TALA 금지 — 워터마크 방지)
+# SVG export 기준 · sketch 모드 OFF
+# play.d2lang.com 에 붙여넣고 Export → SVG
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    sketch: false
+  }
+}
+
+direction: down
+
+classes: {
+  box: {
+    style: {
+      fill: "#FAFAFA"
+      stroke: "#D4D4D8"
+      border-radius: 12
+    }
+  }
+  node: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#71717A"
+      font-color: "#18181B"
+      border-radius: 8
+    }
+  }
+  edge: {
+    style: {
+      stroke: "#52525B"
+      font-color: "#52525B"
+    }
+  }
+}
+
+user: "사용자" {
+  shape: person
+  style: {
+    fill: "#FAFAFA"
+    stroke: "#71717A"
+    font-color: "#18181B"
+  }
+}
+
+app: "전세AI프 앱 (Flutter · Android)" {
+  class: box
+  capture: "등기부 여러 장 촬영" { class: node }
+  report: "위험 리포트 화면" { class: node }
+}
+
+upstage: "외부 · Upstage" {
+  style: {
+    fill: "#F4F4F5"
+    stroke: "#A1A1AA"
+    stroke-dash: 3
+    border-radius: 12
+  }
+  ie: "Information Extract\n표제부·갑구·을구 구조화 추출" { class: node }
+}
+
+backend: "FastAPI 백엔드" {
+  class: box
+
+  analyze: "POST /api/analyze" { class: node }
+
+  rules: "규칙 엔진 · 위험 판정" {
+    style: {
+      fill: "#A50034"
+      stroke: "#A50034"
+      font-color: "#FFFFFF"
+      bold: true
+      border-radius: 10
+    }
+    cards: "근거 카드 5종\n전세가율 · 선순위채권 · 소유권이상 · 보증보험 · 악성임대인" {
+      style: {
+        fill: "#A50034"
+        stroke: "#FFFFFF"
+        font-color: "#FFFFFF"
+        border-radius: 8
+      }
+    }
+  }
+
+  explain: "설명 생성 · LLM\nSolar Pro (→ EXAONE 전환 가능) · 판정 안 함" { class: node }
+
+  builder: "report_builder · 단일 병합" { class: node }
+
+  store: "분석 이력" {
+    shape: cylinder
+    style: {
+      fill: "#F4F4F5"
+      stroke: "#A1A1AA"
+      font-color: "#18181B"
+    }
+  }
+}
+
+# ── 데이터 흐름 ──
+user -> app.capture: "촬영" { class: edge }
+app.capture -> backend.analyze: "멀티 이미지 업로드" { class: edge }
+backend.analyze -> upstage.ie: "추출 요청" { class: edge }
+upstage.ie -> backend.rules: "구조화 데이터" { class: edge }
+backend.rules -> backend.explain: "판정 JSON" { class: edge }
+backend.rules -> backend.builder: "판정 (변경 불가)" { class: edge }
+backend.explain -> backend.builder: "쉬운 말 설명만" { class: edge }
+backend.builder -> backend.store: "저장" { class: edge }
+backend.builder -> app.report: "위험 리포트" { class: edge }

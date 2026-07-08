@@ -290,3 +290,45 @@ def test_fallback_texts_cover_all_evidences():
         assert set(texts["evidences"].keys()) == {e.id for e in v.evidences}
         for body in texts["evidences"].values():
             assert body["title"] and body["easy_explanation"]
+
+
+# ── 홈 카드 요약(top_risk_summary): 신호가 덮이거나 비교 불가가 되지 않게 (E-2 서연 리뷰 2026-07-08) ──
+
+
+def test_top_risk_summary_market_missing_does_not_hide_debt():
+    """시세를 안 넣어도 빚(선순위) 신호는 홈 카드 요약에 드러나야 한다 (보수적 편향).
+
+    기존엔 market_price=None이면 CAUTION 검사 전에 '시세 입력'만 반환해 빚 신호가 가려졌다.
+    """
+    d = load_fixture("mortgage_heavy")
+    ex = RegistryExtract.from_raw(d["registry"])
+    v = rule_engine.evaluate(ex, deposit=d["inputs"]["deposit"], market_price=None, blacklist_entries=[])
+    assert evidence(v, "senior_debt").grade is Grade.CAUTION  # 시세 없어 비율 판정 불가 → 주의
+    summary = fallback_texts.top_risk_summary(v)
+    assert "먼저 갚을 빚" in summary  # 빚 신호가 요약에 노출됨
+    assert "시세 입력 필요" in summary  # 시세 미입력 안내는 뒤에 병기(신호를 덮지 않음)
+
+
+def test_top_risk_summary_market_missing_no_signal_asks_for_price():
+    """진짜 위험 신호가 없고 시세만 없으면 시세 입력을 안내한다 (오탐 노이즈 방지).
+
+    시세 없어 판정 불가한 전세가율·구조적 확인필요(보험·명단)는 신호로 쓰지 않는다.
+    """
+    d = load_fixture("clean_house")
+    ex = RegistryExtract.from_raw(d["registry"])
+    v = rule_engine.evaluate(ex, deposit=d["inputs"]["deposit"], market_price=None, blacklist_entries=[])
+    assert fallback_texts.top_risk_summary(v) == "시세를 입력하면 결과가 더 정확해져요"
+
+
+def test_top_risk_summary_danger_keeps_jeonse_pct():
+    """위험 매물도 전세가율 %가 요약에 남아 매물끼리 비교 가능해야 한다 (서연 리뷰).
+
+    양호 매물엔 %가 나오는데 위험 매물엔 라벨만 나오던 비대칭을 봉인.
+    """
+    d = load_fixture("clean_house")
+    ex = RegistryExtract.from_raw(d["registry"])
+    market = d["inputs"]["market_price"]
+    # 보증금을 시세의 95%로 올려 전세가율 DANGER 유도
+    v = rule_engine.evaluate(ex, deposit=int(market * 0.95), market_price=market, blacklist_entries=[])
+    assert evidence(v, "jeonse_ratio").grade is Grade.DANGER
+    assert "전세가율 95%" in fallback_texts.top_risk_summary(v)  # 숫자 노출(라벨만이 아니라)

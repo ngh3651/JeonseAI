@@ -16,13 +16,13 @@ from .rule_engine import BLACKLIST_PENDING_LABEL
 
 HEADLINES: dict[Grade, str] = {
     Grade.DANGER: "보증금을 지키기 어려운 신호가 보여요",
-    Grade.CAUTION: "몇 가지를 확인한 뒤 결정해도 늦지 않아요",
+    Grade.CAUTION: "확인할 게 몇 가지 있어요 — 지금 결정은 잠시 미루세요",
     Grade.GOOD: "큰 위험 신호는 보이지 않았어요 — 그래도 직접 확인은 필요해요",
 }
 
 NEXT_ACTIONS: dict[Grade, str] = {
     # 상담처 전화번호는 Phase F에서 공식 홈페이지로 확인 후 병기
-    Grade.DANGER: "계약 전에 HUG 안심전세포털·대한법률구조공단 등에서 전문가 상담부터 받으세요",
+    Grade.DANGER: "계약 전에 HUG(주택도시보증공사) 안심전세포털·대한법률구조공단 등에서 전문가 상담부터 받으세요",
     Grade.CAUTION: "보류하고, 아래 질문을 중개사에게 확인한 뒤 결정하세요",
     Grade.GOOD: "계약 직전 최신 등기부로 한 번 더 확인하고, 보증보험 가입을 알아보세요",
 }
@@ -41,12 +41,17 @@ TERM_GLOSSARY: dict[str, dict[str, str]] = {
         "전세가율": "보증금이 집값의 몇 %인지 나타내는 비율이에요. 높을수록 집값이 떨어졌을 때 보증금을 돌려받기 어려워져요."
     },
     "senior_debt": {
-        "근저당권": "집주인이 집을 담보로 돈을 빌렸다는 표시예요. 집이 경매로 넘어가면 돈을 빌려준 쪽(주로 은행)이 세입자보다 먼저 돈을 받아갈 수 있어요."
+        "선순위 채권": "집이 경매로 넘어가면 나(세입자)보다 먼저 돈을 받아가는 빚이에요. 이게 많을수록 내 보증금이 뒤로 밀려요.",
+        "근저당권": "집주인이 집을 담보로 돈을 빌렸다는 표시예요. 집이 경매로 넘어가면 돈을 빌려준 쪽(주로 은행)이 세입자보다 먼저 돈을 받아갈 수 있어요.",
     },
     "ownership": {
-        "신탁등기": "집의 관리 권한을 신탁회사에 맡겼다는 표시예요. 이 경우 집주인 단독으로는 전세 계약을 맺을 수 없는 경우가 많아요."
+        "신탁등기": "집의 관리 권한을 신탁회사에 맡겼다는 표시예요. 이 경우 집주인 단독으로는 전세 계약을 맺을 수 없는 경우가 많아요.",
+        "압류": "빚을 갚지 못해 집을 마음대로 팔지 못하도록 묶인 상태예요. 경매로 넘어갈 수 있다는 위험 신호예요.",
+        "가압류": "빚 다툼이 끝나기 전에 집을 미리 못 팔게 묶어둔 상태예요. 집주인이 재산 분쟁 중이라는 신호예요.",
     },
-    "insurance": {},
+    "insurance": {
+        "전세보증금 반환보증": "집주인이 보증금을 못 돌려줄 때 보증기관(HUG 등)이 대신 돌려주는 보험이에요. 가입해두면 보증금을 지킬 안전장치가 생겨요."
+    },
     "blacklist": {},
 }
 
@@ -60,34 +65,50 @@ _RISK_SHORT = {
 }
 
 
-def top_risk_summary(verdict: RuleVerdict) -> str:
-    """홈 카드 3번째 줄 — 매물끼리 비교 가능해야 한다 (서연 리뷰 2026-07-07 반영).
+def _risk_label(e: EvidenceVerdict, verdict: RuleVerdict) -> str:
+    """홈 카드 요약 줄의 근거별 짧은 라벨 — 위험 매물도 숫자를 병기해 매물끼리
+    비교 가능하게 한다(서연 리뷰). 숫자에 라벨을 함께 붙여 초보(지수)도 의미를 안다."""
+    if e.id == "jeonse_ratio":
+        pct = e.facts.get("jeonse_ratio_pct")
+        if pct is not None:
+            return f"전세가율 {round_half_up(pct)}%(높음)"
+        return _RISK_SHORT["jeonse_ratio"]  # 시세 미입력 등으로 %를 알 수 없을 때
+    if e.id == "senior_debt":
+        n = (e.facts.get("mortgage_count") or 0) + (e.facts.get("lease_registration_count") or 0)
+        return f"{_RISK_SHORT['senior_debt']} {n}건" if n else _RISK_SHORT["senior_debt"]
+    return _RISK_SHORT[e.id]
 
-    서비스 쪽 사정으로 생긴 '확인 필요'(보험 구조적 한계·명단 미구축)는 매물 고유
-    위험이 아니므로 이 줄을 독점하지 않게 하고, 전부 양호면 매물 고유 수치를 보여준다.
+
+def top_risk_summary(verdict: RuleVerdict) -> str:
+    """홈 카드 3번째 줄 — 매물끼리 비교 가능해야 한다 (서연 리뷰 2026-07-07·2026-07-08 반영).
+
+    순서: 위험(DANGER) → 주의(CAUTION, 매물 고유) → 시세 미입력 안내 → 전부 양호 수치.
+    시세 미입력이 실제 위험 신호(빚 등)를 덮지 않도록 CAUTION을 시세 안내보다 먼저 본다.
+    서비스 쪽 사정으로 생긴 '확인 필요'(보험 구조적 한계·명단 미구축)와, 시세가 없어
+    판정 불가한 전세가율은 이 줄에서 제외한다(매물 고유 위험이 아니거나 '높음' 단정 불가).
     """
     dangers = [e for e in verdict.evidences if e.grade is Grade.DANGER]
     if dangers:
-        parts = []
-        for e in dangers[:2]:
-            label = _RISK_SHORT[e.id]
-            if e.id == "senior_debt":
-                n = (e.facts.get("mortgage_count") or 0) + (e.facts.get("lease_registration_count") or 0)
-                label = f"{label} {n}건" if n else label
-            parts.append(label)
-        return " · ".join(parts)
-    if verdict.market_price is None:
-        return "시세를 입력하면 결과가 더 정확해져요"
-    cautions = [
-        e
-        for e in verdict.evidences
-        if e.grade is Grade.CAUTION
-        and e.id != "insurance"  # 등기부만으론 확인 불가(구조적) — 매물 고유 위험 아님
-        and not (e.id == "blacklist" and e.status_label == BLACKLIST_PENDING_LABEL)  # 명단 미구축
-    ]
+        return " · ".join(_risk_label(e, verdict) for e in dangers[:2])
+
+    market_missing = verdict.market_price is None
+    cautions = []
+    for e in verdict.evidences:
+        if e.grade is not Grade.CAUTION:
+            continue
+        if e.id == "insurance":  # 등기부만으론 확인 불가(구조적) — 매물 고유 위험 아님
+            continue
+        if e.id == "blacklist" and e.status_label == BLACKLIST_PENDING_LABEL:  # 명단 미구축
+            continue
+        if e.id == "jeonse_ratio" and market_missing:  # 시세 없으면 '높음'이 아니라 '미상'
+            continue
+        cautions.append(e)
     if cautions:
-        return " · ".join(_RISK_SHORT[e.id] for e in cautions[:2])
-    # 전부 양호 — 매물 고유 수치로 홈에서 줄 세워 비교 가능하게
+        summary = " · ".join(_risk_label(e, verdict) for e in cautions[:2])
+        return f"{summary} · 시세 입력 필요" if market_missing else summary
+    if market_missing:
+        return "시세를 입력하면 결과가 더 정확해져요"
+    # 전부 양호 + 시세 있음 — 매물 고유 수치로 홈에서 줄 세워 비교 가능하게
     senior = next((e for e in verdict.evidences if e.id == "senior_debt"), None)
     debt_count = 0
     if senior is not None:
@@ -135,7 +156,7 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
         if f.get("unknown_amount_count"):
             return (
                 "등기부에서 빚 항목을 찾았지만 금액을 정확히 읽지 못했어요. "
-                "원본 등기부에서 채권최고액을 직접 확인해 주세요."
+                "등기부 '을구'에 적힌 빚 금액(채권최고액)을 원본에서 직접 확인해 주세요."
             )
         if ev.grade is Grade.CAUTION:
             return (
@@ -152,16 +173,19 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
                     "맺지 못할 수 있어서, 신탁회사의 동의가 있었는지 꼭 확인해야 해요."
                 )
             return (
-                "압류·가압류 같은 처분제한 등기가 있어요. 집주인이 재산 분쟁 중일 수 있고, "
-                "집이 경매로 넘어갈 위험 신호라 계약 전 전문가 확인이 필요해요."
+                "이 집엔 압류·가압류(집을 팔거나 세놓지 못하게 묶인 표시)가 걸려 있어요. "
+                "집주인이 재산 분쟁 중일 수 있고, 경매로 넘어갈 위험 신호라 계약 전 전문가 확인이 필요해요."
             )
         if ev.grade is Grade.CAUTION:
             return "갑구(소유권) 정보를 온전히 확인하지 못했어요. 등기부 원본으로 다시 확인해 주세요."
-        return "압류·가압류·신탁 같은 이상 신호는 보이지 않았어요."
+        return (
+            "압류·가압류·신탁 같은 이상 신호는 보이지 않았어요. "
+            "다만 계약 직전 최신 등기부로 한 번 더 확인하세요."
+        )
     if ev.id == "insurance":
         if ev.grade is Grade.DANGER:
             return (
-                "경매·압류 등 보증보험 가입이 거절되는 결격 신호가 있어요. "
+                "경매·압류 등으로 보증보험 가입이 거절될 수 있는 신호가 있어요. "
                 "가입이 안 되는 집은 보증금을 지킬 안전장치가 사라져요."
             )
         return (
@@ -176,7 +200,7 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
             )
         if ev.grade is Grade.CAUTION:
             return (
-                "아직 명단 대조를 완료하지 못했어요. HUG 안심전세포털의 "
+                "아직 명단 대조를 완료하지 못했어요. HUG(주택도시보증공사) 안심전세포털의 "
                 "공개 명단에서 집주인 이름을 직접 확인해 주세요."
             )
         return (

@@ -24,7 +24,7 @@ NEXT_ACTIONS: dict[Grade, str] = {
     # 상담처 전화번호는 Phase F에서 공식 홈페이지로 확인 후 병기
     Grade.DANGER: "계약 전에 HUG(주택도시보증공사) 안심전세포털·대한법률구조공단 등에서 전문가 상담부터 받으세요",
     Grade.CAUTION: "보류하고, 아래 질문을 중개사에게 확인한 뒤 결정하세요",
-    Grade.GOOD: "계약 직전 최신 등기부로 한 번 더 확인하고, 보증보험 가입을 알아보세요",
+    Grade.GOOD: "계약 직전 최신 등기부등본으로 한 번 더 확인하고, 보증보험 가입을 알아보세요",
 }
 
 # 근거 카드 고정 라벨([설명] title / [UI] termSubtitle·actionLabel 기본값)
@@ -107,7 +107,8 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
         summary = " · ".join(_risk_label(e, verdict) for e in cautions[:2])
         return f"{summary} · 시세 입력 필요" if market_missing else summary
     if market_missing:
-        return "시세를 입력하면 결과가 더 정확해져요"
+        # E3(2026-07-09): 다른 카드 요약과 톤 통일 — 상태 토큰(시세 미입력)을 앞세운다.
+        return "시세 미입력 · 입력하면 결과가 더 정확해져요"
     # 전부 양호 + 시세 있음 — 매물 고유 수치로 홈에서 줄 세워 비교 가능하게
     senior = next((e for e in verdict.evidences if e.id == "senior_debt"), None)
     debt_count = 0
@@ -155,15 +156,15 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
             )
         if f.get("unknown_amount_count"):
             return (
-                "등기부에서 빚 항목을 찾았지만 금액을 정확히 읽지 못했어요. "
-                "등기부 '을구'에 적힌 빚 금액(채권최고액)을 원본에서 직접 확인해 주세요."
+                "등기부등본에서 빚 항목을 찾았지만 금액을 정확히 읽지 못했어요. "
+                "등기부등본 '을구'에 적힌 빚 금액(채권최고액)을 원본에서 직접 확인해 주세요."
             )
         if ev.grade is Grade.CAUTION:
             return (
-                "등기부에 먼저 갚아야 할 빚이 있어요. 시세를 입력하면 "
+                "등기부등본에 먼저 갚아야 할 빚이 있어요. 시세를 입력하면 "
                 "이 빚이 과한 수준인지 비율로 알려드릴 수 있어요."
             )
-        return "등기부에서 큰 빚은 보이지 않았어요. 다만 계약 직전에는 최신 등기부로 다시 확인하세요."
+        return "등기부등본에서 큰 빚은 보이지 않았어요. 다만 계약 직전에는 최신 등기부등본으로 다시 확인하세요."
     if ev.id == "ownership":
         signals = f.get("signals") or {}
         if ev.grade is Grade.DANGER:
@@ -177,10 +178,10 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
                 "집주인이 재산 분쟁 중일 수 있고, 경매로 넘어갈 위험 신호라 계약 전 전문가 확인이 필요해요."
             )
         if ev.grade is Grade.CAUTION:
-            return "갑구(소유권) 정보를 온전히 확인하지 못했어요. 등기부 원본으로 다시 확인해 주세요."
+            return "갑구(소유권) 정보를 온전히 확인하지 못했어요. 등기부등본 원본으로 다시 확인해 주세요."
         return (
             "압류·가압류·신탁 같은 이상 신호는 보이지 않았어요. "
-            "다만 계약 직전 최신 등기부로 한 번 더 확인하세요."
+            "다만 계약 직전 최신 등기부등본으로 한 번 더 확인하세요."
         )
     if ev.id == "insurance":
         if ev.grade is Grade.DANGER:
@@ -189,7 +190,7 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
                 "가입이 안 되는 집은 보증금을 지킬 안전장치가 사라져요."
             )
         return (
-            "등기부만으로는 가입 가능 여부를 단정할 수 없어요. "
+            "등기부등본만으로는 가입 가능 여부를 단정할 수 없어요. "
             "가입 요건은 보증기관에서 직접 확인이 필요해요."
         )
     if ev.id == "blacklist":

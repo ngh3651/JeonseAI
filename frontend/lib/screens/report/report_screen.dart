@@ -90,6 +90,8 @@ class ReportScreen extends StatelessWidget {
               const Text('다음 행동', style: AppTypography.title),
               const SizedBox(height: AppSpacing.md),
               ..._actionArea(context, report),
+              const SizedBox(height: AppSpacing.xxl),
+              _disclaimer(),
               const SizedBox(height: AppSpacing.xxxl),
             ],
           ),
@@ -123,7 +125,7 @@ class ReportScreen extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              '${formatDaysAgo(report.analyzedAt)} 결과예요 — 계약 직전엔 최신 등기부로 재확인하세요',
+              '${formatDaysAgo(report.analyzedAt)} 결과예요 — 계약 직전엔 최신 등기부등본으로 재확인하세요',
               style: AppTypography.caption.copyWith(color: AppColors.caution),
             ),
           ),
@@ -202,14 +204,22 @@ class ReportScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // D1: '근거 확인'보다 '그래서 뭘 해야 하나'가 사용자의 진짜 관심 —
+                    // 제목을 label(12px)에서 title(17px)로 올려 위계를 강조.
                     Text(
                       '지금 해야 할 일',
-                      style: AppTypography.label.copyWith(
+                      style: AppTypography.title.copyWith(
                         color: AppColors.primary,
                       ),
                     ),
                     const SizedBox(height: AppSpacing.xs),
-                    Text(report.nextAction, style: AppTypography.bodyStrong),
+                    // G7: 결정적 영역이라 볼드 강조 (LLM 생성 아닌 결정적 템플릿 문장)
+                    Text(
+                      report.nextAction,
+                      style: AppTypography.bodyStrong.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -276,8 +286,10 @@ class ReportScreen extends StatelessWidget {
       initiallyExpanded: initiallyExpanded,
       action: evidence.actionLabel == null
           ? null
+          // F3: 근거 카드는 흰 표면이므로 라인 대신 톤(연초록) 버튼
           : AppCompactButton(
               label: evidence.actionLabel!,
+              tonal: true,
               onPressed: () => _onEvidenceAction(context, evidence),
             ),
     );
@@ -356,7 +368,7 @@ class ReportScreen extends StatelessWidget {
         ),
       (
         icon: Icons.gavel_outlined,
-        label: '판례 보기',
+        label: '판례 매칭', // A1: 화면 제목(판례 매칭)과 라벨 통일
         onTap: () => context.push('/cases/${report.id}'),
       ),
       (
@@ -449,6 +461,25 @@ class ReportScreen extends StatelessWidget {
         ],
       ),
     ];
+  }
+
+  /// D4: 전역 면책 안내 — 리포트 최하단 상시 노출(캡처 공유 시 자연 포함).
+  /// AA 통과 색(textMuted)·가독 가능한 크기 유지 — 면책의 보호 목적을 지키기 위해
+  /// 일부러 최소 크기로 줄이지 않는다.
+  Widget _disclaimer() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Text(
+        '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
+        '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
+        '확인과 전문가 상담을 통해 이루어져야 합니다.',
+        style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+      ),
+    );
   }
 
   void _stub(BuildContext context) {

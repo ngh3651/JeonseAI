@@ -127,7 +127,6 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                   '경매에서 집이 팔리는 가격이 원래 가치의 몇 %인지를 뜻해요. '
                   '예를 들어 낙찰가율 70%면, 2억짜리 집이 경매에서 1억 4천만원에 팔린다는 뜻이에요.',
               style: AppTypography.caption,
-              inline: true,
               onAskChatbot: () => context.push('/chatbot'),
             ),
             const SizedBox(width: AppSpacing.xs),
@@ -149,8 +148,8 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
         ),
         const SizedBox(height: AppSpacing.xl),
 
-        // ── 결론 크게: 예상 손실액 ──
-        _lossCard(loss),
+        // ── 결론 크게: 예상 손실액 + 예상 반환금 병기 (C2) ──
+        _lossCard(loss, recovered),
         const SizedBox(height: AppSpacing.lg),
 
         // ── 시세 미입력 고지 (기준가 무고지 방지 — 리뷰 공통 반영) ──
@@ -166,16 +165,17 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
           '먼저 갚아야 할 빚 (선순위 채권)',
           '- ${formatWon(report.seniorDebtAmount)}',
         ),
-        _detailRow('돌려받을 것으로 보는 금액', formatWon(recovered)),
+        _detailRow('예상 반환금', formatWon(recovered)), // C2: 문구 간결화
         const Divider(height: AppSpacing.xxxl),
 
         // ── 보증보험 대비 토글 ──
         SwitchListTile(
           value: _insured,
           onChanged: (v) => setState(() => _insured = v),
-          title: const Text('보증보험에 가입했다면?', style: AppTypography.bodyStrong),
+          // C3: 시뮬레이션임이 드러나는 제목 (feedback4 목업)
+          title: const Text('보증보험 적용 시 시뮬레이션', style: AppTypography.bodyStrong),
           subtitle: Text(
-            '가입 가능 여부는 리포트의 보증보험 카드에서 확인하세요',
+            '가입 가능 여부를 확인하면 보험 적용 결과를 볼 수 있어요',
             style: AppTypography.caption,
           ),
           contentPadding: EdgeInsets.zero,
@@ -200,8 +200,10 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                         ),
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      AppCompactButton(
-                        label: '리포트에서 확인하기',
+                      // C3: 무엇을 확인하는 버튼인지 명확화 (feedback4 목업)
+                      AppSecondaryButton(
+                        label: '보증보험 가입 가능 여부 확인하기',
+                        icon: Icons.verified_user_outlined,
                         onPressed: () => context.pop(),
                       ),
                     ],
@@ -277,7 +279,8 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
             style: AppTypography.body.copyWith(color: AppColors.caution),
           ),
           const SizedBox(height: AppSpacing.md),
-          AppCompactButton(
+          // F3/F8: 라인 대신 톤(연초록 filled) 버튼 — 대표 적용례
+          AppTonalButton(
             label: '시세 입력하기',
             onPressed: () {
               // 시세 입력은 매물 검색(S-04)과 함께 C-3에서 연결
@@ -291,7 +294,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
     );
   }
 
-  Widget _lossCard(int loss) {
+  Widget _lossCard(int loss, int recovered) {
     final bool safe = loss == 0;
     final Color color = safe ? AppColors.ok : AppColors.danger;
 
@@ -309,9 +312,38 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
             style: AppTypography.label.copyWith(color: color),
           ),
           const SizedBox(height: AppSpacing.sm),
+          // G7: 결정적 결과 수치 볼드 강조
           Text(
             formatWon(loss),
-            style: AppTypography.conclusion.copyWith(color: color),
+            style: AppTypography.conclusion.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          // C2: 손실액 옆에 예상 반환금도 함께 강조 — 하단 계산식만 보지 않게
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('예상 반환금', style: AppTypography.caption),
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  formatWon(recovered),
+                  style: AppTypography.bodyStrong.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

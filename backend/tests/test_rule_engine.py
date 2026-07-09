@@ -317,7 +317,7 @@ def test_top_risk_summary_market_missing_no_signal_asks_for_price():
     d = load_fixture("clean_house")
     ex = RegistryExtract.from_raw(d["registry"])
     v = rule_engine.evaluate(ex, deposit=d["inputs"]["deposit"], market_price=None, blacklist_entries=[])
-    assert fallback_texts.top_risk_summary(v) == "시세를 입력하면 결과가 더 정확해져요"
+    assert fallback_texts.top_risk_summary(v) == "시세 미입력 · 입력하면 결과가 더 정확해져요"
 
 
 def test_top_risk_summary_danger_keeps_jeonse_pct():

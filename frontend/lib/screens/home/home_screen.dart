@@ -47,8 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 _greeting(context),
                 const SizedBox(height: AppSpacing.xxl),
                 AppPrimaryButton(
+                  // F12: 버튼 안 원형(돋보기) 아이콘 제거 — 라벨만
                   label: '매물 분석 시작하기',
-                  icon: Icons.search,
                   onPressed: () => startAnalysis(context),
                 ),
                 const SizedBox(height: AppSpacing.xxxl),
@@ -244,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _shortcutCard(
           context,
           Icons.menu_book_outlined,
-          '등기부 발급',
+          '등기부등본 발급',
           () => context.push('/guide'),
         ),
         const SizedBox(width: AppSpacing.md),

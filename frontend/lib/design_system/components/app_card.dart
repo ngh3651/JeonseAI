@@ -19,7 +19,10 @@ class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(AppSpacing.lg),
+    this.padding = const EdgeInsets.symmetric(
+      horizontal: AppSpacing.cardPadH, // F5: 18
+      vertical: AppSpacing.cardPadV, // F5: 16
+    ),
     this.onTap,
   });
 
@@ -111,37 +114,32 @@ class _EvidenceCardState extends State<EvidenceCard> {
         child: InkWell(
           onTap: () => setState(() => _expanded = !_expanded),
           child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.cardPadH, // F5: 18
+              vertical: AppSpacing.cardPadV, // F5: 16
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // F7: 뱃지를 제목 위로 — 질문형 긴 제목이 뱃지 때문에 줄바꿈되던 문제 방지.
+                // 뱃지는 좌상단, 펼침 아이콘은 우상단, 제목은 아래 전폭.
                 Row(
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(widget.title, style: AppTypography.title),
-                          const SizedBox(height: AppSpacing.xs),
-                          Text(
-                            widget.termSubtitle,
-                            style: AppTypography.caption,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.md),
                     RiskBadge(
                       grade: widget.grade,
                       labelOverride: widget.statusLabel,
                     ),
-                    const SizedBox(width: AppSpacing.sm),
+                    const Spacer(),
                     Icon(
                       _expanded ? Icons.expand_less : Icons.expand_more,
                       color: AppColors.textMuted,
                     ),
                   ],
                 ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(widget.title, style: AppTypography.title),
+                const SizedBox(height: AppSpacing.xs),
+                Text(widget.termSubtitle, style: AppTypography.caption),
                 AnimatedCrossFade(
                   duration: const Duration(milliseconds: 180),
                   crossFadeState: _expanded

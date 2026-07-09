@@ -32,7 +32,9 @@ class VerdictSourceLabel extends StatelessWidget {
         ),
         _chip(
           icon: Icons.auto_awesome,
-          text: '설명 · AI 생성',
+          // 2026-07-09 E-2 라벨: 폴백(미리 준비한 문장)일 때도 정확하도록 '자동 생성'.
+          // 페르소나 2인 모두 "AI 생성은 폴백에 부정확 → 자동 생성이 더 정직" (앱만, 계약 무변경).
+          text: '설명 · 자동 생성',
           color: AppColors.textMuted,
           background: AppColors.background,
         ),

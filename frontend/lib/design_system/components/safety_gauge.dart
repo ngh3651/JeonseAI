@@ -34,7 +34,9 @@ class SafetyGauge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color color = AppColors.gradeColor(grade);
+    // 글자는 대비 확보용 텍스트 색, 호는 한 단계 밝은 그래픽 색 (F11)
+    final Color textColor = AppColors.gradeColor(grade);
+    final Color arcColor = AppColors.gradeArcColor(grade);
 
     return SizedBox(
       width: size,
@@ -42,19 +44,26 @@ class SafetyGauge extends StatelessWidget {
       child: CustomPaint(
         painter: _GaugePainter(
           progress: progress.clamp(0.0, 1.0),
-          color: color,
+          color: arcColor,
           trackColor: AppColors.line,
         ),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                grade.label,
-                // 하한 19px bold — 작은 게이지에서도 large-text 대비 기준(≥18.7px bold) 유지
-                style: AppTypography.conclusion.copyWith(
-                  color: color,
-                  fontSize: math.max(size * 0.17, 19),
+              // F4: '확인 필요'처럼 공백 있는 라벨은 2줄로 접히게 폭을 제한 —
+              // 아치 안쪽 여백에 맞춰 답답함 해소. 단어 하나짜리(양호·위험)는 그대로 1줄.
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: size * 0.62),
+                child: Text(
+                  grade.label,
+                  textAlign: TextAlign.center,
+                  // 하한 19px bold — 작은 게이지에서도 large-text 대비 기준(≥18.7px bold) 유지
+                  style: AppTypography.conclusion.copyWith(
+                    color: textColor,
+                    fontSize: math.max(size * 0.17, 19),
+                    height: 1.1,
+                  ),
                 ),
               ),
               if (caption != null) ...[

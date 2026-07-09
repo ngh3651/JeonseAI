@@ -213,7 +213,7 @@ def _build_caution_report(analyzed_at: datetime) -> Report:
         gaugeProgress=0.55,
         headline="몇 가지를 확인한 뒤 결정해도 늦지 않아요",
         nextAction="보류하고, 아래 질문을 중개사에게 확인한 뒤 결정하세요",
-        topRiskSummary="시세를 입력하면 결과가 더 정확해져요",
+        topRiskSummary="시세 미입력 · 입력하면 결과가 더 정확해져요",
         deposit=300_000_000,
         marketPrice=None,
         seniorDebtAmount=50_000_000,

@@ -148,7 +148,7 @@ class DummyAnalysisRepository extends AnalysisRepository {
           grade: RiskGrade.caution,
           statusLabel: '확인 필요',
           easyExplanation:
-              '등기부만으로는 가입 가능 여부를 단정할 수 없어요. '
+              '등기부등본만으로는 가입 가능 여부를 단정할 수 없어요. '
               '가입 요건은 보증기관에서 직접 확인이 필요해요.',
           sourceText: 'HUG 공식 기준 등 확정 예정',
           actionLabel: '중개사에게 물어볼 질문 보기',
@@ -177,7 +177,7 @@ class DummyAnalysisRepository extends AnalysisRepository {
     grade: RiskGrade.caution,
     headline: '몇 가지를 확인한 뒤 결정해도 늦지 않아요',
     nextAction: '보류하고, 아래 질문을 중개사에게 확인한 뒤 결정하세요',
-    topRiskSummary: '시세를 입력하면 결과가 더 정확해져요',
+    topRiskSummary: '시세 미입력 · 입력하면 결과가 더 정확해져요',
     deposit: 300000000,
     marketPrice: null,
     seniorDebtAmount: 50000000,
@@ -201,8 +201,8 @@ class DummyAnalysisRepository extends AnalysisRepository {
         termSubtitle: '선순위 채권 · 근저당권',
         grade: RiskGrade.ok,
         easyExplanation:
-            '등기부에서 큰 빚은 보이지 않았어요. '
-            '다만 계약 직전에는 최신 등기부로 다시 확인하세요.',
+            '등기부등본에서 큰 빚은 보이지 않았어요. '
+            '다만 계약 직전에는 최신 등기부등본으로 다시 확인하세요.',
         detailText: '근저당권 1건 · 채권최고액 5,000만원 (예시)',
         sourceText: 'HUG 공식 기준 등 확정 예정',
       ),

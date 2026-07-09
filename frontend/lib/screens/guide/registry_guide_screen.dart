@@ -37,11 +37,12 @@ class RegistryGuideScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('등기부 발급 가이드')),
+      appBar: AppBar(title: const Text('등기부등본 발급 가이드')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
-          Text('등기부등본, 이렇게 떼면 돼요', style: AppTypography.headline),
+          // B3: 정식 명칭은 이 발급 가이드 화면에서만 1회 괄호 병기 (신뢰감)
+          Text('등기부등본(등기사항전부증명서), 이렇게 떼면 돼요', style: AppTypography.headline),
           const SizedBox(height: AppSpacing.xl),
           for (int i = 0; i < _steps.length; i++) ...[
             _stepCard(i + 1, _steps[i]),

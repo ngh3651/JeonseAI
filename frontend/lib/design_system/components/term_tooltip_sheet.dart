@@ -19,7 +19,6 @@ class TermText extends StatelessWidget {
     required this.description,
     this.onAskChatbot,
     this.style,
-    this.inline = false,
   });
 
   final String term;
@@ -30,13 +29,12 @@ class TermText extends StatelessWidget {
 
   final TextStyle? style;
 
-  /// 문단 속(termSpan)에서 쓰일 때 true — 줄 흐름 유지를 위해 터치 영역 확장을 하지 않는다.
-  /// (인라인 터치 영역은 C-3에서 재검토)
-  final bool inline;
-
   @override
   Widget build(BuildContext context) {
     final TextStyle base = style ?? AppTypography.body;
+    // 2026-07-09 A3: 항상 문장 흐름에 붙는 인라인 렌더.
+    // (이전엔 48dp 최소 터치박스+Center로 감싸 용어 앞뒤에 큰 공백이 생겼다.
+    //  termSpan이 inline 플래그를 전달하지 않아 문단 속 용어까지 박스로 렌더된 버그.)
     final Widget label = Text(
       term,
       style: base.copyWith(
@@ -58,16 +56,7 @@ class TermText extends StatelessWidget {
           description: description,
           onAskChatbot: onAskChatbot,
         ),
-        child: inline
-            ? label
-            // 단독 사용 시 최소 터치 영역(48dp) 확보 (design-reviewer 반영)
-            : ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minHeight: AppSize.minTouchTarget,
-                  minWidth: AppSize.minTouchTarget,
-                ),
-                child: Center(child: label),
-              ),
+        child: label,
       ),
     );
   }

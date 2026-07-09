@@ -16,6 +16,7 @@ class ChatBubble extends StatelessWidget {
     required this.text,
     required this.isUser,
     this.action,
+    this.showAvatar = true,
   });
 
   final String text;
@@ -23,6 +24,12 @@ class ChatBubble extends StatelessWidget {
 
   /// 봇 응답에 붙는 행동 버튼 (예: 범위 밖 질문 → [매물 분석하러 가기])
   final Widget? action;
+
+  /// 봇 말풍선의 마스코트 아바타 표시 여부. (F10) 연속된 봇 말풍선에서는
+  /// 마지막 말풍선에만 아바타를 두고, 나머지는 자리만 비워 정렬을 맞춘다.
+  final bool showAvatar;
+
+  static const double _avatarSize = 32;
 
   @override
   Widget build(BuildContext context) {
@@ -37,12 +44,8 @@ class ChatBubble extends StatelessWidget {
       decoration: BoxDecoration(
         color: isUser ? AppColors.primary : AppColors.surface,
         border: isUser ? null : Border.all(color: AppColors.line),
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(AppRadius.lg),
-          topRight: const Radius.circular(AppRadius.lg),
-          bottomLeft: Radius.circular(isUser ? AppRadius.lg : AppRadius.sm),
-          bottomRight: Radius.circular(isUser ? AppRadius.sm : AppRadius.lg),
-        ),
+        // F10: 네 모서리 라운딩 통일 (기존 비대칭 꼬리 제거)
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -68,7 +71,10 @@ class ChatBubble extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const MascotSafe(size: 32),
+        // 아바타 자리는 항상 확보 — 연속 말풍선이 좌측으로 정렬되게
+        showAvatar
+            ? const MascotSafe(size: _avatarSize)
+            : const SizedBox(width: _avatarSize),
         const SizedBox(width: AppSpacing.sm),
         Flexible(child: bubble),
       ],

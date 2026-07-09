@@ -109,9 +109,9 @@ class DummyContentRepository implements ContentRepository {
             riskyAnswer: '가입이 안 된다거나 모른다고 한다',
           ),
           QuestionItem(
-            question: '등기부상 소유자와 계약 당사자가 같은 사람인가요?',
+            question: '등기부등본상 소유자와 계약 당사자가 같은 사람인가요?',
             why: '실소유자가 아닌 사람과 계약하면 보증금을 지키기 어려워요',
-            safeAnswer: '신분증과 등기부 소유자가 일치한다',
+            safeAnswer: '신분증과 등기부등본 소유자가 일치한다',
             riskyAnswer: '대리인인데 위임장이 없다',
           ),
         ],
@@ -175,7 +175,7 @@ class DummyContentRepository implements ContentRepository {
   Future<List<JourneyStage>> journeyStages() async => const [
     JourneyStage(
       title: '계약 전',
-      subtitle: '등기부 분석과 안전도 확인',
+      subtitle: '등기부등본 분석과 안전도 확인',
       items: [
         JourneyItem(
           text: '등기부등본을 떼어 안전도 리포트로 분석하기',
@@ -192,7 +192,7 @@ class DummyContentRepository implements ContentRepository {
       subtitle: '계약서 검토와 특약',
       items: [
         JourneyItem(
-          text: '계약서 주소가 등기부와 같은지 확인하기',
+          text: '계약서 주소가 등기부등본과 같은지 확인하기',
           why: '주소가 다르면 엉뚱한 집에 계약하는 셈이 될 수 있어요',
         ),
         JourneyItem(
@@ -206,14 +206,15 @@ class DummyContentRepository implements ContentRepository {
       subtitle: '나머지 보증금을 보내는 날',
       items: [
         JourneyItem(
-          text: '잔금 보내기 직전에 등기부 다시 확인하기',
+          text: '잔금 보내기 직전에 등기부등본 다시 확인하기',
           why: '계약 후 잔금일 사이에 새 빚이 잡혔을 수 있어요',
         ),
       ],
     ),
     JourneyStage(
       title: '입주하고 나서 꼭 할 일',
-      subtitle: '전입신고·확정일자 — 보증금을 지키는 가장 중요한 단계',
+      // B2: 끝에 '단계'가 어색하게 줄바꿈되던 문구를 자연스러운 표현으로
+      subtitle: '전입신고·확정일자 — 보증금을 지키는 가장 중요한 일',
       items: [
         JourneyItem(
           text: '이사 당일 바로 전입신고하기',

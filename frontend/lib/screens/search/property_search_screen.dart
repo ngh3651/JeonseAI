@@ -129,7 +129,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: Text(
-                '등기부등본 사진과 예정 보증금을 입력하면 분석할 수 있어요',
+                '등기부등본 사진과 예정 전세보증금을 입력하면 분석할 수 있어요',
                 style: AppTypography.caption,
                 textAlign: TextAlign.center,
               ),
@@ -149,7 +149,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: SegmentedButton<bool>(
         segments: const [
-          ButtonSegment(value: false, label: Text('등기부 업로드')),
+          ButtonSegment(value: false, label: Text('등기부등본 업로드')),
           ButtonSegment(value: true, label: Text('주소 검색')),
         ],
         selected: {_addressTab},
@@ -189,8 +189,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         if (_images.isEmpty) _emptyPhotos() else _thumbnails(),
         const SizedBox(height: AppSpacing.xl),
 
-        // 예정 보증금 (필수)
-        _fieldLabel('예정 보증금 (필수)'),
+        // 예정 전세보증금 (필수) — E1: '보증금'='전세가' 혼동 방지로 라벨 명확화
+        _fieldLabel('예정 전세보증금 (필수)'),
         _moneyField(_depositCtrl, '예: 12000'),
         if (depositWon != null)
           Padding(
@@ -365,12 +365,12 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
             icon: Icons.rocket_launch_outlined,
             title: '준비 중이에요',
             text:
-                '주소만 입력하면 등기부를 자동으로 조회하는 기능을 다음 버전에서 '
+                '주소만 입력하면 등기부등본을 자동으로 조회하는 기능을 다음 버전에서 '
                 '준비하고 있어요 (공공 데이터 연동). 지금은 등기부등본 사진으로 분석해 주세요.',
           ),
           const SizedBox(height: AppSpacing.lg),
           AppPrimaryButton(
-            label: '등기부 사진으로 분석하기',
+            label: '등기부등본 사진으로 분석하기',
             onPressed: () => setState(() => _addressTab = false),
           ),
           const SizedBox(height: AppSpacing.sm),

@@ -166,10 +166,15 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                     onPressed: () => _ask(m.retryQuery!),
                   );
                 }
+                // F10: 연속된 봇 말풍선은 마지막에만 아바타 — 다음 메시지가
+                // 사용자거나 마지막 메시지일 때가 봇 묶음의 끝.
+                final bool showAvatar =
+                    i == _messages.length - 1 || _messages[i + 1].isUser;
                 return ChatBubble(
                   text: m.text,
                   isUser: m.isUser,
                   action: action,
+                  showAvatar: showAvatar,
                 );
               },
             ),

@@ -35,9 +35,17 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   // (판정/설명 주체 구분은 리포트 근거 카드의 라벨이 담당 — judge-reviewer 요구도 그쪽에서 충족)
   static const _stages = [
     '사진을 올리고 있어요',
-    '등기부를 읽는 중이에요',
+    '등기부등본을 읽는 중이에요', // B3: 정식 명칭
     '위험한 부분을 하나씩 확인하는 중이에요',
     '쉬운 말로 정리하는 중이에요',
+  ];
+
+  // G3: 마지막(가장 긴) 단계에서 대기가 길어질 때 순환하는 보조 멘트.
+  // 진행 단계 문구는 그대로 두고, 아래에 세이프 멘트를 돌려 지루함을 던다.
+  static const _waitingMents = [
+    '세이프가 집을 지키는 중입니다',
+    '꼼꼼히 살펴보는 중이에요',
+    '거의 다 됐어요, 조금만 기다려 주세요',
   ];
 
   // 추출 항목이 하나씩 나타나는 연출 — 용어 대신 쉬운 말+중립 표현 (지수 리뷰)
@@ -49,6 +57,8 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
 
   int _stage = 0;
   final List<String> _found = [];
+  int _mentIndex = 0; // G3: 마지막 단계 순환 멘트 인덱스
+  int _lastStageTicks = 0; // 마지막 단계에서 흐른 타이머 틱 수
   Timer? _timer;
   bool _navigated = false;
   bool _failed = false; // 서버 연결·분석 실패 (user-scenario §4 S-06 네트워크 오류)
@@ -66,13 +76,23 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
       _failed = false;
       _stage = 0;
       _found.clear();
+      _mentIndex = 0;
+      _lastStageTicks = 0;
     });
 
     // 단계 진행 연출 (더미). 실단계에선 실제 파이프라인 진행에 연동.
     _timer = Timer.periodic(const Duration(milliseconds: 700), (t) {
       if (!mounted) return;
       setState(() {
-        if (_stage < _stages.length - 1) _stage++;
+        if (_stage < _stages.length - 1) {
+          _stage++;
+        } else {
+          // G3: 마지막 단계에선 약 2.1초(3틱)마다 순환 멘트 교체
+          _lastStageTicks++;
+          if (_lastStageTicks % 3 == 0) {
+            _mentIndex = (_mentIndex + 1) % _waitingMents.length;
+          }
+        }
         if (_found.length < _extracted.length) {
           _found.add(_extracted[_found.length]);
         }
@@ -239,6 +259,21 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                         style: AppTypography.caption,
                         textAlign: TextAlign.center,
                       ),
+                      // G3: 마지막 단계에서만 순환 세이프 멘트
+                      if (_stage >= _stages.length - 1) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: Text(
+                            _waitingMents[_mentIndex],
+                            key: ValueKey(_mentIndex),
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.primary,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: AppSpacing.xl),
                       // 마지막 단계는 실제 서버 응답(최대 3분)을 기다리므로
                       // 확정형 100%로 멈춰 보이지 않게 물결(indeterminate)로 전환

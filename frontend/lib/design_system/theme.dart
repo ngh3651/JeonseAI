@@ -43,7 +43,7 @@ ThemeData buildAppTheme() {
         foregroundColor: Colors.white,
         minimumSize: const Size.fromHeight(AppSize.buttonHeight),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
+          borderRadius: BorderRadius.circular(AppRadius.button), // F2: 8
         ),
         textStyle: AppTypography.button,
       ),
@@ -55,7 +55,7 @@ ThemeData buildAppTheme() {
         minimumSize: const Size.fromHeight(AppSize.buttonHeight),
         side: const BorderSide(color: AppColors.primary, width: 1.2),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
+          borderRadius: BorderRadius.circular(AppRadius.button), // F2: 8
         ),
         textStyle: AppTypography.button,
       ),
@@ -71,9 +71,9 @@ ThemeData buildAppTheme() {
     cardTheme: CardThemeData(
       color: AppColors.surface,
       elevation: 0,
+      // F6: 카드 테두리 제거 — 배경(F5F5F5) 대비로 구분. radius 16은 유지.
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        side: const BorderSide(color: AppColors.line),
       ),
       margin: EdgeInsets.zero,
     ),

@@ -32,7 +32,8 @@ _AUTO_TAG_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("압류·가압류", ("가압류", "압류", "가처분")),
     ("경매", ("경매", "경락", "낙찰", "배당")),
     ("선순위 채권", ("근저당", "저당권", "채권최고액", "우선변제권")),
-    ("전세가율", ("전세사기", "깡통", "갭투자", "편취")),
+    # "편취" 단독은 전세 무관 일반 사기 판례까지 태깅해 제외 (rule-auditor 재감사 2026-07-22)
+    ("전세가율", ("전세사기", "깡통", "갭투자")),
     ("대항력", ("대항력", "전입신고", "확정일자")),
     ("보증보험", ("보증보험", "주택도시보증공사", "보증금반환보증")),
 )
@@ -150,7 +151,10 @@ def build_documents(
                 holding=holding,
                 source_url=rd.get("source_url", ""),
                 full_text=rd.get("full_text") or None,
-                verified=True,  # 법제처 공식 DB 원문 — 출처 확인됨
+                # 출처(법제처 공식 원문)는 확실하나 **사람 검수 전** — 노출 게이트가 차단한다.
+                # 큐레이션(seed_cases.json) 검수 후 승격하는 워크플로 (rule-auditor 2026-07-22:
+                # verified는 "공식 DB + 사람 검증" AND 조건으로 운용).
+                verified=False,
                 curated_by=None,
                 collected_at=rd.get("_collected_at"),
             )

@@ -278,6 +278,24 @@ def test_service_returns_honest_fallback_when_no_risk(retriever: HybridRetriever
     assert "위험 신호가 발견되지 않았어요" in (section.fallback_text or "")
 
 
+def test_explanation_source_labels_are_honest(retriever: HybridRetriever, monkeypatch):
+    """폴백이면 '자동 생성', LLM 성공이면 'AI 생성' — 라벨 정직성(decisions.md 2026-07-09)."""
+    svc = PrecedentService(retriever=retriever)
+    # 키 없음 → 폴백 경로
+    section = svc.match_for_verdict(_danger_trust_verdict(), explain=True)
+    assert section.explanation_source == "자동 생성"
+    # LLM 성공 경로
+    ok = json.dumps(
+        {"cases": [{"case_id": "prec-trust", "easy_summary": "법원이 이렇게 판단했어요",
+                    "common_point": "신탁등기 신호가 같아요"}]},
+        ensure_ascii=False,
+    )
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
+    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: ok)
+    section = svc.match_for_verdict(_danger_trust_verdict(), explain=True)
+    assert section.explanation_source.startswith("AI 생성")
+
+
 def test_service_builds_cases_with_citation_fields(retriever: HybridRetriever):
     svc = PrecedentService(retriever=retriever)
     section = svc.match_for_verdict(_danger_trust_verdict())
@@ -394,4 +412,5 @@ def test_build_documents_auto_tags_raw_without_seed():
     docs = build_documents(raw_docs=raw, seed_cases=[])
     assert len(docs) == 1
     assert "경매" in docs[0].risk_tags  # 키워드 자동 태깅
-    assert docs[0].verified  # 법제처 공식 원문은 출처 확인됨
+    # 출처는 공식이라도 사람 검수 전에는 노출 금지 — verified는 큐레이션 검수로만 승격
+    assert docs[0].verified is False

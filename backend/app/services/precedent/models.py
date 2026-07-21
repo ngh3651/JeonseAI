@@ -105,3 +105,6 @@ class PrecedentSection(BaseModel):
 
     cases: list[dict] = Field(default_factory=list)   # CaseMatch 호환 dict (service.py가 조립)
     fallback_text: Optional[str] = None
+    # "AI 생성" | "AI 생성(일부 폴백)" | "자동 생성" — E-2 라벨 정직성 결정(2026-07-09)과 동일 원칙.
+    # E-3 라우터 통합 시 계약 갱신안(explanationSource)에 배선한다.
+    explanation_source: str = "자동 생성"

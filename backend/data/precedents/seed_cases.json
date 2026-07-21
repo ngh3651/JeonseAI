@@ -1,6 +1,7 @@
 {
   "_안내": "판례 RAG 시드 큐레이션 파일. raw/ 폴더의 법제처 공식 원문과 사건번호로 자동 연결(조인)된다. 편집 방법은 backend/data/precedents/README.md 참고. 이 파일의 문구(쉬운 요약·결과·조언)는 설명 계층 전용이며 위험 판정에 영향을 주지 않는다. advice는 큐레이션 전용 필드로 LLM이 생성·수정하지 않는다(decisions.md 2026-07-09).",
   "_출처_규칙": "사건번호·요지는 실제 확인된 것만. 공식 DB(law.go.kr) 원문이 없으면 holding 필드에 확인된 요지를 직접 쓰고 source_urls에 교차 확인 출처를 남긴다.",
+  "_검증_절차": "verified=true의 기준: ⑴ law.go.kr 공식 API에서 사건번호로 원문 확인(최선) 또는 ⑵ 판례 원문 DB(casenote 등)·판결 인용 언론 2곳 이상 교차 확인. 검증 방법은 source_urls와 note에 남긴다. 최종 검수 권한은 정민재(팀 큐레이션) — 검수 후 curated_by를 갱신한다.",
   "cases": [
     {
       "case_no": "2019다300095",
@@ -12,7 +13,7 @@
       "advice": "등기부등본에 신탁등기가 있으면 반드시 신탁원부를 함께 발급받아 '누가 임대할 권한이 있는지, 보증금은 누가 돌려주는지'를 확인하고, 신탁회사의 동의를 서면으로 받아야 해요",
       "source_urls": [
         "https://casenote.kr/대법원/2019다300095",
-        "https://www.law.go.kr/DRF/lawService.do?OC=test&target=prec&ID=231467&type=HTML"
+        "https://www.law.go.kr/LSW/precInfoP.do?precSeq=231467"
       ],
       "verified": true,
       "curated_by": "야간 자율 작업(웹 검증) — 정민재 검수 대기",
@@ -28,7 +29,7 @@
       "advice": "계약 전 등기부등본 을구의 근저당(채권최고액) 규모를 확인하세요. 내 보증금과 합친 금액이 시세에 육박하면 경매 시 보증금을 돌려받기 어려워져요",
       "source_urls": [
         "https://casenote.kr/대법원/99다59306",
-        "https://www.law.go.kr/DRF/lawService.do?OC=test&target=prec&ID=230033&type=HTML"
+        "https://www.law.go.kr/LSW/precInfoP.do?precSeq=230033"
       ],
       "verified": true,
       "curated_by": "야간 자율 작업(웹 검증) — 정민재 검수 대기",
@@ -48,8 +49,8 @@
         "https://www.khan.co.kr/article/202501231100021",
         "https://www.kyeongin.com/article/1727440"
       ],
-      "verified": true,
-      "note": "법제처 공개 DB 미수록(수집 시도 2026-07-22 — 검색 0건). 사건번호·선고일·형량을 언론 3곳 교차 확인. 판결문 원문 확보 시 holding 교체 권장.",
+      "verified": false,
+      "note": "법제처 공개 DB 미수록(수집 시도 2026-07-22 — 검색 0건). 사건번호·선고일·형량을 언론 3곳 교차 확인했으나 공식 원문 부재 — rule-auditor 감사(2026-07-22)에 따라 정민재 검수·원문 확보 전까지 verified=false(노출 차단). 검수 완료 시 true로 승격.",
       "curated_by": "야간 자율 작업(웹 검증) — 정민재 검수 대기",
       "date": "2026-07-22"
     },
@@ -63,7 +64,7 @@
       "advice": "등기부등본에 임차권등기가 보이면 '이 집에서 보증금을 돌려받지 못한 세입자가 이미 있었다'는 신호예요. 등기가 남아 있는 이유를 확인하고 계약을 신중하게 결정하세요",
       "source_urls": [
         "https://casenote.kr/대법원/2005다4529",
-        "https://www.law.go.kr/DRF/lawService.do?OC=test&target=prec&ID=193797&type=HTML"
+        "https://www.law.go.kr/LSW/precInfoP.do?precSeq=193797"
       ],
       "verified": true,
       "curated_by": "야간 자율 작업(웹 검증) — 정민재 검수 대기",
@@ -95,7 +96,7 @@
       "advice": "전입신고·확정일자를 잔금일에 바로 처리해도 대항력은 다음 날 0시부터 생겨요. 계약서에 '잔금일 다음 날까지 근저당 등 새 대출을 설정하지 않는다'는 특약을 넣어 달라고 요구하세요",
       "source_urls": [
         "https://casenote.kr/대법원/99다9981",
-        "https://www.law.go.kr/DRF/lawService.do?OC=test&target=prec&ID=195095&type=HTML"
+        "https://www.law.go.kr/LSW/precInfoP.do?precSeq=195095"
       ],
       "verified": true,
       "curated_by": "야간 자율 작업(웹 검증) — 정민재 검수 대기",
@@ -111,7 +112,7 @@
       "advice": "다가구주택은 등기부등본만으로는 다른 세입자들의 보증금이 보이지 않아요. 중개사에게 선순위 보증금 현황 자료를 요구하고, 설명 내용을 중개대상물 확인·설명서에 남겨 달라고 하세요",
       "source_urls": [
         "https://casenote.kr/대법원/2011다63857",
-        "https://www.law.go.kr/DRF/lawService.do?OC=test&target=prec&ID=160247&type=HTML"
+        "https://www.law.go.kr/LSW/precInfoP.do?precSeq=160247"
       ],
       "verified": true,
       "note": "'보증보험' 태그 사유: 등기부만으로 안 보이는 선순위 보증금(다가구)은 보증보험 카드의 서비스 한계 안내와 같은 주제 — HUG 가입요건의 다가구 별도 조건과 연결(decisions.md 2026-07-06).",

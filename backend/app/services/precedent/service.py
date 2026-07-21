@@ -171,10 +171,13 @@ class PrecedentService:
             return PrecedentSection(cases=[], fallback_text=FALLBACK_NO_MATCH)
 
         explanations: dict = {}
+        source = "자동 생성"  # LLM 미호출·폴백은 "자동 생성" (라벨 정직성 — decisions.md 2026-07-09)
         if explain:
-            explanations, _source = explainer.explain_matches(
+            explanations, llm_source = explainer.explain_matches(
                 matches, _verdict_summary(verdict, tags)
             )
+            if llm_source != "폴백":
+                source = llm_source
 
         cases = []
         for m in matches:
@@ -195,7 +198,7 @@ class PrecedentService:
                     "advice": m.doc.advice,
                 }
             )
-        return PrecedentSection(cases=cases)
+        return PrecedentSection(cases=cases, explanation_source=source)
 
     def match_for_verdict(self, verdict: RuleVerdict, *, explain: bool = False) -> PrecedentSection:
         return self._build_section(tags_from_verdict(verdict), verdict, explain=explain)

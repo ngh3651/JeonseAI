@@ -104,7 +104,7 @@ def _clean(text: str | None) -> str:
     return text.replace("&nbsp;", " ").strip()
 
 
-def save_raw(detail: dict, *, oc: str) -> Path:
+def save_raw(detail: dict) -> Path:
     """본문 응답을 raw JSON으로 저장 — 원본 필드 보존 + 파이프라인용 매핑 필드 병기."""
     prec_id = str(detail.get("판례정보일련번호", "")).strip()
     if not prec_id:
@@ -124,7 +124,8 @@ def save_raw(detail: dict, *, oc: str) -> Path:
         "ref_articles": _clean(detail.get("참조조문")),
         "ref_precedents": _clean(detail.get("참조판례")),
         "full_text": _clean(detail.get("판례내용")),
-        "source_url": f"https://www.law.go.kr/DRF/lawService.do?OC={oc}&target=prec&ID={prec_id}&type=HTML",
+        # OC 비의존 안정 링크 (DRF 링크는 OC 값에 묶여 사용자 노출 출처로 부적합 — rule-auditor 2026-07-22)
+        "source_url": f"https://www.law.go.kr/LSW/precInfoP.do?precSeq={prec_id}",
         "raw": detail,  # 원본 전체 보존 (필드 추가 대비)
     }
     path = RAW_DIR / f"prec-{prec_id}.json"
@@ -159,7 +160,7 @@ def collect(
             time.sleep(REQUEST_INTERVAL_SECONDS)
             try:
                 detail = fetch_precedent(oc, prec_id)
-                path = save_raw(detail, oc=oc)
+                path = save_raw(detail)
                 print(f"  저장: {item.get('사건번호')} → {path.name}")
                 saved.append(path)
             except Exception as e:  # 개별 실패는 건너뛰고 계속 (대량 수집 내성)

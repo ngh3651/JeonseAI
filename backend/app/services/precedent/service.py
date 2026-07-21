@@ -17,6 +17,7 @@ from pathlib import Path
 
 from ...schemas.contract import Report
 from ...schemas.internal import Grade, RuleVerdict
+from .. import thresholds as T
 from . import explainer
 from .models import PrecedentSection, RetrievedPrecedent
 from .retrieval import HybridRetriever
@@ -31,6 +32,7 @@ QUERY_TEMPLATES: dict[str, str] = {
     "압류·가압류": "가압류 압류 등기가 있는 주택을 임차한 임차인의 대항력과 경매 시 보증금",
     "경매": "주택 경매 경락 절차에서 임차인의 배당 순위와 낙찰인에 대한 대항력",
     "보증보험": "공인중개사가 선순위 임대차보증금 현황을 확인 설명하지 않은 경우 임차인 손해배상",
+    "대항력": "주택임대차보호법 전입신고 주민등록에 따른 대항력 취득 시점과 확정일자 우선변제권",
 }
 
 # 시연·표시 파라미터 (인프라 수치)
@@ -51,17 +53,28 @@ def tags_from_verdict(verdict: RuleVerdict) -> list[str]:
     """판정 → 위험 태그 파생 (결정적 — patterns.derive_from_report의 세분화판).
 
     보수적 선택 메모:
-    - 전세가율: 실측 비율이 있을 때만 태그 (시세 미입력 '확인 필요'는 판정 불가 상태라
-      깡통전세 판례를 붙이면 과잉 — 태그 제외).
+    - 전세가율: **실측 비율이 주의 기준(thresholds.JEONSE_RATIO_CAUTION_PCT)을 넘은 경우만**
+      태그. 시세 미입력이나 문서 불완전(floor_caution)으로 '확인 필요'가 된 카드에
+      깡통전세 판례를 붙이면 과잉 매칭이다. 임계값은 판정과 동일한 단일 출처
+      (thresholds.py)를 읽기만 한다 — 판정을 바꾸는 게 아니라 설명 노출 여부만 결정.
     - 보증보험: 구조적 '확인 필요'(모든 리포트 공통)는 제외, 결격 신호(위험)일 때만 태그.
     """
     tags: list[str] = []
     for ev in verdict.evidences:
         if ev.id == "jeonse_ratio" and ev.grade != Grade.GOOD:
-            if ev.facts.get("jeonse_ratio_pct") is not None:
+            pct = ev.facts.get("jeonse_ratio_pct")
+            if pct is not None and pct > T.JEONSE_RATIO_CAUTION_PCT:
                 tags.append("전세가율")
         elif ev.id == "senior_debt" and ev.grade != Grade.GOOD:
-            tags.append("선순위 채권")
+            # 실제 유효 채권이 1건이라도 있을 때만 (문서 불완전 floor로 '확인 필요'가 된
+            # 채권 0건 카드에 경매·배당 판례를 붙이지 않는다)
+            debt_count = (
+                ev.facts.get("mortgage_count", 0)
+                + ev.facts.get("jeonse_right_count", 0)
+                + ev.facts.get("unknown_amount_count", 0)
+            )
+            if debt_count > 0:
+                tags.append("선순위 채권")
             if ev.facts.get("lease_registration_count", 0) > 0:
                 tags.append("임차권등기")
         elif ev.id == "ownership" and ev.grade != Grade.GOOD:

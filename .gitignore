@@ -24,3 +24,6 @@ CLAUDE.local.md
 
 # 테스트용 등기부등본 샘플 (실제 개인정보 포함 — 절대 커밋 금지)
 backend/test_samples/
+
+# 판례 RAG 벡터 인덱스 (재생성 산출물 — scripts/ingest_precedents.py로 재구축)
+backend/data/precedents/index/

@@ -87,6 +87,7 @@
 | docs/registry-schema.md | 등기부 추출 스키마 설명 | 유지 |
 | docs/draft/ | 브레인스토밍 초안 (**확정 사양 아님**, 참고용) | 유지 |
 | docs/claude-chat/ | Claude Chat 인박스 — 채팅에서 확정된 결정·자료(인터뷰 정리본 등) 유입 | 2026-07-21 생성 |
+| docs/claude-chat/qa-precedent-indexing.md | 판례 RAG 파이프라인 Q&A (living — 8절 갱신 규칙) | 2026-07-22 생성 |
 
 ## 6. 스택·자산
 
@@ -132,3 +133,5 @@
   Claude Chat이 이 저장소를 동기화해 발표자료를 만들므로 decisions.md가 발표 스토리의
   원재료다. UI 문구·표기 변경 같은 작은 디테일도 기록 대상이며, **AI 활용을 늘리는 결정
   (모델 추가·교차 검증·프롬프트 개선 등)은 빠짐없이** 기록한다(대회 평가의 AI 활용도 직결).
+- **판례 파이프라인 구현·설계 변경 시 `docs/claude-chat/qa-precedent-indexing.md`의 해당 문답을
+  갱신하고 갱신 로그에 한 줄 남긴다.**

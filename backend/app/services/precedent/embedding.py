@@ -38,8 +38,12 @@ UPSTAGE_EMBEDDING_PASSAGE_MODEL = os.environ.get(
 _UPSTAGE_BATCH_SIZE = 32  # 인프라 수치 — 요청당 입력 수 (문서 상한 100 이내 보수 운용)
 _REQUEST_TIMEOUT = 60
 
-# 로컬 GPU 백엔드 기본 모델 — 한국어 검색 특화 오픈모델 (docs/precedent-rag.md §GPU 근거)
-LOCAL_EMBEDDING_MODEL = os.environ.get("PRECEDENT_LOCAL_MODEL", "nlpai-lab/KURE-v1")
+# 로컬 GPU 백엔드 기본 모델 — 카카오 공식 배포(모델 사용 기준: decisions.md 2026-07-22).
+# 초기 후보 KURE-v1은 "개인·학계 외산 베이스 파인튜닝 배제" 기준에 따라 교체.
+# 주의: kanana 임베딩은 512토큰 권장 — 대량 배치 전 청킹 길이·평가셋 A/B 확인 (precedent-rag.md §3)
+LOCAL_EMBEDDING_MODEL = os.environ.get(
+    "PRECEDENT_LOCAL_MODEL", "kakaocorp/kanana-nano-2.1b-embedding"
+)
 
 
 class EmbeddingBackend(Protocol):

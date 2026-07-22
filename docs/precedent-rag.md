@@ -72,13 +72,24 @@ cd backend
 .venv/Scripts/python.exe -m pytest tests/ -q
 ```
 
+**지속 업데이트(프레시니스) — 설계 확정, 구현 대기** (decisions.md 2026-07-22 프레시니스 항목):
+- 의미론: **사건번호 기준 idempotent** — 추가/교체는 `collect --nb <사건번호> --force`(재수집
+  덮어쓰기), 삭제는 `removals.json` 기재(원본 보존 + 사유 추적, 물리 삭제는 --purge만).
+- 증분 수집: 수집 프로필별 `lawSearch(sort=ddes)` + 선고일 커서 — 기존 일련번호를 만나면
+  조기 종료. 신규 유입은 자동으로 `verified=False`(게이트가 노출 차단) → 검수 큐 →
+  seed_cases.json 승격(자동 태그 재검토 포함).
+- 재임베딩 트리거: 모델 교체(서명 변화 — 자동 감지)·청킹 규칙 변경·컨텍스추얼 도입 = 전체
+  재구축. 소량 갱신은 청크 해시 증분(서명 동일 시만).
+- 원커맨드(설계): `scripts/update_precedents.py` — 수집→중복 제거→적재→평가→검수 큐 요약.
+  상세 설계는 docs/rag-expansion-review-2026-07-22.md §4.
+
 환경변수(전부 선택 — 기본값으로 그냥 돌아감):
 | 변수 | 값 | 기본 |
 |---|---|---|
 | `PRECEDENT_EMBEDDING_BACKEND` | upstage / local / hash | 키 있으면 upstage, 없으면 hash |
 | `PRECEDENT_VECTOR_STORE` | chroma / json | chroma (import 실패 시 json) |
 | `LAW_API_OC` | 법제처 API 인증값 | test (개발용) |
-| `PRECEDENT_LOCAL_MODEL` | HF 모델명 | nlpai-lab/KURE-v1 |
+| `PRECEDENT_LOCAL_MODEL` | HF 모델명 | kakaocorp/kanana-nano-2.1b-embedding |
 
 ## 3. GPU 실행 지점 (대량 임베딩 배치)
 
@@ -95,10 +106,15 @@ PRECEDENT_EMBEDDING_BACKEND=local python scripts/ingest_precedents.py
 # 끝. index/ 폴더를 서비스 서버로 복사하면 이전 완료 (Chroma는 폴더가 곧 DB)
 ```
 
-- **모델**: `nlpai-lab/KURE-v1` (고려대, 한국어 검색 특화, MIT, 8K 컨텍스트, prefix 불필요).
-  대조군 `dragonkue/snowflake-arctic-embed-l-v2.0-ko`. 근거·벤치마크는 night-report §6.
+- **모델**: `kakaocorp/kanana-nano-2.1b-embedding` (카카오 공식 배포, from-scratch 계보,
+  한국어 검색 nDCG@10 65.0, CC-BY-NC — 비상업 대회 무방). **모델 사용 기준(decisions.md
+  2026-07-22)에 따라 초기 후보 KURE-v1(개인·학계 외산 베이스 파인튜닝)은 배제·교체됨.**
+  ⚠ 채택 확정 전 두 가지 확인: ⑴ 512토큰 권장이라 청킹 길이(현행 900자 상한) 점검
+  ⑵ Upstage API 임베딩과 평가셋 A/B — 결과에 따라 "임베딩은 Upstage API 배치(Embed 2,
+  10만 건 ≈ $3), GPU는 다른 구간" 재편도 열려 있다(rag-expansion-review §6.1).
 - **규모 감각**: 판례 10만 건(청크 ~30만, 평균 500토큰)이면 A100에서 **약 40분~1시간**,
   RTX 4090급에서 2~6시간. 우리 현실 규모(수천~수만 건)는 어느 GPU든 수십 분 내.
+  (2.1B 모델은 0.6B 기준 추정치보다 다소 느릴 수 있음 — 배치 시 실측.)
 - **주의**: 백엔드를 바꾸면 벡터 공간이 달라진다 — 반드시 **전체 재적재**(스크립트 1회).
   질의 시 서명 불일치는 store가 명시적 에러로 막아 준다.
 - 검색기는 질의 1건만 임베딩하므로 서비스 런타임에는 GPU가 필요 없다
@@ -117,9 +133,12 @@ PRECEDENT_EMBEDDING_BACKEND=local python scripts/ingest_precedents.py
 3. **검색 품질 튜닝**: `retrieval.py` 상단 상수(RRF 가중, 후보 폭, 유사도 하한)가 튜닝 지점.
    **반드시 `eval_retrieval.py` 전/후 비교로만 바꿀 것.** 판례가 늘면 eval_set.json에
    기대 쌍을 같이 늘려야 지표가 의미를 유지한다.
-4. **리랭커**: 대량 수집 후 정밀도가 떨어지면 `retrieval.py` RRF 융합 뒤에 리랭킹 단계를
-   끼울 자리가 있다(국내 스택 유지 — Solar를 pointwise 리랭커로 쓰는 방법도 있으나
-   호출 비용·지연 대비 이득을 평가셋으로 먼저 증명할 것).
+4. **재정렬(리랭킹)**: 외산 베이스 크로스인코더(dragonkue 등)는 모델 사용 기준(decisions.md
+   2026-07-22)에 따라 배제됐다. 대체 경로 2단 — ⑴ 하이브리드 가중 튜닝(RRF 가중·후보 폭,
+   비용 0, 평가셋 루프의 일부) ⑵ **국내 LLM listwise 재정렬**(Solar 1순위·EXAONE 대안):
+   RRF 융합 뒤 게이트 통과 후보 10~20건의 **노출 순서에만** 관여(판정·게이트 무접촉),
+   temperature 0 + 리포트 단위 캐시로 결정성 확보. 대량 수집 후 평가셋 A/B로 채택 확정
+   (RankGPT/RankZephyr 근거 — rag-expansion-review §6.2).
 5. **형태소 분석기**: `_tokenize`는 의존성 없는 어절+바이그램이다. kiwipiepy 등으로
    교체하면 BM25가 좋아질 수 있다 — 역시 평가셋으로 증명 후.
 6. **대량 수집 큐레이션 워크플로**: 자동 태깅(`ingest.auto_tags`)은 키워드 규칙이라
@@ -137,3 +156,4 @@ PRECEDENT_EMBEDDING_BACKEND=local python scripts/ingest_precedents.py
 | advice 불가침 | PrecedentExplanation에 필드 없음(extra=forbid) | test_advice_passes_through_untouched |
 | 단정 금지 문구 | E-2 금지어 목록 공유 | test_explainer_banned_phrase_falls_back |
 | "판례 없음 ≠ 안전" | FALLBACK_* 문구에 확인 유도 포함 | test_service_returns_honest_fallback_when_no_risk |
+| 신규 유입 기본 미검수 | ingest가 대량 수집분 verified=False 부여 → 게이트 차단 | test_build_documents_auto_tags_raw_without_seed |

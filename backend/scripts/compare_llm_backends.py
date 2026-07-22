@@ -91,7 +91,9 @@ def _providers() -> dict[str, dict]:
             "model": os.environ.get("AX_MODEL", "ax4"),
             "api_key": os.environ.get("AX_API_KEY", "").strip(),
             "extra": _extra_json("AX_EXTRA_JSON"),
-            "note": "SKT A.X 무료 게스트 API — AX_API_KEY 필요(공개 게스트 키, §3.4)",
+            # 허용 근거: 모델 사용 기준(decisions.md 2026-07-22) — SKT 공식 배포라 베이스 계보 무관.
+            # 연결 전 게스트 API 이용약관·레이트리밋 확인(미문서화 상태).
+            "note": "SKT A.X 무료 게스트 API — AX_API_KEY 필요(약관·리밋 확인 후 연결)",
         },
         "exaone": {
             "base_url": os.environ.get("EXAONE_BASE_URL", "https://api.friendli.ai/serverless/v1"),

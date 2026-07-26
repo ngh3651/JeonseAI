@@ -23,10 +23,12 @@ from __future__ import annotations
 
 import logging
 
+from dataclasses import dataclass
+
 from ..schemas.contract import Highlight, HighlightBox
 from ..schemas.internal import MoneyEntry, RegistryExtract
 from .ocr import OcrResult
-from .ocr_layout import OcrPage, RegistryItem, build_items
+from .ocr_layout import OcrPage, RegistryItem, build_items, check_document
 
 _log = logging.getLogger("jeonseai")
 
@@ -181,24 +183,53 @@ def _match_money_entry(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> list[Highlight]:
+@dataclass
+class HighlightResult:
+    """하이라이트 + 사용자에게 보여줄 한 줄 안내(있을 때만)."""
+
+    highlights: list[Highlight]
+    notice: str | None = None
+
+
+def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResult:
     """IE 결과 + OCR 좌표 → 계약의 `highlights`. 실패해도 예외를 던지지 않는다."""
     if not ocr.pages:
         _log.info("[매칭] 건너뜀 — OCR 결과 없음 (좌표 없이 리포트 완성)")
-        return []
+        return HighlightResult([])
 
     items = build_items(ocr.pages)
     pages = {p.index: p for p in ocr.pages}
+
+    # ── 사진 묶음 점검: 같은 등기부인가 / 순서가 맞나 / 빠진 쪽은 없나 ──────
+    check = check_document(ocr.pages)
+    for reason in check.reasons:
+        _log.info(f"[사진점검] {reason}")
+    if not check.ok_to_highlight_any:
+        _log.info("[매칭] 중단 — 사진 묶음 점검 실패로 아무것도 표시하지 않음")
+        return HighlightResult([], notice=check.notice)
 
     canceled_items = [it for it in items if it.canceled]
     if canceled_items:
         reasons = "; ".join(f"{it.section} 순위{it.rank} ← {it.cancel_evidence}" for it in canceled_items)
         _log.info(f"[매칭] — 말소 항목 {len(canceled_items)}건은 대상에서 제외 ({reasons})")
 
+    # 말소 근거 행이 있는데 **대상 항목을 못 찾았다면**, 무언가 말소됐는데 무엇인지 모른다는
+    # 뜻이다. 이 상태로 금액을 칠하면 말소된 항목을 칠할 수 있다 → 금액 표시를 통째로 보류.
+    unbound = [it for it in items if it.is_cancel_record and not it.cancel_bound]
+    money_allowed = check.ok_to_highlight_money
+    notice = check.notice
+    if unbound:
+        money_allowed = False
+        detail = "; ".join(f"{it.location} '{it.purpose[:24]}'" for it in unbound)
+        _log.info(
+            f"[매칭] ⚠ 말소 근거 행 {len(unbound)}건이 대상 항목을 못 찾음 → 금액 표시 전체 보류 ({detail})"
+        )
+        notice = notice or "말소된 항목을 정확히 가려내지 못해 빚 표시는 생략했어요."
+
     # ── 대상 수집 (IE 기준) ────────────────────────────────────────────────
     owner_names = [o.name.strip() for o in extract.current_owners if o.name and o.name.strip()]
-    active_mortgages = [m for m in extract.mortgages if m.is_active]
-    active_jeonse = [j for j in extract.jeonse_rights if j.is_active]
+    active_mortgages = [m for m in extract.mortgages if m.is_active] if money_allowed else []
+    active_jeonse = [j for j in extract.jeonse_rights if j.is_active] if money_allowed else []
     total_targets = len(owner_names) + len(active_mortgages) + len(active_jeonse)
 
     highlights: list[Highlight] = []
@@ -275,4 +306,6 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> list[Highlight
         _log.info(
             f"[응답] 좌표 {len(highlights)}건을 정규화하여 계약에 포함 (사진 {pages_used})"
         )
-    return highlights
+    if notice:
+        _log.info(f"[응답] 사용자 안내: {notice}")
+    return HighlightResult(highlights, notice=notice)

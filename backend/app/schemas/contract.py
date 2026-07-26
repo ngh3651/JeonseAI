@@ -71,6 +71,8 @@ class Report(BaseModel):
     evidences: list[Evidence]
     # 선택적 추가 (2026-07-27). 좌표를 못 구하면 빈 목록 — 그래도 리포트는 완성된다.
     highlights: list[Highlight] = Field(default_factory=list)
+    # 사진 묶음 관련 안내 한 줄 (다른 등기부 섞임·순서 어긋남·쪽 누락). 없으면 None.
+    highlightNotice: Optional[str] = None
 
 
 # ── 판례 (§2.3 CaseMatch) ──────────────────────────────────────────────────

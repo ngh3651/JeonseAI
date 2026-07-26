@@ -59,6 +59,13 @@ _DOC_PREAMBLE = re.compile(
 # 하이라이트·말소 판정의 유효 구역 — 권리관계가 기록되는 곳은 갑구·을구뿐이다.
 # 표제부(건물 표시)·매매목록은 권리 항목이 아니라 부가 정보라 대상에서 뺀다.
 RIGHTS_SECTIONS = ("갑구", "을구")
+# 첫 페이지에 구역 머리(【갑 구】 등)가 없으면 구역을 모른 채 항목이 시작될 수 있다.
+UNKNOWN_SECTION = "미상"
+
+# 페이지 꼬리말 표식 — 실측(1.png "1/5", 5.png "5/5"). 페이지 순서·누락 판별에 쓴다.
+_PAGE_MARKER = re.compile(r"^(\d{1,3})\s*/\s*(\d{1,3})$")
+# 발급확인번호 — 같은 발급본이면 전 페이지 동일(실측: 1.png·5.png 모두 AAPI-GJBJ-1806)
+_ISSUE_NO = re.compile(r"([A-Z]{3,5}[-－][A-Z]{3,5}[-－]\d{3,5})")
 
 # 표 헤더의 첫 컬럼 이름 (이 word가 있는 줄을 헤더로 보고 컬럼 밴드를 갱신한다)
 _RANK_HEADERS = ("순위번호", "표시번호", "일련번호")
@@ -212,6 +219,9 @@ class RegistryItem:
     canceled: bool = False
     cancel_evidence: str | None = None
     is_cancel_record: bool = False  # 이 항목 자체가 '○번○○등기말소' 행인가
+    # 말소 근거 행이 **대상 항목을 실제로 찾았는가**. False면 "무언가 말소됐는데 무엇인지
+    # 모른다"는 뜻이라, 금액 하이라이트를 통째로 보류해야 한다(잘못 칠하면 최악의 오류).
+    cancel_bound: bool = False
 
     @property
     def purpose(self) -> str:
@@ -495,7 +505,7 @@ def build_items(pages: list[OcrPage], tol_ratio: float = 0.6) -> list[RegistryIt
             rank_word = find_rank(line, bands)
             if rank_word is not None:
                 current = RegistryItem(
-                    section=section or "미상",
+                    section=section or UNKNOWN_SECTION,
                     rank=rank_word.text.strip().replace("－", "-"),
                     rank_box=rank_word.box,
                     rank_page_index=page.index,
@@ -514,6 +524,102 @@ def build_items(pages: list[OcrPage], tol_ratio: float = 0.6) -> list[RegistryIt
     return items
 
 
+@dataclass
+class DocumentCheck:
+    """올린 사진들이 '같은 등기부 전체'인지에 대한 점검 결과.
+
+    이 점검이 필요한 이유는 하나다 — **말소를 놓치지 않기 위해서**다.
+    말소는 "N번○○등기말소"라는 별도 행으로만 드러나는데, 그 행이 **올리지 않은 페이지에**
+    있으면 말소된 근저당이 유효해 보인다. 그 상태로 형광펜을 칠하면 사용자가
+    "이미 없어진 빚"을 현재 위험으로 오해한다 — 이 기능의 최악의 오류다.
+    """
+
+    ok_to_highlight_money: bool = True  # 금액 항목(근저당·전세권)을 칠해도 되는가
+    ok_to_highlight_any: bool = True  # 아무거나 칠해도 되는가
+    notice: str | None = None  # 사용자에게 보여줄 한 줄 (없으면 None)
+    reasons: list[str] = field(default_factory=list)  # 로그용 상세
+
+
+def _page_footer_facts(page: OcrPage) -> tuple[tuple[int, int] | None, str | None, str | None]:
+    """(페이지 표식 (n, m), 발급확인번호, 상단 주소 줄) — 없으면 각각 None."""
+    marker: tuple[int, int] | None = None
+    issue: str | None = None
+    address: str | None = None
+    for line in page.lines:
+        squeezed = line.squeezed
+        if address is None and _PAGE_HEADER.match(line.display):
+            address = re.sub(r"\s+", "", line.display)
+        if issue is None:
+            m = _ISSUE_NO.search(squeezed)
+            if m:
+                issue = m.group(1).replace("－", "-")
+        for w in line.words:
+            m = _PAGE_MARKER.match(w.text.strip())
+            if m:
+                n, total = int(m.group(1)), int(m.group(2))
+                if 1 <= n <= total <= 200:
+                    marker = (n, total)
+    return marker, issue, address
+
+
+def check_document(pages: list[OcrPage]) -> DocumentCheck:
+    """페이지 표식·발급확인번호·주소 줄로 '같은 등기부 전체인가'를 본다.
+
+    표식이 아예 안 잡히면(잘린 사진 등) **판별 불가**로 두고 그냥 진행한다 —
+    확인할 수 없다는 이유로 기능을 통째로 끄면 정상 사진에서도 아무것도 안 보인다.
+    대신 로그에 "확인 불가"를 남긴다.
+    """
+    check = DocumentCheck()
+    if not pages:
+        return check
+
+    facts = [_page_footer_facts(p) for p in pages]
+    markers = [(i, m) for i, (m, _, _) in enumerate(facts) if m]
+    issues = {iss for _, iss, _ in facts if iss}
+    addresses = {addr for _, _, addr in facts if addr}
+
+    # ① 다른 등기부가 섞였는가 — 발급확인번호가 1순위, 상단 주소 줄이 2순위
+    if len(issues) > 1:
+        check.ok_to_highlight_any = False
+        check.ok_to_highlight_money = False
+        check.notice = "올린 사진들이 서로 다른 등기부로 보여요. 한 건물의 등기부만 올려 주세요."
+        check.reasons.append(f"발급확인번호가 서로 다름: {sorted(issues)}")
+        return check
+    if not issues and len(addresses) > 1:
+        check.ok_to_highlight_any = False
+        check.ok_to_highlight_money = False
+        check.notice = "올린 사진들의 주소가 서로 달라요. 한 건물의 등기부만 올려 주세요."
+        check.reasons.append(f"상단 주소 줄이 서로 다름: {sorted(addresses)}")
+        return check
+
+    # ② 사진 순서가 뒤바뀌었는가 — 항목이 페이지를 걸쳐 이어지므로 순서가 틀리면 구조가 깨진다
+    if len(markers) >= 2:
+        seq = [m[0] for _, m in markers]
+        if seq != sorted(seq):
+            check.ok_to_highlight_any = False
+            check.ok_to_highlight_money = False
+            check.notice = "사진 순서가 등기부 쪽수와 달라요. 1쪽부터 순서대로 다시 올려 주세요."
+            check.reasons.append(f"페이지 표식 순서 어긋남: {seq}")
+            return check
+
+    # ③ 빠진 페이지가 있는가 — 말소 근거 행이 그 페이지에 있을 수 있다
+    if markers:
+        total = markers[0][1][1]
+        if len(pages) < total:
+            check.ok_to_highlight_money = False
+            check.notice = (
+                f"등기부 {total}쪽 중 {len(pages)}쪽만 올리셨어요. "
+                "빠진 쪽에 중요한 내용이 있을 수 있어 빚 표시는 생략했어요."
+            )
+            check.reasons.append(
+                f"페이지 누락 의심: 표식은 총 {total}쪽인데 사진은 {len(pages)}장"
+                " → 말소 근거 행이 빠진 쪽에 있을 수 있어 금액 표시를 보류"
+            )
+    else:
+        check.reasons.append("페이지 표식(N/M) 미검출 — 순서·누락을 확인할 수 없음(사진이 잘렸을 수 있음)")
+    return check
+
+
 def _apply_cancellations(items: list[RegistryItem]) -> None:
     """'N번○○등기말소' 행을 찾아 같은 구역의 N번 항목을 말소로 표시한다.
 
@@ -524,7 +630,7 @@ def _apply_cancellations(items: list[RegistryItem]) -> None:
     for item in items:
         # 권리 항목이 아닌 구역(표제부·매매목록)은 말소 판정 대상이 아니다.
         # 표지·꼬리말의 "말소사항 포함" 문구를 말소 근거로 오인하지 않기 위한 방어.
-        if item.section not in RIGHTS_SECTIONS:
+        if item.section not in RIGHTS_SECTIONS + (UNKNOWN_SECTION,):
             continue
         purpose = item.purpose
         m = _CANCEL_TARGET.search(purpose)
@@ -538,6 +644,19 @@ def _apply_cancellations(items: list[RegistryItem]) -> None:
         for target in items:
             if target is item:
                 continue
-            if target.section == item.section and target.rank == target_rank:
+            if target.rank == target_rank and _same_section(target.section, item.section):
                 target.canceled = True
                 target.cancel_evidence = evidence
+                item.cancel_bound = True
+
+
+def _same_section(a: str, b: str) -> bool:
+    """구역이 같은가. **'미상'은 어느 권리 구역과도 같은 것으로 본다.**
+
+    첫 페이지에 구역 머리(`【 을 구 】`)가 없으면(사진 순서가 뒤바뀌었거나 중간 장부터
+    올렸을 때) 항목의 구역이 '미상'이 된다. 이때 엄격하게 비교하면 말소 근거 행과
+    대상 항목이 서로 다른 구역으로 갈려 **말소를 놓친다** → 말소된 근저당에 형광펜이
+    칠해진다. 놓치는 쪽보다 넓게 잡는 쪽이 안전하다(과잉 말소는 표시를 줄일 뿐이다)."""
+    if a == b:
+        return True
+    return UNKNOWN_SECTION in (a, b) and {a, b} <= set(RIGHTS_SECTIONS + (UNKNOWN_SECTION,))

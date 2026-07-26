@@ -31,7 +31,10 @@ class ApiAnalysisRepository extends AnalysisRepository {
     // 이 파일을 그대로 띄워야 좌표가 맞는다 → 경로를 세션 저장소에 남긴다.
     final sentJpegPaths = <String>[];
     for (int i = 0; i < request.imagePaths.length; i++) {
-      final jpeg = await _uploader.convertToJpeg(request.imagePaths[i]);
+      final jpeg = await _uploader.convertToJpeg(
+        request.imagePaths[i],
+        tag: 'p$i', // 같은 밀리초에 두 장이 변환돼 덮어써지는 것을 막는다
+      );
       if (jpeg == null) {
         throw const ApiException('이미지를 변환하지 못했어요. 다른 사진으로 다시 시도해 주세요');
       }

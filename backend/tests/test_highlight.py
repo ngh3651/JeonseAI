@@ -126,6 +126,11 @@ def extract_with(**kwargs) -> RegistryExtract:
     return RegistryExtract(**kwargs)
 
 
+def _run(extract: RegistryExtract, ocr: OcrResult) -> list:
+    """build_highlights의 하이라이트 목록만 꺼낸다 (안내 문구는 별도 테스트에서 본다)."""
+    return highlight.build_highlights(extract, ocr).highlights
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 말소 — 가장 중요한 방어선
 # ══════════════════════════════════════════════════════════════════════════════
@@ -147,7 +152,7 @@ def test_말소된_근저당에는_좌표를_내보내지_않는다():
     extract = extract_with(
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
     )
-    result = highlight.build_highlights(extract, as_result(eul_gu_page()))
+    result = _run(extract, as_result(eul_gu_page()))
     assert result == []
 
 
@@ -155,7 +160,7 @@ def test_IE가_말소로_보면_애초에_대상이_아니다():
     extract = extract_with(
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=True)]
     )
-    result = highlight.build_highlights(
+    result = _run(
         extract, as_result(eul_gu_page(with_cancel_row=False))
     )
     assert result == []
@@ -170,7 +175,7 @@ def test_순위번호와_금액이_같은_줄이면_좌표를_준다():
     extract = extract_with(
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
     )
-    result = highlight.build_highlights(
+    result = _run(
         extract, as_result(eul_gu_page(with_cancel_row=False))
     )
     assert len(result) == 1
@@ -187,7 +192,7 @@ def test_금액이_순위번호와_다른_줄이면_좌표를_주지_않는다()
     extract = extract_with(
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
     )
-    result = highlight.build_highlights(
+    result = _run(
         extract, as_result(eul_gu_page(amount_on_rank_line=False, with_cancel_row=False))
     )
     assert result == []
@@ -196,7 +201,7 @@ def test_금액이_순위번호와_다른_줄이면_좌표를_주지_않는다()
 def test_순위번호가_없으면_좌표를_주지_않는다():
     """같은 금액이 여러 곳에 나오므로 금액만으로는 항목을 지목할 수 없다."""
     extract = extract_with(mortgages=[MoneyEntry(amount=36_000_000, is_canceled=False)])
-    result = highlight.build_highlights(
+    result = _run(
         extract, as_result(eul_gu_page(with_cancel_row=False))
     )
     assert result == []
@@ -206,7 +211,7 @@ def test_금액_미상이면_좌표를_주지_않는다():
     extract = extract_with(
         mortgages=[MoneyEntry(rank_number="1", amount=None, amount_unknown=True, is_canceled=False)]
     )
-    result = highlight.build_highlights(
+    result = _run(
         extract, as_result(eul_gu_page(with_cancel_row=False))
     )
     assert result == []
@@ -217,7 +222,7 @@ def test_IE_금액이_사진과_다르면_좌표를_주지_않는다():
     extract = extract_with(
         mortgages=[MoneyEntry(rank_number="1", amount=99_000_000, is_canceled=False)]
     )
-    result = highlight.build_highlights(
+    result = _run(
         extract, as_result(eul_gu_page(with_cancel_row=False))
     )
     assert result == []
@@ -230,7 +235,7 @@ def test_IE_금액이_사진과_다르면_좌표를_주지_않는다():
 
 def test_현재_소유자_이름에_좌표가_붙는다():
     extract = extract_with(current_owners=[Owner(name="소유자D"), Owner(name="소유자E")])
-    result = highlight.build_highlights(extract, as_result(gap_gu_page()))
+    result = _run(extract, as_result(gap_gu_page()))
     assert len(result) == 2
     assert [h.kind for h in result] == ["owner", "owner"]
     assert [h.badge for h in result] == [1, 2]
@@ -241,7 +246,7 @@ def test_현재_소유자_이름에_좌표가_붙는다():
 
 def test_단독_소유면_공동명의_안내가_붙지_않는다():
     extract = extract_with(current_owners=[Owner(name="소유자D")])
-    result = highlight.build_highlights(extract, as_result(gap_gu_page()))
+    result = _run(extract, as_result(gap_gu_page()))
     assert len(result) == 1
     assert result[0].caution is None
 
@@ -250,13 +255,13 @@ def test_IE에_없는_옛_소유자는_칠하지_않는다():
     """사진에 이름이 보여도 IE의 current_owners에 없으면 대상이 아니다.
     지분을 넘긴 옛 소유자를 칠하면 사용자가 그 사람을 임대인으로 오인한다."""
     extract = extract_with(current_owners=[Owner(name="소유자E")])
-    result = highlight.build_highlights(extract, as_result(gap_gu_page()))
+    result = _run(extract, as_result(gap_gu_page()))
     assert [h.title for h in result] == ["소유자 이름 · 소유자E"]
 
 
 def test_사진에_없는_이름은_좌표_없이_넘어간다():
     extract = extract_with(current_owners=[Owner(name="홍길동")])
-    assert highlight.build_highlights(extract, as_result(gap_gu_page())) == []
+    assert _run(extract, as_result(gap_gu_page())) == []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -266,7 +271,7 @@ def test_사진에_없는_이름은_좌표_없이_넘어간다():
 
 def test_좌표는_0과_1_사이로_정규화된다():
     extract = extract_with(current_owners=[Owner(name="소유자D")])
-    box = highlight.build_highlights(extract, as_result(gap_gu_page()))[0].box
+    box = _run(extract, as_result(gap_gu_page()))[0].box
     for value in (box.x, box.y, box.w, box.h):
         assert 0.0 <= value <= 1.0
     assert 0.0 <= box.x + box.w <= 1.0
@@ -275,7 +280,7 @@ def test_좌표는_0과_1_사이로_정규화된다():
 
 def test_OCR이_통째로_실패하면_빈_목록을_돌려준다():
     extract = extract_with(current_owners=[Owner(name="소유자D")])
-    assert highlight.build_highlights(extract, OcrResult(errors=["timeout"])) == []
+    assert _run(extract, OcrResult(errors=["timeout"])) == []
 
 
 def test_원본_크기를_모르면_좌표를_주지_않는다():
@@ -284,13 +289,13 @@ def test_원본_크기를_모르면_좌표를_주지_않는다():
     page.width = 0
     page.height = 0
     extract = extract_with(current_owners=[Owner(name="소유자D")])
-    assert highlight.build_highlights(extract, as_result(page)) == []
+    assert _run(extract, as_result(page)) == []
 
 
 def test_페이지_인덱스가_그대로_전달된다():
     """사진 순서가 그대로 유지돼야 앱이 맞는 사진에 그린다."""
     extract = extract_with(current_owners=[Owner(name="소유자D")])
-    result = highlight.build_highlights(extract, as_result(gap_gu_page(index=2)))
+    result = _run(extract, as_result(gap_gu_page(index=2)))
     assert result[0].page == 2
 
 
@@ -365,16 +370,166 @@ def test_실제_등기부에서_말소된_근저당은_칠해지지_않는다():
             MoneyEntry(rank_number="2", amount=75_600_000, is_canceled=False),
         ]
     )
-    result = highlight.build_highlights(extract, OcrResult(pages=real_pages()))
+    result = _run(extract, OcrResult(pages=real_pages()))
     assert [h for h in result if h.kind == "mortgage"] == []
 
 
 @requires_real
 def test_실제_등기부에서_현재_소유자_이름에_좌표가_붙는다():
     extract = extract_with(current_owners=[Owner(name="소유자D"), Owner(name="소유자E")])
-    result = highlight.build_highlights(extract, OcrResult(pages=real_pages()))
+    result = _run(extract, OcrResult(pages=real_pages()))
     assert len(result) == 2
     assert all(h.page == 0 for h in result)  # 둘 다 3.png(첫 페이지)
     for h in result:
         assert 0.0 < h.box.x < 1.0 and 0.0 < h.box.y < 1.0
         assert h.box.w < 0.15  # 이름 word 하나 크기 (과거 버그는 옆 칸까지 번졌다)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 라운드 4 방어 — 페이지 누락 · 순서 · 다른 등기부 섞임 · 말소 미결
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def footer_row(y: float, *, page_no: int, total: int, issue: str, addr: str = "행복아파트") -> list[Word]:
+    """실측 꼬리말 — `발급확인번호 AAPI-GJBJ-1806 …` + 우측 하단 `1/5`."""
+    return [
+        W("발급확인번호", 300, y, 80),
+        W(issue, 400, y, 90),
+        W(f"{page_no}/{total}", 800, y + 30, 24),
+    ]
+
+
+def address_row(y: float, addr: str) -> list[Word]:
+    return [W("[집합건물]", 33, y, 74), W(addr, 116, y, 120)]
+
+
+def page_with_footer(index: int, *, page_no: int, total: int, issue: str,
+                     addr: str = "행복아파트", cancel: bool = True) -> OcrPage:
+    base = eul_gu_page(with_cancel_row=cancel)
+    rows = [address_row(10, addr)]
+    rows.append(footer_row(950, page_no=page_no, total=total, issue=issue))
+    words = list(base.words) + [w for r in rows for w in r]
+    return OcrPage(name=f"page_{index + 1}.jpg", index=index, words=words,
+                   lines=group_lines(words), width=PAGE_W, height=PAGE_H)
+
+
+def test_페이지_표식으로_쪽수를_읽는다():
+    from app.services.ocr_layout import check_document
+
+    check = check_document([page_with_footer(0, page_no=1, total=1, issue="AAPI-GJBJ-1806")])
+    assert check.ok_to_highlight_any is True
+    assert check.ok_to_highlight_money is True
+    assert check.notice is None
+
+
+def test_쪽이_빠지면_금액_표시를_보류한다():
+    """말소 근거 행이 안 올린 쪽에 있을 수 있다 — 이 경우 빚에 형광펜을 칠하면 안 된다."""
+    from app.services.ocr_layout import check_document
+
+    check = check_document([page_with_footer(0, page_no=1, total=5, issue="AAPI-GJBJ-1806")])
+    assert check.ok_to_highlight_any is True  # 이름은 계속 보여준다
+    assert check.ok_to_highlight_money is False
+    assert check.notice and "5쪽 중 1쪽" in check.notice
+
+
+def test_쪽이_빠지면_근저당_하이라이트가_실제로_사라진다():
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
+    )
+    page = page_with_footer(0, page_no=1, total=5, issue="AAPI-GJBJ-1806", cancel=False)
+    result = highlight.build_highlights(extract, as_result(page))
+    assert result.highlights == []
+    assert result.notice and "5쪽 중 1쪽" in result.notice
+
+
+def test_다른_등기부가_섞이면_아무것도_표시하지_않는다():
+    from app.services.ocr_layout import check_document
+
+    check = check_document([
+        page_with_footer(0, page_no=1, total=2, issue="AAPI-GJBJ-1806"),
+        page_with_footer(1, page_no=2, total=2, issue="BBPI-XXXX-9999"),
+    ])
+    assert check.ok_to_highlight_any is False
+    assert check.notice and "서로 다른 등기부" in check.notice
+
+
+def test_발급확인번호가_없으면_상단_주소_줄로_섞임을_본다():
+    from app.services.ocr_layout import check_document
+
+    a = eul_gu_page(with_cancel_row=False)
+    b = gap_gu_page(index=1)
+    a_words = list(a.words) + address_row(10, "행복아파트")
+    b_words = list(b.words) + address_row(10, "전혀다른아파트")
+    pages = [
+        OcrPage(name="a", index=0, words=a_words, lines=group_lines(a_words),
+                width=PAGE_W, height=PAGE_H),
+        OcrPage(name="b", index=1, words=b_words, lines=group_lines(b_words),
+                width=PAGE_W, height=PAGE_H),
+    ]
+    check = check_document(pages)
+    assert check.ok_to_highlight_any is False
+    assert check.notice and "주소가 서로 달라요" in check.notice
+
+
+def test_사진_순서가_뒤바뀌면_아무것도_표시하지_않는다():
+    """항목이 페이지를 걸쳐 이어지므로, 순서가 틀리면 말소 판정 자체가 깨진다."""
+    from app.services.ocr_layout import check_document
+
+    check = check_document([
+        page_with_footer(0, page_no=3, total=3, issue="AAPI-GJBJ-1806"),
+        page_with_footer(1, page_no=1, total=3, issue="AAPI-GJBJ-1806"),
+        page_with_footer(2, page_no=2, total=3, issue="AAPI-GJBJ-1806"),
+    ])
+    assert check.ok_to_highlight_any is False
+    assert check.notice and "순서" in check.notice
+
+
+def test_페이지_표식이_없으면_판별_불가로_두고_진행한다():
+    """사진이 잘려 꼬리말이 없을 수 있다. 확인 못 한다고 기능을 끄면 정상 사진도 안 보인다."""
+    from app.services.ocr_layout import check_document
+
+    check = check_document([eul_gu_page(with_cancel_row=False)])
+    assert check.ok_to_highlight_any is True
+    assert check.ok_to_highlight_money is True
+    assert any("표식" in r for r in check.reasons)
+
+
+def test_말소_대상을_못_찾으면_금액_표시를_전부_보류한다():
+    """'무언가 말소됐는데 무엇인지 모른다' 상태에서 칠하면 말소분을 칠할 수 있다."""
+    rows = [
+        section_row("을구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("근저당권설정", 117, 150, 91),
+         W("2004년6월25일", 269, 150, 98), W("2004년6월25일", 391, 150, 100),
+         W("채권최고액", 515, 150, 74), W("금36,000,000원", 606, 150, 105)],
+        # 존재하지 않는 순위 9번을 말소한다는 행 → 대상 항목을 못 찾는다
+        [W("2", 66, 250, 11), W("9번근저당권설정등", 117, 250, 124),
+         W("2005년6월29일", 269, 250, 98)],
+        [W("기말소", 117, 290, 44), W("제45409호", 270, 290, 68)],
+    ]
+    page = make_page(0, rows)
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
+    )
+    result = highlight.build_highlights(extract, as_result(page))
+    assert result.highlights == []
+    assert result.notice and "말소" in result.notice
+
+
+def test_구역을_모를_때도_말소를_놓치지_않는다():
+    """중간 장부터 올려 구역 머리(【을 구】)가 없으면 구역이 '미상'이 된다.
+    엄격히 비교하면 말소 근거 행과 대상이 갈려 **말소된 근저당이 칠해진다**."""
+    base = eul_gu_page()
+    # 구역 머리 줄(y=40)을 제거해 '미상' 상태를 만든다
+    words = [w for w in base.words if w.y0 > 60]
+    page = OcrPage(name="mid.jpg", index=0, words=words, lines=group_lines(words),
+                   width=PAGE_W, height=PAGE_H)
+    items = build_items([page])
+    target = next(it for it in items if it.rank == "1")
+    assert target.section == "미상"
+    assert target.canceled is True  # 구역이 달라도 말소를 잡아야 한다
+
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
+    )
+    assert _run(extract, as_result(page)) == []

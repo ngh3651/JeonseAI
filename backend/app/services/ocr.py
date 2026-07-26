@@ -54,13 +54,27 @@ class OcrResult:
         return bool(self.pages)
 
 
-def _image_size(data: bytes) -> tuple[int, int]:
+def _image_size(data: bytes, filename: str = "") -> tuple[int, int]:
     """원본 픽셀 크기를 **Pillow로 직접** 읽는다.
 
     OCR 응답의 페이지 크기를 믿지 않는다 — 정규화 기준이 실제 이미지와 1px이라도
     어긋나면 앱에서 좌표가 통째로 밀린다. 전송한 바이트에서 직접 재는 것이 유일한 진실이다.
+
+    ⚠ EXIF 방향 태그가 남아 있으면 위험하다. Pillow는 **저장된 그대로**의 크기를 주는데
+      Flutter 디코더는 EXIF 회전을 **적용해서** 그린다 → 한쪽만 돌아가 좌표가 통째로
+      어긋난다. 앱이 `keepExif: false`로 태그를 지워 보내므로 정상이면 안 걸리지만,
+      다른 경로로 들어온 사진을 잡기 위해 경고를 남긴다.
     """
     with Image.open(io.BytesIO(data)) as im:
+        try:
+            orientation = (im.getexif() or {}).get(274)  # 274 = EXIF Orientation
+        except Exception:  # noqa: BLE001 — EXIF 파싱 실패는 무시하고 진행
+            orientation = None
+        if orientation not in (None, 0, 1):
+            _log.info(
+                f"[OCR] ⚠ {filename} 에 EXIF 회전 태그({orientation})가 남아 있습니다 —"
+                " 앱 표시 크기와 서버 측정 크기가 달라져 좌표가 어긋날 수 있습니다"
+            )
         return im.width, im.height
 
 

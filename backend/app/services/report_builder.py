@@ -59,6 +59,7 @@ def _build(
     analyzed_at: datetime | None = None,
     use_llm: bool = True,
     highlights: list[Highlight] | None = None,
+    highlight_notice: str | None = None,
 ) -> tuple[Report, str]:
     """조립 본체 — (Report, 설명 출처 라벨)을 돌려준다."""
     verdict: RuleVerdict = rule_engine.evaluate(
@@ -115,6 +116,7 @@ def _build(
         seniorDebtAmount=verdict.senior_debt_amount,  # [판정]
         evidences=evidences,
         highlights=highlights or [],  # [표시 전용] — 판정에 영향 없음
+        highlightNotice=highlight_notice,  # [표시 전용] 사진 묶음 안내 (없으면 None)
     )
     return report, explain_source
 
@@ -165,10 +167,10 @@ def analyze(
 
     assert extract is not None  # ie_error가 없으면 반드시 값이 있다
     try:
-        highlights = highlight.build_highlights(extract, ocr_result)
+        highlight_result = highlight.build_highlights(extract, ocr_result)
     except Exception as e:  # noqa: BLE001 — 표시 기능이 분석을 깨뜨리면 안 된다
         _log.info(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})")
-        highlights = []
+        highlight_result = highlight.HighlightResult([])
 
     report, explain_source = _build(
         extract,
@@ -176,7 +178,8 @@ def analyze(
         market_price=market_price,
         alias=alias,
         use_llm=True,
-        highlights=highlights,
+        highlights=highlight_result.highlights,
+        highlight_notice=highlight_result.notice,
     )
     store.add(report)
     _log.info(

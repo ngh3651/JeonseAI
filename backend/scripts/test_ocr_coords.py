@@ -46,6 +46,21 @@ from app.services.extraction import (  # noqa: E402
     _load_api_key,
 )
 
+# 레이아웃 해석(줄 묶기·컬럼 밴드·항목 그룹화·이름 추출)은 백엔드와 **같은 모듈**을 쓴다.
+# 검증 스크립트에서 만든 로직이 곧 서비스 로직이 되도록 하기 위함 — 두 벌로 나뉘면
+# "스크립트에선 되는데 서버에선 안 되는" 상황이 생긴다.
+from app.services.ocr_layout import (  # noqa: E402
+    Line,
+    OcrPage,
+    RegistryItem,
+    Word,
+    build_items,
+    extract_names,
+    group_lines,
+    median_height,
+    parse_words,
+)
+
 # ── 확인된 API 사양 (추측 금지 — 그대로 사용) ────────────────────────────────
 OCR_URL = "https://api.upstage.ai/v1/document-digitization"
 OCR_MODEL = "ocr"
@@ -59,20 +74,14 @@ _MONEY_COMMA = re.compile(r"\d{1,3}(?:,\d{3})+")
 _LONG_DIGITS = re.compile(r"(?<!\d)\d{5,}(?!\d)")
 # 말소 관련 표기 ([4])
 _CANCEL_WORD = re.compile(r"말소")
-# 권리자: 등기부는 단독소유면 "소유자", 공유면 "공유자"로 쓴다 ([5] — 양쪽 탐색)
-_OWNER_KEYWORD = re.compile(r"소유자|공유자")
-# 이름 + 마스킹된 주민번호 (예: "소유자A ○○○○○○-○******")
-# 넉넉히 잡은 뒤 word 경계·역할어로 다듬는다 — 줄을 공백 없이 이어붙이므로
-# "소유자소유자A○○○○○○-" 에서 앞 역할어까지 먹는 것을 막아야 한다(_clean_name 참조).
-_NAME_WITH_RRN = re.compile(r"([가-힣]{2,10})\s*(\d{6})\s*[-－]")
-# 이름 앞에 붙는 등기부 역할어 — 이름에서 떼어낸다
-_ROLE_WORDS = ("근저당권자", "전세권자", "소유자", "공유자", "채무자", "권리자", "임차인", "지분")
+# ⚠ 이름 추출·순위번호 판정은 여기 있던 정규식을 버리고 `ocr_layout` 의 word 단위 로직으로
+#   옮겼다 (2026-07-27). 문자 단위 정규식은 '매매'+'소유자D'을 한 덩어리로 삼켜 bbox가
+#   옆 칸까지 번졌고, '줄 맨 앞 숫자 = 순위번호' 규칙은 등기목적 칸에 접힌 분수의 분모를
+#   순위번호로 오인했다. 자세한 근거는 docs/ocr-highlight-findings.md.
 # 페이지 대조 키 ([6]) — 우선순위는 아래 PAGE_KEYS 참조
 _ISSUE_CONFIRM_NO = re.compile(r"[A-Z]{3,5}\s*[-－]\s*[A-Z]{3,5}\s*[-－]\s*\d{3,5}")
 _ADDR_HEADER = re.compile(r"\[집합건물\][^\n]*|\[건물\][^\n]*|\[토지\][^\n]*")
 _UNIQUE_NO = re.compile(r"\d{4}\s*[-－]\s*\d{4}\s*[-－]\s*\d{6}")
-# 순위번호: 줄 맨 앞의 순수 숫자 (등기 표의 첫 칸)
-_RANK_NO = re.compile(r"^(\d{1,3})(?:[-－]\d{1,2})?$")
 
 # 하이라이트 후보 키워드 ([2]와 함께 파란 박스로 표시)
 _KEYWORDS = ("채권최고액", "근저당권설정", "소유자", "공유자", "말소", "전세권", "임차권", "가압류", "압류", "신탁")
@@ -121,86 +130,22 @@ def h2(title: str) -> None:
 
 
 @dataclass
-class Word:
-    """OCR 단어 하나 — 텍스트 + confidence + 사각 bbox(원본 이미지 픽셀 좌표)."""
-
-    text: str
-    confidence: float
-    x0: float
-    y0: float
-    x1: float
-    y1: float
-
-    @property
-    def cy(self) -> float:
-        return (self.y0 + self.y1) / 2
-
-    @property
-    def height(self) -> float:
-        return max(1.0, self.y1 - self.y0)
-
-    @property
-    def box(self) -> tuple[float, float, float, float]:
-        return (self.x0, self.y0, self.x1, self.y1)
-
-
-@dataclass
-class Line:
-    """같은 줄로 묶인 단어들 (왼→오 정렬)."""
-
-    index: int
-    words: list[Word]
-
-    @property
-    def box(self) -> tuple[float, float, float, float]:
-        return (
-            min(w.x0 for w in self.words),
-            min(w.y0 for w in self.words),
-            max(w.x1 for w in self.words),
-            max(w.y1 for w in self.words),
-        )
-
-    @property
-    def display(self) -> str:
-        """사람이 읽을 형태 — 공백으로 이어붙임."""
-        return " ".join(w.text for w in self.words)
-
-    def concat(self) -> tuple[str, list[int]]:
-        """패턴 매칭용 — **공백 없이** 이어붙인 문자열 + 문자→word 인덱스 맵.
-
-        공백을 넣으면 쪼개진 금액("180" "000" "000")이 콤마 패턴에 걸리지 않아
-        쪼개짐 자체를 놓친다. 그래서 매칭은 항상 공백 없는 버전으로 한다.
-        """
-        buf: list[str] = []
-        owner: list[int] = []
-        for i, w in enumerate(self.words):
-            for ch in w.text:
-                buf.append(ch)
-                owner.append(i)
-        return "".join(buf), owner
-
-    def words_for_span(self, start: int, end: int) -> list[int]:
-        _, owner = self.concat()
-        return sorted(set(owner[start:end]))
-
-    @property
-    def rank_no(self) -> str | None:
-        """줄 맨 앞이 순수 숫자면 순위번호 후보로 본다 ([4] 말소 대조용)."""
-        if not self.words:
-            return None
-        m = _RANK_NO.match(self.words[0].text.strip())
-        return m.group(0) if m else None
-
-
-@dataclass
 class Page:
-    """이미지 1장의 OCR 결과."""
+    """이미지 1장의 OCR 결과 (검증 스크립트용 — 원본 파일 경로·raw를 함께 들고 다닌다).
+
+    ⚠ Word/Line/줄 묶기/항목 그룹화는 `app.services.ocr_layout`에 있다. 여기에 복제하지
+      않는다 — 백엔드와 로직이 갈라지면 이 검증이 무의미해진다.
+    """
 
     name: str  # 이미지 파일 stem
+    index: int  # 업로드 순서 (0부터)
     path: Path
     raw: dict
     words: list[Word]
     lines: list[Line]
+
+    def as_ocr_page(self) -> OcrPage:
+        return OcrPage(name=self.name, index=self.index, words=self.words, lines=self.lines)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -264,58 +209,7 @@ def call_document_ocr(api_key: str, path: Path) -> tuple[dict, str]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def parse_words(raw: dict) -> list[Word]:
-    """pages[].words[] → Word 목록. 문서 최상위 words[] 폴백도 허용."""
-    out: list[Word] = []
-    containers = raw.get("pages") or []
-    if not containers and raw.get("words"):
-        containers = [raw]
-    for page in containers:
-        for w in page.get("words") or []:
-            verts = (w.get("boundingBox") or {}).get("vertices") or []
-            xs = [float(v.get("x", 0)) for v in verts]
-            ys = [float(v.get("y", 0)) for v in verts]
-            if not xs or not ys:
-                continue
-            out.append(
-                Word(
-                    text=w.get("text", ""),
-                    confidence=float(w.get("confidence", 0.0)),
-                    x0=min(xs),
-                    y0=min(ys),
-                    x1=max(xs),
-                    y1=max(ys),
-                )
-            )
-    return out
-
-
-def group_lines(words: list[Word], tol_ratio: float) -> list[Line]:
-    """y중심과 높이로 같은 줄을 묶는다 ([3]).
-
-    판정: 다음 단어의 y중심이 **현재 줄 y중심 중앙값**에서 `tol_ratio × 줄 글자높이
-    중앙값` 이내면 같은 줄. 글자 높이에 비례시켜야 제목(큰 글씨)과 본문(작은 글씨)에
-    같은 규칙이 통한다.
-
-    ⚠ 이 tol_ratio 는 **레이아웃 튜닝 파라미터**이지 위험 판정 임계값이 아니다
-      (risk-scoring 규칙의 "출처 없는 수치 금지" 대상 아님). `--line-tol`로 조정 가능.
-    """
-    if not words:
-        return []
-    ordered = sorted(words, key=lambda w: (w.cy, w.x0))
-    buckets: list[list[Word]] = [[ordered[0]]]
-    for w in ordered[1:]:
-        cur = buckets[-1]
-        ref_cy = statistics.median([x.cy for x in cur])
-        ref_h = statistics.median([x.height for x in cur] + [w.height])
-        if abs(w.cy - ref_cy) <= tol_ratio * ref_h:
-            cur.append(w)
-        else:
-            buckets.append([w])
-    lines = []
-    for i, bucket in enumerate(buckets):
-        lines.append(Line(index=i, words=sorted(bucket, key=lambda w: w.x0)))
-    return lines
+# parse_words / group_lines 는 app.services.ocr_layout 에서 가져온다 (위 import 참조).
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -429,9 +323,8 @@ def check_lines(pages: list[Page], tol_ratio: float) -> None:
     for p in pages:
         h2(f"{p.name} — 단어 {len(p.words)}개 → 줄 {len(p.lines)}개")
         for line in p.lines:
-            x0, y0, x1, y1 = line.box
-            rank = f" [순위 {line.rank_no}]" if line.rank_no else ""
-            print(f"  L{line.index:<3} y{y0:>5.0f}~{y1:<5.0f} w{len(line.words):<3}{rank} {line.display}")
+            _, y0, _, y1 = line.box
+            print(f"  L{line.index:<3} y{y0:>5.0f}~{y1:<5.0f} w{len(line.words):<3} {line.display}")
     print("\n  ※ 표 형식 문서라 **같은 y의 다른 칸**도 한 줄로 묶입니다(의도된 동작 —")
     print("     '채권최고액'과 '금75,600,000원'이 같은 줄이어야 --target 매칭이 됩니다).")
     print("     셀 안에서 여러 줄로 접힌 텍스트는 각각 다른 줄이 됩니다.")
@@ -443,7 +336,9 @@ def check_lines(pages: list[Page], tol_ratio: float) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def check_cancellation(pages: list[Page], money_occurrences: dict[str, list[str]]) -> None:
+def check_cancellation(
+    pages: list[Page], items: list[RegistryItem], money_occurrences: dict[str, list[str]]
+) -> None:
     h1("[4] 말소 구분")
 
     print("  ▶ 취소선(실선) 인식 여부 — 응답 구조로 먼저 확인")
@@ -471,19 +366,30 @@ def check_cancellation(pages: list[Page], money_occurrences: dict[str, list[str]
     if cancel_lines:
         print(f"    ✅ '말소' 포함 줄 {len(cancel_lines)}개:")
         for name, line in cancel_lines:
-            rank = line.rank_no or "-"
-            print(f"      [{name}] L{line.index:<3} 순위 {rank:<4} {line.display[:66]}")
-        print("\n    → 등기부는 말소를 '<N>번근저당권설정등기말소' 같은 **별도 행**으로도 남깁니다.")
-        print("       이 행의 'N번'을 파싱해 해당 순위번호 항목을 말소 처리하는 경로가 가능합니다.")
+            print(f"      [{name}] L{line.index:<3} {line.display[:70]}")
+        print("\n    → 등기부는 말소를 '<N>번근저당권설정등기말소' 같은 **별도 행**으로 남깁니다.")
+        print("       이 행의 'N번'을 파싱해 해당 순위번호 항목을 말소 처리하는 것이 유일한 경로입니다.")
     else:
         print("    ❌ '말소' 문자열이 잡히지 않았습니다.")
 
-    print("\n  ▶ 순위번호로 항목을 구분할 수 있는가")
-    for p in pages:
-        ranks = [(line.index, line.rank_no) for line in p.lines if line.rank_no]
-        print(f"    [{p.name}] 순위번호 후보 {len(ranks)}건: {[r for _, r in ranks][:20]}")
-    print("    ※ 순위번호는 표 첫 칸이라 '줄 맨 앞 숫자'로 잡습니다. 셀이 여러 줄이면")
-    print("       이어지는 줄에는 순위번호가 없어, 다음 순위번호 전까지를 한 항목으로 봐야 합니다.")
+    print("\n  ▶ 말소 행이 여러 줄로 갈라져도 이어붙였는가 (등기목적 컬럼 단위 결합)")
+    records = [it for it in items if it.is_cancel_record]
+    if records:
+        for it in records:
+            span = len(it.lines)
+            print(f"    [{it.section} 순위 {it.rank}] {it.location} (줄 {span}개) → 등기목적 '{it.purpose}'")
+        print("    ※ 줄 단위로 이어붙이면 사이에 접수·등기원인 칸 날짜가 끼어들어 끊깁니다.")
+        print("       등기목적 컬럼 x밴드 안의 word만 이어붙여야 '…등' + '기말소'가 붙습니다.")
+    else:
+        print("    (말소 근거 행 없음)")
+
+    print("\n  ▶ 어느 항목이 말소로 판정됐는가 (근거 필수)")
+    canceled = [it for it in items if it.canceled]
+    if canceled:
+        for it in canceled:
+            print(f"    ✅ {it.section} 순위 {it.rank} → 말소  (근거: {it.cancel_evidence})")
+    else:
+        print("    (말소로 판정된 항목 없음)")
 
     print("\n  ▶ 같은 금액이 여러 줄에 나타나는가 (말소분/유효분 혼동 위험)")
     dupes = {k: v for k, v in money_occurrences.items() if len(v) > 1}
@@ -511,67 +417,52 @@ def check_cancellation(pages: list[Page], money_occurrences: dict[str, list[str]
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def _clean_name(name: str, span_start: int, owner: list[int]) -> tuple[str, int]:
-    """정규식이 넉넉히 잡은 이름을 실제 이름으로 다듬는다.
-
-    ⑴ **word 경계로 스냅** — 줄을 공백 없이 이어붙이므로 "소유자"+"소유자A"이
-       "소유자소유자A"이 된다. 이름은 새 word에서 시작하므로 span 안의 첫 word
-       경계까지 당기면 "소유자A"만 남는다.
-    ⑵ OCR이 "소유자소유자A"을 **한 word로 묶어버린 경우**는 ⑴로 못 자르므로,
-       앞에 붙은 역할어를 문자열로 떼어낸다.
-    반환: (다듬은 이름, 다듬은 시작 위치)
-    """
-    end = span_start + len(name)
-    for i in range(span_start, end - 1):
-        if (i == 0 or owner[i] != owner[i - 1]) and end - i >= 2:
-            name, span_start = name[i - span_start :], i
-            break
-    for role in _ROLE_WORDS:
-        if name.startswith(role) and len(name) - len(role) >= 2:
-            name, span_start = name[len(role) :], span_start + len(role)
-            break
-    return name, span_start
+def collect_names(pages: list[Page]) -> list[tuple[Page, Line, list]]:
+    """페이지별 이름 검출 결과 — 그리기와 리포트가 같은 결과를 쓰도록 한 곳에서 만든다."""
+    out = []
+    for p in pages:
+        med_h = median_height(p.words)
+        for line in p.lines:
+            hits = extract_names(line, p.index, med_h)
+            if hits:
+                out.append((p, line, hits))
+    return out
 
 
 def check_owner(pages: list[Page]) -> None:
     h1("[5] 소유자·공유자 이름 (형광펜 1순위 대상)")
-    print("  ※ STEP 1 조사 결과 이 샘플의 현재 권리자 표기는 '소유자'가 아니라 '공유자'(4명)입니다.")
-    print("     따라서 '소유자'와 '공유자'를 **양쪽 다** 탐색하고, 이름이 여러 개일 때")
-    print("     전부 잡히는지를 봅니다.\n")
+    print("  ※ 이 샘플의 현재 권리자 표기는 '소유자'가 아니라 '공유자'(4명)입니다.")
+    print("     추출 방식: 등록번호 word(`○○○○○○-○******`)를 먼저 찾고 **바로 앞 word**를 이름으로 삼는다.")
+    print("     (문자 단위 정규식은 '매매'+'소유자D'을 한 덩어리로 삼켜 bbox가 옆 칸까지 번졌다)")
+    print("     개인/법인 판별: 등록번호 뒤 7자리가 마스킹이면 개인, 숫자면 법인.\n")
 
-    total_names = 0
+    total = {"개인": 0, "법인": 0}
     for p in pages:
         h2(f"{p.name}")
-        hit_any = False
+        found = False
+        med_h = median_height(p.words)
         for line in p.lines:
-            joined, owner = line.concat()
-            kw = _OWNER_KEYWORD.search(joined)
-            names = list(_NAME_WITH_RRN.finditer(joined))
-            if not kw and not names:
+            hits = extract_names(line, p.index, med_h)
+            if not hits:
                 continue
-            hit_any = True
-            tag = f"키워드 '{kw.group(0)}'" if kw else "이름+주민번호"
-            print(f"  L{line.index:<3} ({tag}) {line.display[:70]}")
-            for m in names:
-                total_names += 1
-                name, start = _clean_name(m.group(1), m.start(1), owner)
-                idxs = sorted(set(owner[start : m.end(1)]))
-                parts = [line.words[i].text for i in idxs]
-                boxes = [line.words[i].box for i in idxs]
-                whole = len(idxs) == 1 and line.words[idxs[0]].text == name
-                mark = "✅ 이름이 word 1개로 온전" if whole else "⚠ 이름이 여러 word로 쪼개짐"
-                x0 = min(b[0] for b in boxes)
-                y0 = min(b[1] for b in boxes)
-                x1 = max(b[2] for b in boxes)
-                y1 = max(b[3] for b in boxes)
-                print(f"        이름 '{name}' ← word {parts}  {mark}")
-                print(f"        bbox ({x0:.0f},{y0:.0f})-({x1:.0f},{y1:.0f})  주민번호 {m.group(2)}-******")
-        if not hit_any:
-            print("  (소유자/공유자 키워드도, 이름+주민번호 패턴도 없음)")
+            found = True
+            print(f"  L{line.index:<3} {line.display[:72]}")
+            for hit in hits:
+                total[hit.kind] += 1
+                x0, y0, x1, y1 = hit.box
+                strip = f" (접두어 {hit.stripped} 제거)" if hit.stripped else ""
+                print(f"        [{hit.kind}] '{hit.name}' ← word '{hit.raw_candidate}'{strip}")
+                print(
+                    f"        bbox ({x0:.0f},{y0:.0f})-({x1:.0f},{y1:.0f})  폭 {x1 - x0:.0f}px"
+                    f"  등록번호 {hit.id_prefix}-*******"
+                )
+        if not found:
+            print("  (등록번호 + 이름 패턴 없음)")
 
-    print(f"\n  합계 이름 {total_names}건 검출.")
-    print("  기대치: 이 등기부는 갑구에 소유자 1명(정○○) + 공유자 4명(박·김·김·김)이 등장합니다.")
-    print("  검출 수가 이보다 적으면 하이라이트 대상이 누락되는 것이므로 실패로 봅니다.")
+    print(f"\n  합계 — 개인 {total['개인']}건 / 법인 {total['법인']}건")
+    print("  기대치: 갑구에 개인 5명(소유자A·소유자B·소유자C·소유자D·소유자E),")
+    print("          을구에 법인 2곳(하나은행·우리은행).")
+    print("  개인 이름 폭이 40~50px 근처면 이름 word에만 정확히 맞은 것입니다(과거 181px = 실패).")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -659,6 +550,86 @@ def check_confidence(pages: list[Page]) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# [8] 항목 단위 그룹화 — 줄이 아니라 '등기 항목'이 하이라이트의 단위다
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _item_rows(items: list[RegistryItem]) -> list[dict[str, str]]:
+    rows = []
+    for it in items:
+        money = " / ".join(m.text for m in it.moneys) or "-"
+        holders = " / ".join(f"{n.name}({n.kind})" for n in it.names) or "-"
+        if it.canceled:
+            status = "말소"
+        elif it.is_cancel_record:
+            status = "말소근거행"
+        else:
+            status = "유효"
+        rows.append(
+            {
+                "구역": it.section,
+                "순위번호": it.rank or "-",
+                "등기목적": it.purpose or "-",
+                "금액": money,
+                "권리자": holders,
+                "말소여부": status,
+                "말소근거": it.cancel_evidence or "-",
+                "위치": it.location,
+            }
+        )
+    return rows
+
+
+def check_items(items: list[RegistryItem]) -> None:
+    h1("[8] 등기 항목 그룹화 (하이라이트의 실제 단위)")
+    print("  줄(line)이 아니라 **항목(item)** 이 단위다. 순위번호 줄부터 다음 순위번호 전까지가")
+    print("  한 항목이며, **페이지를 넘어 이어진다**(을구 1번: 금액은 3.png, 은행명은 4.png).")
+    print("  말소여부는 반드시 근거와 함께 남긴다 — 근거 없이 말소로 단정하지 않는다.\n")
+    if not items:
+        print("  ❌ 항목이 하나도 만들어지지 않았습니다 (컬럼 헤더 인식 실패 가능성).")
+        return
+    for row in _item_rows(items):
+        flag = {"말소": "✗", "말소근거행": "·", "유효": "✅"}[row["말소여부"]]
+        print(f"  {flag} [{row['구역']} 순위 {row['순위번호']}] {row['등기목적'][:34]}")
+        print(f"      금액 {row['금액']}  |  권리자 {row['권리자']}")
+        print(f"      말소 {row['말소여부']}  근거 {row['말소근거']}  |  위치 {row['위치']}")
+    active = [it for it in items if not it.canceled and not it.is_cancel_record]
+    print(f"\n  합계 {len(items)}항목 — 유효 {len(active)} / 말소 {sum(1 for i in items if i.canceled)}"
+          f" / 말소근거행 {sum(1 for i in items if i.is_cancel_record)}")
+
+
+def write_items_summary(items: list[RegistryItem], out_path: Path, sources: list[str]) -> None:
+    """항목 표를 마크다운으로 저장 — 비개발 팀원도 읽을 수 있게."""
+    lines = [
+        "# OCR 항목 추출 결과 (검증용)",
+        "",
+        "> `backend/scripts/test_ocr_coords.py` 가 자동 생성한 파일이다. **채택 미확정** 기능의",
+        "> 중간 산출물이며, 등기부 실명이 들어 있으므로 **커밋하지 않는다**(`out/`은 .gitignore).",
+        "",
+        f"- 입력: {', '.join(sources)}",
+        f"- 항목 {len(items)}건",
+        "",
+        "| 구역 | 순위번호 | 등기목적 | 금액 | 권리자 | 말소여부 | 말소근거 | 위치 |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for row in _item_rows(items):
+        cells = [row[k] for k in ("구역", "순위번호", "등기목적", "금액", "권리자", "말소여부", "말소근거", "위치")]
+        lines.append("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+    lines += [
+        "",
+        "## 읽는 법",
+        "",
+        "- **말소여부 = 말소**: 이미 없어진 권리다. 하이라이트를 **칠하지 않는다**.",
+        "- **말소여부 = 말소근거행**: 그 말소를 기록한 행 자체다(이 행에는 취소선이 없다).",
+        "- **말소근거**: 어느 페이지 몇 번째 줄의 어떤 문구 때문에 말소로 봤는지. 근거가 `-` 인데",
+        "  말소로 표시된 항목이 있으면 그것은 버그다.",
+        "",
+    ]
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"  저장: {out_path}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # --target 매칭
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -705,9 +676,19 @@ def report_targets(page: Page, targets: list[str], full: list[Line], per_target:
 # 시각 출력
 # ══════════════════════════════════════════════════════════════════════════════
 
-BAND_FILL = (120, 120, 120, 28)  # 옅은 회색 가로 밴드 (줄 묶기 검증)
-BOX_COLOR = (0, 90, 220)  # 파란 박스 (금액·키워드)
-TARGET_COLOR = (220, 20, 20)  # 빨간 타원 (--target 매칭)
+BAND_FILL = (120, 120, 120, 24)  # 옅은 회색 가로 밴드 (줄 묶기 검증)
+MONEY_COLOR = (0, 90, 220)  # 파랑 — 금액
+KEYWORD_COLOR = (0, 170, 255)  # 하늘 — 키워드
+NAME_COLOR = (0, 155, 60)  # 초록 — 이름(권리자)
+CANCEL_COLOR = (255, 140, 0)  # 주황 — 말소 행
+TARGET_COLOR = (220, 20, 20)  # 빨강 — --target 매칭
+LEGEND = [
+    ("금액", MONEY_COLOR),
+    ("키워드", KEYWORD_COLOR),
+    ("이름", NAME_COLOR),
+    ("말소 행", CANCEL_COLOR),
+    ("target", TARGET_COLOR),
+]
 
 
 def _font(size: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
@@ -719,8 +700,28 @@ def _font(size: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def draw_marked(page: Page, target_lines: list[Line] | None, out_path: Path) -> None:
-    """회색 밴드(줄) + 파란 박스(금액·키워드) + 빨간 타원(target) 을 그린다."""
+def _draw_legend(d: ImageDraw.ImageDraw, width: int, caption: str) -> None:
+    """이미지 상단에 색 범례를 그린다 — 색만 보고 무엇인지 알 수 있게."""
+    font = _font(14)
+    bar_h = 26
+    d.rectangle([0, 0, width, bar_h], fill=(255, 255, 255))
+    d.line([0, bar_h, width, bar_h], fill=(200, 200, 200), width=1)
+    x = 6
+    for label, color in LEGEND:
+        d.rectangle([x, 6, x + 14, 20], outline=color, width=3)
+        x += 19
+        d.text((x, 6), label, fill=(40, 40, 40), font=font)
+        x += int(d.textlength(label, font=font)) + 14
+    d.text((x + 4, 6), caption, fill=(120, 120, 120), font=font)
+
+
+def draw_marked(
+    page: Page,
+    items: list[RegistryItem],
+    target_lines: list[Line] | None,
+    out_path: Path,
+) -> None:
+    """회색 밴드(줄) + 파랑(금액) + 하늘(키워드) + 초록(이름) + 주황(말소 행) + 빨강(target)."""
     base = Image.open(page.path).convert("RGBA")
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     od = ImageDraw.Draw(overlay)
@@ -730,32 +731,62 @@ def draw_marked(page: Page, target_lines: list[Line] | None, out_path: Path) -> 
         _, y0, _, y1 = line.box
         od.rectangle([0, y0, base.width, y1], fill=BAND_FILL)
 
+    # 2) 말소 행 배경 — 이 항목은 "칠하면 안 되는 것"이므로 눈에 띄게 깔아 둔다
+    for it in items:
+        if not (it.canceled or it.is_cancel_record):
+            continue
+        box = it.box_on_page(page.index)
+        if box:
+            od.rectangle([0, box[1] - 2, base.width, box[3] + 2], fill=(255, 140, 0, 30))
+
     base = Image.alpha_composite(base, overlay)
     d = ImageDraw.Draw(base)
     font = _font(13)
 
-    # 2) 금액·키워드 파란 박스
+    # 3) 말소 항목 테두리 (주황)
+    for it in items:
+        if not (it.canceled or it.is_cancel_record):
+            continue
+        box = it.box_on_page(page.index)
+        if box:
+            d.rectangle([box[0] - 4, box[1] - 3, box[2] + 4, box[3] + 3], outline=CANCEL_COLOR, width=2)
+            tag = "말소됨" if it.canceled else "말소근거"
+            d.text((box[2] + 8, box[1]), tag, fill=CANCEL_COLOR, font=font)
+
+    # 4) 금액(파랑) · 키워드(하늘)
     for line in page.lines:
         joined, owner = line.concat()
-        mark: set[int] = set()
+        money_idx: set[int] = set()
+        kw_idx: set[int] = set()
         for m in _MONEY_COMMA.finditer(joined):
-            mark |= set(owner[m.start() : m.end()])
+            money_idx |= set(owner[m.start() : m.end()])
         for kw in _KEYWORDS:
             for m in re.finditer(re.escape(kw), joined):
-                mark |= set(owner[m.start() : m.end()])
-        for i in sorted(mark):
+                kw_idx |= set(owner[m.start() : m.end()])
+        for i in sorted(kw_idx - money_idx):
             w = line.words[i]
-            d.rectangle([w.x0 - 1, w.y0 - 1, w.x1 + 1, w.y1 + 1], outline=BOX_COLOR, width=2)
+            d.rectangle([w.x0 - 1, w.y0 - 1, w.x1 + 1, w.y1 + 1], outline=KEYWORD_COLOR, width=2)
+        for i in sorted(money_idx):
+            w = line.words[i]
+            d.rectangle([w.x0 - 1, w.y0 - 1, w.x1 + 1, w.y1 + 1], outline=MONEY_COLOR, width=2)
 
-    # 3) target 빨간 타원 — 완전 매칭일 때만
+    # 5) 이름(초록) — 이름 word 하나에만 딱 맞춘 박스 + 개인/법인 표시
+    name_count = 0
+    for _, _, hits in collect_names([page]):
+        for hit in hits:
+            x0, y0, x1, y1 = hit.box
+            name_count += 1
+            d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], outline=NAME_COLOR, width=3)
+            d.text((x1 + 5, y0 - 1), f"{hit.kind}", fill=NAME_COLOR, font=font)
+
+    # 6) target 빨간 타원 — 완전 매칭일 때만
     if target_lines:
         for line in target_lines:
             x0, y0, x1, y1 = line.box
             pad_x, pad_y = 10, 6
             d.ellipse([x0 - pad_x, y0 - pad_y, x1 + pad_x, y1 + pad_y], outline=TARGET_COLOR, width=3)
 
-    d.text((6, 4), f"{page.path.name} | 줄 {len(page.lines)} | 파랑=금액·키워드 회색=줄 빨강=target",
-           fill=(0, 0, 0), font=font)
+    _draw_legend(d, base.width, f"{page.path.name} | 줄 {len(page.lines)} | 이름 {name_count}")
     base.convert("RGB").save(out_path)
     print(f"  저장: {out_path}")
 
@@ -821,7 +852,7 @@ def main() -> None:
 
         json_paths.append(json_path)
         words = parse_words(raw)
-        pages.append(Page(name=stem, path=path, raw=raw, words=words,
+        pages.append(Page(name=stem, index=len(pages), path=path, raw=raw, words=words,
                           lines=group_lines(words, args.line_tol)))
 
     if not any(p.words for p in pages):
@@ -829,17 +860,22 @@ def main() -> None:
         print(json.dumps(pages[0].raw, ensure_ascii=False)[:800])
         sys.exit(1)
 
-    # ── 검증 7종 ────────────────────────────────────────────────────────────
+    # 항목 그룹화는 **인자로 준 페이지 순서**를 그대로 따른다 (실제 업로드 순서와 동일해야 함)
+    items = build_items([p.as_ocr_page() for p in pages], args.line_tol)
+
+    # ── 검증 8종 ────────────────────────────────────────────────────────────
     check_encoding(pages, original_console, json_paths)
     money_occurrences = check_money(pages)
     check_lines(pages, args.line_tol)
-    check_cancellation(pages, money_occurrences)
+    check_cancellation(pages, items, money_occurrences)
     check_owner(pages)
     check_page_identity(pages)
     check_confidence(pages)
+    check_items(items)
 
     # ── 시각 출력 ───────────────────────────────────────────────────────────
     h1("시각 출력")
+    write_items_summary(items, OUT_DIR / "items_summary.md", [p.path.name for p in pages])
     if args.target:
         print("  --target 모드: 지정 문자열이 **모두 같은 줄**에서 잡힌 페이지만 그립니다.")
         print("  (부분 매칭으로 대충 그리지 않습니다 — 틀린 표시보다 표시 없음이 낫습니다)\n")
@@ -847,10 +883,10 @@ def main() -> None:
             full, per_target = find_target_lines(p, args.target)
             report_targets(p, args.target, full, per_target)
             if full:
-                draw_marked(p, full, OUT_DIR / f"marked_{p.name}.png")
+                draw_marked(p, items, full, OUT_DIR / f"marked_{p.name}.png")
     else:
         for p in pages:
-            draw_marked(p, None, OUT_DIR / f"marked_{p.name}.png")
+            draw_marked(p, items, None, OUT_DIR / f"marked_{p.name}.png")
 
     h1("완료")
     print(f"  결과물: {OUT_DIR}")

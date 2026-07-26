@@ -27,3 +27,7 @@ backend/test_samples/
 
 # 판례 RAG 벡터 인덱스 (재생성 산출물 — scripts/ingest_precedents.py로 재구축)
 backend/data/precedents/index/
+
+# LLM 백엔드 비교 실행 산출물 (compare_llm_backends.py — 실행 시각별로 무한 증식)
+# 보존할 실측치는 docs/llm-backend-comparison-<연월>.md/.json 으로 옮겨 커밋한다
+backend/data/llm_bench/

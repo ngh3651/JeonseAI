@@ -66,3 +66,22 @@
 - 루트 `assets/` 마스코트 이동 후 잔여 **없음**(빈 폴더 제거 완료).
 
 **승인 시**: 분류 1(`frontend/.gitkeep`) `git rm` → `flutter analyze`·`flutter test`·`pytest` 회귀 확인 → 이 절 상태를 ✅로 갱신. 분류 2는 별도 지시(트래커 승격 또는 유지).
+
+---
+
+## [2026-07-27] OCR 하이라이트 야간 작업 산출물 (**기능 채택 미확정**)
+
+> 이 기능이 폐기되면 아래 항목은 **전부 함께 삭제**된다. 채택되면 각 시점에 정리한다.
+> 검증 기록: `docs/ocr-highlight-findings.md` · 진행 로그: `docs/night-log.md`
+
+| 대상 | 무엇 | 삭제·교체 시점 | 상태 |
+|---|---|---|---|
+| `docs/night-log.md` | 야간 작업 실시간 진행 로그(2026-07-27). 아침 보고서의 근거 원본 | **아침 보고 확인 후**: `docs/morning-report.md`로 요약이 끝났으면 보존 여부 결정(발표 스토리 원재료로 쓸 수 있음) | ⏳ |
+| `docs/RESUME.md` | 중단 대비 이어받기 메모(4줄 고정 양식) | **작업 종료 시 삭제.** 다음 야간 작업 때 다시 만든다 | ⏳ |
+| `docs/morning-check.md` | 아침에 실기기로 확인하는 절차서 | **확인 완료 후**: 절차가 반복 가치가 있으면 `docs/team-setup.md`로 흡수, 아니면 삭제 | ⏳ |
+| `backend/scripts/test_ocr_coords.py` | 검증 CLI. 로직은 `app/services/ocr_layout.py`로 **이미 승격됨** — 지금은 그 모듈을 검증·시각화하는 역할만 | **좌표 정합이 실기기에서 확정된 뒤 삭제.** 기능 폐기 시 즉시 삭제 | ⏳ |
+| `backend/out/` (`ocr_*.json`, `marked_*.png`, `items_summary.md`) | 검증 산출물. **등기부 소유자 실명 포함** → `.gitignore` 처리(커밋 안 됨) | **E-6 정리 스윕**에서 로컬 폴더 삭제. 단 `ocr_3.json`·`ocr_4.json`은 pytest 픽스처로 쓰이므로(없으면 9건 skip) 그 전까지 보존 | ⏳ |
+| `frontend` 뷰어의 **좌표 진단 토글**(`_debug`, `registry_viewer_screen.dart`) | 매칭된 좌표의 터치 영역을 파랗게 그리고 원본/표시 크기를 로그로 찍는 개발용 스위치. 현재 `kDebugMode`로 릴리스에서는 숨김 | **좌표 정합 확정 후 제거.** 시연 빌드에는 이미 안 나오지만 코드는 남아 있다 | ⏳ |
+| `backend/app/services/ocr.py` · `ocr_layout.py` · `highlight.py` | OCR 하이라이트 본체 3종 | **기능 폐기 시 삭제**(+ `report_builder.analyze`의 병렬 호출 되돌리기 + `contract.py`의 `Highlight`/`highlights`/`highlightNotice`/`checkedNotes` 제거) | ⏳ |
+| `backend/tests/test_highlight.py` | 하이라이트 테스트 39건. 그중 9건은 `out/ocr_*.json`이 있을 때만 실행(없으면 skip) | 위 본체와 함께 | ⏳ |
+| `frontend/lib/state/registry_photo_store.dart` | 전송 JPEG 경로를 세션 동안만 보관 | 위 본체와 함께. **사진 영구 저장으로 바꾸기로 하면 여기부터 교체** | ⏳ |

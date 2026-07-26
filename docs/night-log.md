@@ -259,3 +259,74 @@ word `1@117-125`는 순위번호가 아니라 **등기목적 칸에서 접힌 "�
 (CLAUDE.md 문서 맵에는 이름이 있지만 실제 파일은 `docs/api-contract.md` 하나뿐)
 → `api-contract.md` §9에만 적고, 그 사실을 §9 끝에 명시했다. 새 파일을 만들지는 않았다
   (문서를 늘리면 어느 쪽이 진짜인지 헷갈린다).
+
+## 03:30 라운드 2 — 앱 (Flutter)
+
+**만든 것 / 고친 것**
+| 파일 | 역할 |
+|---|---|
+| `lib/state/registry_photo_store.dart` | **신규**. 전송한 JPEG 경로를 세션 동안만 보관 |
+| `lib/screens/report/registry_viewer_screen.dart` | **신규**. 뷰어 + 오버레이 + 시트 |
+| `lib/models/analysis_report.dart` | `RegistryHighlight`/`HighlightBox` + `highlights` 필드 |
+| `lib/repositories/api_analysis_repository.dart` | 전송 JPEG 경로를 저장소에 등록 |
+| `lib/screens/report/report_screen.dart` | '내가 올린 등기부에서 보기' 진입 카드 |
+| `lib/app/router.dart` | `/registry/:id` 경로 |
+| `test/registry_highlight_test.dart` | **신규** 13건 |
+
+### 결정 ⑤ — 사진을 메모리에만 둔다 (세션 저장소)
+- **정해야 했던 것**: 뷰어가 띄울 사진을 어디서 가져오나?
+- **선택지**: ⓐ 갤러리 원본 경로를 다시 읽는다 ⓑ 서버로 보낸 JPEG 경로를 기억한다
+  ⓒ 앱 저장소에 복사해 영구 보관
+- **고른 것: ⓑ**. ⓐ는 **좌표가 전부 어긋난다** — 좌표는 서버로 보낸 JPEG 픽셀 기준인데
+  갤러리 원본은 해상도·EXIF 회전이 다르다(변환기가 `quality: 90`으로 재인코딩한다).
+  ⓒ는 **금지 사항**(사진 영구 저장 금지)이고, 등기부 사진에는 실명·주소가 있어 함부로
+  남길 것도 아니다.
+- **부작용**: 앱을 껐다 켜면 사진이 사라진다 → 이력에서 연 리포트에는 진입점이 **안 보인다**.
+  지시서 요구("이력에서 다시 열었을 때 사진이 없으면 진입점을 숨겨라")와 일치.
+- **되돌리려면**: `RegistryPhotoStore`를 파일 복사 + SharedPreferences 방식으로 바꾸면 된다.
+
+### 결정 ⑥ — 사진 한 장이라도 사라지면 **전부** 없는 것으로 친다
+`getTemporaryDirectory()` 안이라 OS가 임의로 지울 수 있다. 3장 중 2번이 사라졌는데
+1·3번만 보여주면 **page 인덱스가 밀려 엉뚱한 사진에 형광펜이 그려진다**. 그래서
+`pathsFor()`가 하나라도 없으면 빈 목록을 돌려준다(진입점도 같이 숨는다).
+
+### 결정 ⑦ — 이미지 표시 크기를 직접 계산했다
+- **문제**: `Image.file(fit: BoxFit.contain)`에 맡기면 **실제로 그려진 사각형을 알 수 없다.**
+  오버레이는 위젯 전체 크기를 기준으로 그리므로, 이미지가 레터박스(위아래 여백)로
+  들어가면 좌표가 그만큼 밀린다.
+- **대응**: `_fitted()`로 contain 결과 크기를 직접 구해 `SizedBox`로 고정하고, 그 안에
+  `BoxFit.fill` 이미지와 오버레이를 겹쳤다. 두 레이어의 좌표계가 **정확히 같아진다**.
+- 원본 픽셀 크기는 `ui.ImageDescriptor.encoded`로 **헤더만 읽어** 구한다(전체 디코딩 없이).
+
+### 결정 ⑧ — 하단에 '이 사진에서 확인할 곳' 칩 목록을 넣었다
+지시서에 없던 추가다. 이유: 등기부 글자는 작고, 형광펜은 그보다 더 작다. **줌하지 않으면
+무엇을 짚었는지 알 수 없다.** 칩에 뱃지 번호 + 제목("소유자 이름 · 소유자D")을 글로 적어
+줌 없이도 읽히게 했다. 칩을 누르면 형광펜을 누른 것과 같은 시트가 열린다.
+(라운드 3에서 페르소나에게 물어볼 항목이기도 하다)
+
+### 결정 ⑨ — 터치 영역을 최소 48dp로 넓혔다
+이름 bbox는 원본 44px / 878px = 5%다. 화면 폭 360dp면 **18dp**밖에 안 돼 손가락으로 못
+누른다. `touchRect()`가 가운데를 유지한 채 48dp까지 넓힌다(그리는 것은 원래 크기 그대로 —
+넓힌 것은 판정 영역뿐).
+
+### 에러 ① — Python으로 Dart 문자열을 삽입하다 `$` 이스케이프가 그대로 박힘
+- **에러**: `SyntaxWarning: "\$" is an invalid escape sequence` (Python heredoc 경고)
+- **실제 피해**: Dart 파일에 `context.push('/registry/\${report.id}')` 가 그대로 들어갔다.
+  Dart에서 `\$`는 **이스케이프된 달러**라 문자열 보간이 안 된다 → 리터럴
+  `/registry/${report.id}` 경로로 이동해 **404가 됐을 것**이다.
+- **왜 안 걸렸나**: `flutter analyze`가 "No issues found"를 냈다. 문법적으로 완전히
+  유효한 문자열이기 때문이다. **정적 분석으로는 절대 못 잡는 종류의 버그다.**
+- **어떻게 알았나**: 삽입 직후 `grep -n "\\$"` 로 파일을 되짚어 확인했다.
+- **해결**: 두 곳(`'/registry/${report.id}'`, `'확인할 곳 $count군데…'`)을 Edit 도구로 수정.
+- **교훈(기록용)**: Dart/JS처럼 `$` 보간을 쓰는 언어의 코드를 Python heredoc으로 넣지 말 것.
+  Edit 도구를 쓰거나, 넣었으면 반드시 grep으로 되짚을 것.
+
+### 검증 — 세 관문 전부 통과
+```
+flutter analyze          → No issues found!
+flutter test             → 15건 통과 (기존 2건 + 신규 13건)
+flutter build apk --debug → √ Built build\app\outputs\flutter-apk\app-debug.apk (75.2초)
+```
+신규 테스트 13건은 좌표 변환(3)·터치 영역(3)·오버레이 위젯(3)·모델 파싱(2)·사진 저장소(2).
+특히 `실제 등기부 값으로 계산한 위치가 사람이 기대하는 곳에 온다`는 3.png 실측 bbox
+(531,597)-(575,613)를 정규화했다가 되돌려 원본 픽셀과 일치하는지를 본다.

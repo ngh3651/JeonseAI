@@ -86,6 +86,78 @@ class EvidenceItem {
   );
 }
 
+/// 원본 사진 위 표시 1건의 좌표 — **0~1로 정규화** (api-contract.md §9.4).
+///
+/// 픽셀이 아니라 비율인 이유: 화면 표시 크기는 기기·회전·줌에 따라 달라진다.
+/// 앱은 `정규화값 × 화면에 그린 이미지 크기`로 되돌린다.
+class HighlightBox {
+  const HighlightBox({
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+  });
+
+  final double x;
+  final double y;
+  final double w;
+  final double h;
+
+  factory HighlightBox.fromJson(Map<String, dynamic> json) => HighlightBox(
+    x: (json['x'] as num).toDouble(),
+    y: (json['y'] as num).toDouble(),
+    w: (json['w'] as num).toDouble(),
+    h: (json['h'] as num).toDouble(),
+  );
+}
+
+/// 원본 사진 위 표시 1건 (api-contract.md §9.3).
+///
+/// **표시 전용이다.** 등급·점수에 영향을 주지 않으며, 서버가 이 목록을 비워 보내도
+/// 리포트는 지금과 똑같이 동작한다.
+class RegistryHighlight {
+  const RegistryHighlight({
+    required this.id,
+    required this.page,
+    required this.kind,
+    required this.badge,
+    required this.box,
+    required this.title,
+    required this.body,
+    this.caution,
+  });
+
+  final String id;
+
+  /// 업로드한 사진 순서 (0부터) — 몇 번째 사진에 그릴지
+  final int page;
+
+  /// `owner` | `mortgage` | `jeonse`
+  final String kind;
+
+  /// 화면 뱃지 번호 (1부터). 색만으로 정보를 전달하지 않기 위함(접근성)
+  final int badge;
+
+  final HighlightBox box;
+  final String title;
+  final String body;
+  final String? caution;
+
+  bool get isOwner => kind == 'owner';
+
+  factory RegistryHighlight.fromJson(Map<String, dynamic> json) =>
+      RegistryHighlight(
+        id: json['id'] as String,
+        page: json['page'] as int,
+        kind: json['kind'] as String,
+        badge: json['badge'] as int,
+        box: HighlightBox.fromJson(json['box'] as Map<String, dynamic>),
+        title: json['title'] as String,
+        body: json['body'] as String,
+        caution: json['caution'] as String?,
+      );
+}
+
 class AnalysisReport {
   const AnalysisReport({
     required this.id,
@@ -101,6 +173,7 @@ class AnalysisReport {
     required this.seniorDebtAmount,
     required this.gaugeProgress,
     required this.evidences,
+    this.highlights = const [],
   });
 
   final String id;
@@ -139,6 +212,10 @@ class AnalysisReport {
   /// 근거 카드 목록 (S-07 §2)
   final List<EvidenceItem> evidences;
 
+  /// 원본 사진 위 표시 목록 (api-contract.md §9 — **선택**).
+  /// 서버가 좌표를 못 구하면 빈 목록으로 온다. 그래도 리포트는 정상 동작한다.
+  final List<RegistryHighlight> highlights;
+
   /// 서버 JSON(api-contract.md §2.1 Report) → 모델.
   factory AnalysisReport.fromJson(Map<String, dynamic> json) => AnalysisReport(
     id: json['id'] as String,
@@ -156,6 +233,11 @@ class AnalysisReport {
     evidences: [
       for (final e in json['evidences'] as List)
         EvidenceItem.fromJson(e as Map<String, dynamic>),
+    ],
+    // 서버가 이 필드를 안 보내도(구버전) 빈 목록으로 동작한다.
+    highlights: [
+      for (final h in (json['highlights'] as List? ?? const []))
+        RegistryHighlight.fromJson(h as Map<String, dynamic>),
     ],
   );
 

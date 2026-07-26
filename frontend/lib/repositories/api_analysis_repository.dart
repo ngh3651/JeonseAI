@@ -5,12 +5,14 @@
 /// (더미 폴백 없음 — 연결이 진짜임을 확인하기 위한 원칙).
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
 import '../models/analysis_report.dart';
 import '../services/api_client.dart';
 import '../services/registry_upload_service.dart';
+import '../state/registry_photo_store.dart';
 import 'analysis_repository.dart';
 
 class ApiAnalysisRepository extends AnalysisRepository {
@@ -25,11 +27,15 @@ class ApiAnalysisRepository extends AnalysisRepository {
   Future<AnalysisReport> analyze(AnalysisRequest request) async {
     // 검증 자산 재사용: 어떤 형식(HEIC 등)이 와도 JPEG로 변환해 전송 (decisions.md 2026-07-01)
     final files = <http.MultipartFile>[];
+    // 하이라이트 좌표는 **서버로 보낸 이 JPEG의 픽셀 기준**이다. 뷰어가 갤러리 원본이 아니라
+    // 이 파일을 그대로 띄워야 좌표가 맞는다 → 경로를 세션 저장소에 남긴다.
+    final sentJpegPaths = <String>[];
     for (int i = 0; i < request.imagePaths.length; i++) {
       final jpeg = await _uploader.convertToJpeg(request.imagePaths[i]);
       if (jpeg == null) {
         throw const ApiException('이미지를 변환하지 못했어요. 다른 사진으로 다시 시도해 주세요');
       }
+      sentJpegPaths.add(jpeg.path);
       files.add(
         await http.MultipartFile.fromPath(
           'files',
@@ -52,6 +58,13 @@ class ApiAnalysisRepository extends AnalysisRepository {
       },
     );
     final report = AnalysisReport.fromJson(json as Map<String, dynamic>);
+    // 이 세션에서만 유효 — 앱을 껐다 켜면 사라지고, 그러면 '원본에서 보기'도 사라진다
+    // (사진 영구 저장은 이번 범위 밖. 등기부 사진에는 실명·주소가 있다).
+    RegistryPhotoStore.instance.register(report.id, sentJpegPaths);
+    debugPrint(
+      '[하이라이트] 리포트 ${report.id} — 좌표 ${report.highlights.length}건 수신, '
+      '전송 사진 ${sentJpegPaths.length}장 (뷰어는 이 JPEG를 그대로 띄운다)',
+    );
     notifyListeners(); // 이력이 바뀜 → 홈 갱신
     return report;
   }

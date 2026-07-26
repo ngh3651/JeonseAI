@@ -4,14 +4,16 @@
 > 재개하면 **코드보다 이 파일과 `docs/night-log.md`를 먼저 읽어라.**
 
 ## 1. 지금 어디까지
-라운드 0 시작 직전 — 사전 조사 완료(백엔드 구조 파악).
+라운드 2(앱) 시작 직전. 라운드 0(검증 스크립트)·1(백엔드) 완료.
 
 ## 2. 마지막 커밋
-`4692d12` — OCR 하이라이트 사전 검증 스크립트. **빌드되는 상태.** (작업 시작점)
+`2e4d764` — 백엔드: Document OCR 병렬 호출 + IE↔OCR 좌표 매칭. **빌드되는 상태.**
+(backend pytest 111건 통과 / 기존 86건 포함)
 
 ## 3. 커밋 안 된 변경
-`docs/night-log.md`, `docs/RESUME.md` 신규 생성 (문서만, 코드 영향 없음).
+없음.
 
 ## 4. 다음 할 일 딱 하나
-`backend/scripts/test_ocr_coords.py`의 알려진 문제 3건(이름 추출·말소 행 결합·이름 박스)
-수정 후 `--from-json out`으로 재검증.
+Flutter: 리포트 화면에 '원본에서 보기' 진입점 + 사진 뷰어(InteractiveViewer +
+CustomPaint 오버레이). 앱이 띄우는 이미지는 **서버로 보낸 그 JPEG**여야 한다
+(`ApiAnalysisRepository.analyze`가 `convertToJpeg`로 만든 임시 파일 경로를 들고 있음).

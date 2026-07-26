@@ -22,6 +22,7 @@ import '../screens/loading/analysis_loading_screen.dart';
 import '../screens/my/my_screen.dart';
 import '../screens/onboarding/onboarding_screen.dart';
 import '../screens/questions/question_generator_screen.dart';
+import '../screens/report/registry_viewer_screen.dart';
 import '../screens/report/report_screen.dart';
 import '../screens/search/property_search_screen.dart';
 import '../screens/shell/main_shell.dart';
@@ -82,6 +83,12 @@ final appRouter = GoRouter(
       path: '/report/:id',
       builder: (_, state) =>
           ReportScreen(reportId: state.pathParameters['id']!),
+    ),
+    // 원본 사진 위 하이라이트 뷰어 (분석 직후 그 세션에서만 — 사진이 없으면 진입점이 숨는다)
+    GoRoute(
+      path: '/registry/:id',
+      builder: (_, state) =>
+          RegistryViewerScreen(reportId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/simulator/:id',

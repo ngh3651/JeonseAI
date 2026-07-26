@@ -22,6 +22,7 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 
 class ReportScreen extends StatelessWidget {
@@ -82,6 +83,7 @@ class ReportScreen extends StatelessWidget {
               const SizedBox(height: AppSpacing.xl),
               _nextActionCard(context, report),
               const SizedBox(height: AppSpacing.xxxl),
+              _originPhotoEntry(context, report),
               const Text('근거 살펴보기', style: AppTypography.title),
               const SizedBox(height: AppSpacing.xs),
               Text('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
@@ -98,6 +100,54 @@ class ReportScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  /// '원본에서 보기' 진입점 — **분석 직후 그 세션에서만** 나타난다.
+  ///
+  /// 사진은 메모리에만 두고 영구 저장하지 않으므로(등기부에는 실명·주소가 있다),
+  /// 이력에서 다시 연 리포트에는 사진이 없다. 그때는 **버튼을 아예 숨긴다** —
+  /// 눌렀는데 아무것도 없는 막다른 길을 만들지 않기 위함.
+  Widget _originPhotoEntry(BuildContext context, AnalysisReport report) {
+    if (!RegistryPhotoStore.instance.hasPhotos(report.id)) {
+      return const SizedBox.shrink();
+    }
+    final count = report.highlights.length;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+      child: AppCard(
+        onTap: () => context.push('/registry/${report.id}'),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.image_search,
+              size: AppSize.iconLg,
+              color: AppColors.primary,
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('내가 올린 등기부에서 보기', style: AppTypography.bodyStrong),
+                  const SizedBox(height: 2),
+                  Text(
+                    count > 0
+                        ? '확인할 곳 $count군데를 사진 위에 표시했어요'
+                        : '올린 사진을 다시 볼 수 있어요',
+                    style: AppTypography.caption,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right,
+              size: AppSize.iconMd,
+              color: AppColors.textMuted,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -3,8 +3,8 @@
 /// [로그인] · [회원가입] · [비회원으로 시작하기]. 로그인은 로컬 목업.
 /// 비회원 시작 → 세션을 게스트로 두고 홈으로.
 ///
-/// NOTE(팀 피드백 대비): 목업 초안(docs/draft)은 딥그린 히어로 배경이다. 지금은 표준
-/// 라이트 테마로 두고, 배경·버튼 색 커스터마이즈는 내일 디자인 피드백 때 토큰으로 반영.
+/// NOTE: 목업 초안(docs/draft)은 딥그린 히어로 배경이지만, 앱은 라이트 테마 일관성을
+/// 택했다(2026-07-09 디자인 라운드 확정 — decisions.md). 딥그린 히어로는 재도입 안 함.
 library;
 
 import 'package:flutter/material.dart';
@@ -29,7 +29,7 @@ class StartScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(),
-              const MascotSafe(size: 120),
+              const MascotSafe(size: 120, state: MascotState.home),
               const SizedBox(height: AppSpacing.xl),
               const Text('전세AI프', style: AppTypography.conclusion),
               const SizedBox(height: AppSpacing.sm),

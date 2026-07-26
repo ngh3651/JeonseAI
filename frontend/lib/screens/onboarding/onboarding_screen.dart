@@ -117,13 +117,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
+  /// 온보딩 3장에 맞춘 마스코트: 인사 → (우리가) 검토 → 준비 완료
+  static const _pageMascots = [
+    MascotState.home, // "도장 찍기 전에" — 인사
+    MascotState.analyzing, // "무엇을 조심할지 알려드려요" — 검토하는 세이프
+    MascotState.complete, // "등기부등본만 있으면 돼요" — 집 든 세이프
+  ];
+
   Widget _pageView(_Page page, int i) {
+    final state = _pageMascots[i.clamp(0, _pageMascots.length - 1)];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const MascotSafe(size: 120),
+          MascotSafe(size: 120, state: state),
           const SizedBox(height: AppSpacing.xxxl),
           Text(
             page.title,

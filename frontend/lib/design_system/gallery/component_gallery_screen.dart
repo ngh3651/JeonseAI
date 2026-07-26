@@ -171,8 +171,21 @@ class ComponentGalleryScreen extends StatelessWidget {
             action: AppCompactButton(label: '매물 분석하러 가기', onPressed: () {}),
           ),
 
-          _section('마스코트 세이프 (플레이스홀더 — 팀 이미지로 교체 예정)'),
-          const Center(child: MascotSafe(size: 96)),
+          _section('마스코트 세이프 (상태별)'),
+          Wrap(
+            spacing: AppSpacing.md,
+            runSpacing: AppSpacing.md,
+            children: [
+              for (final s in MascotState.values)
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    MascotSafe(size: 72, state: s),
+                    Text(s.name, style: AppTypography.caption),
+                  ],
+                ),
+            ],
+          ),
 
           _section('기본 카드'),
           AppCard(

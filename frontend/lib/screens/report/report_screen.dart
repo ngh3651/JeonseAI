@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_card.dart';
+import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/components/risk_badge.dart';
 import '../../design_system/components/safety_gauge.dart';
 import '../../design_system/components/term_tooltip_sheet.dart';
@@ -103,6 +104,13 @@ class ReportScreen extends StatelessWidget {
   bool _isStale(AnalysisReport report) =>
       DateTime.now().difference(report.analyzedAt).inDays >= 1;
 
+  /// 등급 → 마스코트 상태 (양호=safe, 확인필요=caution, 위험=danger)
+  MascotState _mascotForGrade(RiskGrade grade) => switch (grade) {
+    RiskGrade.danger => MascotState.danger,
+    RiskGrade.caution => MascotState.caution,
+    RiskGrade.ok => MascotState.safe,
+  };
+
   /// 오래된 분석 배너 — 컴팩트 한 줄 (결론을 밀어내지 않게, 서연 리뷰 반영)
   Widget _staleBanner(BuildContext context, AnalysisReport report) {
     return Container(
@@ -161,6 +169,17 @@ class ReportScreen extends StatelessWidget {
           grade: report.grade,
           labelOverride: report.grade.decisionLabel,
           large: true,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        // 등급별 마스코트 — 게이지(190)·헤드라인·배지 '뒤'에 작게 둔다.
+        // 보수적 편향(decisions.md 2026-07-09): 위험할수록 마스코트를 더 작게 해
+        // 경고(게이지·배지·문구)가 항상 주인공이게 한다 (페르소나 2인 리뷰 반영 —
+        // 서연: 위험일수록 작게 / 지수: 걱정 표정이 경고를 보강하므로 유지).
+        // danger를 가장 작게(경고 우선). 양호(safe)는 반짝이 축하 연출이 강해
+        // '안전 단언' 인상을 줄 수 있어 크게 키우지 않는다(design-reviewer 지적 반영).
+        MascotSafe(
+          size: report.grade == RiskGrade.danger ? 40 : 48,
+          state: _mascotForGrade(report.grade),
         ),
         const SizedBox(height: AppSpacing.md),
         Text(

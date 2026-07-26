@@ -54,7 +54,58 @@ flowchart TB
 
 ---
 
-## 2. 분석 파이프라인 (핵심) — `POST /api/analyze`
+## 2. 사용자 기능 여정 (화면 단위 E2E)
+
+앱 실행부터 안전도 리포트까지, 그리고 리포트에서 갈라지는 심화 기능·상시 보조 기능까지의
+사용자 흐름입니다. **핵심은 안전도 리포트**이고, 판례·시뮬레이터·질문은 리포트에서 파생됩니다.
+
+```mermaid
+flowchart TB
+    START(["앱 실행"]) --> ONB["온보딩 · 시작<br/>로그인/비회원 (로컬 목업)"]
+    ONB --> HOME["🏠 홈 대시보드<br/>분석 이력 · 기능 바로가기"]
+
+    HOME -->|"＋ 분석 시작<br/>(비회원은 로그인 유도)"| SEARCH["매물 검색<br/>등기부등본 사진 여러 장<br/>＋ 예정 전세보증금(필수)·시세(선택)"]
+    SEARCH --> LOAD["분석 로딩"]
+    LOAD --> PIPE{{"분석 파이프라인<br/>OCR → 규칙 판정 → 쉬운 설명<br/>(상세 §3)"}}
+    PIPE --> REPORT["📋 안전도 리포트 ✅<br/>등급 게이지 → 지금 해야 할 일<br/>→ 근거 카드 펼쳐보기"]
+
+    REPORT --> CASES["⚖️ 판례 매칭 🔄<br/>이 매물 위험과 비슷한 실제 판결<br/>(차별화 · 큐레이션 매칭 E-3)"]
+    REPORT --> SIM["📉 손실 시뮬레이터 🔄<br/>경매 시 예상 손실·반환금<br/>(앱 로컬 계산 · 실계산 E-4)"]
+    REPORT --> QST["❓ 중개사 질문 생성 ✅<br/>위험 요인별 물어볼 질문"]
+
+    subgraph AMBIENT["🧭 상시 보조 (어디서나 진입)"]
+        direction LR
+        CHAT["💬 용어 챗봇<br/>용어만 쉽게 설명<br/>(판정·조언 안 함 · 실사전 E-5)"]
+        JRN["🗺️ 계약 여정 체크리스트 ✅<br/>계약 전~입주 후 단계별 할 일"]
+        GUIDE["📄 등기부등본 발급 가이드 ✅"]
+    end
+    HOME -.-> AMBIENT
+    REPORT -.->|"용어 탭 · 다음 행동"| AMBIENT
+
+    BACKLOG["🔮 백로그: CODEF 주소 자동조회<br/>주소만 입력 → 등기부 자동 발급"]
+    BACKLOG -.->|"향후 대체 입력"| SEARCH
+
+    classDef core fill:#E8F5E9,stroke:#2E7D32,color:#1B5E20,font-weight:bold
+    classDef prog fill:#FFF9C4,stroke:#F9A825,color:#F57F17
+    classDef flow fill:#E3F2FD,stroke:#1565C0,color:#0D47A1
+    classDef amb fill:#F3E5F5,stroke:#6A1B9A,color:#4A148C
+    classDef todo fill:#F5F5F5,stroke:#9E9E9E,color:#616161
+    class REPORT,QST core
+    class CASES,SIM prog
+    class START,ONB,HOME,SEARCH,LOAD,PIPE flow
+    class CHAT,JRN,GUIDE amb
+    class BACKLOG todo
+```
+
+- **핵심(✅ 동작)**: 안전도 리포트 · 중개사 질문 생성 · 계약 여정 체크리스트 · 발급 가이드 · 홈/검색/로딩
+- **🔄 화면 완성, 실기능 교체 대기**: 판례 매칭(위험 패턴 파생은 동작, 큐레이션 매칭 **E-3**) ·
+  손실 시뮬레이터(계산은 예시값, 낙찰가율 출처 확보 후 실계산 **E-4**)
+- **용어 챗봇**: 화면 동작(더미 사전) → **E-5**에서 `glossary.json` 실데이터로 분리
+- 비회원은 **매물 분석 진입 시점에만** 로그인 유도(그 외 보조 기능은 자유 이용 — decisions.md 2026-07-03)
+
+---
+
+## 3. 분석 파이프라인 (핵심) — `POST /api/analyze`
 
 등기부 사진 한 장이 안전도 리포트가 되기까지. **판정은 규칙 엔진이 확정하고, LLM은 그
 판정을 받아 문장만 만든다**는 흐름이 한 방향으로 고정돼 있습니다.
@@ -93,7 +144,7 @@ flowchart TB
 
 ---
 
-## 3. 가드레일 — LLM이 판정을 바꿀 수 없는 이유
+## 4. 가드레일 — LLM이 판정을 바꿀 수 없는 이유
 
 "LLM은 통역사"라는 원칙이 **코드 구조로 강제**됩니다. 판정 필드가 LLM 출력 모델에
 아예 존재하지 않아서, 환각이 섞여도 판정에 닿을 통로가 없습니다.
@@ -137,7 +188,7 @@ flowchart LR
 
 ---
 
-## 4. 엔드포인트 ↔ 서비스 매핑 (구현 상태)
+## 5. 엔드포인트 ↔ 서비스 매핑 (구현 상태)
 
 ```mermaid
 flowchart LR
@@ -182,7 +233,7 @@ flowchart LR
 
 ---
 
-## 5. 데이터 소스 & 팀 편집 영역
+## 6. 데이터 소스 & 팀 편집 영역
 
 수치는 **권위 출처 → decisions.md → 코드** 순서로만 흐르고, 큐레이션 콘텐츠는 비개발
 팀원이 코드 없이 채웁니다.
@@ -227,7 +278,7 @@ flowchart TB
 
 ---
 
-## 6. 배포·연결 (개발/시연 환경)
+## 7. 배포·연결 (개발/시연 환경)
 
 ```mermaid
 flowchart LR
@@ -250,8 +301,8 @@ flowchart LR
 
 ## 핵심 불변 원칙 (아키텍처에 박힌 것)
 
-1. **판정 = 규칙 엔진, 설명 = LLM** — LLM 출력 모델에 판정 필드가 없어 구조적으로 차단 (§2·§3)
-2. **출처 없는 수치 금지** — 모든 임계값은 `decisions.md → thresholds.py`만 경유 (§5)
-3. **보수적 편향** — 금액 파싱 실패=미상(0 치환 금지), 말소 불명=유효 간주, 페이지 누락 시 양호 금지 (§2)
-4. **앱↔계약 무변경** — 실기능 교체는 서버 내부(services/)에서만 (§1·§4)
+1. **판정 = 규칙 엔진, 설명 = LLM** — LLM 출력 모델에 판정 필드가 없어 구조적으로 차단 (§3·§4)
+2. **출처 없는 수치 금지** — 모든 임계값은 `decisions.md → thresholds.py`만 경유 (§6)
+3. **보수적 편향** — 금액 파싱 실패=미상(0 치환 금지), 말소 불명=유효 간주, 페이지 누락 시 양호 금지 (§3)
+4. **앱↔계약 무변경** — 실기능 교체는 서버 내부(services/)에서만 (§1·§5)
 5. **국내 AI만** — Upstage Information Extract + Solar Pro (§1)

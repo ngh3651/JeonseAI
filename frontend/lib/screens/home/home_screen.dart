@@ -126,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Row(
       children: [
-        const MascotSafe(size: 52),
+        const MascotSafe(size: 52, state: MascotState.home),
         const SizedBox(width: AppSpacing.lg),
         Expanded(
           child: Column(
@@ -213,7 +213,9 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
         children: [
-          const MascotSafe(size: 64),
+          // 빈 상태는 '경보'가 아니라 '시작 안내' — info의 빨강 '!'가 danger와
+          // 겹쳐 오독되어(페르소나 2인·design-reviewer) 순한 tip(전구) 톤으로.
+          const MascotSafe(size: 64, state: MascotState.tip),
           const SizedBox(height: AppSpacing.lg),
           const Text('아직 분석한 매물이 없어요', style: AppTypography.title),
           const SizedBox(height: AppSpacing.xs),

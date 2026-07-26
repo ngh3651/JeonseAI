@@ -114,7 +114,7 @@ class _MyScreenState extends State<MyScreen> {
     return AppCard(
       child: Row(
         children: [
-          const MascotSafe(size: 48),
+          const MascotSafe(size: 48, state: MascotState.home),
           const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: session.isGuest

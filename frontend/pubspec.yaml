@@ -64,6 +64,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # 마스코트 '세이프' 상태별 이미지 (assets/mascot/mascot_<state>.png)
+  # 경로 매핑은 design_system/components/mascot_safe.dart 한 곳에서만 관리한다.
+  assets:
+    - assets/mascot/
+
   # Pretendard: 무료 라이선스(OFL) 한국어 폰트 — 디자인 시스템 기본 서체 (C-1)
   fonts:
     - family: Pretendard

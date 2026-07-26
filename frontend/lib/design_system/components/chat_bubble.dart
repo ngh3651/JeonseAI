@@ -73,7 +73,7 @@ class ChatBubble extends StatelessWidget {
       children: [
         // 아바타 자리는 항상 확보 — 연속 말풍선이 좌측으로 정렬되게
         showAvatar
-            ? const MascotSafe(size: _avatarSize)
+            ? const MascotSafe(size: _avatarSize, state: MascotState.tip)
             : const SizedBox(width: _avatarSize),
         const SizedBox(width: AppSpacing.sm),
         Flexible(child: bubble),

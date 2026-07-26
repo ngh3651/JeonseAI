@@ -124,6 +124,10 @@ class AppCompactButton extends StatelessWidget {
         : OutlinedButton.styleFrom(
             minimumSize: const Size(0, AppSize.compactButtonHeight),
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            // tonal 컴팩트(미니 7)와 라운딩 통일 — 같은 크기 버튼 1px 불일치 제거
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.buttonMini),
+            ),
             textStyle: AppTypography.buttonSmall,
           );
     if (tonal) {

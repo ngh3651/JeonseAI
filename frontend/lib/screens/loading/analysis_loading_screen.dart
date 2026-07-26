@@ -191,7 +191,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Center(child: MascotSafe(size: 96)),
+            const Center(child: MascotSafe(size: 96, state: MascotState.error)),
             const SizedBox(height: AppSpacing.xl),
             const Text(
               '분석을 진행하지 못했어요',
@@ -246,7 +246,9 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Center(child: MascotSafe(size: 96)),
+                      const Center(
+                        child: MascotSafe(size: 96, state: MascotState.loading),
+                      ),
                       const SizedBox(height: AppSpacing.xl),
                       Text(
                         _stages[_stage],

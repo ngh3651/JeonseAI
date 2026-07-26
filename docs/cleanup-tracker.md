@@ -25,6 +25,8 @@
 | `backend/scripts/demo_precedent.py` | 판례 RAG E2E 검증 CLI(계약 무변경 개발 도구, 2026-07-22 야간 작업) | **E-3**: 라우터 통합 후 개발 도구로 유지할지 삭제할지 결정 (run_rules.py와 동일 취급) | ⏳ |
 | 법제처 API `OC=test` 폴백 (`collect_precedents.py`) | 정식 인증값 없이 개발용으로 동작하는 임시 경로 | **정식 OC 발급 시**: `.env`에 `LAW_API_OC` 추가 — 코드 무변경, 폴백 경고만 안 뜨게 됨. 대량 수집 전 필수 | ⏳ |
 | `backend/data/precedents/seed_cases.json`의 `curated_by: "야간 자율 작업(웹 검증) — 정민재 검수 대기"` 7건 | 개발자 웹 검증 시드 — 정민재 실큐레이션 도착 전 임시 콘텐츠(사건번호·출처는 실제) | **E-3**: 정민재 검수·보강 후 curated_by 갱신, 문구(요약·조언) 팀 검수 | ⏳ |
+| `backend/scripts/test_ocr_coords.py` | OCR 하이라이트 **사전 검증** CLI(Document OCR 좌표가 쓸 만한지 판정용, 2026-07-27). 검증 실패 시 기능과 함께 폐기 | **매칭 로직을 `services/`로 승격한 뒤 삭제.** 검증 실패로 기능을 폐기하면 그 시점에 즉시 삭제 | ⏳ |
+| `backend/out/` | `test_ocr_coords.py` 산출물(OCR 원본 JSON·마킹 이미지). **등기부 소유자 실명 포함** → `.gitignore` 처리(커밋 안 됨) | **E-6 정리 스윕**: 로컬 폴더 삭제. 기능 폐기 시에는 그 시점에 삭제 | ⏳ |
 
 ## 사용 규칙
 - 새 임시/더미/스캐폴딩 파일을 만들면 **이 표에 한 줄 추가**한다(대상·무엇·삭제 시점).

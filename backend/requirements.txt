@@ -4,5 +4,6 @@ python-multipart
 requests
 python-dotenv
 img2pdf
+pillow
 pytest
 chromadb

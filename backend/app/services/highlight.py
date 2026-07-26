@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from ..schemas.contract import Highlight, HighlightBox
 from ..schemas.internal import MoneyEntry, RegistryExtract
+from .formatting import format_won
 from .ocr import OcrResult
 from .ocr_layout import OcrPage, RegistryItem, build_items, check_document
 
@@ -38,9 +39,29 @@ _PURPOSE_KEYWORDS = {
     "jeonse": "전세권설정",
 }
 
+# 문구 원칙 (2026-07-27 페르소나 리뷰 반영):
+# - 사용자가 **직접 할 수 있는 행동**으로 끝낸다. "은행에서 확인하세요" 같은, 남의 대출
+#   잔액을 은행이 알려줄 리 없는 지시는 "이 앱은 현실을 모른다"로 읽혀 경고 전체를 무시하게 한다.
+# - 어려운 말은 **쉬운 말 먼저, 괄호에 원래 말**.
+# - 법적 단정("전원 동의가 필요합니다") 대신 권고형 — 판정이 아닌 조언 계층이며,
+#   권위 출처 없이 단정하면 앱 전체 신뢰가 흔들린다(risk-scoring 3절 톤과도 일치).
 _OWNER_BODY = (
-    "계약서의 임대인 이름과 상대방 신분증이 이 이름과 같은지 확인하세요. "
-    "다르면 계약을 진행하지 마세요."
+    "계약서에 적힌 집주인(임대인) 이름, 그리고 계약 자리에 나온 사람의 신분증이 "
+    "이 이름과 같은지 확인하세요. 하나라도 다르면 그날은 서명하지 마세요.\n"
+    "대리인이 나왔다면 집주인의 위임장과 인감증명서를 함께 보여 달라고 하세요."
+)
+_OWNER_SOURCE = "등기부 갑구 — 이 앱이 사진에서 직접 찾은 위치"
+
+_MORTGAGE_BODY = (
+    "집이 경매로 넘어가면, 이 돈을 빌려준 곳이 내 보증금보다 먼저 돈을 가져갑니다. "
+    "그만큼 내가 못 받을 수 있어요.\n"
+    "등기부에 적힌 이 금액은 실제 빚보다 크게 잡아 둔 한도(채권최고액)예요. "
+    "지금 남은 빚이 얼마인지는 중개사에게 '집주인 대출 잔액 확인서(부채증명원)'를 요청해 확인하세요."
+)
+_JEONSE_BODY = (
+    "나보다 먼저 들어온 세입자가 이 집에 권리를 걸어 둔 것입니다. "
+    "집이 경매로 넘어가면 그 사람이 내 보증금보다 먼저 돈을 가져갑니다.\n"
+    "이 전세권이 언제 없어지는지 중개사에게 확인하고, 없어진 뒤에 계약하는 것이 안전합니다."
 )
 
 
@@ -185,10 +206,23 @@ def _match_money_entry(
 
 @dataclass
 class HighlightResult:
-    """하이라이트 + 사용자에게 보여줄 한 줄 안내(있을 때만)."""
+    """하이라이트 + 사용자에게 보여줄 안내."""
 
     highlights: list[Highlight]
     notice: str | None = None
+    # **"무엇을 찾아봤고 무엇을 왜 표시하지 않았는지"** 요약. 표시 전용이다.
+    #
+    # 왜 필요한가 (2026-07-27 페르소나 2인 공통 지적, 이번 리뷰 최다 지적):
+    # 이 등기부는 근저당이 전부 말소돼 이름에만 형광펜이 칠해진다. 그런데 화면이
+    # 그 사실을 **한 마디도 하지 않으면** 두 페르소나 모두 "AI가 을구를 안 봤나 보다,
+    # 그럼 이 판정도 못 믿겠다"로 읽었다. 즉 **침묵이 신뢰를 깎는다.**
+    # 반대로 "근저당 2건은 모두 말소된 것으로 확인해 표시하지 않았어요" 한 줄이 들어가면
+    # 같은 화면이 "을구를 읽었고, 읽은 결과 뺐구나"라는 **가장 강한 신뢰 장치**가 된다.
+    checked_notes: list[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.checked_notes is None:
+            self.checked_notes = []
 
 
 def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResult:
@@ -236,7 +270,9 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
     failures: list[str] = []
     owner_count = len(owner_names)
     shared_note = (
-        f"이 집은 {owner_count}명 공동명의입니다. 계약하려면 {owner_count}명 전원의 동의가 필요합니다."
+        f"이 집은 {owner_count}명이 함께 가진 집이에요(공동명의). "
+        f"계약서에 {owner_count}명 모두의 서명이나 도장이 있는 것이 가장 안전합니다. "
+        "한 명만 나온다면 나머지 사람의 위임장과 인감증명서를 보여 달라고 하세요."
         if owner_count > 1
         else None
     )
@@ -258,15 +294,16 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
                 kind="owner",
                 badge=len(highlights) + 1,
                 box=norm,
-                title=f"소유자 이름 · {name}",
+                title=f"집주인 이름 · {name}",
                 body=_OWNER_BODY,
                 caution=shared_note,
+                source=_OWNER_SOURCE,
             )
         )
 
     for kind, entries, label in (
-        ("mortgage", active_mortgages, "근저당권"),
-        ("jeonse", active_jeonse, "전세권"),
+        ("mortgage", active_mortgages, "집에 잡힌 빚 (근저당권)"),
+        ("jeonse", active_jeonse, "다른 사람의 전세권"),
     ):
         for i, entry in enumerate(entries):
             rank = str(getattr(entry, "rank_number", "") or "").strip() or "?"
@@ -279,7 +316,7 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
             if norm is None:
                 failures.append(f"을구 순위{rank} {label} — 원본 크기를 몰라 정규화 실패")
                 continue
-            amount_text = f"{entry.amount:,}원" if entry.amount is not None else "금액 미상"
+            amount_text = format_won(entry.amount) if entry.amount is not None else "금액 미상"
             highlights.append(
                 Highlight(
                     id=f"{kind}-{i}",
@@ -288,11 +325,9 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
                     badge=len(highlights) + 1,
                     box=norm,
                     title=f"{label} · {amount_text}",
-                    body=(
-                        "집이 경매로 넘어가면 이 금액이 내 보증금보다 먼저 돌려받습니다. "
-                        "계약 전에 이 빚이 실제로 얼마 남았는지 은행에서 확인하세요."
-                    ),
+                    body=_MORTGAGE_BODY if kind == "mortgage" else _JEONSE_BODY,
                     caution=None,
+                    source="등기부 을구 — 이 앱이 사진에서 직접 찾은 위치",
                 )
             )
 
@@ -301,6 +336,14 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
     )
     for reason in failures:
         _log.info(f"[매칭] ✗ 실패: {reason}")
+
+    notes = _build_checked_notes(
+        extract=extract,
+        items=items,
+        highlights=highlights,
+        money_allowed=money_allowed,
+        owner_names=owner_names,
+    )
     if highlights:
         pages_used = sorted({h.page for h in highlights})
         _log.info(
@@ -308,4 +351,76 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
         )
     if notice:
         _log.info(f"[응답] 사용자 안내: {notice}")
-    return HighlightResult(highlights, notice=notice)
+    for note in notes:
+        _log.info(f"[응답] 찾아본 것: {note}")
+    return HighlightResult(highlights, notice=notice, checked_notes=notes)
+
+
+def _build_checked_notes(
+    *,
+    extract: RegistryExtract,
+    items: list[RegistryItem],
+    highlights: list[Highlight],
+    money_allowed: bool,
+    owner_names: list[str],
+) -> list[str]:
+    """**"무엇을 찾아봤고 무엇을 왜 표시하지 않았는지"** 를 사용자 말로 정리한다.
+
+    이 함수가 하는 일은 설명뿐이다 — 판정을 만들지도, 바꾸지도 않는다.
+    (2026-07-27 페르소나 2인 + 디자인 리뷰가 공통으로 지적한 최우선 항목:
+     "표시가 없는 것"과 "안 본 것"이 화면에서 구분되지 않아 신뢰가 깎인다.)
+    """
+    notes: list[str] = []
+
+    # ① 집주인 이름
+    owner_marks = [h for h in highlights if h.kind == "owner"]
+    if owner_marks:
+        shared = " (공동명의)" if len(owner_names) > 1 else ""
+        notes.append(f"집주인 이름 {len(owner_marks)}곳{shared} — 사진에서 찾아 표시했어요")
+    elif owner_names:
+        notes.append(
+            f"집주인 이름 {len(owner_names)}명은 리포트에 반영됐지만, 사진에서 위치를 찾지 못했어요"
+        )
+    else:
+        notes.append("집주인 이름을 등기부에서 읽지 못했어요 — 리포트의 근거 카드를 확인하세요")
+
+    # ② 근저당(집에 잡힌 빚) — **말소를 왜 뺐는지가 이 목록의 핵심**이다
+    canceled_mortgages = [
+        it for it in items if it.section == "을구" and it.canceled and "근저당" in it.purpose
+    ]
+    active_mortgages = [m for m in extract.mortgages if m.is_active]
+    money_marks = [h for h in highlights if h.kind in ("mortgage", "jeonse")]
+    if canceled_mortgages:
+        notes.append(
+            f"집에 잡힌 빚(근저당) {len(canceled_mortgages)}건은 **모두 말소된 것으로 확인**해 "
+            "표시하지 않았어요 — 이미 정리된 빚이에요"
+        )
+    if not money_allowed and (active_mortgages or extract.jeonse_rights):
+        notes.append("빚 표시는 이번엔 생략했어요 — 위 안내를 확인해 주세요")
+    elif active_mortgages and money_marks:
+        notes.append(f"지금 남아 있는 빚 {len(money_marks)}건을 표시했어요")
+    elif active_mortgages and not money_marks:
+        notes.append(
+            f"지금 남아 있는 빚 {len(active_mortgages)}건은 리포트에 반영됐지만, "
+            "사진에서 위치를 찾지 못했어요 — 리포트의 근거 카드에서 확인하세요"
+        )
+    elif not active_mortgages and not canceled_mortgages:
+        notes.append("지금 남아 있는 빚(근저당)은 없었어요")
+    elif not active_mortgages:
+        notes.append("지금 남아 있는 빚(근저당)은 없어요")
+
+    # ③ 압류·가압류·신탁 등
+    signal_fields = (
+        extract.seizures + extract.provisional_seizures + extract.provisional_dispositions
+        + extract.auction_commencements + extract.trust_registrations
+    )
+    active_signals = [e for e in signal_fields if e.is_active]
+    if active_signals:
+        notes.append(
+            f"압류·가압류·신탁 같은 표시가 {len(active_signals)}건 있어요 — 리포트의 근거 카드를 꼭 보세요"
+        )
+    else:
+        notes.append("압류·가압류·신탁 같은 표시는 없었어요")
+
+    notes.append("표시가 적다는 건 확인할 게 적다는 뜻이에요. 못 읽었다는 뜻이 아니에요.")
+    return notes

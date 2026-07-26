@@ -63,6 +63,23 @@ abstract final class AppColors {
   static const Color background = Color(0xFFF5F5F5);
   static const Color dim = Color(0x8A000000); // 바텀시트 딤
 
+  // ── 원본 사진 마킹 (S-07b 하이라이트 전용) ────────────────────
+  // ⚠ 판정 색과 **계보를 분리**해 둔다. 지금은 값이 같아도, 판정 색을 바꿀 때
+  //   마킹까지 따라 바뀌면 안 된다 (마킹은 '위치 안내'이지 '위험도 판정'이 아니다 —
+  //   api-contract §9.6 "표시와 판정 완전 분리").
+  //
+  // 형광펜 채움 — 흰 종이 위 합성색 #FFEE99. 종이 대비는 1.17:1로 낮지만
+  // **검은 인쇄 글자 대비가 17.9:1**이라 칠한 글자를 그대로 읽을 수 있다.
+  // (불투명하게 칠하면 정작 그 글자를 못 읽는 최악이 된다 — 2026-07-27 디자인 리뷰)
+  static const Color markerFill = Color(0x66FFD400);
+  // 형광펜 테두리 — 채움만으로는 종이와 경계가 안 생기므로 테두리가 유일한 경계다.
+  // caution(#A16207)을 쓴다: 흰 배경 4.92:1로 AA 통과 + 앱 앰버 계열 통일.
+  static const Color markerStroke = caution;
+  // 위험 마킹 — 등기부 원본의 빨간 취소선(#FF0000)과 대비 1.24:1로 사실상 같은 색이다.
+  // **색으로 구분할 수 없으므로 흰 halo를 함께 그려 '앱이 얹은 것'임을 형태로 알린다.**
+  static const Color markerAttention = danger;
+  static const Color markerHalo = Color(0xD9FFFFFF);
+
   // ── 등급 매핑 ────────────────────────────────────────────────
   static Color gradeColor(RiskGrade grade) => switch (grade) {
     RiskGrade.danger => danger,

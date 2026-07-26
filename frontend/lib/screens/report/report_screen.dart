@@ -82,7 +82,7 @@ class ReportScreen extends StatelessWidget {
               _conclusionHeader(report),
               const SizedBox(height: AppSpacing.xl),
               _nextActionCard(context, report),
-              const SizedBox(height: AppSpacing.xxxl),
+              const SizedBox(height: AppSpacing.xl),
               _originPhotoEntry(context, report),
               const Text('근거 살펴보기', style: AppTypography.title),
               const SizedBox(height: AppSpacing.xs),
@@ -103,52 +103,72 @@ class ReportScreen extends StatelessWidget {
     );
   }
 
-  /// '원본에서 보기' 진입점 — **분석 직후 그 세션에서만** 나타난다.
+  /// '내가 올린 사진에서 보기' 진입점 — **분석 직후 그 세션에서만** 동작한다.
   ///
-  /// 사진은 메모리에만 두고 영구 저장하지 않으므로(등기부에는 실명·주소가 있다),
-  /// 이력에서 다시 연 리포트에는 사진이 없다. 그때는 **버튼을 아예 숨긴다** —
-  /// 눌렀는데 아무것도 없는 막다른 길을 만들지 않기 위함.
+  /// 사진은 메모리에만 두고 영구 저장하지 않는다(등기부에는 실명·주소가 있다).
+  /// 이력에서 다시 연 리포트에는 사진이 없는데, 이때 **카드를 조용히 없애면**
+  /// "어제는 있었는데 사라졌다 = 앱이 고장 났다"로 읽힌다(2026-07-27 서연 리뷰).
+  /// 그래서 카드는 남기고 **왜 없는지 한 줄**로 바꾼다 — 사라짐이 배려로 읽히도록.
   Widget _originPhotoEntry(BuildContext context, AnalysisReport report) {
-    if (!RegistryPhotoStore.instance.hasPhotos(report.id)) {
-      return const SizedBox.shrink();
-    }
-    final count = report.highlights.length;
+    final hasPhotos = RegistryPhotoStore.instance.hasPhotos(report.id);
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+      padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
       child: AppCard(
-        onTap: () => context.push('/registry/${report.id}'),
+        onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
         child: Row(
           children: [
-            const Icon(
-              Icons.image_search,
+            Icon(
+              hasPhotos ? Icons.image_search : Icons.lock_outline,
               size: AppSize.iconLg,
-              color: AppColors.primary,
+              color: hasPhotos ? AppColors.primary : AppColors.textMuted,
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('내가 올린 등기부에서 보기', style: AppTypography.bodyStrong),
+                  Text(
+                    '내가 올린 사진에서 보기',
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: hasPhotos
+                          ? AppColors.textStrong
+                          : AppColors.textMuted,
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
-                    count > 0
-                        ? '확인할 곳 $count군데를 사진 위에 표시했어요'
-                        : '올린 사진을 다시 볼 수 있어요',
+                    hasPhotos
+                        ? _originPhotoSummary(report)
+                        : '등기부 사진은 안전을 위해 저장하지 않아요. 다시 보려면 새로 분석해 주세요.',
                     style: AppTypography.caption,
                   ),
                 ],
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              size: AppSize.iconMd,
-              color: AppColors.textMuted,
-            ),
+            if (hasPhotos)
+              const Icon(
+                Icons.chevron_right,
+                size: AppSize.iconMd,
+                color: AppColors.textMuted,
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// 무엇이 표시됐는지 **종류로** 알려준다.
+  /// "확인할 곳 4군데"는 할 일이 4가지인 것처럼 읽혀 바쁜 사용자를 물러서게 한다
+  /// (실제로는 '이름 대조' 한 가지다 — 2026-07-27 서연 리뷰).
+  String _originPhotoSummary(AnalysisReport report) {
+    final owners = report.highlights.where((h) => h.isOwner).length;
+    final risks = report.highlights.length - owners;
+    if (owners > 0 && risks > 0) {
+      return '집주인 이름 $owners곳과 빚 $risks건을 사진 위에 표시했어요';
+    }
+    if (owners > 0) return '집주인 이름 $owners곳을 사진에서 찾아 표시했어요';
+    if (risks > 0) return '확인할 항목 $risks건을 사진 위에 표시했어요';
+    return '올린 사진을 다시 볼 수 있어요';
   }
 
   bool _isStale(AnalysisReport report) =>

@@ -125,6 +125,7 @@ class RegistryHighlight {
     required this.title,
     required this.body,
     this.caution,
+    this.source,
   });
 
   final String id;
@@ -143,6 +144,10 @@ class RegistryHighlight {
   final String body;
   final String? caution;
 
+  /// 이 문장이 어디서 왔는지 — 근거 카드의 sourceText와 같은 역할.
+  /// 없으면 시트 문장이 "앱이 그냥 하는 말"로 읽힌다(2026-07-27 서연 리뷰).
+  final String? source;
+
   bool get isOwner => kind == 'owner';
 
   factory RegistryHighlight.fromJson(Map<String, dynamic> json) =>
@@ -155,6 +160,7 @@ class RegistryHighlight {
         title: json['title'] as String,
         body: json['body'] as String,
         caution: json['caution'] as String?,
+        source: json['source'] as String?,
       );
 }
 
@@ -174,6 +180,8 @@ class AnalysisReport {
     required this.gaugeProgress,
     required this.evidences,
     this.highlights = const [],
+    this.highlightNotice,
+    this.checkedNotes = const [],
   });
 
   final String id;
@@ -216,6 +224,13 @@ class AnalysisReport {
   /// 서버가 좌표를 못 구하면 빈 목록으로 온다. 그래도 리포트는 정상 동작한다.
   final List<RegistryHighlight> highlights;
 
+  /// 사진 묶음 안내 한 줄 (다른 등기부 섞임·순서 어긋남·쪽 누락). 없으면 null.
+  final String? highlightNotice;
+
+  /// "무엇을 찾아봤고 무엇을 왜 표시하지 않았는지" 요약. 표시 전용.
+  /// 침묵하면 사용자가 "AI가 안 봤다"로 읽어 리포트 신뢰까지 깎인다.
+  final List<String> checkedNotes;
+
   /// 서버 JSON(api-contract.md §2.1 Report) → 모델.
   factory AnalysisReport.fromJson(Map<String, dynamic> json) => AnalysisReport(
     id: json['id'] as String,
@@ -238,6 +253,10 @@ class AnalysisReport {
     highlights: [
       for (final h in (json['highlights'] as List? ?? const []))
         RegistryHighlight.fromJson(h as Map<String, dynamic>),
+    ],
+    highlightNotice: json['highlightNotice'] as String?,
+    checkedNotes: [
+      for (final n in (json['checkedNotes'] as List? ?? const [])) n as String,
     ],
   );
 

@@ -52,6 +52,8 @@ class Highlight(BaseModel):
     title: str
     body: str
     caution: Optional[str] = None
+    # 이 문장이 어디서 왔는지 (근거 카드의 sourceText와 같은 역할 — 없으면 '앱이 그냥 하는 말'로 읽힌다)
+    source: Optional[str] = None
 
 
 # ── 리포트 (§2.1 Report) ───────────────────────────────────────────────────
@@ -73,6 +75,9 @@ class Report(BaseModel):
     highlights: list[Highlight] = Field(default_factory=list)
     # 사진 묶음 관련 안내 한 줄 (다른 등기부 섞임·순서 어긋남·쪽 누락). 없으면 None.
     highlightNotice: Optional[str] = None
+    # "무엇을 찾아봤고 무엇을 왜 표시하지 않았는지" 요약. 표시 전용 — 판정과 무관하다.
+    # 침묵하면 사용자가 "AI가 안 봤다"로 읽어 신뢰가 깎인다(2026-07-27 리뷰 3인 공통 지적).
+    checkedNotes: list[str] = Field(default_factory=list)
 
 
 # ── 판례 (§2.3 CaseMatch) ──────────────────────────────────────────────────

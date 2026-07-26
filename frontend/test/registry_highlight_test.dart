@@ -27,7 +27,7 @@ RegistryHighlight _h({
   kind: kind,
   badge: badge,
   box: HighlightBox(x: x, y: y, w: w, h: h),
-  title: '소유자 이름 · 소유자D',
+  title: '집주인 이름 · 소유자D',
   body: '계약서의 임대인 이름과 상대방 신분증이 이 이름과 같은지 확인하세요. 다르면 계약을 진행하지 마세요.',
   caution: caution,
 );
@@ -143,6 +143,79 @@ void main() {
     });
   });
 
+  group('탭 판정 — 겹칠 때 누가 이기는가', () {
+    // 등기부 표에서 세로로 인접한 행은 48dp로 넓힌 터치 영역이 반드시 겹친다.
+    // 첫 매칭을 쓰면 항상 앞 번호가 이겨 ④를 눌러도 ①이 열린다(공동명의에서 필연).
+    const size = Size(400, 800);
+    final a = _h(badge: 1, y: 0.10, h: 0.01);
+    final b = _h(badge: 2, y: 0.13, h: 0.01);
+
+    test('겹친 영역에서는 탭 지점에 가까운 쪽이 열린다', () {
+      final rectB = highlightRect(b.box, size);
+      final picked = highlightAt([a, b], rectB.center, size);
+      expect(picked?.badge, 2, reason: '첫 매칭(①)이 아니라 가까운 ②가 열려야 한다');
+    });
+
+    test('반대쪽도 마찬가지다', () {
+      final rectA = highlightRect(a.box, size);
+      expect(highlightAt([a, b], rectA.center, size)?.badge, 1);
+    });
+
+    test('표시 밖을 누르면 아무것도 열리지 않는다', () {
+      expect(highlightAt([a, b], const Offset(5, 700), size), isNull);
+    });
+
+    test('표시가 없으면 null', () {
+      expect(highlightAt([], const Offset(10, 10), size), isNull);
+    });
+  });
+
+  group('줌 배율', () {
+    testWidgets('확대해도 예외 없이 그린다 (뱃지는 역스케일로 크기 유지)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 400,
+            height: 500,
+            child: RegistryHighlightOverlay(
+              highlights: [_h(), _h(badge: 2, kind: 'mortgage')],
+              scale: 6.0,
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('배율 0이 들어와도 나눗셈이 터지지 않는다', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 400,
+            height: 500,
+            child: RegistryHighlightOverlay(highlights: [_h()], scale: 0),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('가장자리 표시의 뱃지도 예외 없이 그린다 (클램프)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 400,
+            height: 500,
+            child: RegistryHighlightOverlay(
+              highlights: [_h(x: 0.0, y: 0.0), _h(badge: 2, x: 0.97, y: 0.98)],
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('모델 파싱', () {
     test('서버가 highlights를 안 보내도 빈 목록으로 동작한다', () {
       final report = AnalysisReport.fromJson(_reportJson());
@@ -158,9 +231,10 @@ void main() {
           'kind': 'owner',
           'badge': 2,
           'box': {'x': 0.6, 'y': 0.5, 'w': 0.05, 'h': 0.02},
-          'title': '소유자 이름 · 소유자D',
+          'title': '집주인 이름 · 소유자D',
           'body': '확인하세요',
           'caution': '이 집은 2명 공동명의입니다.',
+          'source': '등기부 갑구 — 이 앱이 사진에서 직접 찾은 위치',
         },
       ];
       final report = AnalysisReport.fromJson(json);
@@ -171,6 +245,22 @@ void main() {
       expect(h.isOwner, isTrue);
       expect(h.box.x, closeTo(0.6, 1e-9));
       expect(h.caution, contains('공동명의'));
+      expect(h.source, contains('갑구'));
+    });
+
+    test('checkedNotes와 highlightNotice를 읽는다', () {
+      final json = _reportJson();
+      json['checkedNotes'] = ['집주인 이름 2곳 — 사진에서 찾아 표시했어요', '빚은 없었어요'];
+      json['highlightNotice'] = '등기부 5쪽 중 2쪽만 올리셨어요.';
+      final report = AnalysisReport.fromJson(json);
+      expect(report.checkedNotes.length, 2);
+      expect(report.highlightNotice, contains('5쪽 중 2쪽'));
+    });
+
+    test('구버전 서버(필드 없음)에서도 빈 값으로 동작한다', () {
+      final report = AnalysisReport.fromJson(_reportJson());
+      expect(report.checkedNotes, isEmpty);
+      expect(report.highlightNotice, isNull);
     });
   });
 

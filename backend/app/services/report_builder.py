@@ -60,6 +60,7 @@ def _build(
     use_llm: bool = True,
     highlights: list[Highlight] | None = None,
     highlight_notice: str | None = None,
+    checked_notes: list[str] | None = None,
 ) -> tuple[Report, str]:
     """조립 본체 — (Report, 설명 출처 라벨)을 돌려준다."""
     verdict: RuleVerdict = rule_engine.evaluate(
@@ -117,6 +118,7 @@ def _build(
         evidences=evidences,
         highlights=highlights or [],  # [표시 전용] — 판정에 영향 없음
         highlightNotice=highlight_notice,  # [표시 전용] 사진 묶음 안내 (없으면 None)
+        checkedNotes=checked_notes or [],  # [표시 전용] 무엇을 찾아봤는지 요약
     )
     return report, explain_source
 
@@ -180,6 +182,7 @@ def analyze(
         use_llm=True,
         highlights=highlight_result.highlights,
         highlight_notice=highlight_result.notice,
+        checked_notes=highlight_result.checked_notes,
     )
     store.add(report)
     _log.info(

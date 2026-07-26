@@ -181,7 +181,7 @@ def test_순위번호와_금액이_같은_줄이면_좌표를_준다():
     assert len(result) == 1
     h = result[0]
     assert h.kind == "mortgage" and h.page == 0 and h.badge == 1
-    assert "36,000,000원" in h.title
+    assert "3,600만원" in h.title  # 앱 표기와 동일한 한글 금액
     # 순위번호(x=66)부터 금액 오른쪽 끝(x=711)까지를 감싼다
     assert h.box.x < 66 / PAGE_W + 0.01
     assert h.box.x + h.box.w > 700 / PAGE_W
@@ -239,9 +239,10 @@ def test_현재_소유자_이름에_좌표가_붙는다():
     assert len(result) == 2
     assert [h.kind for h in result] == ["owner", "owner"]
     assert [h.badge for h in result] == [1, 2]
-    assert all("계약서의 임대인 이름과" in h.body for h in result)
+    assert all("계약서에 적힌 집주인(임대인) 이름" in h.body for h in result)
+    assert all("대리인이 나왔다면" in h.body for h in result)  # 위임장 케이스 누락 방지
     # 공동명의는 전원 동의가 필요하다는 안내가 붙어야 한다
-    assert all(h.caution and "2명 공동명의" in h.caution for h in result)
+    assert all(h.caution and "2명이 함께 가진 집" in h.caution for h in result)
 
 
 def test_단독_소유면_공동명의_안내가_붙지_않는다():
@@ -256,7 +257,7 @@ def test_IE에_없는_옛_소유자는_칠하지_않는다():
     지분을 넘긴 옛 소유자를 칠하면 사용자가 그 사람을 임대인으로 오인한다."""
     extract = extract_with(current_owners=[Owner(name="소유자E")])
     result = _run(extract, as_result(gap_gu_page()))
-    assert [h.title for h in result] == ["소유자 이름 · 소유자E"]
+    assert [h.title for h in result] == ["집주인 이름 · 소유자E"]
 
 
 def test_사진에_없는_이름은_좌표_없이_넘어간다():
@@ -533,3 +534,52 @@ def test_구역을_모를_때도_말소를_놓치지_않는다():
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
     )
     assert _run(extract, as_result(page)) == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# "무엇을 찾아봤는지" 요약 — 침묵이 신뢰를 깎는다는 리뷰 3인 공통 지적 반영
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_말소된_근저당은_왜_안_칠했는지_사용자에게_말해준다():
+    """이 한 줄이 없으면 사용자는 '이 앱이 을구를 안 봤다'로 읽는다 (페르소나 2인 공통)."""
+    extract = extract_with(
+        current_owners=[Owner(name="소유자D")],
+        mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=True)],
+    )
+    result = highlight.build_highlights(extract, as_result(eul_gu_page(), gap_gu_page(index=1)))
+    joined = " ".join(result.checked_notes)
+    assert "말소된 것으로 확인" in joined
+    assert "못 읽었다는 뜻이 아니에요" in joined
+
+
+def test_표시가_하나도_없어도_찾아본_항목을_알려준다():
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
+    result = highlight.build_highlights(extract, as_result(gap_gu_page()))
+    assert result.highlights == []
+    assert result.checked_notes  # 침묵하지 않는다
+    assert any("찾지 못했어요" in n for n in result.checked_notes)
+
+
+def test_유효한_근저당을_못_찾으면_리포트로_안내한다():
+    """말소돼서 안 칠한 것과, 유효한데 위치를 못 찾은 것이 화면에서 같아 보이면 안 된다."""
+    extract = extract_with(
+        current_owners=[Owner(name="소유자D")],
+        mortgages=[MoneyEntry(rank_number="7", amount=99_000_000, is_canceled=False)],
+    )
+    result = highlight.build_highlights(extract, as_result(gap_gu_page()))
+    assert any("리포트의 근거 카드에서 확인" in n for n in result.checked_notes)
+
+
+def test_시트_문장에_출처가_붙는다():
+    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    result = highlight.build_highlights(extract, as_result(gap_gu_page()))
+    assert result.highlights[0].source and "갑구" in result.highlights[0].source
+
+
+def test_공동명의_안내는_단정이_아니라_권고형이다():
+    """'전원 동의가 필요합니다'는 권위 출처 없는 법적 단정 — 앱 신뢰를 흔든다(서연 지적)."""
+    extract = extract_with(current_owners=[Owner(name="소유자D"), Owner(name="소유자E")])
+    caution = highlight.build_highlights(extract, as_result(gap_gu_page())).highlights[0].caution
+    assert caution and "가장 안전합니다" in caution
+    assert "필요합니다" not in caution

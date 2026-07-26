@@ -201,6 +201,10 @@ class RegistryItem:
 
     section: str
     rank: str | None
+    # 순위번호 word 자체 — 매칭 앵커로 쓴다("순위번호와 금액이 같은 줄에 있는가").
+    rank_box: tuple[float, float, float, float] | None = None
+    rank_page_index: int = -1
+    rank_line_index: int = -1
     lines: list[tuple[int, str, Line]] = field(default_factory=list)  # (page_index, page_name, line)
     purpose_words: list[Word] = field(default_factory=list)
     names: list[NameHit] = field(default_factory=list)
@@ -350,17 +354,15 @@ def detect_section(line: Line) -> str | None:
     return None
 
 
-def find_rank(line: Line, bands: ColumnBands | None) -> str | None:
+def find_rank(line: Line, bands: ColumnBands | None) -> Word | None:
     """순위번호 컬럼 밴드 안에 있는 숫자 word만 순위번호로 인정한다."""
     if bands is None:
         return None
     lo, hi = bands.rank
     margin = _RANK_BAND_MARGIN * max(1.0, hi - lo)
     for w in line.words:
-        if lo - margin <= w.cx <= hi + margin:
-            m = _RANK_TEXT.match(w.text.strip())
-            if m:
-                return w.text.strip().replace("－", "-")
+        if lo - margin <= w.cx <= hi + margin and _RANK_TEXT.match(w.text.strip()):
+            return w
     return None
 
 
@@ -490,9 +492,15 @@ def build_items(pages: list[OcrPage], tol_ratio: float = 0.6) -> list[RegistryIt
             if _PAGE_HEADER.match(line.display) or _DOC_PREAMBLE.search(line.squeezed):
                 continue  # 표지·주소 줄·발급정보 — 항목 본문이 아니다
 
-            rank = find_rank(line, bands)
-            if rank is not None:
-                current = RegistryItem(section=section or "미상", rank=rank)
+            rank_word = find_rank(line, bands)
+            if rank_word is not None:
+                current = RegistryItem(
+                    section=section or "미상",
+                    rank=rank_word.text.strip().replace("－", "-"),
+                    rank_box=rank_word.box,
+                    rank_page_index=page.index,
+                    rank_line_index=line.index,
+                )
                 items.append(current)
             if current is None:
                 continue

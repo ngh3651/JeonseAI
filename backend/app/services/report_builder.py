@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from ..schemas.contract import Evidence, Report
+from ..schemas.contract import Evidence, Highlight, Report
 from ..schemas.internal import Grade, RegistryExtract, RuleVerdict
-from . import explanation, extraction, fallback_texts, rule_engine, store
+from . import explanation, extraction, fallback_texts, highlight, ocr, rule_engine, store
 from .formatting import format_won, short_address
 
 KST = timezone(timedelta(hours=9))
@@ -57,6 +58,7 @@ def _build(
     report_id: str | None = None,
     analyzed_at: datetime | None = None,
     use_llm: bool = True,
+    highlights: list[Highlight] | None = None,
 ) -> tuple[Report, str]:
     """조립 본체 — (Report, 설명 출처 라벨)을 돌려준다."""
     verdict: RuleVerdict = rule_engine.evaluate(
@@ -112,8 +114,18 @@ def _build(
         marketPrice=verdict.market_price,  # [판정]
         seniorDebtAmount=verdict.senior_debt_amount,  # [판정]
         evidences=evidences,
+        highlights=highlights or [],  # [표시 전용] — 판정에 영향 없음
     )
     return report, explain_source
+
+
+def _timed(fn, *args):
+    """(결과 또는 예외, 걸린 시간)을 돌려준다 — 병렬 소요시간 로그용."""
+    t0 = time.perf_counter()
+    try:
+        return fn(*args), None, time.perf_counter() - t0
+    except Exception as e:  # noqa: BLE001 — 호출부가 판단한다
+        return None, e, time.perf_counter() - t0
 
 
 def analyze(
@@ -123,16 +135,53 @@ def analyze(
     market_price: int | None,
     alias: str | None,
 ) -> Report:
-    """업로드 이미지 → 추출 → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)"""
+    """업로드 이미지 → (추출 ∥ OCR) → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)
+
+    IE와 OCR을 **병렬로** 부른다. 순차로 하면 대기 시간이 그대로 더해진다
+    (실측 IE 30초대 + OCR 장당 1.6~3.1초).
+
+    ⚠ 판정 경로는 그대로다 — `extraction.extract_registry` → `rule_engine`.
+      OCR은 좌표만 만들며, 실패해도 리포트는 지금과 똑같이 완성된다.
+    """
     t0 = time.perf_counter()
-    extract = extraction.extract_registry(images)
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="analyze") as pool:
+        ie_future = pool.submit(_timed, extraction.extract_registry, images)
+        ocr_future = pool.submit(_timed, ocr.run_ocr, images)
+        extract, ie_error, ie_elapsed = ie_future.result()
+        ocr_result, ocr_error, ocr_elapsed = ocr_future.result()
+
+    total = time.perf_counter() - t0
+    _log.info(
+        f"[병렬] IE {ie_elapsed:.1f}초 / OCR {ocr_elapsed:.1f}초 → 전체 {total:.1f}초"
+        f" (순차였다면 {ie_elapsed + ocr_elapsed:.1f}초)"
+    )
+    if ie_error is not None:
+        # IE 실패는 분석 실패다(지금과 동일). OCR이 성공했어도 판정할 수 없으므로 버린다.
+        _log.info("[분석 중단] IE 실패 — OCR 결과가 있어도 판정 없이는 리포트를 만들 수 없음")
+        raise ie_error
+    if ocr_error is not None:  # run_ocr는 예외를 삼키지만, 만약을 대비한 최종 방어선
+        _log.info(f"[OCR] 예기치 못한 예외 — 좌표 없이 계속 진행 ({type(ocr_error).__name__})")
+        ocr_result = ocr.OcrResult()
+
+    assert extract is not None  # ie_error가 없으면 반드시 값이 있다
+    try:
+        highlights = highlight.build_highlights(extract, ocr_result)
+    except Exception as e:  # noqa: BLE001 — 표시 기능이 분석을 깨뜨리면 안 된다
+        _log.info(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})")
+        highlights = []
+
     report, explain_source = _build(
-        extract, deposit=deposit, market_price=market_price, alias=alias, use_llm=True
+        extract,
+        deposit=deposit,
+        market_price=market_price,
+        alias=alias,
+        use_llm=True,
+        highlights=highlights,
     )
     store.add(report)
     _log.info(
         f"[분석 완료] 주소: {report.address} | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
         f" | 판정: {report.grade} (게이지 {report.gaugeProgress}) | 설명: {explain_source}"
-        f" | 총 {time.perf_counter() - t0:.1f}초"
+        f" | 하이라이트: {len(report.highlights)}건 | 총 {time.perf_counter() - t0:.1f}초"
     )
     return report

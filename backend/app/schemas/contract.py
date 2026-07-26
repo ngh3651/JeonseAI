@@ -25,6 +25,35 @@ class Evidence(BaseModel):
     termGlossary: dict[str, str] = Field(default_factory=dict)
 
 
+# ── 원본 사진 하이라이트 (§2.7 — 2026-07-27 추가, **선택적**) ──────────────
+# 앱이 이 필드를 통째로 무시해도 기존과 똑같이 동작한다(기본값 빈 목록).
+# ⚠ 표시 전용이다. 등급·점수·근거 카드에 어떤 영향도 주지 않는다.
+class HighlightBox(BaseModel):
+    """정규화 좌표 (0~1). 원본 이미지 픽셀 ÷ 원본 크기.
+
+    정규화하는 이유: 앱의 표시 크기는 기기·회전·줌에 따라 달라진다. 픽셀을 그대로
+    보내면 앱이 원본 크기를 따로 알아야 하고, 하나라도 어긋나면 전부 밀린다.
+    """
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class Highlight(BaseModel):
+    """사진 위 표시 1건."""
+
+    id: str
+    page: int  # 업로드한 사진 순서 (0부터) — 앱이 몇 번째 사진에 그릴지
+    kind: str  # "owner" | "mortgage" | "jeonse"
+    badge: int  # 화면에 붙일 번호 (1부터) — 색만으로 정보를 전달하지 않기 위함
+    box: HighlightBox
+    title: str
+    body: str
+    caution: Optional[str] = None
+
+
 # ── 리포트 (§2.1 Report) ───────────────────────────────────────────────────
 class Report(BaseModel):
     id: str
@@ -40,6 +69,8 @@ class Report(BaseModel):
     marketPrice: Optional[int] = None
     seniorDebtAmount: int
     evidences: list[Evidence]
+    # 선택적 추가 (2026-07-27). 좌표를 못 구하면 빈 목록 — 그래도 리포트는 완성된다.
+    highlights: list[Highlight] = Field(default_factory=list)
 
 
 # ── 판례 (§2.3 CaseMatch) ──────────────────────────────────────────────────

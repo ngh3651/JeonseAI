@@ -20,9 +20,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import statistics
 from dataclasses import dataclass, field
+
+_log = logging.getLogger("jeonseai")
 
 # ── 레이아웃 튜닝 파라미터 (위험 임계값 아님) ────────────────────────────────
 # 컬럼 경계로 볼 word 간 x간격 = 이 비율 × 글자높이 중앙값.
@@ -45,7 +48,18 @@ _PERSON_NAME = re.compile(r"^[가-힣]{2,4}$")
 _MONEY = re.compile(r"\d{1,3}(?:,\d{3})+")
 # 말소 근거 행: "1번근저당권설정등기말소" — 등기목적 칸 텍스트에서만 찾는다.
 _CANCEL_TARGET = re.compile(r"(\d{1,3})번([가-힣]{1,20}?)말소")
-_CANCEL_ANY = re.compile(r"말소")
+# 대상 순위를 못 읽은 말소 행을 잡는 안전망 — **등기목적으로 읽히는 말소만** 인정한다.
+#
+# 예전에는 `말소` 한 글자만 봤다. 그러면 페이지 하단 안내 문구
+# "실선으로 그어진 부분은 **말소**사항을 표시함"이 말소 근거 행으로 잡히는데,
+# 그 문구에는 대상 순위(`N번`)가 없으니 `cancel_bound`가 False로 남고,
+# 라운드 4 방어(미결 말소 → 금액 표시 전체 보류)가 발동한다. 이 안내 문구는
+# **모든 등기부 맨 아래에 인쇄**되므로 근저당 하이라이트가 영구히 사라진다
+# (2026-07-27 실호출에서 실제 발생 — 유효 근저당 3건이 전부 묻혔다).
+#
+# 보수적 편향은 그대로다: 진짜 `N번…말소` 행이 대상을 못 찾으면 여전히 보류한다.
+# 여기서 좁힌 것은 "산문 속의 말소"뿐이다.
+_CANCEL_ANY = re.compile(r"등기말소|말소등기|말소$")
 # 페이지 머리말(주소 줄) — 항목 본문이 아니므로 항목에 붙이지 않는다.
 _PAGE_HEADER = re.compile(r"^\s*\[(집합건물|건물|토지)\]")
 # 문서 머리말·꼬리말 — 표지/발급정보 줄. 어떤 등기 항목에도 속하지 않는다.
@@ -54,6 +68,21 @@ _PAGE_HEADER = re.compile(r"^\s*\[(집합건물|건물|토지)\]")
 # (2026-07-27 실측: 매매목록 순위2가 1.png 표지를 먹고 '말소근거행'으로 오탐).
 _DOC_PREAMBLE = re.compile(
     r"등기사항전부증명서|고유번호|제출용|열람일시|발급확인번호|인터넷등기소|수수료|관할등기소"
+)
+# 페이지 **하단**의 안내·범례 — 표 바깥의 인쇄 문구다. 등기 행이 아니다.
+#
+# 실측(2026-07-27 page_5.jpg L8·L11~L13):
+#   `-- 이 하 여 백 --`
+#   `* 실선으로 그어진 부분은 말소사항을 표시함. * 기록사항 없는 갑구, 을구는 …`
+#   `* 증명서는 컬러 또는 흑백으로 출력 가능함.`
+#   `* 본 등기사항증명서는 열람용이므로 …`
+# 이 줄들은 마지막 페이지 아래에 있어, 앞 페이지에서 열려 있던 **마지막 등기 항목이
+# 통째로 삼킨다**. 그러면 등기목적 칸이 "근저당권설정 + 그어진부분은말소사항을표시함…"이
+# 되어 유효한 근저당이 말소 근거 행으로 오탐된다(위 `_CANCEL_ANY` 주석 참고).
+# `등기사항증명서`는 `_DOC_PREAMBLE`의 `등기사항전부증명서`와 다른 문자열이라 따로 필요하다.
+_DOC_FOOTNOTE = re.compile(
+    r"실선으로|말소사항을표시|기록사항없|컬러또는흑백|출력가능|열람용|법적인효력"
+    r"|이하여백|등기사항증명서"
 )
 
 # 하이라이트·말소 판정의 유효 구역 — 권리관계가 기록되는 곳은 갑구·을구뿐이다.
@@ -499,8 +528,13 @@ def build_items(pages: list[OcrPage], tol_ratio: float = 0.6) -> list[RegistryIt
             if cb:
                 bands = cb
                 continue
-            if _PAGE_HEADER.match(line.display) or _DOC_PREAMBLE.search(line.squeezed):
-                continue  # 표지·주소 줄·발급정보 — 항목 본문이 아니다
+            squeezed = line.squeezed
+            if (
+                _PAGE_HEADER.match(line.display)
+                or _DOC_PREAMBLE.search(squeezed)
+                or _DOC_FOOTNOTE.search(squeezed)
+            ):
+                continue  # 표지·주소 줄·발급정보·하단 안내 — 항목 본문이 아니다
 
             rank_word = find_rank(line, bands)
             if rank_word is not None:
@@ -577,6 +611,34 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
     markers = [(i, m) for i, (m, _, _) in enumerate(facts) if m]
     issues = {iss for _, iss, _ in facts if iss}
     addresses = {addr for _, _, addr in facts if addr}
+
+    # [진단] 사진 점검 실태 — 파일명·개수·참/거짓만 (발급확인번호 값·주소·이름 금지).
+    # 모든 return 경로보다 앞에 두어, 어느 분기로 끝나든 한 줄은 반드시 남는다.
+    _page_marks = [
+        f"{p.name}={m[0]}/{m[1]}" if m else f"{p.name}=?/?"
+        for p, (m, _, _) in zip(pages, facts)
+    ]
+    _issue_state = (
+        "발급확인번호 없음" if not issues
+        else "발급확인번호 일치" if len(issues) == 1
+        else "발급확인번호 불일치"
+    )
+    if markers:
+        _total = markers[0][1][1]
+        _missing_state = (
+            "누락 없음" if len(pages) >= _total else f"누락 의심({_total}쪽 중 {len(pages)}장)"
+        )
+    else:
+        _missing_state = "누락 확인불가"
+    if len(markers) >= 2:
+        _seq = [m[0] for _, m in markers]
+        _order_state = "순서 정상" if _seq == sorted(_seq) else "순서 어긋남"
+    else:
+        _order_state = "순서 확인불가"
+    _log.info(
+        f"[사진점검] {', '.join(_page_marks)}"
+        f" | {_issue_state} | {_missing_state} | {_order_state}"
+    )
 
     # ① 다른 등기부가 섞였는가 — 발급확인번호가 1순위, 상단 주소 줄이 2순위
     if len(issues) > 1:

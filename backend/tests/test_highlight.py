@@ -99,6 +99,42 @@ def eul_gu_page(*, amount_on_rank_line: bool = True, with_cancel_row: bool = Tru
     return make_page(0, rows)
 
 
+def footnote_rows(y: float) -> list[list[Word]]:
+    """등기부 맨 아래 안내·범례 — **모든 등기사항증명서에 인쇄되는 고정 문구**다.
+
+    실측 그대로 옮긴 것 (2026-07-27 실호출, page_5.jpg L11-13):
+        * 실선으로 그어진 부분은 말소사항을 표시함. * 기록사항 없는 갑구, 을구는 …
+        * 증명서는 컬러 또는 흑백으로 출력 가능함.
+        * 본 등기사항증명서는 열람용이므로 … 법적인 효력이 없습니다.
+
+    이 줄은 표 바깥인데도 앞 페이지에서 열려 있던 **마지막 항목이 통째로 삼킨다**.
+    그러면 '말소사항을 표시함'의 '말소'가 말소 근거 행으로 오탐되고, 대상 순위(`N번`)가
+    없으니 미결로 남아 금액 표시가 전부 보류된다. 모든 등기부에 있는 문구이므로
+    **어떤 등기부를 넣어도 근저당 하이라이트가 나오지 않게 된다.**
+    """
+    return [
+        [W("*", 50, y, 8), W("실선으로", 66, y, 60), W("그어진", 132, y, 46),
+         W("부분은", 184, y, 46), W("말소사항을", 236, y, 76), W("표시함.", 318, y, 54),
+         W("*", 380, y, 8), W("기록사항", 396, y, 62), W("없는", 464, y, 32),
+         W("갑구,", 502, y, 40), W("을구는", 548, y, 46)],
+        [W("*", 50, y + 30, 8), W("증명서는", 66, y + 30, 62), W("컬러", 134, y + 30, 32),
+         W("또는", 172, y + 30, 32), W("흑백으로", 210, y + 30, 62),
+         W("출력", 278, y + 30, 32), W("가능함.", 316, y + 30, 54)],
+        [W("*", 50, y + 60, 8), W("본", 66, y + 60, 16),
+         W("등기사항증명서는", 88, y + 60, 124), W("열람용이므로", 218, y + 60, 92),
+         W("출력하신", 316, y + 60, 62), W("법적인", 384, y + 60, 46),
+         W("효력이", 436, y + 60, 46), W("없습니다.", 488, y + 60, 70)],
+    ]
+
+
+def eul_gu_page_with_footnote() -> OcrPage:
+    """유효 근저당 1건 + 맨 아래 안내 문구 — 실제 마지막 페이지의 모양."""
+    base = eul_gu_page(with_cancel_row=False)
+    words = list(base.words) + [w for row in footnote_rows(950) for w in row]
+    return OcrPage(name="last.jpg", index=0, words=words, lines=group_lines(words),
+                   width=PAGE_W, height=PAGE_H)
+
+
 def gap_gu_page(index: int = 0) -> OcrPage:
     """갑구 1장 — 공유자 2명(소유자D·소유자E)."""
     rows = [section_row("갑구", 40), header_row(90)]
@@ -115,6 +151,26 @@ def gap_gu_page(index: int = 0) -> OcrPage:
                  W("소유자D", 531, 190, 44), W("○○○○○○-○******", 589, 190, 107)])
     rows.append([W("지분", 531, 230, 29), W("2분의", 566, 230, 38), W("1", 612, 230, 8)])
     rows.append([W("소유자E", 531, 270, 43), W("○○○○○○-○******", 589, 270, 107)])
+    return make_page(index, rows)
+
+
+def corp_gap_gu_page(index: int = 0) -> OcrPage:
+    """갑구 1장 — 소유자가 **법인**(법인A).
+
+    실측(2026-07-27 page_2.jpg): 등록번호 `121111-0173575`. 뒤 7자리가 마스킹이 아니라
+    숫자라는 것이 법인 판별 근거다(docs/ocr-highlight-findings.md §2.8).
+    """
+    rows = [section_row("갑구", 40), header_row(90)]
+    rows.append(
+        [
+            W("1", 66, 150, 11),
+            W("소유권보존", 117, 150, 75),
+            W("2019년4월22일", 269, 150, 98),
+            W("소유자", 516, 150, 44),
+        ]
+    )
+    rows.append([W("제6363호", 271, 190, 67),
+                 W("법인A", 531, 190, 90), W("121111-0173575", 630, 190, 107)])
     return make_page(index, rows)
 
 
@@ -258,6 +314,31 @@ def test_IE에_없는_옛_소유자는_칠하지_않는다():
     extract = extract_with(current_owners=[Owner(name="소유자E")])
     result = _run(extract, as_result(gap_gu_page()))
     assert [h.title for h in result] == ["집주인 이름 · 소유자E"]
+
+
+def test_법인_소유자에게는_법인용_문구가_나간다():
+    """법인 임대인에게 '나온 사람 신분증이 이 이름과 같은지 확인하세요'는 **틀린 지시**다.
+
+    계약 자리에 나오는 건 대표이사·직원이고, 그 신분증에 '법인A'이 적혀 있을 리 없다.
+    그대로 따르면 정상 계약을 이상하다고 판단하거나 확인 자체를 포기한다.
+    """
+    extract = extract_with(current_owners=[Owner(name="법인A")])
+    result = _run(extract, as_result(corp_gap_gu_page()))
+    assert len(result) == 1
+    body = result[0].body
+    assert "회사(법인)" in body
+    assert "법인 등기사항전부증명서" in body and "대표이사" in body
+    assert "법인인감증명서" in body
+    # 개인용 지시가 섞여 나가면 안 된다
+    assert "신분증이 이 이름과 같은지" not in body
+
+
+def test_개인_소유자_문구는_그대로다():
+    """법인 분기를 넣으면서 개인 경로가 바뀌지 않았는지 지킨다."""
+    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    body = _run(extract, as_result(gap_gu_page()))[0].body
+    assert "계약서에 적힌 집주인(임대인) 이름" in body
+    assert "회사(법인)" not in body
 
 
 def test_사진에_없는_이름은_좌표_없이_넘어간다():
@@ -513,6 +594,60 @@ def test_말소_대상을_못_찾으면_금액_표시를_전부_보류한다():
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
     )
     result = highlight.build_highlights(extract, as_result(page))
+    assert result.highlights == []
+    assert result.notice and "말소" in result.notice
+
+
+def test_페이지_하단_안내_문구는_말소_근거_행이_아니다():
+    """'실선으로 그어진 부분은 **말소**사항을 표시함' — 이건 안내 문구지 등기 행이 아니다.
+
+    이 오탐이 살아 있으면 대상 순위를 못 찾아 미결로 남고, 금액 표시가 통째로 보류된다.
+    모든 등기부 맨 아래에 있는 문구라 **어떤 등기부에서도 근저당 표시가 안 나온다.**
+    """
+    items = build_items([eul_gu_page_with_footnote()])
+    assert [it for it in items if it.is_cancel_record] == []
+    target = next(it for it in items if it.rank == "1")
+    assert target.canceled is False
+    # 안내 문구가 등기목적 칸을 오염시키지도 않아야 한다
+    assert target.purpose == "근저당권설정"
+
+
+def test_안내_문구가_있어도_유효한_근저당은_칠해진다():
+    """위 오탐의 실제 피해 — 2026-07-27 실호출에서 유효 근저당 3건이 전부 묻혔다."""
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
+    )
+    result = highlight.build_highlights(extract, as_result(eul_gu_page_with_footnote()))
+    assert len(result.highlights) == 1
+    assert result.highlights[0].kind == "mortgage"
+    assert result.notice is None
+
+
+def test_순위를_못_읽은_말소_행은_여전히_금액_표시를_보류한다():
+    """보수적 편향은 그대로다 — 없앤 것은 '산문 속 말소'뿐이다.
+
+    'N번'을 못 읽었어도 등기목적이 '…등기말소'로 읽히면 무언가 말소된 것이므로,
+    무엇이 말소됐는지 모르는 상태에서 금액을 칠하면 안 된다.
+    """
+    rows = [
+        section_row("을구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("근저당권설정", 117, 150, 91),
+         W("2004년6월25일", 269, 150, 98), W("2004년6월25일", 391, 150, 100),
+         W("채권최고액", 515, 150, 74), W("금36,000,000원", 606, 150, 105)],
+        # 순위번호가 뭉개져 '번' 앞 숫자가 없는 말소 행
+        [W("2", 66, 250, 11), W("근저당권설정등기말소", 117, 250, 150),
+         W("2005년6월29일", 269, 250, 98)],
+    ]
+    items = build_items([make_page(0, rows)])
+    cancel_rows = [it for it in items if it.is_cancel_record]
+    assert len(cancel_rows) == 1
+    assert cancel_rows[0].cancel_bound is False  # 대상을 못 찾았다
+
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
+    )
+    result = highlight.build_highlights(extract, as_result(make_page(0, rows)))
     assert result.highlights == []
     assert result.notice and "말소" in result.notice
 

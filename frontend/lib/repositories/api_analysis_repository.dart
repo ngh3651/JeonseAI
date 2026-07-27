@@ -5,6 +5,8 @@
 /// (더미 폴백 없음 — 연결이 진짜임을 확인하기 위한 원칙).
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -61,9 +63,16 @@ class ApiAnalysisRepository extends AnalysisRepository {
       },
     );
     final report = AnalysisReport.fromJson(json as Map<String, dynamic>);
-    // 이 세션에서만 유효 — 앱을 껐다 켜면 사라지고, 그러면 '원본에서 보기'도 사라진다
-    // (사진 영구 저장은 이번 범위 밖. 등기부 사진에는 실명·주소가 있다).
+    // 먼저 메모리에 올려 이 세션에서 즉시 쓸 수 있게 한다.
     RegistryPhotoStore.instance.register(report.id, sentJpegPaths);
+    // 이어서 영구 저장소로 복사한다 (devKeepRegistryPhotos가 false면 아무 일도 안 한다).
+    // 리포트 JSON도 함께 남긴다 — 사진만 살려 두면 백엔드를 재시작했을 때
+    // getReport()가 404가 되어 뷰어에 들어가지도 못한다(리포트는 서버 메모리에만 있다).
+    await RegistryPhotoStore.instance.keep(
+      report.id,
+      sentJpegPaths,
+      reportJson: jsonEncode(json),
+    );
     debugPrint(
       '[하이라이트] 리포트 ${report.id} — 좌표 ${report.highlights.length}건 수신, '
       '전송 사진 ${sentJpegPaths.length}장 (뷰어는 이 JPEG를 그대로 띄운다)',
@@ -80,11 +89,39 @@ class ApiAnalysisRepository extends AnalysisRepository {
     ];
   }
 
+  /// 리포트 단건 조회 — **서버가 먼저다.** 서버가 답하지 못할 때만 로컬 캐시를 본다.
+  ///
+  /// 캐시가 필요한 이유: 리포트는 서버 메모리에만 있어서, 백엔드를 재시작하는 순간
+  /// 404가 된다. 사진을 영구 저장해 둬도 리포트를 못 읽으면 뷰어에 들어가지 못한다.
+  /// 캐시는 분석 당시의 스냅샷이라 서버가 살아 있으면 절대 쓰지 않는다.
   @override
   Future<AnalysisReport?> getReport(String id) async {
-    final json = await _api.getJson('/api/reports/$id', onNotFound: () => null);
-    if (json == null) return null;
-    return AnalysisReport.fromJson(json as Map<String, dynamic>);
+    try {
+      final json = await _api.getJson('/api/reports/$id', onNotFound: () => null);
+      if (json != null) return AnalysisReport.fromJson(json as Map<String, dynamic>);
+    } catch (e) {
+      // 서버가 꺼져 있거나 연결 실패 — 캐시가 있으면 그것으로 화면을 살린다.
+      final cached = await _cachedReport(id, '서버 연결 실패(${e.runtimeType})');
+      if (cached != null) return cached;
+      rethrow; // 캐시도 없으면 기존대로 에러 화면
+    }
+    // 서버는 살아 있지만 이 리포트를 모른다(404) — 재시작으로 메모리에서 사라진 경우다.
+    return await _cachedReport(id, '서버에 없음(404)');
+  }
+
+  Future<AnalysisReport?> _cachedReport(String id, String why) async {
+    final raw = await RegistryPhotoStore.instance.cachedReportJson(id);
+    if (raw == null) return null;
+    try {
+      final report = AnalysisReport.fromJson(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+      debugPrint('[리포트캐시] $id — $why → 로컬 캐시로 대체 (개발용 보관본)');
+      return report;
+    } catch (e) {
+      debugPrint('[리포트캐시] $id — 캐시를 읽었지만 해석 실패 (${e.runtimeType})');
+      return null;
+    }
   }
 
   @override

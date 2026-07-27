@@ -18,11 +18,15 @@ import 'repositories/api_analysis_repository.dart';
 import 'repositories/api_content_repository.dart';
 import 'repositories/content_repository.dart';
 import 'state/app_session.dart';
+import 'state/registry_photo_store.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 세로 고정 — 시연 안정성 (user-scenario.md §5)
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // 지난 세션에 보관해 둔 등기부 사진 목록을 메모리로 올린다.
+  // (devKeepRegistryPhotos가 false면 아무 일도 하지 않는다 → 예전 메모리 전용 동작)
+  await RegistryPhotoStore.instance.restore();
   runApp(const JeonseSafeApp());
 }
 

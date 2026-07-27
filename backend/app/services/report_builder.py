@@ -168,6 +168,16 @@ def analyze(
         ocr_result = ocr.OcrResult()
 
     assert extract is not None  # ie_error가 없으면 반드시 값이 있다
+    # [진단] IE 응답 실태 — 개수/참·거짓만 (이름·등록번호 금지). rank_number 채움 여부 확인용.
+    _rank_filled = sum(
+        1 for m in extract.mortgages if str(getattr(m, "rank_number", "") or "").strip()
+    )
+    _log.info(
+        f"[IE] 현재소유자 {len(extract.current_owners)}명"
+        f" | 근저당 {len(extract.mortgages)}건(rank_number 있는 것 {_rank_filled}건)"
+        f" | 압류·가압류 {len(extract.seizures) + len(extract.provisional_seizures)}건"
+        f" | 경매·신탁 {len(extract.auction_commencements) + len(extract.trust_registrations)}건"
+    )
     try:
         highlight_result = highlight.build_highlights(extract, ocr_result)
     except Exception as e:  # noqa: BLE001 — 표시 기능이 분석을 깨뜨리면 안 된다

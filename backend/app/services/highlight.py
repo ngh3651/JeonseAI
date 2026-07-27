@@ -50,6 +50,26 @@ _OWNER_BODY = (
     "이 이름과 같은지 확인하세요. 하나라도 다르면 그날은 서명하지 마세요.\n"
     "대리인이 나왔다면 집주인의 위임장과 인감증명서를 함께 보여 달라고 하세요."
 )
+
+# 집주인이 법인일 때는 위 문구를 그대로 쓰면 **틀린 지시**가 된다.
+# 계약 자리에 나오는 사람은 대표이사·직원이고, 그 사람 신분증에 '주식회사○○'이
+# 적혀 있을 리가 없다. 그대로 따르면 정상 계약을 이상하다고 판단하거나,
+# 반대로 확인 자체를 포기한다(2026-07-27 실호출: 소유자가 '법인A'인데
+# 개인용 문구가 나갔다).
+#
+# 법인 여부는 **OCR이 읽은 등록번호 뒤 7자리**로 가른다 — 마스킹(`○○○○○○-○******`)이면
+# 개인, 숫자(`121111-0173575`)면 법인이다(docs/ocr-highlight-findings.md §2.8).
+# IE의 `current_owners`에는 이름·지분만 있어 법인 여부를 알 수 없다.
+#
+# ⚠ 고정 템플릿이다. LLM을 개입시키지 않는다(결정 ④). 표시 계층이라 등급·점수와 무관하다.
+_OWNER_BODY_CORP = (
+    "집주인이 사람이 아니라 회사(법인)예요. 계약 자리에 나오는 사람은 대표이사나 직원이라, "
+    "그 사람 신분증에 이 이름이 적혀 있지 않은 것이 정상이에요.\n"
+    "회사의 등기부(법인 등기사항전부증명서)를 보여 달라고 해서, 나온 사람이 거기 적힌 "
+    "대표이사와 같은 사람인지 확인하세요.\n"
+    "대표이사가 아닌 사람이 나왔다면 회사의 법인인감증명서와 위임장을 함께 보여 달라고 하고, "
+    "계약서에 찍는 도장이 그 법인인감과 같은지도 확인하세요."
+)
 _OWNER_SOURCE = "등기부 갑구 — 이 앱이 사진에서 직접 찾은 위치"
 
 _MORTGAGE_BODY = (
@@ -111,8 +131,12 @@ def _active_rights_items(items: list[RegistryItem], section: str) -> list[Regist
 
 def _match_owner(
     name: str, items: list[RegistryItem], pages: dict[int, OcrPage]
-) -> tuple[int, tuple[float, float, float, float]] | str:
-    """이름 문자열이 갑구의 유효 항목에서 발견되면 (page_index, bbox), 아니면 실패 사유."""
+) -> tuple[int, tuple[float, float, float, float], str] | str:
+    """이름이 갑구의 유효 항목에서 발견되면 (page_index, bbox, 개인/법인), 아니면 실패 사유.
+
+    세 번째 값(`kind`)은 **OCR이 읽은 등록번호 형태**에서 온다 — 문구를 개인용/법인용으로
+    가르는 유일한 근거다(IE는 소유자의 등록번호를 주지 않는다).
+    """
     target = name.strip()
     if not target:
         return "이름이 비어 있음"
@@ -137,7 +161,7 @@ def _match_owner(
     _, hit = hits[-1]
     if hit.page_index not in pages:
         return f"좌표가 있는 페이지({hit.page_index})의 OCR 결과가 없음"
-    return hit.page_index, hit.box
+    return hit.page_index, hit.box, hit.kind
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -282,11 +306,16 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
         if isinstance(matched, str):
             failures.append(f"갑구 소유자 {mask_name(name)} — {matched}")
             continue
-        page_index, box = matched
+        page_index, box, owner_kind = matched
         norm = _normalize(box, pages[page_index], pad_ratio=0.08)
         if norm is None:
             failures.append(f"갑구 소유자 {mask_name(name)} — 원본 크기를 몰라 정규화 실패")
             continue
+        is_corp = owner_kind == "법인"
+        if is_corp:
+            _log.info(
+                f"[매칭] 갑구 소유자 {mask_name(name)} — 등록번호 형태가 법인 → 법인용 문구 사용"
+            )
         highlights.append(
             Highlight(
                 id=f"owner-{i}",
@@ -295,7 +324,7 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
                 badge=len(highlights) + 1,
                 box=norm,
                 title=f"집주인 이름 · {name}",
-                body=_OWNER_BODY,
+                body=_OWNER_BODY_CORP if is_corp else _OWNER_BODY,
                 caution=shared_note,
                 source=_OWNER_SOURCE,
             )
@@ -423,4 +452,20 @@ def _build_checked_notes(
         notes.append("압류·가압류·신탁 같은 표시는 없었어요")
 
     notes.append("표시가 적다는 건 확인할 게 적다는 뜻이에요. 못 읽었다는 뜻이 아니에요.")
+
+    # [진단] checkedNotes 생성 결과 요약 — 개수/참·거짓만 (이름·번호 금지).
+    # ③의 '없었어요'가 조건 분기인지 하드코딩인지, [1]의 압류·가압류 건수와 나란히 놓고 본다:
+    # 압류·가압류가 있는데 여기 '문구: 없음'이면 사실과 다른 문장이 화면에 나가는 것이다.
+    _attempted = len(owner_names) + (
+        len(active_mortgages) + len([j for j in extract.jeonse_rights if j.is_active])
+        if money_allowed
+        else 0
+    )
+    _placed = len(owner_marks) + len(money_marks)
+    _log.info(
+        f"[찾아본것] {len(notes)}줄"
+        f" | 말소제외 {len(canceled_mortgages)}건"
+        f" | 위치못찾음 {max(0, _attempted - _placed)}건"
+        f" | 압류·가압류 문구: {'있음' if active_signals else '없음'}"
+    )
     return notes

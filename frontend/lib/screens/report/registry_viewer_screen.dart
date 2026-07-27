@@ -16,6 +16,15 @@
 ///   ④를 눌러도 ①이 열린다(공동명의에서 반드시 발생).
 /// - **뱃지는 줌해도 크기가 그대로**다. 작은 글씨를 보려고 확대했는데 뱃지가 6배로
 ///   커져 그 글자를 덮으면 확대의 목적이 무너진다.
+///
+/// 2026-07-27 실기기(SM-S931N, 사진 5장) 확인 후 고친 것:
+/// - **리포트 Future를 initState에서 한 번만 만든다.** build() 안에서 만들면 setState마다
+///   새 Future가 생겨 FutureBuilder가 로딩 분기로 되돌아가고, 그때 PageView가 통째로
+///   버려졌다 다시 만들어지며 시작 페이지로 되감긴다. 헤더만 갱신된 인덱스를 들고 있어
+///   "1/5인데 두 번째 사진이 보이는" 어긋남이 됐다.
+/// - **손가락이 2개 닿으면 PageView의 가로 드래그를 끈다.** 안 끄면 확대가 시작조차
+///   못 한다(아래 `_swipeLocked` 주석 참고).
+/// - **항상 1번 사진부터 연다.** 표시가 있는 장으로 건너뛰면 사용자가 고장으로 읽는다.
 library;
 
 import 'dart:io';
@@ -113,27 +122,77 @@ class RegistryViewerScreen extends StatefulWidget {
 }
 
 class _RegistryViewerScreenState extends State<RegistryViewerScreen> {
-  PageController? _pageController;
+  /// 리포트는 **한 번만** 불러온다.
+  ///
+  /// build() 안에서 `getReport()`를 부르면 호출할 때마다 새 Future가 만들어져,
+  /// setState(페이지 넘김·디버그 토글) 한 번에 FutureBuilder가 로딩 분기로 되돌아간다.
+  /// 그 순간 PageView가 통째로 버려졌다가 다시 만들어지며 PageController의 시작 페이지로
+  /// 되감기고, 헤더(`_page`)만 갱신된 값을 들고 있어 화면과 어긋난다.
+  late final Future<AnalysisReport?> _reportFuture;
+
+  final PageController _pageController = PageController();
   int _page = 0;
-  bool _startPageResolved = false;
+
+  /// PageView의 가로 드래그를 끌지 여부.
+  ///
+  /// 두 손가락 확대는 InteractiveViewer의 ScaleGestureRecognizer가 처리하는데,
+  /// PageView(Scrollable)의 가로 드래그 인식기가 제스처 아레나에서 먼저 이겨 버리면
+  /// 확대가 **시작조차 되지 않는다**(둘 다 18dp 슬롭에서 승리를 선언해 경쟁하는데,
+  /// 손가락이 좌우로 벌어지는 핀치에서는 드래그가 먼저 임계를 넘는다).
+  /// 그래서 ⑴ 손가락이 2개 닿는 순간 드래그 인식기를 아예 빼 확대 쪽이 이기게 하고,
+  /// ⑵ 확대 중(배율>1)에도 잠가 한 손가락 이동이 페이지 넘김으로 새지 않게 한다.
+  ///
+  /// setState 대신 ValueNotifier인 이유: 사진 위젯까지 다시 만들면 확대 상태가 풀린다.
+  final ValueNotifier<bool> _swipeLocked = ValueNotifier<bool>(false);
+
+  /// 화면에 닿아 있는 손가락 수 (제스처 아레나 밖에서 Listener로만 센다).
+  int _pointers = 0;
+  bool _zoomed = false;
 
   /// 개발용 — 켜면 터치 영역까지 그리고 원본/표시 크기를 로그로 찍는다.
   /// 릴리스에는 노출하지 않는다(시연 영상에 벌레 아이콘이 찍히면 미완성으로 보인다).
   bool _debug = false;
 
   @override
+  void initState() {
+    super.initState();
+    _reportFuture = context.read<AnalysisRepository>().getReport(
+      widget.reportId,
+    );
+  }
+
+  @override
   void dispose() {
-    _pageController?.dispose();
+    _pageController.dispose();
+    _swipeLocked.dispose();
     super.dispose();
+  }
+
+  void _syncSwipeLock() => _swipeLocked.value = _pointers >= 2 || _zoomed;
+
+  void _changePointers(int delta) {
+    _pointers = math.max(0, _pointers + delta);
+    _syncSwipeLock();
+  }
+
+  void _onZoomChanged(bool zoomed) {
+    _zoomed = zoomed;
+    _syncSwipeLock();
+  }
+
+  void _onPageChanged(int i) {
+    // 페이지가 넘어가면 이전 장의 위젯이 폐기되며 확대도 사라진다 — 잠금도 함께 푼다.
+    _zoomed = false;
+    _syncSwipeLock();
+    setState(() => _page = i);
   }
 
   @override
   Widget build(BuildContext context) {
-    final repo = context.read<AnalysisRepository>();
     final paths = RegistryPhotoStore.instance.pathsFor(widget.reportId);
 
     return FutureBuilder<AnalysisReport?>(
-      future: repo.getReport(widget.reportId),
+      future: _reportFuture,
       builder: (context, snapshot) {
         final report = snapshot.data;
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -152,7 +211,6 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen> {
           for (final h in report.highlights)
             if (h.page >= 0 && h.page < paths.length) h,
         ];
-        _resolveStartPage(usable);
         final onThisPage = [
           for (final h in usable)
             if (h.page == _page) h,
@@ -178,20 +236,36 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen> {
               _pageHeader(paths.length, onThisPage.length, usable.length),
               if (report.highlightNotice != null)
                 _noticeBar(report.highlightNotice!),
+              if (kDebugMode && _debug) _debugBar(),
               Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: paths.length,
-                  onPageChanged: (i) => setState(() => _page = i),
-                  itemBuilder: (_, i) => _RegistryPage(
-                    path: paths[i],
-                    pageIndex: i,
-                    highlights: [
-                      for (final h in usable)
-                        if (h.page == i) h,
-                    ],
-                    debug: _debug,
-                    onTapHighlight: (h) => _showSheet(context, h),
+                // Listener는 제스처 아레나에 끼어들지 않고 손가락 수만 센다.
+                // 두 번째 손가락이 닿는 시점은 드래그·확대 중 누가 이길지 정해지기
+                // **전**이라, 여기서 드래그 인식기를 빼면 확대가 이긴다.
+                child: Listener(
+                  onPointerDown: (_) => _changePointers(1),
+                  onPointerUp: (_) => _changePointers(-1),
+                  onPointerCancel: (_) => _changePointers(-1),
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _swipeLocked,
+                    builder: (context, locked, _) => PageView.builder(
+                      controller: _pageController,
+                      physics: locked
+                          ? const NeverScrollableScrollPhysics()
+                          : null,
+                      itemCount: paths.length,
+                      onPageChanged: _onPageChanged,
+                      itemBuilder: (_, i) => _RegistryPage(
+                        path: paths[i],
+                        pageIndex: i,
+                        highlights: [
+                          for (final h in usable)
+                            if (h.page == i) h,
+                        ],
+                        debug: _debug,
+                        onTapHighlight: (h) => _showSheet(context, h),
+                        onZoomChanged: _onZoomChanged,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -201,18 +275,6 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen> {
         );
       },
     );
-  }
-
-  /// 표시가 있는 첫 사진에서 시작한다 — 아무것도 없는 장으로 시작하면
-  /// 사용자는 "이 기능 안 되네" 하고 바로 뒤로 간다.
-  void _resolveStartPage(List<RegistryHighlight> usable) {
-    if (_startPageResolved) return;
-    _startPageResolved = true;
-    final first = usable.isEmpty
-        ? 0
-        : usable.map((h) => h.page).reduce((a, b) => a < b ? a : b);
-    _page = first;
-    _pageController = PageController(initialPage: first);
   }
 
   Scaffold _emptyScaffold(BuildContext context) => Scaffold(
@@ -282,6 +344,36 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen> {
         ),
         const SizedBox(width: AppSpacing.sm),
         Expanded(child: Text(notice, style: AppTypography.caption)),
+      ],
+    ),
+  );
+
+  /// 개발용 한 줄 — 진단을 켜면 사진 위에 나타나는 파란 네모가 무엇인지 말해 준다.
+  ///
+  /// 설명이 없으면 개발자 본인도 "이 네모가 서버가 준 좌표인가?"를 헷갈린다.
+  /// 파란 네모는 서버 좌표가 아니라 **손가락으로 누를 수 있게 48dp까지 넓힌 판정 영역**이다.
+  /// 호출부가 `kDebugMode` 안에 있어 릴리스 빌드에는 남지 않는다.
+  Widget _debugBar() => Container(
+    width: double.infinity,
+    color: AppColors.textMuted.withValues(alpha: 0.12),
+    padding: const EdgeInsets.symmetric(
+      horizontal: AppSpacing.lg,
+      vertical: AppSpacing.xs,
+    ),
+    child: Row(
+      children: [
+        const Icon(
+          Icons.bug_report,
+          size: AppSize.iconSm,
+          color: AppColors.textMuted,
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Text(
+            '디버그: 파란 네모는 터치 판정 영역이에요 (표시 자체가 아니라 누를 수 있는 범위)',
+            style: AppTypography.caption,
+          ),
+        ),
       ],
     ),
   );
@@ -442,6 +534,7 @@ class _RegistryPage extends StatefulWidget {
     required this.highlights,
     required this.debug,
     required this.onTapHighlight,
+    required this.onZoomChanged,
   });
 
   final String path;
@@ -449,6 +542,9 @@ class _RegistryPage extends StatefulWidget {
   final List<RegistryHighlight> highlights;
   final bool debug;
   final void Function(RegistryHighlight) onTapHighlight;
+
+  /// 확대 상태가 바뀔 때 부모에게 알린다 — 부모는 이 값으로 페이지 넘김을 잠근다.
+  final void Function(bool zoomed) onZoomChanged;
 
   @override
   State<_RegistryPage> createState() => _RegistryPageState();
@@ -458,16 +554,31 @@ class _RegistryPageState extends State<_RegistryPage> {
   final TransformationController _transform = TransformationController();
   late Future<Size> _sizeFuture;
 
+  /// 마지막으로 부모에게 알린 확대 여부 — 같은 값을 반복해 올리지 않기 위함.
+  bool _zoomed = false;
+
   @override
   void initState() {
     super.initState();
     _sizeFuture = _intrinsicSize(widget.path);
+    _transform.addListener(_reportZoom);
   }
 
   @override
   void dispose() {
+    _transform.removeListener(_reportZoom);
     _transform.dispose();
     super.dispose();
+  }
+
+  /// 확대되면(배율>1) 부모가 PageView의 가로 드래그를 잠근다.
+  /// 잠그지 않으면 확대된 사진을 한 손가락으로 밀 때 사진이 움직이는 대신 페이지가 넘어간다.
+  /// 임계를 1.01로 둔 이유: 확대를 풀 때 배율이 1.0000001 같은 값으로 남는다.
+  void _reportZoom() {
+    final zoomed = _transform.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed == _zoomed) return;
+    _zoomed = zoomed;
+    widget.onZoomChanged(zoomed);
   }
 
   /// 파일 헤더만 읽어 원본 픽셀 크기를 구한다(전체 디코딩 없이).
@@ -501,6 +612,10 @@ class _RegistryPageState extends State<_RegistryPage> {
             // Image 위젯에 맡기면 그려진 사각형을 알 수 없어 오버레이가 레터박스만큼 어긋난다.
             final display = _fitted(intrinsic, constraints.biggest);
             _logIfDebug(intrinsic, display);
+            // ⚠ 확대는 이 위젯만으로는 동작하지 않는다. 부모 PageView의 가로 드래그
+            //   인식기가 제스처 아레나에서 먼저 이기기 때문에, 부모가 손가락 2개를
+            //   감지해 드래그를 꺼 줘야 한다(`_swipeLocked` 참고). 그 잠금을 지우면
+            //   여기 설정과 무관하게 두 손가락 확대가 다시 안 된다.
             return InteractiveViewer(
               transformationController: _transform,
               minScale: 1,

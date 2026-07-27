@@ -19,14 +19,17 @@ Information Extract는 필드를 구조화해주지만 **좌표를 주지 않는
 from __future__ import annotations
 
 import io
+import json
 import logging
 import mimetypes
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import requests
 from PIL import Image
 
+from ..dependencies import DEV_MODE_AUTH
 from .extraction import _USER_FACING_STATUS, ExtractionError, _load_api_key
 from .ocr_layout import OcrPage, group_lines, parse_words
 
@@ -35,6 +38,20 @@ _log = logging.getLogger("jeonseai")
 OCR_URL = "https://api.upstage.ai/v1/document-digitization"
 OCR_MODEL = "ocr"
 REQUEST_TIMEOUT_SECONDS = 120  # IE(300초)보다 짧게 — 장당 1.6~3.1초가 실측치라 넉넉하다
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+OUT_DIR = _BACKEND_ROOT / "out"
+
+# [개발 모드 전용] OCR 원응답(JSON)을 out/ocr_<파일stem>.json 으로 남긴다.
+# 목적: 레이아웃 임계값(_GAP_RATIO=1.8 / _RANK_BAND_MARGIN=0.15 / _NAME_GAP_RATIO=2.5,
+#   ocr_layout.py)은 밤 샘플 1건 실측값이다. 다른 해상도·다른 등기부에서 그 값이 버티는지
+#   **크레딧을 더 쓰지 않고** 다시 재려면 실호출 응답을 파일로 남겨 두어야 한다.
+#   저장 형식·파일명은 scripts/test_ocr_coords.py 와 동일하므로, 그 스크립트의
+#   `--from-json out` 으로 API 호출 0회 재분석이 된다.
+# 이 저장소의 '개발 모드' 단일 스위치인 dependencies.DEV_MODE_AUTH 에 묶는다 —
+#   운영 전환(=False) 시 함께 꺼져 **운영 경로에서는 저장하지 않는다**(스위치 하나로 보장).
+# ⚠ out/ 에는 등기부 소유자 실명이 담긴다 → .gitignore 대상, 절대 커밋 금지.
+SAVE_OCR_RAW = DEV_MODE_AUTH
 
 
 class OcrError(ExtractionError):
@@ -103,6 +120,22 @@ def call_document_ocr(api_key: str, filename: str, data: bytes) -> dict:
         raise OcrError(502, "사진 위치 인식 결과를 해석하지 못했어요") from e
 
 
+def _save_raw_ocr(filename: str, index: int, raw: dict) -> None:
+    """[개발 모드 전용] OCR 원응답을 out/ocr_<stem>.json 으로 남긴다 (임계값 재측정용 재료).
+
+    저장 실패는 삼킨다 — 진단 산출물이 분석을 깨뜨려선 안 된다(이 모듈의 대원칙).
+    ⚠ 등기부 실명 포함 → 커밋 금지(.gitignore).
+    """
+    try:
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        stem = Path(filename).stem or f"page_{index}"
+        out_path = OUT_DIR / f"ocr_{stem}.json"
+        out_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+        _log.info(f"[OCR] 원응답 저장(개발 모드): out/{out_path.name}")
+    except Exception as e:  # noqa: BLE001 — 저장 실패는 분석을 막지 못한다
+        _log.info(f"[OCR] 원응답 저장 실패 — 무시하고 계속 ({type(e).__name__})")
+
+
 def run_ocr(images: list[tuple[str, bytes]]) -> OcrResult:
     """사진들 → 장별 OCR → OcrPage 목록. **예외를 밖으로 던지지 않는다.**
 
@@ -140,6 +173,9 @@ def run_ocr(images: list[tuple[str, bytes]]) -> OcrResult:
             _log.info(f"[OCR] {i + 1}/{total} {filename} → 예기치 못한 실패 {type(e).__name__}: {e}")
             result.errors.append(f"{filename}: {type(e).__name__}")
             continue
+
+        if SAVE_OCR_RAW:  # 개발 모드에서만 원응답을 남긴다 (운영 경로에서는 저장 안 함)
+            _save_raw_ocr(filename, i, raw)
 
         words = parse_words(raw)
         try:

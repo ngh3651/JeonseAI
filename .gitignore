@@ -35,3 +35,9 @@ backend/data/precedents/index/
 # LLM ë°±ì—”ë“œ ë¹„êµ ì‹¤í–‰ ì‚°ì¶œë¬¼ (compare_llm_backends.py â€” ì‹¤í–‰ ì‹œê°ë³„ë¡œ ë¬´í•œ ì¦ì‹)
 # ë³´ì¡´í•  ì‹¤ì¸¡ì¹˜ëŠ” docs/llm-backend-comparison-<ì—°ì›”>.md/.json ìœ¼ë¡œ ì˜®ê²¨ ì»¤ë°‹í•œë‹¤
 backend/data/llm_bench/
+
+# µğÀÚÀÎ ÇÚµå¿ÀÇÁ ¹øµé (µî±âºÎ »ùÇÃ¿¡ ½Ç¸í Æ÷ÇÔ)
+design_handoff_registry_viewer/
+
+# µğÀÚÀÎ ÇÚµå¿ÀÇÁ ¹øµé (µî±âºÎ »ùÇÃ¿¡ ½Ç¸í Æ÷ÇÔ)
+design_handoff_registry_viewer/

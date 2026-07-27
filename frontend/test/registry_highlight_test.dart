@@ -273,12 +273,32 @@ void main() {
 
     test('파일이 실제로 없으면 전부 없는 것으로 친다', () {
       // 한 장이라도 사라지면 page 인덱스가 밀려 엉뚱한 사진에 그려진다.
+      // 영구 저장으로 바뀐 뒤에도 이 규칙은 그대로다 — 사용자가 저장소를 비웠을 수 있다.
       RegistryPhotoStore.instance.register('r1', [
         '/tmp/사라진_1.jpg',
         '/tmp/사라진_2.jpg',
       ]);
       expect(RegistryPhotoStore.instance.pathsFor('r1'), isEmpty);
       expect(RegistryPhotoStore.instance.hasPhotos('r1'), isFalse);
+    });
+
+    test('보관이 실패해도 예외를 밖으로 던지지 않는다', () async {
+      // 테스트 환경에는 path_provider·SharedPreferences 플러그인이 없다.
+      // 보관은 편의 기능이라, 실패했다고 분석이 깨져서는 안 된다.
+      await RegistryPhotoStore.instance.restore();
+      await RegistryPhotoStore.instance.keep(
+        'r2',
+        ['/tmp/없는_1.jpg'],
+        reportJson: '{"id":"r2"}',
+      );
+      expect(await RegistryPhotoStore.instance.cachedReportJson('r2'), isNull);
+    });
+
+    test('보관 실패와 무관하게 세션 등록은 그대로 남는다', () async {
+      RegistryPhotoStore.instance.register('r3', ['/tmp/없는_1.jpg']);
+      await RegistryPhotoStore.instance.keep('r3', ['/tmp/없는_1.jpg']);
+      // 파일이 없으니 pathsFor는 비어 있지만, 등록 자체가 예외로 날아가지는 않는다
+      expect(RegistryPhotoStore.instance.pathsFor('r3'), isEmpty);
     });
   });
 }

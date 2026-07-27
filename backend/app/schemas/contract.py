@@ -46,7 +46,13 @@ class Highlight(BaseModel):
 
     id: str
     page: int  # 업로드한 사진 순서 (0부터) — 앱이 몇 번째 사진에 그릴지
-    kind: str  # "owner" | "mortgage" | "jeonse"
+    # 표시 종류. 앱은 모르는 값을 만나면 **위험 톤**으로 떨어뜨린다(보수적 편향).
+    #   [대조할 곳] address · area · doc_title · owner · viewed_at
+    #   [따져볼 곳] mortgage · jeonse · lease_registration · provisional_seizure ·
+    #              seizure · auction · trust · separate_land · joint_collateral ·
+    #              pending_application
+    # 목록의 정본은 `app/services/highlight.py`의 `_SPECS`다.
+    kind: str
     badge: int  # 화면에 붙일 번호 (1부터) — 색만으로 정보를 전달하지 않기 위함
     box: HighlightBox
     title: str

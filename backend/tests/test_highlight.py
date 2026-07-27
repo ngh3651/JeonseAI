@@ -538,7 +538,12 @@ def test_열람일시는_표시를_막는_상황에서도_전달된다():
 
 
 def test_열람일시는_판정에_쓰이지_않는다():
-    """표시 전용 계약 — 열람일시가 있든 없든 좌표·안내는 똑같아야 한다."""
+    """표시 전용 계약 — 열람일시가 있든 없든 **다른 표시**의 좌표·안내는 똑같아야 한다.
+
+    2026-07-28 변경: 열람일시 자체가 초록 표시(`viewed_at`)가 됐다(읽기 가이드 A-1).
+    그래서 목록이 통째로 같을 수는 없다. 지켜야 할 성질은 그대로다 —
+    **열람일시가 다른 표시를 하나도 바꾸지 않는다.**
+    """
     plain = eul_gu_page()
     words = list(plain.words) + viewed_at_row(950)
     dated = OcrPage(name="d.jpg", index=0, words=words, lines=group_lines(words),
@@ -547,9 +552,16 @@ def test_열람일시는_판정에_쓰이지_않는다():
 
     a = highlight.build_highlights(extract, as_result(plain))
     b = highlight.build_highlights(extract, as_result(dated))
-    assert [h.box for h in a.highlights] == [h.box for h in b.highlights]
+
+    def without_viewed(result):
+        return [(h.kind, h.box) for h in result.highlights if h.kind != "viewed_at"]
+
+    assert without_viewed(a) == without_viewed(b)
     assert a.checked_notes == b.checked_notes
     assert a.viewed_at is None and b.viewed_at == "2026.07.09"
+    # 열람일시가 읽힌 쪽에만 그 표시가 하나 늘어난다
+    assert [h.kind for h in a.highlights].count("viewed_at") == 0
+    assert [h.kind for h in b.highlights].count("viewed_at") == 1
 
 
 def page_with_footer(index: int, *, page_no: int, total: int, issue: str,

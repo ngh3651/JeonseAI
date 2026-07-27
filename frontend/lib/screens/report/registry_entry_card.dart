@@ -128,7 +128,7 @@ class RegistryPreviewSource {
   const RegistryPreviewSource({
     required this.path,
     required this.mark,
-    required this.riskCount,
+    required this.examineCount,
     required this.totalCount,
   });
 
@@ -136,10 +136,10 @@ class RegistryPreviewSource {
   final String path;
   final RegistryHighlight mark;
 
-  /// 뱃지에 적을 위험 개수 (이름 같은 '대조할 곳'은 빠진다)
-  final int riskCount;
+  /// 뱃지에 적을 **따져볼 곳** 개수 (이름·주소 같은 '대조할 곳'은 빠진다)
+  final int examineCount;
 
-  /// 전체 표시 개수 — 위험이 0건일 때 뱃지 문구를 바꾸는 데 쓴다
+  /// 전체 표시 개수 — 따져볼 곳이 0건일 때 뱃지 문구를 바꾸는 데 쓴다
   final int totalCount;
 }
 
@@ -383,11 +383,20 @@ class _PreviewStripState extends State<_PreviewStrip> {
 
   /// 좌상단 개수 뱃지.
   ///
-  /// 위험이 0건이면 `위험 0곳`이 되어 사실과 어긋나므로 문구와 색을 함께 바꾼다 —
-  /// 표시가 이름뿐인 등기부(근저당이 전부 말소된 경우)에서 실제로 일어난다.
+  /// 문구는 **[MarkTone.legendVerb]에서 가져온다** — 뱃지와 범례가 같은 단어를 쓰게
+  /// 강제하기 위해서다. 여기에 문자열을 직접 적으면 범례만 바뀌는 날 둘이 갈라진다.
+  ///
+  /// 2026-07-28 `위험 n곳` → `따져볼 곳 n곳`. "위험"은 등급 게이지의 어휘이고,
+  /// 마킹이 같은 단어를 쓰면 "표시와 판정 완전 분리"(api-contract §9.6)를 화면에서
+  /// 스스로 어긴다 — 사용자가 형광펜 개수를 등급의 근거로 읽게 된다.
+  ///
+  /// 따져볼 곳이 0건이면 `따져볼 곳 0곳`이 되어 사실과 어긋나므로 문구와 색을 함께
+  /// 바꾼다 — 표시가 이름뿐인 등기부(근저당이 전부 말소된 경우)에서 실제로 일어난다.
   Widget _badge(RegistryPreviewSource source) {
-    final risky = source.riskCount > 0;
-    final label = risky ? '위험 ${source.riskCount}곳' : '확인할 곳 ${source.totalCount}곳';
+    final risky = source.examineCount > 0;
+    final tone = risky ? MarkTone.risk : MarkTone.verify;
+    final count = risky ? source.examineCount : source.totalCount;
+    final label = '${tone.legendVerb} $count곳';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
       decoration: BoxDecoration(

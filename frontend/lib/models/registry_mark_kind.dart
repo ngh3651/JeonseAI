@@ -35,16 +35,43 @@ enum MarkTone {
 
 /// 서버 `kind` 문자열 1개 = 여기 항목 1개.
 ///
-/// **새 종류를 추가하는 법** — 아래에 한 줄만 더한다. 예:
-/// ```dart
-/// seizure('seizure', MarkTone.risk, shortNoun: '압류', countNoun: '압류', unit: '건'),
-/// address('address', MarkTone.verify, shortNoun: '주소', countNoun: '집 주소', unit: '곳'),
-/// ```
+/// **선언 순서 = 등기부를 읽는 순서다.** 백엔드 `highlight.py`의 `_SPECS[*].order`와
+/// 같은 순서로 맞춰 둔다 — 범례·개수 문구·카드 캐러셀이 전부 이 순서를 따르므로,
+/// 순서 자체가 "등기부는 이렇게 읽는 겁니다"라는 가이드가 된다 (2026-07-28).
+///   표제부(주소·면적·토지 별도등기) → 표지(서류 종류) → 갑구(소유자 → 압류 계열)
+///   → 을구(근저당 → 전세권 → 임차권 → 공동담보) → 문서 상태 → 꼬리말(뗀 날)
+///
+/// **새 종류를 추가하는 법** — 읽는 순서에 맞는 자리에 한 줄만 더한다.
 /// 색·범례·개수 문구는 전부 이 표에서 파생되므로 화면 코드는 건드릴 필요가 없다.
 enum MarkKind {
+  // ── 표제부 ──────────────────────────────────────────────────────────────
+  address('address', MarkTone.verify, shortNoun: '주소', countNoun: '집 주소', unit: '곳'),
+  area('area', MarkTone.verify, shortNoun: '면적', countNoun: '전용면적', unit: '곳'),
+  separateLand('separate_land', MarkTone.risk,
+      shortNoun: '토지 별도등기', countNoun: '토지 별도등기', unit: '곳'),
+  // ── 표지 ────────────────────────────────────────────────────────────────
+  docTitle('doc_title', MarkTone.verify,
+      shortNoun: '서류 종류', countNoun: '서류 종류', unit: '곳'),
+  // ── 갑구 ────────────────────────────────────────────────────────────────
   owner('owner', MarkTone.verify, shortNoun: '이름', countNoun: '집주인 이름', unit: '곳'),
+  provisionalSeizure('provisional_seizure', MarkTone.risk,
+      shortNoun: '가압류', countNoun: '가압류', unit: '건'),
+  seizure('seizure', MarkTone.risk, shortNoun: '압류', countNoun: '압류', unit: '건'),
+  auction('auction', MarkTone.risk,
+      shortNoun: '경매', countNoun: '경매개시결정', unit: '건'),
+  trust('trust', MarkTone.risk, shortNoun: '신탁', countNoun: '신탁등기', unit: '건'),
+  // ── 을구 ────────────────────────────────────────────────────────────────
   mortgage('mortgage', MarkTone.risk, shortNoun: '빚', countNoun: '빚', unit: '건'),
   jeonse('jeonse', MarkTone.risk, shortNoun: '전세권', countNoun: '전세권', unit: '건'),
+  leaseRegistration('lease_registration', MarkTone.risk,
+      shortNoun: '임차권등기', countNoun: '임차권등기', unit: '건'),
+  jointCollateral('joint_collateral', MarkTone.risk,
+      shortNoun: '공동담보', countNoun: '공동담보', unit: '곳'),
+  // ── 문서 상태 · 꼬리말 ──────────────────────────────────────────────────
+  pendingApplication('pending_application', MarkTone.risk,
+      shortNoun: '신청사건', countNoun: '신청사건 처리중', unit: '곳'),
+  viewedAt('viewed_at', MarkTone.verify,
+      shortNoun: '뗀 날', countNoun: '서류를 뗀 날', unit: '곳'),
 
   /// 앱이 모르는 종류 — 서버가 우리보다 먼저 새 kind를 내보낸 경우.
   ///
@@ -99,10 +126,19 @@ class MarkLegendEntry {
 /// 고정 문구를 박아 두면 압류가 추가된 날 범례가 조용히 거짓말을 한다
 /// ("빚처럼 따져볼 곳"이라고 써 놓고 주황 표시 중 절반이 압류인 상태).
 abstract final class MarkLegend {
+  /// 범례 한 줄에 이름을 몇 개까지 나열할 것인가.
+  ///
+  /// 종류가 3개일 때는 전부 적어도 읽히지만(`빚·전세권·압류처럼 따져볼 곳`),
+  /// 2026-07-28에 종류가 15개로 늘면서 그대로 두면 범례가 두 줄을 넘어가
+  /// **범례가 화면을 잡아먹는다**(문서 영역 하한 400dp를 지키는 레이아웃 테스트가 먼저 깨진다).
+  /// 그래서 앞 [_legendMaxNouns]개만 적고 나머지는 `등`으로 접는다.
+  static const int _legendMaxNouns = 2;
+
   /// 표시에 등장한 종류들 → 톤별 범례 한 줄씩.
   ///
   /// `[owner, mortgage]` → `이름처럼 대조할 곳` / `빚처럼 따져볼 곳`
   /// `[owner, mortgage, jeonse]` → `이름처럼 대조할 곳` / `빚·전세권처럼 따져볼 곳`
+  /// `[address, owner, viewedAt]` → `주소·이름 등 대조할 곳` (3개 이상은 접는다)
   static List<MarkLegendEntry> fromKinds(Iterable<MarkKind> kinds) {
     final present = kinds.toSet();
     final byTone = <MarkTone, List<MarkKind>>{};
@@ -114,12 +150,16 @@ abstract final class MarkLegend {
     }
     return [
       for (final tone in MarkTone.values)
-        if (byTone[tone] != null)
-          MarkLegendEntry(
-            tone,
-            '${byTone[tone]!.map((k) => k.shortNoun).join('·')}처럼 ${tone.legendVerb}',
-          ),
+        if (byTone[tone] != null) MarkLegendEntry(tone, _legendLabel(byTone[tone]!, tone)),
     ];
+  }
+
+  static String _legendLabel(List<MarkKind> kinds, MarkTone tone) {
+    final nouns = kinds.map((k) => k.shortNoun).toList();
+    if (nouns.length <= _legendMaxNouns) {
+      return '${nouns.join('·')}처럼 ${tone.legendVerb}';
+    }
+    return '${nouns.take(_legendMaxNouns).join('·')} 등 ${tone.legendVerb}';
   }
 
   /// 종류별 개수를 사람 말로 — `집주인 이름 1곳과 빚 3건`.
@@ -142,9 +182,18 @@ abstract final class MarkLegend {
     return '$head${_wa(head)} ${parts.last}';
   }
 
-  /// 위험 톤인 표시만 센다 — 진입 카드 뱃지의 "위험 n곳".
-  static int riskCount(Iterable<MarkKind> kinds) =>
+  /// [MarkTone.risk] 톤인 표시만 센다 — 진입 카드 뱃지의 "**따져볼 곳** n곳".
+  ///
+  /// 2026-07-28 `riskCount` → `examineCount` 개명. "위험"은 **등급 게이지의 어휘**다.
+  /// 표시(마킹) 계층이 같은 단어를 쓰면 api-contract §9.6의 "표시와 판정 완전 분리"를
+  /// 화면에서 스스로 어긴다 — 사용자가 형광펜 개수를 등급의 근거로 읽게 된다.
+  /// 이름과 화면 문구를 같이 바꿔야 다음 사람이 다시 "위험"으로 되돌리지 않는다.
+  static int examineCount(Iterable<MarkKind> kinds) =>
       kinds.where((k) => k.isRisk).length;
+
+  /// [MarkTone.verify] 톤인 표시 개수 — "대조할 곳".
+  static int verifyCount(Iterable<MarkKind> kinds) =>
+      kinds.where((k) => !k.isRisk).length;
 
   /// 앞 글자에 받침이 있으면 `과`, 없으면 `와`.
   /// (지금 단위는 곳·건뿐이라 늘 '과'지만, 단위가 '개'·'명'으로 늘어도 안 깨지게 둔다)

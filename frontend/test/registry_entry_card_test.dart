@@ -16,11 +16,12 @@ import 'support/registry_fixture.dart';
 void main() {
   final report = buildFixtureReport();
 
-  group('무엇을 세는가 — 뱃지(위험)와 부제(전체)', () {
-    test('표시는 4곳이지만 위험은 3곳이다 (이름은 대조할 곳)', () {
+  group('무엇을 세는가 — 뱃지(따져볼 곳)와 부제(전체)', () {
+    test('표시는 4곳이지만 따져볼 곳은 3곳이다 (이름은 대조할 곳)', () {
       final kinds = report.highlights.map((h) => h.markKind);
       expect(report.highlights.length, 4);
-      expect(MarkLegend.riskCount(kinds), 3);
+      expect(MarkLegend.examineCount(kinds), 3);
+      expect(MarkLegend.verifyCount(kinds), 1);
     });
 
     test('부제는 kind별 개수로 조립된다 (하드코딩 아님)', () {

@@ -492,7 +492,9 @@ void main() {
 
   group('표시 종류 — 두 가지로 하드코딩하지 않는다', () {
     test('모르는 종류는 위험 쪽으로 떨어진다 (보수적 편향)', () {
-      final kind = MarkKind.fromKey('seizure');
+      // 예전엔 'seizure'가 이 자리에 있었다 — 2026-07-28에 실제 종류가 되면서
+      // 아직 구현되지 않은 kind로 바꿨다(백로그의 가처분).
+      final kind = MarkKind.fromKey('provisional_disposition');
       expect(kind, MarkKind.unknown);
       expect(kind.isRisk, isTrue, reason: '모르는 것을 초록(대조할 곳)으로 칠하면 경고를 놓친다');
     });
@@ -524,8 +526,8 @@ void main() {
       expect(legend.single.tone, MarkTone.verify);
     });
 
-    test('위험 개수와 전체 표시 개수는 따로 센다', () {
-      // 이름 1 + 빚 3 = 표시 4곳이지만, 이름은 위험이 아니다 → 위험 3곳
+    test('따져볼 곳 개수와 전체 표시 개수는 따로 센다', () {
+      // 이름 1 + 빚 3 = 표시 4곳이지만, 이름은 따져볼 곳이 아니다 → 3곳
       final kinds = [
         MarkKind.owner,
         MarkKind.mortgage,
@@ -533,7 +535,58 @@ void main() {
         MarkKind.mortgage,
       ];
       expect(kinds.length, 4);
-      expect(MarkLegend.riskCount(kinds), 3);
+      expect(MarkLegend.examineCount(kinds), 3);
+      expect(MarkLegend.verifyCount(kinds), 1);
+    });
+
+    test('종류가 3개를 넘으면 범례를 "등"으로 접는다', () {
+      // 종류가 15개로 늘면서 전부 나열하면 범례가 화면을 잡아먹는다.
+      final legend = MarkLegend.fromKinds([
+        MarkKind.address,
+        MarkKind.owner,
+        MarkKind.viewedAt,
+        MarkKind.seizure,
+      ]);
+      expect(legend.first.label, '주소·이름 등 대조할 곳');
+      expect(legend.last.label, '압류처럼 따져볼 곳');
+    });
+
+    test('새로 추가된 종류가 전부 파싱된다 (서버 kind ↔ 앱 enum)', () {
+      // 백엔드 highlight.py의 _SPECS 키와 1:1이어야 한다. 하나라도 빠지면
+      // 그 표시가 unknown(위험 톤)으로 떨어져 색과 개수가 조용히 틀어진다.
+      const serverKinds = [
+        'address', 'area', 'separate_land', 'doc_title', 'owner',
+        'provisional_seizure', 'seizure', 'auction', 'trust',
+        'mortgage', 'jeonse', 'lease_registration', 'joint_collateral',
+        'pending_application', 'viewed_at',
+      ];
+      for (final key in serverKinds) {
+        expect(
+          MarkKind.fromKey(key),
+          isNot(MarkKind.unknown),
+          reason: '$key 가 MarkKind에 없다 — unknown(위험)으로 떨어진다',
+        );
+      }
+      expect(MarkKind.values.length, serverKinds.length + 1, reason: 'unknown 포함');
+    });
+
+    test('대조할 곳과 따져볼 곳의 톤이 지시대로 갈린다', () {
+      // 초록(대조할 곳): 주소·면적·서류 종류·이름·뗀 날
+      for (final k in [
+        MarkKind.address, MarkKind.area, MarkKind.docTitle,
+        MarkKind.owner, MarkKind.viewedAt,
+      ]) {
+        expect(k.tone, MarkTone.verify, reason: '${k.key} 는 대조할 곳이다');
+      }
+      // 주황(따져볼 곳): 보증금을 깎을 수 있는 권리·문서 상태
+      for (final k in [
+        MarkKind.separateLand, MarkKind.provisionalSeizure, MarkKind.seizure,
+        MarkKind.auction, MarkKind.trust, MarkKind.mortgage, MarkKind.jeonse,
+        MarkKind.leaseRegistration, MarkKind.jointCollateral,
+        MarkKind.pendingApplication,
+      ]) {
+        expect(k.tone, MarkTone.risk, reason: '${k.key} 는 따져볼 곳이다');
+      }
     });
 
     test('개수 문구는 종류별로 조립한다', () {

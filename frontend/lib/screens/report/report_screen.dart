@@ -155,9 +155,9 @@ class _ReportScreenState extends State<ReportScreen> {
             : RegistryPreviewSource(
                 path: paths[preview.page],
                 mark: preview,
-                // 뱃지는 **위험만** 센다. 집주인 이름은 위험이 아니라 대조할 곳이라,
-                // 전체 개수를 적으면 "위험 4곳"이라는 사실과 다른 말이 된다.
-                riskCount: MarkLegend.riskCount(marks.map((m) => m.markKind)),
+                // 뱃지는 **따져볼 곳만** 센다. 집주인 이름·주소는 위험이 아니라
+                // 대조할 곳이라, 전체 개수를 적으면 사실과 다른 말이 된다.
+                examineCount: MarkLegend.examineCount(marks.map((m) => m.markKind)),
                 totalCount: marks.length,
               ),
       ),

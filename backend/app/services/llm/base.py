@@ -39,6 +39,16 @@ REQUEST_TIMEOUT_SECONDS = 120  # 추론 모델은 사고에 시간을 쓴다 (�
 MAX_ATTEMPTS = 3  # 최초 1회 + 재시도 2회 (serverless 429 대비)
 RATE_LIMIT_BACKOFF_SECONDS = 8
 
+# 생성 파라미터 (인프라 수치 — 판정 임계값 아님).
+#
+# ⚠ 두 작업의 값이 **다르고, 달라야 한다.**
+#   - 설명 생성 0.3 : decisions.md [2026-07-07]에 "생성 파라미터 기록"으로 남은 값이다.
+#     provider 뒤로 옮기면서 조용히 0.1로 바뀌면 그건 리팩터가 아니라 사양 변경이고,
+#     기록된 값과 실제 동작이 갈라진다(2026-07-28 rule-auditor 지적).
+#   - 구조화 0.1   : 표를 옮겨 적는 일이라 창작이 아니다. 흔들림을 줄인다.
+EXPLAIN_TEMPERATURE = 0.3
+STRUCTURE_TEMPERATURE = 0.1
+
 
 class LlmError(Exception):
     """LLM 호출·검증 실패. **분석을 실패시키지 않는다** — 호출부가 폴백한다."""
@@ -104,11 +114,13 @@ class LlmProvider(ABC):
         """작업 ② 규칙 엔진 판정 JSON → 설명 슬롯 dict (검증 전 원본)."""
 
     # ── 저수준 호출 ────────────────────────────────────────────────────────
-    def _payload(self, messages: list[dict], max_tokens: int, json_mode: bool) -> dict:
+    def _payload(
+        self, messages: list[dict], max_tokens: int, json_mode: bool, temperature: float
+    ) -> dict:
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
-            "temperature": 0.1,  # 구조화는 창작이 아니다 — 흔들림을 줄인다
+            "temperature": temperature,
             "max_tokens": max_tokens + self.extra_max_tokens,
         }
         if json_mode:
@@ -123,6 +135,7 @@ class LlmProvider(ABC):
         max_tokens: int = 3000,
         json_mode: bool = True,
         timeout: float | None = None,
+        temperature: float = STRUCTURE_TEMPERATURE,
     ) -> LlmResponse:
         """1회 호출. 실패하면 `LlmError`. **429(요청 제한)만** 짧게 물러섰다 다시 시도한다.
 
@@ -144,7 +157,7 @@ class LlmProvider(ABC):
                         "Authorization": f"Bearer {self._key}",
                         "Content-Type": "application/json",
                     },
-                    json=self._payload(messages, max_tokens, json_mode),
+                    json=self._payload(messages, max_tokens, json_mode, temperature),
                     timeout=timeout or REQUEST_TIMEOUT_SECONDS,
                 )
             except requests.exceptions.RequestException as e:
@@ -185,10 +198,13 @@ class LlmProvider(ABC):
         raise LlmError(f"{self.name}: {MAX_ATTEMPTS}회 시도 실패 ({last_error})")
 
     def chat_json(
-        self, system: str, user: str, *, max_tokens: int = 3000, timeout: float | None = None
+        self, system: str, user: str, *, max_tokens: int = 3000, timeout: float | None = None,
+        temperature: float = STRUCTURE_TEMPERATURE,
     ) -> tuple[dict, LlmResponse]:
         """JSON 응답을 dict로. 코드펜스(```json)로 감싸 오는 모델도 받아낸다."""
-        resp = self.chat(system, user, max_tokens=max_tokens, timeout=timeout)
+        resp = self.chat(
+            system, user, max_tokens=max_tokens, timeout=timeout, temperature=temperature
+        )
         try:
             return _loads_lenient(resp.text), resp
         except ValueError as e:
@@ -237,7 +253,9 @@ class OpenAiCompatibleProvider(LlmProvider):
         user = "판정 JSON:\n" + json.dumps(
             {**verdict_json, **({"수치사실": facts} if facts else {})}, ensure_ascii=False
         )
-        payload, resp = self.chat_json(EXPLAIN_SYSTEM_PROMPT, user, max_tokens=1500)
+        payload, resp = self.chat_json(
+            EXPLAIN_SYSTEM_PROMPT, user, max_tokens=1500, temperature=EXPLAIN_TEMPERATURE
+        )
         _log.info(
             f"[LLM:{self.name}] 설명 생성 {resp.elapsed:.1f}초"
             f" / 토큰 {resp.total_tokens if resp.total_tokens is not None else '미제공'}"

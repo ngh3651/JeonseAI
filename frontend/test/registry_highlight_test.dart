@@ -826,6 +826,8 @@ void main() {
       expect(RegistryPhotoStore.instance.pathsFor('r3'), isEmpty);
     });
   });
+
+  _crossCheckNoteVisibility();
 }
 
 /// 흰 종이 위에 검은 글자 한 줄이 인쇄된 것을 흉내 낸다(폰트 렌더링에 의존하지 않게
@@ -859,3 +861,47 @@ Map<String, dynamic> _reportJson() => {
   'seniorDebtAmount': 0,
   'evidences': <Map<String, dynamic>>[],
 };
+
+void _crossCheckNoteVisibility() {
+  group('교차검증·고지 문장이 화면에 실제로 나오는가 (2026-07-28)', () {
+    // 백엔드가 만드는 문장을 그대로 옮겨 온 표본. 이 중 하나라도 필터에서 탈락하면
+    // 사용자는 그 사실을 **영영 알 수 없다** — "침묵 금지" 설계가 화면에서 깨진다.
+    const serverNotes = [
+      '집주인 이름 1곳 — 사진에서 찾아 표시했어요',
+      '빚은 7건 중 큰 것부터 5건만 사진에 표시했어요. 나머지 2건은 화면이 가려져서 표시하지 않았어요 — 리포트의 근거 카드에는 7건 다 들어 있어요',
+      '사진 순서가 등기부 쪽수와 달라 자동으로 맞췄어요 — 다시 올리지 않으셔도 돼요',
+      '서류 내용을 2가지 방법으로 교차 확인했어요 — 빚(근저당) 3건 일치',
+      '압류는 AI가 서로 다른 두 방법으로 읽었더니 개수가 달랐어요(3건 / 1건). 위험 계산은 더 많이 잡은 3건 기준으로 했어요. 그중 2건은 위치를 짚지 못해 사진에 표시하지 않았어요',
+      '이번엔 한 가지 방법으로만 읽었어요 — 두 번째 확인은 하지 못했어요 (분석 결과에는 영향이 없어요)',
+      '못 본 쪽이 있어서 빚(근저당)이 없다고는 말할 수 없어요 — 위 안내를 확인해 주세요',
+    ];
+
+    test('상한 생략 고지가 화면에 나온다', () {
+      expect(unmarkedNotice([serverNotes[1]]), isNotNull);
+    });
+
+    test('자동 정렬 고지가 화면에 나온다', () {
+      expect(unmarkedNotice([serverNotes[2]]), isNotNull);
+    });
+
+    test('교차검증 일치 문장이 화면에 나온다 (불안만 남기지 않는다)', () {
+      expect(unmarkedNotice([serverNotes[3]]), isNotNull);
+    });
+
+    test('교차검증 불일치 문장이 화면에 나온다', () {
+      expect(unmarkedNotice([serverNotes[4]]), isNotNull);
+    });
+
+    test('두 번째 확인 실패 고지가 화면에 나온다', () {
+      expect(unmarkedNotice([serverNotes[5]]), isNotNull);
+    });
+
+    test('"없다고 말할 수 없어요" 고지가 화면에 나온다', () {
+      expect(unmarkedNotice([serverNotes[6]]), isNotNull);
+    });
+
+    test('평범한 진행 문장은 여전히 걸러진다 (회색 줄이 길어지지 않게)', () {
+      expect(unmarkedNotice([serverNotes[0]]), isNull);
+    });
+  });
+}

@@ -150,7 +150,9 @@ def _call_solar(messages: list[dict], api_key: str) -> str:
     provider = llm.explain_provider()
     system = next((m["content"] for m in messages if m.get("role") == "system"), "")
     user = next((m["content"] for m in messages if m.get("role") == "user"), "")
-    return provider.chat(system, user, max_tokens=1500).text
+    return provider.chat(
+        system, user, max_tokens=1500, temperature=llm.EXPLAIN_TEMPERATURE
+    ).text
 
 
 def _field_ok(kind: str, text: str) -> bool:

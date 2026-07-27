@@ -24,6 +24,7 @@ import logging
 from dataclasses import dataclass, field
 
 from ..schemas.internal import RegistryExtract
+from .formatting import eun_neun
 
 _log = logging.getLogger("jeonseai")
 
@@ -124,7 +125,13 @@ def to_notes(check: CrossCheck, *, unplaced: dict[str, int] | None = None) -> li
     """
     notes: list[str] = []
     if not check.ran:
-        return notes
+        # **실패도 말한다.** 예전에는 빈 목록이라, 두 번째 경로가 429·타임아웃·스키마
+        # 위반·키 없음 중 무엇으로 빠졌든 화면 결과가 전부 똑같이 '무음'이었다.
+        # 그러면 교차검증 문장이 있다가 없다가 하는 이유를 아무도 알 수 없다.
+        return [
+            "이번엔 한 가지 방법으로만 읽었어요 — 두 번째 확인은 하지 못했어요 "
+            "(분석 결과에는 영향이 없어요)"
+        ]
 
     agreed = check.agreed
     if agreed:
@@ -136,13 +143,30 @@ def to_notes(check: CrossCheck, *, unplaced: dict[str, int] | None = None) -> li
 
     for c in check.disagreed:
         missed = (unplaced or {}).get(c.field, 0)
+        # ⚠ 꼬리를 **"표시하지 않았어요"** 로 통일한다. 앱은 그 표식이 든 문장만
+        #   화면에 그리므로(`kUnmarkedNoteMarkers`), 예전의 "조심스럽게 줄였어요"는
+        #   **하필 우리가 덜 찾은 쪽(더 위험한 방향)의 불일치를 침묵시켰다.**
         tail = (
-            f" {missed}건은 위치를 짚지 못해 사진에 표시하지 않았어요"
+            f" 그중 {missed}건은 위치를 짚지 못해 사진에 표시하지 않았어요"
             if missed
-            else " 개수가 달라 사진 표시는 조심스럽게 줄였어요"
+            else " 개수가 달라 사진에는 확실한 것만 표시하고 나머지는 표시하지 않았어요"
         )
+        # 판정을 어느 쪽 기준으로 했는지 **반드시 말한다.** 숫자 두 개만 던지면
+        # "그래서 뭘 믿어야 하지"로 남는다(페르소나 2인 공통 지적).
+        #
+        # ⚠ **"더 엄격한 쪽으로 계산했다"고 쓰면 거짓말이 된다.** 판정은 언제나
+        #   서류 전체를 읽는 방법(IE) 기준이고, 그쪽이 **더 적게** 잡는 경우가 실제로 있다.
+        #   그때는 적게 잡았다는 사실을 그대로 말하고 사용자가 직접 확인하게 한다
+        #   (판정을 바꾸는 것은 CLAUDE.md 3절이 금지한다 — 대신 침묵하지 않는다).
+        if c.ie_count >= c.llm_count:
+            verdict_line = f"위험 계산은 더 많이 잡은 {c.ie_count}건 기준으로 했어요."
+        else:
+            verdict_line = (
+                f"위험 계산은 {c.ie_count}건 기준으로 했지만 다른 방법에서는 {c.llm_count}건이"
+                " 보였어요 — 등기부 원본을 꼭 한 번 더 확인하세요."
+            )
         notes.append(
-            f"{c.label}은(는) 문서 판독에서 {c.ie_count}건, 사진 판독에서 {c.llm_count}건이"
-            f" 확인됐어요.{tail} (리포트의 근거 카드에는 전부 반영돼 있어요)"
+            f"{eun_neun(c.label)} AI가 서로 다른 두 방법으로 읽었더니 개수가 달랐어요"
+            f"({c.ie_count}건 / {c.llm_count}건). {verdict_line}{tail}"
         )
     return notes

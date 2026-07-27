@@ -54,3 +54,38 @@ def short_address(address: str) -> str:
     head = address.split(",")[0].strip()  # 등기부의 '지번, 도로명' 병기 중 앞부분만
     m = _DONG_RE.search(head) or _ROAD_RE.search(head)
     return head[m.start():] if m else head
+
+
+# ── 한국어 조사 (표시 전용) ──────────────────────────────────────────────────
+#
+# 왜 백엔드에 두나 (2026-07-28): 사용자에게 보이는 문장을 백엔드가 만든다는 것이 이
+# 저장소의 규칙이다("문장 자체는 서버가 만든다. 앱은 고르기만 한다"). 그런데 조사 처리는
+# 앱에만 있었고(`MarkLegend._hasFinalConsonant`), 백엔드는 `{noun}은` 처럼 하드코딩해
+# **"가압류은" · "압류은" · "집 주소은"** 이 그대로 화면에 나갔다(페르소나 2인 공통 지적).
+# 병기(`은(는)`)는 관공서 서류 말투라 더 나쁘다 — "전 재산 걸린 앱인데 급하게 만든 것 같다".
+
+
+def has_final_consonant(word: str) -> bool:
+    """마지막 글자에 받침이 있는가. 완성형 한글이 아니면 흔한 쪽(있음)으로 둔다."""
+    word = (word or "").rstrip()
+    if not word:
+        return True
+    code = ord(word[-1])
+    if not (0xAC00 <= code <= 0xD7A3):
+        return True
+    return (code - 0xAC00) % 28 != 0
+
+
+def eun_neun(word: str) -> str:
+    """`은` / `는`."""
+    return f"{word}은" if has_final_consonant(word) else f"{word}는"
+
+
+def i_ga(word: str) -> str:
+    """`이` / `가`."""
+    return f"{word}이" if has_final_consonant(word) else f"{word}가"
+
+
+def eul_reul(word: str) -> str:
+    """`을` / `를`."""
+    return f"{word}을" if has_final_consonant(word) else f"{word}를"

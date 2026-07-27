@@ -74,10 +74,15 @@ def test_말소된_항목은_양쪽_다_세지_않는다():
     assert cross_check.compare(ie, llm).disagreed == []
 
 
-def test_두_번째_경로가_없으면_대조하지_않는다():
+def test_두_번째_경로가_없으면_그_사실을_말한다():
+    """예전에는 빈 목록이라 429·타임아웃·키 없음이 화면에서 전부 똑같이 '무음'이었다.
+    그러면 교차검증 문장이 있다가 없다가 하는 이유를 아무도 알 수 없다."""
     check = cross_check.compare(ie_extract(), None, error="키 없음")
     assert check.ran is False
-    assert cross_check.to_notes(check) == []
+    notes = cross_check.to_notes(check)
+    assert len(notes) == 1
+    assert "한 가지 방법으로만" in notes[0]
+    assert "분석 결과에는 영향이 없어요" in notes[0]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -93,15 +98,32 @@ def test_일치하면_두_방법으로_확인했다고_말해준다():
     assert "일치" in joined
 
 
+def test_판정_기준을_사실대로_말한다():
+    """"더 엄격한 쪽으로 계산했다"고 쓰면 거짓말이 된다 — 판정은 언제나 IE 기준이고
+    IE가 **더 적게** 잡는 경우가 실제로 있다. 그때는 적게 잡았다고 그대로 말해야 한다."""
+    # IE가 더 많이 잡은 경우
+    more = cross_check.to_notes(cross_check.compare(ie_extract(), llm_extract(("9",))))
+    assert "더 많이 잡은 3건 기준" in " ".join(more)
+    # IE가 **더 적게** 잡은 경우
+    fewer = cross_check.to_notes(
+        cross_check.compare(llm_extract(("9",)), ie_extract())
+    )
+    joined = " ".join(fewer)
+    assert "1건 기준으로 했지만 다른 방법에서는 3건" in joined
+    assert "등기부 원본을 꼭 한 번 더 확인하세요" in joined
+
+
 def test_불일치하면_숫자를_그대로_말해준다():
     """조용히 넘어가면 사용자는 '앱이 놓쳤다'로 읽는다 — 개수와 이유를 함께 댄다."""
     check = cross_check.compare(ie_extract(), llm_extract())
     notes = cross_check.to_notes(check, unplaced={"seizures": 2})
     joined = " ".join(notes)
-    assert "문서 판독에서 3건" in joined
-    assert "사진 판독에서 1건" in joined
+    assert "(3건 / 1건)" in joined
     assert "2건은 위치를 짚지 못해" in joined
-    assert "근거 카드에는 전부 반영돼 있어요" in joined
+    # 앱은 이 표식이 든 문장만 화면에 그린다 — 없으면 조용히 사라진다
+    assert "표시하지 않았어요" in joined
+    # 조사가 맞아야 한다 ("압류은" 금지)
+    assert "압류은" not in joined
 
 
 def test_불일치_문장에_실명이_들어가지_않는다():
@@ -160,7 +182,7 @@ def test_교차검증_결과가_리포트_판정_필드를_바꾸지_않는다()
         (e.id, e.grade) for e in with_cross.evidences
     ]
     # 그런데 고지 문장은 늘어야 한다 — 조용하면 안 된다
-    assert any("판독" in n for n in with_cross.checkedNotes)
+    assert any("두 방법으로 읽었더니" in n or "교차 확인" in n for n in with_cross.checkedNotes)
 
 
 def test_두_번째_경로_실패는_분석을_막지_않는다():
@@ -171,8 +193,12 @@ def test_두_번째_경로_실패는_분석을_막지_않는다():
     assert result.checked_notes
 
 
-def test_OCR이_없으면_교차검증도_없다():
+def test_OCR이_전멸해도_침묵하지_않는다():
+    """예전에는 빈 결과만 돌려줘 화면에 사진만 뜨고 범례·회색 줄이 통째로 사라졌다 —
+    사용자는 "표시할 게 없다"와 "못 읽었다"를 구분할 수 없다."""
     check = cross_check.compare(ie_extract(), None, error="OCR 결과 없음")
     result = highlight.build_highlights(ie_extract(), OcrResult(errors=["timeout"]), cross=check)
     assert result.highlights == []
-    assert result.checked_notes == []
+    assert result.checked_notes, "OCR 전멸 시 아무 말도 안 하면 안 된다"
+    assert result.notice and "읽지 못" in result.notice
+    assert any("표시하지 않았어요" in n for n in result.checked_notes)

@@ -53,7 +53,7 @@ from dataclasses import dataclass, field, replace
 from ..schemas.contract import Highlight, HighlightBox
 from ..schemas.internal import MoneyEntry, RegistryEntry, RegistryExtract, parse_amount
 from .cross_check import CrossCheck, to_notes as cross_check_notes
-from .formatting import format_won
+from .formatting import eun_neun, format_won
 from .ocr import OcrResult
 from .ocr_layout import Line, OcrPage, RegistryItem, build_items, check_document
 
@@ -61,7 +61,7 @@ _log = logging.getLogger("jeonseai")
 
 # 같은 종류를 몇 개까지 칠할 것인가 (2026-07-28 A-3).
 #
-# 표시 종류가 3개(이름·근저당·전세권)에서 14개로 늘면서, 압류가 8건인 등기부에서는
+# 표시 종류가 3개(이름·근저당·전세권)에서 15종(`len(_SPECS)`)으로 늘면서, 압류가 8건인 등기부에서는
 # 갑구가 통째로 주황 띠가 된다(findings §9.5 "[보류] 표시 종류가 늘면 줄무늬가 될 수 있다").
 # 형광펜의 목적은 "여기를 보세요"인데 다 칠하면 아무 데도 가리키지 않는 것과 같다.
 #
@@ -333,11 +333,13 @@ _RANKED_RULES: tuple[RankedRule, ...] = (
     ),
     RankedRule(
         "provisional_seizure", "갑구", _rx(r"가압류"), "provisional_seizures",
-        "claim_amount", "가압류",
+        "claim_amount", "집이 묶여 있어요 (가압류)",
     ),
-    RankedRule("seizure", "갑구", _rx(r"(?<!가)압류"), "seizures", None, "압류"),
-    RankedRule("auction", "갑구", _rx(r"경매개시결정"), "auction_commencements", None, "경매개시결정"),
-    RankedRule("trust", "갑구", _rx(r"신탁"), "trust_registrations", None, "신탁등기"),
+    RankedRule("seizure", "갑구", _rx(r"(?<!가)압류"), "seizures", None, "집이 묶여 있어요 (압류)"),
+    RankedRule("auction", "갑구", _rx(r"경매개시결정"), "auction_commencements", None,
+               "경매가 이미 시작됐어요 (경매개시결정)"),
+    RankedRule("trust", "갑구", _rx(r"신탁"), "trust_registrations", None,
+               "집 명의가 신탁회사에 있어요 (신탁등기)"),
 )
 
 
@@ -357,9 +359,10 @@ class TextRule:
 
 
 _TEXT_RULES: tuple[TextRule, ...] = (
-    TextRule("separate_land", _rx(r"별도등기"), "토지 별도등기", negative=_rx(r"없음|없는")),
-    TextRule("joint_collateral", _rx(r"공동담보|공동전세목록"), "공동담보 목록"),
-    TextRule("pending_application", _rx(r"신청사건"), "신청사건 처리중"),
+    TextRule("separate_land", _rx(r"별도등기"), "땅에 따로 걸린 빚 (토지 별도등기)",
+             negative=_rx(r"없음|없는")),
+    TextRule("joint_collateral", _rx(r"공동담보|공동전세목록"), "여러 집이 함께 묶인 담보 (공동담보)"),
+    TextRule("pending_application", _rx(r"신청사건"), "등기 변경이 진행 중이에요 (신청사건)"),
 )
 
 # 문서 스칼라 앵커
@@ -410,8 +413,12 @@ def _union(boxes: list[tuple[float, float, float, float]]) -> tuple[float, float
 
 def _apply_page_order(
     pages: list[OcrPage], order: list[int] | None
-) -> tuple[list[OcrPage], dict[int, int]]:
-    """(문서 순서로 다시 세운 페이지들, 문서 인덱스 → 업로드 인덱스) 를 만든다.
+) -> tuple[list[OcrPage], dict[int, int], bool]:
+    """(문서 순서로 다시 세운 페이지들, 문서→업로드 인덱스, **실제로 정렬했는가**).
+
+    세 번째 값이 중요하다: 방어 분기로 정렬을 **취소**했는데도 "자동으로 맞췄어요"라고
+    말하면, 뒤섞인 순서로 항목을 이은 상태(말소 판정이 어긋날 수 있는 상태)를
+    "고쳤다"고 알리는 셈이 된다.
 
     `order`가 None이면 아무것도 하지 않는다 — 두 인덱스가 같다(항등 사상).
     정렬할 때는 각 페이지의 `.index`를 **문서 순서로 다시 매긴다.** `build_items`와
@@ -419,7 +426,7 @@ def _apply_page_order(
     업로드 인덱스를 그대로 두면 그 판단이 조용히 뒤집힌다.
     """
     if not order:
-        return list(pages), {p.index: p.index for p in pages}
+        return list(pages), {p.index: p.index for p in pages}, False
     by_upload = {p.index: p for p in pages}
     ordered: list[OcrPage] = []
     to_upload: dict[int, int] = {}
@@ -427,11 +434,11 @@ def _apply_page_order(
         src = by_upload.get(upload_index)
         if src is None:  # 방어 — `_resolve_order`가 보장하지만 조용히 어긋나면 정렬을 포기한다
             _log.info(f"[사진점검] ⚠ 정렬 대상 업로드 인덱스 {upload_index}를 찾지 못함 → 정렬 취소")
-            return list(pages), {p.index: p.index for p in pages}
+            return list(pages), {p.index: p.index for p in pages}, False
         ordered.append(replace(src, index=doc_index))
         to_upload[doc_index] = upload_index
     _log.info(f"[사진점검] 사진 순서를 문서 순서로 재배열: 업로드 {order} → 1..{len(order)}쪽")
-    return ordered, to_upload
+    return ordered, to_upload, True
 
 
 def _active_rights_items(items: list[RegistryItem], section: str) -> list[RegistryItem]:
@@ -711,8 +718,18 @@ def build_highlights(
     이 값이 무엇이든 등급·점수는 바뀌지 않는다(판정은 IE 기준 유지).
     """
     if not ocr.pages:
+        # **침묵 금지.** 예전에는 빈 결과만 돌려줘서 화면에 사진만 뜨고 범례·회색 줄이
+        # 통째로 사라졌다 — 사용자는 "표시할 게 없다"와 "못 읽었다"를 구분할 수 없다
+        # (이 기능 설계의 최우선 지적사항이 정확히 재발하는 자리다).
         _log.info("[매칭] 건너뜀 — OCR 결과 없음 (좌표 없이 리포트 완성)")
-        return HighlightResult([])
+        return HighlightResult(
+            [],
+            notice="사진에서 글자를 읽지 못해 이번엔 표시를 못 했어요.",
+            checked_notes=[
+                "사진에서 글자를 읽지 못해 이번엔 아무것도 표시하지 않았어요 "
+                "— 분석 결과는 리포트의 근거 카드에서 확인하세요"
+            ],
+        )
 
     # ── 사진 묶음 점검: 같은 등기부인가 / 순서가 맞나 / 빠진 쪽은 없나 ──────
     check = check_document(ocr.pages)
@@ -721,7 +738,16 @@ def build_highlights(
     if not check.ok_to_highlight_any:
         _log.info("[매칭] 중단 — 사진 묶음 점검 실패로 아무것도 표시하지 않음")
         # 표시를 못 하더라도 "언제 뗀 서류인가"는 알려준다 — 표시와 무관한 사실이다.
-        return HighlightResult([], notice=check.notice, viewed_at=check.viewed_at)
+        # `checked_notes`도 반드시 채운다 — 뷰어에 안 들어간 사용자는 `notice`를 볼 수 없다.
+        return HighlightResult(
+            [],
+            notice=check.notice,
+            viewed_at=check.viewed_at,
+            checked_notes=[
+                (check.notice or "사진 묶음을 확인하지 못해 표시를 생략했어요")
+                + " — 그래서 사진에는 아무것도 표시하지 않았어요"
+            ],
+        )
 
     # ── 사진 순서 자동 정렬 (2026-07-28) ────────────────────────────────────
     # 항목은 페이지를 걸쳐 이어지므로 **문서 순서**로 읽어야 말소 판정이 맞는다.
@@ -729,7 +755,7 @@ def build_highlights(
     #   - 내부 해석(`build_items`·정렬·"가장 마지막 등기") → 문서 순서 인덱스
     #   - 앱으로 나가는 `Highlight.page` → **원래 업로드 인덱스**
     # 여기서 틀리면 **남의 사진에 형광펜이 간다.**
-    ordered_pages, to_upload = _apply_page_order(ocr.pages, check.page_order)
+    ordered_pages, to_upload, reorder_applied = _apply_page_order(ocr.pages, check.page_order)
     items = build_items(ordered_pages)
     pages = {p.index: p for p in ordered_pages}  # 문서 순서 인덱스로 키를 잡는다
 
@@ -742,14 +768,21 @@ def build_highlights(
     # 뜻이다. 이 상태로 금액을 칠하면 말소된 항목을 칠할 수 있다 → 금액 표시를 통째로 보류.
     unbound = [it for it in items if it.is_cancel_record and not it.cancel_bound]
     money_allowed = check.ok_to_highlight_money
+    # **말소를 가려낼 수 있다고 믿어도 되는가.** `money_allowed`와 다른 축이다:
+    #   - `money_allowed=False` (쪽 누락)      : 빠진 쪽에 말소 행이 있을 **수도** 있다 — 추정
+    #   - `cancel_reliable=False` (말소 미결)  : 올린 쪽에 말소 행이 **있는데 대상을 못 찾았다** — 사실
+    # 두 번째는 "우리 말소 판정이 지금 깨져 있다"는 구체적 증거라 훨씬 무겁다.
+    cancel_reliable = True
     notice = check.notice
     if unbound:
         money_allowed = False
+        cancel_reliable = False
         detail = "; ".join(f"{it.location} '{it.purpose[:24]}'" for it in unbound)
         _log.info(
-            f"[매칭] ⚠ 말소 근거 행 {len(unbound)}건이 대상 항목을 못 찾음 → 금액 표시 전체 보류 ({detail})"
+            f"[매칭] ⚠ 말소 근거 행 {len(unbound)}건이 대상 항목을 못 찾음"
+            f" → 표 항목 표시 전체 보류 ({detail})"
         )
-        notice = notice or "말소된 항목을 정확히 가려내지 못해 빚 표시는 생략했어요."
+        notice = notice or "말소된 항목을 정확히 가려내지 못해 등기 항목 표시는 생략했어요."
 
     candidates: list[_Candidate] = []
     failures: list[str] = []
@@ -800,8 +833,21 @@ def build_highlights(
     # ── ② 순위 항목 (3앵커 / 2앵커) ─────────────────────────────────────────
     for rule in _RANKED_RULES:
         entries = [e for e in getattr(extract, rule.ie_field, []) if e.is_active]
-        # 금액 표시 보류(쪽 누락·말소 미결) 상태에서는 **금액을 앵커로 쓰는 종류만** 막는다.
-        # 2앵커 종류(압류·경매·신탁)는 금액과 무관하므로, 같이 막으면 오히려 위험을 숨긴다.
+        # ── 언제 표 항목을 칠하지 않는가 (2026-07-28 자기 공격으로 다듬음) ──────
+        #
+        # ⑴ **말소 판정이 깨져 있으면 전부 막는다.** 올린 쪽에 말소 근거 행이 있는데
+        #    대상을 못 찾은 상태(`cancel_reliable=False`)는 "무언가 말소됐는데 무엇인지
+        #    모른다"는 **사실**이다. 이때 칠하면 말소된 항목을 칠할 수 있다.
+        #
+        # ⑵ **쪽 누락(`money_allowed=False`)은 금액 종류만 막는다.** 이건 추정이고,
+        #    두 종류의 피해가 다르기 때문이다:
+        #    - 금액 종류(근저당 등): "집에 잡힌 빚 5억"은 **사용자가 그대로 믿는 숫자**다.
+        #      말소된 것을 칠하면 없는 빚을 5억으로 각인시킨다.
+        #    - 2앵커 종류(압류·경매·신탁): 금액이 없고, 문구가 **스스로 교정한다**
+        #      ("이 압류가 풀렸는지 등기부에서 직접 확인한 뒤에 계약하세요").
+        #      여기까지 막으면 쪽이 한 장만 잘려도 가장 심각한 위험이 화면에서 사라진다.
+        if not cancel_reliable:
+            continue
         if rule.amount_attr and not money_allowed:
             continue
         for i, entry in enumerate(entries):
@@ -839,7 +885,12 @@ def build_highlights(
     # ── ③ OCR 텍스트 감지 (IE 스키마에 없는 3종) ────────────────────────────
     for text_rule in _TEXT_RULES:
         spec = _SPECS[text_rule.kind]
-        for i, (page_index, box) in enumerate(_match_text_rule(text_rule, ordered_pages)):
+        # ⚠ **문서당 첫 곳만** 칠한다. 이 3종은 여러 쪽에 반복 인쇄되는 고정 문구라
+        #   전부 칠하면 **사실 1개가 표시 5개로 부풀어** 뱃지 개수가 거짓말이 된다
+        #   (실측: 공동담보 4곳·별도등기 3곳이 각각 같은 사실이었다).
+        #   주소 줄에는 이미 같은 규율을 적용해 두었는데(`_first_line_match`) 이 3종에만
+        #   빠져 있었다 — 2026-07-28 페르소나 리뷰가 잡았다.
+        for i, (page_index, box) in enumerate(_match_text_rule(text_rule, ordered_pages)[:1]):
             norm = _normalize(box, pages[page_index], pad_ratio=0.08)
             if norm is None:
                 continue
@@ -896,7 +947,7 @@ def build_highlights(
         trimmed=trimmed,
         cross=cross,
         unplaced=unplaced,
-        reordered=bool(check.page_order),
+        reordered=reorder_applied,
     )
     if highlights:
         pages_used = sorted({h.page for h in highlights})
@@ -963,7 +1014,7 @@ def _document_candidates(
     hit = _first_line_match(ocr_pages, _DOC_TITLE)
     if hit:
         page_index, line = hit
-        add("doc_title", page_index, line.box, "이 서류의 종류 (말소사항 포함인가)", 0.04)
+        add("doc_title", page_index, line.box, "이 서류가 전체본인가 (지워진 기록까지 나오는가)", 0.04)
 
     # 열람일 — 이미 꼬리말에서 읽은 값이 있을 때만 (인터뷰 E3 '발급 당일 원칙')
     if viewed_at:
@@ -1074,9 +1125,20 @@ def _build_checked_notes(
             "사진에서 위치를 찾지 못했어요 — 리포트의 근거 카드에서 확인하세요"
         )
     elif not active_mortgages and not canceled_mortgages:
-        notes.append("지금 남아 있는 빚(근저당)은 없었어요")
+        # ⚠ **"없었어요"는 못 본 쪽이 없을 때만 할 수 있는 말이다.**
+        #   쪽이 빠졌는데 "없다"고 하면 안전 단언이 되고, 빠진 쪽에 근저당이 있으면
+        #   그게 곧 미탐이다(risk-scoring 3절 위반). 2026-07-28 gap-checker 지적.
+        notes.append(
+            "지금 남아 있는 빚(근저당)은 없었어요"
+            if money_allowed
+            else "못 본 쪽이 있어서 빚(근저당)이 없다고는 말할 수 없어요 — 위 안내를 확인해 주세요"
+        )
     elif not active_mortgages:
-        notes.append("지금 남아 있는 빚(근저당)은 없어요")
+        notes.append(
+            "지금 남아 있는 빚(근저당)은 없어요"
+            if money_allowed
+            else "못 본 쪽이 있어서 빚(근저당)이 없다고는 말할 수 없어요 — 위 안내를 확인해 주세요"
+        )
 
     # ③ 압류·가압류·신탁 등
     signal_fields = (
@@ -1097,15 +1159,24 @@ def _build_checked_notes(
         notes.append(
             f"압류·가압류·신탁 같은 표시가 {len(active_signals)}건 있어요 — 리포트의 근거 카드를 꼭 보세요"
         )
-    else:
+    elif money_allowed:
         notes.append("압류·가압류·신탁 같은 표시는 없었어요")
+    else:
+        notes.append("못 본 쪽이 있어서 압류·가압류가 없다고는 말할 수 없어요")
 
     # ④ 종류별 상한으로 생략한 것 — **침묵하지 않는다**(범용 슬롯)
     for kind, count in sorted(trimmed.items()):
         noun, unit = _KIND_NOUN.get(kind, (kind, "건"))
+        total = count + MAX_MARKS_PER_KIND
+        # ⚠ 문장 끝을 **"표시하지 않았어요"** 로 맞춘다. 앱은 `kUnmarkedNoteMarkers`
+        #   (`표시하지 않았`·`찾지 못했`·`생략했`)에 걸리는 문장만 화면에 그린다
+        #   (`registry_viewer_screen.dart`). 예전 문구는 "…5건만 표시했어요"로 끝나
+        #   **어느 마커에도 안 걸려 화면에 아예 안 나왔다** — 스스로 "침묵 금지"라고
+        #   써 놓고 침묵하고 있었다(2026-07-28 페르소나 2인이 각각 찾아냈다).
         notes.append(
-            f"{noun}은 화면이 가려지지 않게 큰 것부터 {MAX_MARKS_PER_KIND}{unit}만 표시했어요 "
-            f"— 외 {count}{unit}은 리포트의 근거 카드에 전부 들어 있어요"
+            f"{eun_neun(noun)} {total}{unit} 중 큰 것부터 {MAX_MARKS_PER_KIND}{unit}만 "
+            f"사진에 표시했어요. 나머지 {count}{unit}은 화면이 가려져서 표시하지 않았어요 "
+            f"— 리포트의 근거 카드에는 {total}{unit} 다 들어 있어요"
         )
 
     # ⑤ 사진 순서를 우리가 고쳤다면 그 사실을 말한다 — 조용히 고치면 사용자는
@@ -1118,7 +1189,10 @@ def _build_checked_notes(
     if cross is not None:
         notes += cross_check_notes(cross, unplaced=unplaced)
 
-    notes.append("표시가 적다는 건 확인할 게 적다는 뜻이에요. 못 읽었다는 뜻이 아니에요.")
+    # ⚠ 이 안심 문장은 **정말 다 본 경우에만** 붙인다. 금액 보류·상한 생략·위치 실패가
+    #   있는데 이 말을 하면 정확히 거짓말이 된다(2026-07-28 gap-checker 지적).
+    if money_allowed and not trimmed and not (unplaced or {}):
+        notes.append("표시가 적다는 건 확인할 게 적다는 뜻이에요. 못 읽었다는 뜻이 아니에요.")
 
     # [진단] checkedNotes 생성 결과 요약 — 개수/참·거짓만 (이름·번호 금지).
     _log.info(

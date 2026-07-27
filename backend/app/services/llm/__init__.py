@@ -17,7 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .base import LlmError, LlmProvider, LlmResponse
+from .base import EXPLAIN_TEMPERATURE, STRUCTURE_TEMPERATURE, LlmError, LlmProvider, LlmResponse
 from .prompts import render_layout_text
 from .providers import PROVIDER_CLASSES, AxProvider, ExaoneProvider, UpstageSolarProvider
 
@@ -35,6 +35,8 @@ _OFF_VALUES = {"off", "none", "disabled", "no", "false", "0"}
 STRUCTURE_TIMEOUT_SECONDS = 45.0
 
 __all__ = [
+    "EXPLAIN_TEMPERATURE",
+    "STRUCTURE_TEMPERATURE",
     "AxProvider",
     "ExaoneProvider",
     "LlmError",

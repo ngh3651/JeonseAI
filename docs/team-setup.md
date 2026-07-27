@@ -55,6 +55,56 @@ git pull origin dev
 
 ---
 
+## 2-1. (선택) 다른 국내 AI 모델 키 — 없어도 앱은 그대로 돌아갑니다
+
+2026-07-28부터 **국내 LLM 3사를 같은 인터페이스 뒤에** 둘 수 있게 했습니다.
+**키가 없는 모델은 조용히 빠지고, 기본값(Upstage Solar)으로만 동작합니다.**
+그러니 아래는 **안 해도 됩니다** — 비교 실험을 돌릴 때만 필요합니다.
+
+| 모델 | `.env` 키 이름 | 발급처 | 현재 상태 |
+|---|---|---|---|
+| Upstage Solar Pro | `UPSTAGE_API_KEY` | 위 2절과 같은 키 | ✅ 있음 |
+| LG EXAONE | `EXAONE_API_KEY` | FriendliAI (대회 주최 안내 경로, `flp_`로 시작) | ✅ 있음 |
+| SKT A.X | `AX_API_KEY` | SKT | ❌ 아직 없음 |
+
+```
+# backend/.env — 있는 것만 채우면 됩니다
+EXAONE_API_KEY=flp_...
+AX_API_KEY=...            # 도착하면 이 줄만 추가하면 자동으로 비교 대상에 합류합니다
+```
+
+**모델 이름을 바꿔야 할 때** (제공 목록이 바뀌어 호출이 404가 날 때) — 코드를 고치지 않고
+`.env`에서만 바꿉니다:
+
+```
+UPSTAGE_MODEL=solar-pro2
+EXAONE_MODEL=LGAI-EXAONE/K-EXAONE-236B-A23B
+AX_MODEL=ax4
+```
+
+**어떤 일을 어느 모델에게 시킬지**도 `.env`로 정합니다(둘 다 기본값 `upstage`):
+
+```
+LLM_EXPLAIN_PROVIDER=upstage       # 리포트 설명 문장 만들기
+LLM_STRUCTURE_PROVIDER=upstage     # 사진 글자 → 등기 항목 2차 확인 (교차검증용)
+LLM_STRUCTURE_PROVIDER=off         # 2차 확인을 아예 끄기 (크레딧·시간 절약)
+LAYOUT_SOURCE=ocr_layout           # 2차 확인에 넘길 글자의 출처 (또는 document_parse)
+```
+
+> ⚠ 이 설정들은 **설명·교차검증 계층에만** 영향을 줍니다.
+> **위험 등급·점수는 어떤 값을 넣어도 달라지지 않습니다** — 판정은 규칙 엔진이 하고,
+> LLM은 판정 결과를 바꿀 통로가 없습니다(`backend/tests/test_verdict_regression.py`가
+> 이걸 테스트로 못 박아 두었습니다).
+
+**설정이 잘 됐는지 확인** (API 호출 0회, 크레딧 안 듭니다):
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe scripts\compare_llm.py --list
+```
+
+---
+
 ## 3. 백엔드 서버 실행
 
 ### 3-1. 처음 한 번 — 가상환경 만들기

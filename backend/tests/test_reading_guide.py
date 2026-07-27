@@ -133,7 +133,7 @@ def test_압류는_순위번호와_등기목적_두_앵커로_좌표를_준다()
     result = highlight.build_highlights(extract, as_result(gap_gu_claims_page()))
     assert kinds_of(result) == ["seizure"]
     h = result.highlights[0]
-    assert h.title == "압류"
+    assert h.title == "집이 묶여 있어요 (압류)"
     assert "국가·기관이 이 집을 묶어 둔 상태" in h.body
     assert h.source and "갑구" in h.source
 
@@ -409,8 +409,12 @@ def test_상한으로_생략한_것은_사용자에게_말해준다():
     )
     result = highlight.build_highlights(extract, as_result(many_mortgages_page()))
     joined = " ".join(result.checked_notes)
-    assert "외 2건" in joined
-    assert "근거 카드에 전부 들어 있어요" in joined
+    assert "7건 중 큰 것부터 5건만" in joined
+    assert "나머지 2건" in joined
+    # ⚠ 앱은 `kUnmarkedNoteMarkers`(표시하지 않았·찾지 못했·생략했)가 든 문장만 그린다.
+    #   예전 문구는 "…5건만 표시했어요"로 끝나 **화면에 아예 안 나왔다**(페르소나 2인이 각각 발견).
+    assert "표시하지 않았어요" in joined
+    assert "빚은 7건" in joined  # 조사도 맞아야 한다
 
 
 def test_표시는_등기부_읽는_순서로_번호가_매겨진다():
@@ -451,3 +455,110 @@ def test_모든_종류에_문구와_출처가_있다(kind: str):
 def test_종류_정의와_문구_표가_어긋나지_않는다():
     """`_SPECS`(문구)와 `_KIND_NOUN`(개수 문구)이 갈라지면 안내 문장이 kind 문자열을 노출한다."""
     assert set(highlight._SPECS) == set(highlight._KIND_NOUN)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 자기 공격 — "말소된 항목에 좌표가 가는 경로"를 스스로 찾아 막는다
+#
+# 라운드 4에서 근저당에 했던 것과 같은 방식이다. 종류가 15개로 늘면서 조합이 폭발했으므로,
+# **말소를 못 가려낸 상태에서 무엇이 새어 나가는지**를 종류별로 다시 훑는다.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def unbound_cancel_page() -> OcrPage:
+    """갑구 — 압류(순위3) + **대상을 못 찾는 말소 근거 행**(존재하지 않는 순위 99를 말소).
+
+    "무언가 말소됐는데 무엇인지 모른다" 상태를 만든다. 이건 추정이 아니라 **사실**이다 —
+    올린 쪽에 말소 행이 있는데 우리가 그 대상을 못 찾았다.
+    """
+    rows = [section_row("갑구", 40), header_row(90)]
+    rows.append([
+        W("3", 66, 220, 11), W("압류", 117, 220, 36),
+        W("2020년5월6일", 269, 220, 95), W("압류", 391, 220, 36),
+    ])
+    rows.append([
+        W("4", 66, 400, 11), W("99번압류등기말소", 117, 400, 124),
+        W("2021년9월9일", 269, 400, 95),
+    ])
+    return make_page(0, rows)
+
+
+def test_말소를_못_가려낸_상태면_2앵커_종류도_막는다():
+    """2026-07-28 자기 공격으로 찾은 구멍.
+
+    처음엔 "2앵커 종류는 금액과 무관하니 보류에서 빼자"고 했는데, **말소 미결**은
+    금액 문제가 아니라 **말소 판정이 지금 깨져 있다는 증거**다. 그 상태에서 압류를 칠하면
+    말소된 압류를 칠할 수 있다. → 이 경우에는 표 항목을 전부 막는다.
+    """
+    extract = extract_with(seizures=[entry(rank_number="3", is_canceled=False)])
+    result = highlight.build_highlights(extract, as_result(unbound_cancel_page()))
+    assert result.highlights == [], "말소 미결 상태에서 압류가 새어 나갔다"
+    assert result.notice and "말소" in result.notice
+
+
+def test_말소_미결이_아니면_2앵커_종류는_계속_보인다():
+    """반대 방향 방어 — 쪽이 한 장 잘렸다고 가장 심각한 위험까지 화면에서 지우면 안 된다."""
+    from tests.test_highlight import footer_row
+
+    base = gap_gu_claims_page()
+    words = list(base.words) + footer_row(1000, page_no=1, total=5, issue="AAPI-GJBJ-1806")
+    page = OcrPage(name="p1.jpg", index=0, words=words, lines=group_lines(words),
+                   width=PAGE_W, height=PAGE_H)
+    extract = extract_with(seizures=[entry(rank_number="3", is_canceled=False)])
+    result = highlight.build_highlights(extract, as_result(page))
+    assert "seizure" in kinds_of(result)
+
+
+@pytest.mark.parametrize(
+    "field,rank",
+    [
+        ("seizures", "3"),
+        ("provisional_seizures", "2"),
+        ("auction_commencements", "4"),
+        ("trust_registrations", "5"),
+        ("lease_registrations", "3"),
+    ],
+)
+def test_어떤_종류도_말소_미결을_뚫지_못한다(field, rank):
+    """종류가 15개로 늘면 "이 종류만 예외"가 한 줄씩 늘어나기 쉽다. 전 종류를 한 번에 훑는다."""
+    kwargs = {field: [entry(rank_number=rank, claim_amount=50_000_000,
+                            deposit_amount=120_000_000, is_canceled=False)]}
+    result = highlight.build_highlights(extract_with(**kwargs), as_result(unbound_cancel_page()))
+    assert result.highlights == [], f"{field}가 말소 미결 상태를 뚫었다"
+
+
+def test_문서_스칼라는_말소와_무관하므로_계속_보인다():
+    """주소·서류 종류·뗀 날은 표 항목이 아니다 — 말소 개념이 없다.
+    여기까지 막으면 "사진에 아무것도 없다"가 되어 사용자가 앱이 고장 났다고 읽는다."""
+    base = unbound_cancel_page()
+    words = list(base.words) + [w for r in [
+        [W("[집합건물]", 33, 10, 74), W("서울특별시서초구서초동123-4", 116, 10, 220)]
+    ] for w in r]
+    page = OcrPage(name="p.jpg", index=0, words=words, lines=group_lines(words),
+                   width=PAGE_W, height=PAGE_H)
+    extract = extract_with(address="서울특별시 서초구 서초동 123-4")
+    result = highlight.build_highlights(extract, as_result(page))
+    assert "address" in kinds_of(result)
+
+
+def test_말소된_항목은_상한_계산에도_들어가지_않는다():
+    """상한(5건)을 채우느라 말소된 것이 상위 5건에 끼어들면 유효한 것이 밀려난다."""
+    rows = [section_row("을구", 40), header_row(90)]
+    for i in range(1, 8):
+        y = 150 + (i - 1) * 60
+        rows.append([
+            W(str(i), 66, y, 11), W("근저당권설정", 117, y, 91),
+            W("2020년1월1일", 269, y, 95), W("설정계약", 391, y, 60),
+            W("채권최고액", 515, y, 74), W(f"금{i}0,000,000원", 606, y, 105),
+        ])
+    page = make_page(0, rows)
+    # IE가 큰 금액 2건을 말소로 본다 → 남는 5건이 전부 칠해져야 한다
+    extract = extract_with(mortgages=[
+        MoneyEntry(rank_number=str(i), amount=i * 10_000_000, is_canceled=(i >= 6))
+        for i in range(1, 8)
+    ])
+    result = highlight.build_highlights(extract, as_result(page))
+    titles = " ".join(h.title for h in marks(result, "mortgage"))
+    assert len(marks(result, "mortgage")) == 5
+    assert "6,000만원" not in titles and "7,000만원" not in titles  # 말소분은 빠진다
+    assert "1,000만원" in titles  # 그래서 작은 것까지 자리가 난다

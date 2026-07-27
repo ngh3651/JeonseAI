@@ -9,6 +9,7 @@ sourceText·deposit·marketPrice·seniorDebtAmount·gaugeProgress)는 **RuleVerd
 from __future__ import annotations
 
 import logging
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -18,6 +19,7 @@ from ..schemas.internal import Grade, RegistryExtract, RuleVerdict
 from . import (
     artifacts,
     cross_check,
+    document_parse,
     explanation,
     extraction,
     fallback_texts,
@@ -166,12 +168,48 @@ def _ocr_then_second_opinion(
         return ocr_result, None, None, "두 번째 경로 꺼짐 또는 키 없음"
 
     try:
-        layout_text = llm.render_layout_text(ocr_result.pages)
+        layout_text = _layout_text_for(images, ocr_result, run_id)
         second = provider.structure(layout_text, timeout=llm.STRUCTURE_TIMEOUT_SECONDS)
         return ocr_result, second, provider.name, None
     except Exception as e:  # noqa: BLE001 — 두 번째 경로는 어떤 이유로도 분석을 막지 못한다
         _log.info(f"[LLM:{provider.name}] 구조화 실패 — 교차검증 없이 진행 ({type(e).__name__}: {e})")
         return ocr_result, None, provider.name, f"{type(e).__name__}"
+
+
+def _layout_text_for(
+    images: list[tuple[str, bytes]], ocr_result: ocr.OcrResult, run_id: str | None
+) -> str:
+    """구조화 경로(경로 ③)에 넘길 **텍스트**를 만든다. `.env`의 `LAYOUT_SOURCE`가 고른다.
+
+    | 값 | 무엇 | 비고 |
+    |---|---|---|
+    | `ocr_layout` (기본) | Document OCR 낱말 → 우리가 조립한 줄·칸 | 지금까지의 경로 |
+    | `document_parse` | Upstage Document Parse의 표 HTML | 표 조립을 제품에 맡긴다 |
+
+    ⚠ **좌표는 어느 쪽을 골라도 `ocr_layout`에서 온다.** DP는 낱말 좌표를 주지 않고
+      표 하나당 사각형 하나만 주므로(실측: 페이지의 20~61%), 이름 하이라이트를
+      만들 수 없다. 이 스위치가 바꾸는 것은 **LLM에 넘길 글자**뿐이다.
+      근거: `docs/document-parse-probe-2026-07-28.md`
+
+    DP 호출이 실패하면 **조용히 `ocr_layout` 텍스트로 되돌아간다.**
+    """
+    source = (os.environ.get("LAYOUT_SOURCE", "") or "ocr_layout").strip().lower()
+    if source != "document_parse":
+        return llm.render_layout_text(ocr_result.pages)
+
+    parsed = document_parse.run_document_parse(images, run_id=run_id)
+    if not parsed.ok:
+        _log.info(
+            "[DP] 결과가 없어 ocr_layout 텍스트로 되돌아감"
+            f" (실패 {len(parsed.errors)}건) — 분석은 그대로 진행"
+        )
+        return llm.render_layout_text(ocr_result.pages)
+    text = document_parse.render_parsed_text(parsed.pages)
+    _log.info(
+        f"[DP] 레이아웃 출처 = document_parse ({parsed.elapsed:.1f}초, {len(text):,}자)"
+        f" — 좌표는 여전히 Document OCR에서 옵니다"
+    )
+    return text
 
 
 def analyze(

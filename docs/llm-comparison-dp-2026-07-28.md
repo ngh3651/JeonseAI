@@ -11,7 +11,7 @@ IE는 배열 길이가 전부 고정이었고, 자유서술 필드(`cause`) 하�
 
 ## 측정 조건
 
-- 레이아웃 출처: **`ocr_layout`** — ocr_1.json, ocr_2.json, ocr_3.json, ocr_4.json, ocr_5.json (4,021자)
+- 레이아웃 출처: **`document_parse`** — dp_1.json, dp_2.json, dp_3.json, dp_4.json, dp_5.json (4,309자)
 - 구조화 정답지(대조용): `ie_20260728_004234_156.json` — Upstage Information Extract 결과
 - 설명 입력: `tests/fixtures/registry/mortgage_heavy.json` 판정 (실명 없음)
 - 반복: 역할별 3회
@@ -30,14 +30,14 @@ IE는 배열 길이가 전부 고정이었고, 자유서술 필드(`cause`) 하�
 
 | provider | 성공 | 중앙 응답(초) | 항목수 일치율 | 순위번호 일치율 | 회차 간 흔들림 |
 |---|---|---|---|---|---|
-| `upstage` | 3/3 | 5.9 | 96% | 100% | 흔들림(2종) |
-| `exaone` | 2/3 | 9.6 | 88% | 88% | 흔들림(2종) |
+| `upstage` | 3/3 | 6.5 | 100% | 100% | 흔들림(2종) |
+| `exaone` | 3/3 | 9.7 | 75% | 88% | 흔들림(3종) |
 
 ### 필드별 항목 수 (IE vs 각 provider, 1회차 기준)
 
 | 필드 | IE | upstage | exaone |
 |---|---|---|---|
-| `current_owners` | 2 | 2 | 2 |
+| `current_owners` | 2 | 2 | 1 |
 | `mortgages` | 0 | 2 | 2 |
 | `jeonse_rights` | 0 | 0 | 0 |
 | `lease_registrations` | 0 | 0 | 0 |
@@ -52,8 +52,8 @@ IE는 배열 길이가 전부 고정이었고, 자유서술 필드(`cause`) 하�
 
 | provider | 성공 | 중앙 응답(초) | 스키마 통과 | 금지어 위반 | 해요체 위반 | 회차 간 흔들림 |
 |---|---|---|---|---|---|---|
-| `upstage` | 3/3 | 2.1 | 3/3 | 0건 | 0건 | 흔들림(3종) |
-| `exaone` | 2/3 | 9.2 | 2/2 | 0건 | 0건 | 흔들림(2종) |
+| `upstage` | 3/3 | 2.0 | 3/3 | 0건 | 0건 | 흔들림(3종) |
+| `exaone` | 1/3 | 4.3 | 1/1 | 0건 | 0건 | 고정 |
 
 > 금지어·해요체 위반이 있어도 **제품에서는 그 필드만 폴백으로 치환**되므로 화면에 나가지 않는다
 > (`explanation.py`의 `_field_ok`). 이 표는 '얼마나 자주 폴백을 쓰게 되는가'를 재는 것이다.

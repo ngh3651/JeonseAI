@@ -44,6 +44,7 @@ sys.path.insert(0, str(_BACKEND_ROOT))
 from app.schemas.internal import RegistryExtract  # noqa: E402
 from app.services import llm, rule_engine  # noqa: E402
 from app.services.explanation import _BANNED_PHRASES, _verdict_for_prompt  # noqa: E402
+from app.services.document_parse import ParsedPage, render_parsed_text  # noqa: E402
 from app.services.llm.base import LlmError  # noqa: E402
 from app.services.ocr_layout import OcrPage, group_lines, parse_words  # noqa: E402
 
@@ -73,9 +74,50 @@ def h(value: object) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def load_layout_text() -> tuple[str, list[str]]:
-    """저장된 `out/ocr_page_*.json` → 레이아웃 텍스트. 없으면 `out/ocr_<n>.json`."""
-    for pattern in ("ocr_page_*.json", "ocr_[0-9].json"):
+def load_layout_text(source: str = "ocr_layout") -> tuple[str, list[str]]:
+    """저장된 응답 → LLM에 넘길 레이아웃 텍스트. **호출 0회**(재현용).
+
+    `source`:
+    - `ocr_layout`     : `out/ocr_*.json` (Document OCR 낱말 → 우리가 조립)
+    - `document_parse` : `out/dp_*.json`  (Document Parse 표 HTML)
+
+    두 경로를 같은 하네스로 재는 것이 목적이다 —
+    "표 조립을 제품에 맡기면 구조화 품질이 올라가는가"에 숫자로 답하기 위해.
+    """
+    if source == "document_parse":
+        files = sorted(OUT_DIR.glob("dp_*.json"), key=lambda p: p.stem)
+        if not files:
+            raise SystemExit(
+                "[오류] backend/out/dp_*.json 이 없습니다.\n"
+                "       먼저 scripts/probe_document_parse.py 를 1회 실행하세요."
+            )
+        pages = [
+            ParsedPage(index=i, name=f.stem,
+                       elements=json.loads(f.read_text(encoding="utf-8")).get("elements") or [])
+            for i, f in enumerate(files)
+        ]
+        return render_parsed_text(pages), [f.name for f in files]
+
+    # 같은 문서로 비교해야 의미가 있다. `dp_*.json`이 있으면 **그것과 같은 문서**의
+    # OCR 응답(`ocr_<같은 stem>.json`)을 우선 고른다 — 안 그러면 서로 다른 등기부를 비교하게 된다.
+    dp_stems = {f.stem[3:] for f in OUT_DIR.glob("dp_*.json")}
+    patterns = ["ocr_page_*.json", "ocr_[0-9].json"]
+    if dp_stems and all((OUT_DIR / f"ocr_{s}.json").is_file() for s in dp_stems):
+        patterns.insert(0, "__dp_matched__")
+    for pattern in patterns:
+        if pattern == "__dp_matched__":
+            files = sorted((OUT_DIR / f"ocr_{s}.json" for s in dp_stems), key=lambda p: p.stem)
+        else:
+            files = sorted(OUT_DIR.glob(pattern), key=lambda p: p.stem)
+        if not files:
+            continue
+        pages = []
+        for i, f in enumerate(files):
+            raw = json.loads(f.read_text(encoding="utf-8"))
+            words = parse_words(raw)
+            pages.append(OcrPage(name=f.stem, index=i, words=words, lines=group_lines(words)))
+        return llm.render_layout_text(pages), [f.name for f in files]
+    for pattern in ():
         files = sorted(OUT_DIR.glob(pattern), key=lambda p: p.stem)
         if not files:
             continue
@@ -93,8 +135,16 @@ def load_layout_text() -> tuple[str, list[str]]:
     )
 
 
-def load_ie_extract() -> tuple[RegistryExtract | None, str | None]:
-    """저장된 IE 원응답 중 **가장 최근에 항목이 들어 있는** 것 (structure 정답지 대용)."""
+def load_ie_extract(explicit: str | None = None) -> tuple[RegistryExtract | None, str | None]:
+    """structure 역할의 대조 기준이 될 IE 결과.
+
+    ⚠ **레이아웃 입력과 같은 문서여야 한다.** 다른 등기부의 IE 결과와 대조하면
+      일치율이 통째로 무의미해진다. 그래서 `--ie`로 명시 지정할 수 있게 뒀다.
+      지정하지 않으면 "가장 최근에 항목이 들어 있는" 것을 쓴다(문서가 다를 수 있다).
+    """
+    if explicit:
+        path = OUT_DIR / explicit if not Path(explicit).is_absolute() else Path(explicit)
+        return RegistryExtract.from_raw(json.loads(path.read_text(encoding="utf-8"))), path.name
     best, best_name = None, None
     for f in sorted(OUT_DIR.glob("ie_*.json"), reverse=True):
         raw = json.loads(f.read_text(encoding="utf-8"))
@@ -246,6 +296,11 @@ def main() -> None:
     parser.add_argument("--roles", nargs="+", default=["structure", "explain"],
                         choices=["structure", "explain"])
     parser.add_argument("--list", action="store_true", help="설정만 확인하고 끝낸다 (호출 0회)")
+    parser.add_argument("--layout", default="ocr_layout",
+                        choices=["ocr_layout", "document_parse"],
+                        help="구조화 입력 텍스트의 출처 (기본 ocr_layout)")
+    parser.add_argument("--ie", default=None,
+                        help="대조 기준 IE 원응답 파일명 (out/ 기준). 레이아웃 입력과 **같은 문서**여야 한다")
     parser.add_argument("--out", default=str(DOC_PATH))
     args = parser.parse_args()
 
@@ -261,8 +316,8 @@ def main() -> None:
     if not usable:
         raise SystemExit("[오류] 사용 가능한 provider가 없습니다 (.env에 키를 넣으세요)")
 
-    layout_text, ocr_files = load_layout_text()
-    ie, ie_file = load_ie_extract()
+    layout_text, ocr_files = load_layout_text(args.layout)
+    ie, ie_file = load_ie_extract(args.ie)
     verdict = load_verdict()
     print(
         f"\n입력: OCR {len(ocr_files)}쪽({len(layout_text):,}자)"
@@ -309,7 +364,8 @@ def write_report(path: Path, results, providers, args, ocr_files, ie_file, layou
         "",
         "## 측정 조건",
         "",
-        f"- 입력 OCR: {', '.join(ocr_files)} ({len(layout_text):,}자 레이아웃 텍스트)",
+        f"- 레이아웃 출처: **`{args.layout}`** — {', '.join(ocr_files)}"
+        f" ({len(layout_text):,}자)",
         f"- 구조화 정답지(대조용): `{ie_file or '없음'}` — Upstage Information Extract 결과",
         "- 설명 입력: `tests/fixtures/registry/mortgage_heavy.json` 판정 (실명 없음)",
         f"- 반복: 역할별 {args.repeat}회",

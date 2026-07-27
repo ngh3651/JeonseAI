@@ -1,4 +1,9 @@
-"""Solar Pro 설명 생성 — LLM은 '통역사'다 (decisions.md 2026-07-07 가드레일 구조).
+"""설명 생성 — LLM은 '통역사'다 (decisions.md 2026-07-07 가드레일 구조).
+
+2026-07-28: 실제 HTTP 호출을 `services.llm` provider 뒤로 옮겼다(**동작 변경 없는 리팩터**).
+어느 모델이 문장을 만들지는 `.env`의 `LLM_EXPLAIN_PROVIDER`가 정하고(기본 `upstage`),
+**가드레일(금지어·길이·`extra="forbid"`·폴백)은 이 파일에 그대로 남는다.**
+가드레일을 provider 안에 두면 provider를 바꿀 때 가드레일도 같이 바뀌기 때문이다.
 
 규칙 엔진의 판정(RuleVerdict)을 부동산 초보자용 쉬운 문장으로 옮길 뿐,
 판정을 바꿀 통로가 구조적으로 존재하지 않는다:
@@ -25,7 +30,9 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..schemas.internal import RuleVerdict
-from . import fallback_texts
+from . import fallback_texts, llm
+from .llm import LlmError
+from .llm.prompts import EXPLAIN_SYSTEM_PROMPT
 
 _log = logging.getLogger("jeonseai")
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -123,41 +130,27 @@ def _verdict_for_prompt(verdict: RuleVerdict) -> dict:
 
 # 2026-07-07 페르소나 리뷰(지수·서연) 반영해 강화: 해요체 강제·단정 금지·용어 순서·
 # headline 형식·입력 시세 주의·기관 명칭·출처 없는 기준 숫자 금지.
-_SYSTEM_PROMPT = """당신은 전세 위험 분석 앱의 '통역사'입니다. 규칙 엔진이 내린 판정 결과(JSON)를 부동산 지식이 없는 사회초년생이 이해할 수 있는 쉬운 한국어로 풀어쓰는 것이 유일한 역할입니다.
-
-반드시 지킬 것:
-1. 판정(등급·수치)을 바꾸거나 새로 만들지 마세요. 주어진 판정을 설명만 합니다.
-2. 모든 문장은 반드시 "~해요/~하세요"로 끝내세요. "~합니다", "~입니다"로 끝나는 문장 금지. (예: "문의해야 합니다"(X) → "물어봐 주세요"(O))
-3. 단정 표현 금지: "안전합니다", "안전 범위", "문제가 없습니다", "위험 요소가 없습니다", "걱정 마세요" 전부 금지. 등급이 '양호'인 항목도 "~는 보이지 않았어요"라고 쓰고, 사용자가 직접 확인할 행동 한 가지로 문장을 끝내세요. (예: "계약 직전 최신 등기부등본으로 다시 확인하세요")
-4. 전문용어(선순위 채권, 근저당, 채권최고액, 권리 관계, 신탁등기, 압류 등)는 쉬운 말을 먼저 쓰고 괄호 안에 용어를 넣으세요. 예: "나보다 먼저 돈을 받아갈 빚(선순위 채권)".
-5. headline은 단어 나열이 아니라 완성된 한 문장으로 쓰세요. "종합등급", "양호", "위험", "확인 필요" 같은 등급 단어를 headline에 넣지 마세요 — 등급은 화면에 따로 크게 표시돼요.
-6. 시세는 사용자가 직접 입력한 값이에요. 반드시 "입력하신 시세"라고 부르고, 시세가 정확한지 직접 확인이 필요하다는 안내를 지우지 마세요.
-7. 기관은 정식 명칭으로 쓰고 HUG는 처음 나올 때 풀어주세요: "HUG(주택도시보증공사) 안심전세포털", "HUG 등 보증기관".
-8. 판정 JSON에 없는 기준 숫자를 새로 언급하지 마세요.
-9. 각 설명은 1~2문장, 판정에 담긴 실제 수치(금액·비율·건수)를 자연스럽게 녹여 쓰세요.
-
-다음 JSON 형식으로만 응답하세요 (다른 텍스트 금지):
-{"headline": "리포트 맨 위 결론 한 문장(40자 이내)", "evidences": [{"id": "근거 id 그대로", "easy_explanation": "그 근거 카드의 쉬운 설명(2문장 이내)"}]}
-evidences에는 입력의 근거 id를 전부 포함하세요."""
+#
+# 2026-07-28: 원문을 `llm/prompts.py`로 옮기고 여기서는 **가져다 쓰기만** 한다.
+# 두 벌로 두면 provider를 바꿀 때 한쪽만 고쳐져 "모델을 바꿨더니 말투가 달라졌다"가 된다.
+# 이름(`_SYSTEM_PROMPT`)은 그대로 둔다 — 비교 하네스가 이 이름으로 import한다.
+_SYSTEM_PROMPT = EXPLAIN_SYSTEM_PROMPT
 
 
 def _call_solar(messages: list[dict], api_key: str) -> str:
-    """Solar Pro 호출 — 테스트에서 이 함수를 목으로 대체한다."""
-    resp = requests.post(
-        f"{SOLAR_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "model": SOLAR_MODEL,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": 1500,
-            "reasoning_effort": REASONING_EFFORT,
-            "response_format": {"type": "json_object"},  # JSON 모드 — 검증은 서버(pydantic)가 담당
-        },
-        timeout=REQUEST_TIMEOUT_SECONDS,
-    )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+    """LLM 호출 — **테스트가 이 함수를 목으로 대체한다**(가드레일 테스트의 이음매).
+
+    2026-07-28: 실제 호출을 `services.llm` provider 뒤로 옮겼다. 이름과 시그니처는
+    일부러 그대로 뒀다 — 이 함수는 "가드레일이 검증할 원본 문자열을 만들어 오는 자리"라는
+    역할로 가드레일 테스트 8건에 박혀 있고, 이음매를 옮기면 그 테스트를 다시 써야 한다.
+    다시 쓰는 순간 **가드레일이 실제로 무엇을 막고 있었는지가 흐려진다.**
+
+    `api_key`는 provider가 자기 키를 직접 읽으므로 쓰이지 않는다(호환용 인자).
+    """
+    provider = llm.explain_provider()
+    system = next((m["content"] for m in messages if m.get("role") == "system"), "")
+    user = next((m["content"] for m in messages if m.get("role") == "user"), "")
+    return provider.chat(system, user, max_tokens=1500).text
 
 
 def _field_ok(kind: str, text: str) -> bool:
@@ -173,9 +166,10 @@ def generate(verdict: RuleVerdict) -> ExplanationResult:
     """판정 → 설명 텍스트. 어떤 실패에도 완성된 texts를 돌려준다(리포트 항상 완성)."""
     base = fallback_texts.build(verdict)  # 결정적 기본값 — 실패 시 이대로 나간다
 
-    api_key = _load_api_key()
-    if not api_key:
-        _log.info("[Solar] 호출 생략 → 폴백 문구 사용 (원인: API 키 없음)")
+    provider = llm.explain_provider()
+    api_key = _load_api_key()  # 목 호출 호환용 인자 (실제 키는 provider가 직접 읽는다)
+    if not provider.available:
+        _log.info(f"[설명:{provider.name}] 호출 생략 → 폴백 문구 사용 (원인: API 키 없음)")
         return ExplanationResult(texts=base, source="폴백")
 
     messages = [
@@ -186,7 +180,9 @@ def generate(verdict: RuleVerdict) -> ExplanationResult:
         },
     ]
 
-    _log.info(f"[Solar] 설명 생성 호출 — 입력: 판정 {len(verdict.evidences)}건 (⚠ 크레딧 소모)")
+    _log.info(
+        f"[설명:{provider.name}] 생성 호출 — 입력: 판정 {len(verdict.evidences)}건 (⚠ 크레딧 소모)"
+    )
     t0 = time.perf_counter()
     payload: ExplanationPayload | None = None
     last_error = "알 수 없음"
@@ -195,14 +191,15 @@ def generate(verdict: RuleVerdict) -> ExplanationResult:
             content = _call_solar(messages, api_key)
             payload = ExplanationPayload.model_validate(json.loads(content))
             break
-        except (requests.exceptions.RequestException, ValueError, ValidationError) as e:
+        except (requests.exceptions.RequestException, LlmError, ValueError, ValidationError) as e:
             last_error = f"{type(e).__name__}: {str(e)[:120]}"
             if attempt < MAX_ATTEMPTS:
-                _log.info(f"[Solar] {attempt}차 시도 실패 → 재시도 (원인: {last_error})")
+                _log.info(f"[설명:{provider.name}] {attempt}차 시도 실패 → 재시도 (원인: {last_error})")
 
     if payload is None:
         _log.info(
-            f"[Solar] 검증 실패/타임아웃 → 폴백 문구 사용 (원인: {last_error}, {time.perf_counter() - t0:.1f}초)"
+            f"[설명:{provider.name}] 검증 실패/타임아웃 → 폴백 문구 사용"
+            f" (원인: {last_error}, {time.perf_counter() - t0:.1f}초)"
         )
         return ExplanationResult(texts=base, source="폴백")
 

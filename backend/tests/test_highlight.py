@@ -632,8 +632,12 @@ def test_발급확인번호가_없으면_상단_주소_줄로_섞임을_본다()
     assert check.notice and "주소가 서로 달라요" in check.notice
 
 
-def test_사진_순서가_뒤바뀌면_아무것도_표시하지_않는다():
-    """항목이 페이지를 걸쳐 이어지므로, 순서가 틀리면 말소 판정 자체가 깨진다."""
+def test_사진_순서가_뒤바뀌면_믿을_수_있을_때만_자동_정렬한다():
+    """2026-07-28 변경 — 예전에는 무조건 전부 표시 안 함이었다.
+
+    서버는 올바른 순서를 이미 알고 있다(표식을 전부 읽었으므로). 알면서 화면을 비우는 건
+    낭비다. 자세한 경계 조건은 `test_page_order.py` 참고.
+    """
     from app.services.ocr_layout import check_document
 
     check = check_document([
@@ -641,8 +645,8 @@ def test_사진_순서가_뒤바뀌면_아무것도_표시하지_않는다():
         page_with_footer(1, page_no=1, total=3, issue="AAPI-GJBJ-1806"),
         page_with_footer(2, page_no=2, total=3, issue="AAPI-GJBJ-1806"),
     ])
-    assert check.ok_to_highlight_any is False
-    assert check.notice and "순서" in check.notice
+    assert check.ok_to_highlight_any is True
+    assert check.page_order == [1, 2, 0]  # 2번째로 올린 사진이 1쪽
 
 
 def test_페이지_표식이_없으면_판별_불가로_두고_진행한다():

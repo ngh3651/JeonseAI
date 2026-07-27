@@ -26,7 +26,11 @@
 | 법제처 API `OC=test` 폴백 (`collect_precedents.py`) | 정식 인증값 없이 개발용으로 동작하는 임시 경로 | **정식 OC 발급 시**: `.env`에 `LAW_API_OC` 추가 — 코드 무변경, 폴백 경고만 안 뜨게 됨. 대량 수집 전 필수 | ⏳ |
 | `backend/data/precedents/seed_cases.json`의 `curated_by: "야간 자율 작업(웹 검증) — 정민재 검수 대기"` 7건 | 개발자 웹 검증 시드 — 정민재 실큐레이션 도착 전 임시 콘텐츠(사건번호·출처는 실제) | **E-3**: 정민재 검수·보강 후 curated_by 갱신, 문구(요약·조언) 팀 검수 | ⏳ |
 | `backend/scripts/test_ocr_coords.py` | OCR 하이라이트 **사전 검증** CLI(Document OCR 좌표가 쓸 만한지 판정용, 2026-07-27). 검증 실패 시 기능과 함께 폐기 | **매칭 로직을 `services/`로 승격한 뒤 삭제.** 검증 실패로 기능을 폐기하면 그 시점에 즉시 삭제 | ⏳ |
-| `backend/out/` | `test_ocr_coords.py` 산출물(OCR 원본 JSON·마킹 이미지). **등기부 소유자 실명 포함** → `.gitignore` 처리(커밋 안 됨) | **E-6 정리 스윕**: 로컬 폴더 삭제. 기능 폐기 시에는 그 시점에 삭제 | ⏳ |
+| `backend/out/` | `test_ocr_coords.py` 산출물(OCR 원본 JSON·마킹 이미지). **등기부 소유자 실명 포함** → `.gitignore` 처리(커밋 안 됨) | **E-6 정리 스윕**: 로컬 폴더 삭제. 기능 폐기 시에는 그 시점에 삭제. **2026-07-28부터 서버 저장분은 `artifacts.py`가 최근 5회분만 유지**(절차가 아니라 코드) | ⏳ |
+| `backend/app/services/artifacts.py` | 진단용 원응답의 저장 위치·보관 상한(최근 5회분). **임시 파일이 아니라 임시 파일을 관리하는 코드**다 | `SAVE_IE_RAW`·`SAVE_OCR_RAW`를 둘 다 걷어내는 날 함께 삭제 | ⏳ |
+| `backend/scripts/measure_ie_reproducibility.py` | IE 재현성 영점 측정 CLI(2026-07-28). 실행 시 크레딧 소모 | **E-6**: 개발 도구로 유지할지 결정 (`run_rules.py`와 동일 취급). 모델·엔드포인트가 바뀔 때마다 다시 돌릴 가치가 있어 유지 쪽에 무게 | ⏳ |
+| `backend/scripts/compare_llm.py` | 국내 LLM 비교 하네스(구조화·설명 2역할, 2026-07-28). 새 `services/llm` provider 계층을 그대로 쓴다 | **E-6**: 유지 쪽. 새 모델이 나오거나 A.X 키가 도착하면 그대로 다시 돌린다 | ⏳ |
+| `backend/scripts/compare_llm_backends.py` | **선행 하네스**(2026-07-22, 4역할: explanation·precedent·tagging·case_compare). provider 설정을 자체 환경변수로 따로 들고 있어 `services/llm`과 **중복**된다 | **통합 대상**: precedent·tagging·case_compare 역할을 `compare_llm.py`로 옮긴 뒤 삭제. 지금 지우면 판례 쪽 비교 자산이 사라지므로 **오늘은 두었다** | ⏳ |
 
 ## 사용 규칙
 - 새 임시/더미/스캐폴딩 파일을 만들면 **이 표에 한 줄 추가**한다(대상·무엇·삭제 시점).
@@ -82,7 +86,7 @@
 | `backend/scripts/test_ocr_coords.py` | 검증 CLI. 로직은 `app/services/ocr_layout.py`로 **이미 승격됨** — 지금은 그 모듈을 검증·시각화하는 역할만 | **좌표 정합이 실기기에서 확정된 뒤 삭제.** 기능 폐기 시 즉시 삭제 | ⏳ |
 | `backend/out/` (`ocr_*.json`, `marked_*.png`, `items_summary.md`) | 검증 산출물. **등기부 소유자 실명 포함** → `.gitignore` 처리(커밋 안 됨) | **E-6 정리 스윕**에서 로컬 폴더 삭제. 단 `ocr_3.json`·`ocr_4.json`은 pytest 픽스처로 쓰이므로(없으면 9건 skip) 그 전까지 보존 | ⏳ |
 | `extraction.py`의 `SAVE_IE_RAW`(개발 모드 IE 추출 결과 저장) → `backend/out/ie_<타임스탬프>.json` | IE가 항목마다 `is_canceled`·`rank_number`·`amount`를 무엇으로 줬는지 크레딧 0원으로 다시 보기 위한 재료(2026-07-27 추가 — 근거 카드 27.8억 vs 하이라이트 14억 불일치를 조사할 때 IE 응답이 없어 재호출해야 했던 경험). `SAVE_OCR_RAW`와 동일하게 `DEV_MODE_AUTH`에 묶여 운영 전환 시 자동 off. **실명·주소 포함 → 커밋 금지** | **IE 말소 판정 정확도가 확인되면 저장 코드(`SAVE_IE_RAW`·`_save_raw_ie`) 제거.** 운영 전환 시 자동으로 꺼지므로 급하지 않음 | ⏳ |
-| `ocr.py`의 `SAVE_OCR_RAW`(개발 모드 OCR 원응답 저장) → `backend/out/ocr_<stem>.json` | 서비스 실호출(`run_ocr`) 시 OCR 원응답을 out/에 남기는 **개발 모드 전용** 경로. 레이아웃 임계값(`_GAP_RATIO` 등, 밤 샘플 1건 실측값)을 다른 해상도·등기부에서 크레딧 없이 재측정하기 위한 재료(2026-07-27 추가). `DEV_MODE_AUTH`에 묶여 운영 전환 시 자동 off. **실명 포함 → 커밋 금지** | **임계값이 여러 등기부로 확정되면 저장 코드(`SAVE_OCR_RAW`·`_save_raw_ocr`) 제거.** 기능 폐기 시 본체(ocr.py)와 함께 삭제 | ⏳ |
+| `ocr.py`의 `SAVE_OCR_RAW`(개발 모드 OCR 원응답 저장) → **`backend/out/runs/<회차>/ocr_<stem>.json`** | 서비스 실호출(`run_ocr`) 시 OCR 원응답을 out/에 남기는 **개발 모드 전용** 경로. 레이아웃 임계값(`_GAP_RATIO` 등, 밤 샘플 1건 실측값)을 다른 해상도·등기부에서 크레딧 없이 재측정하기 위한 재료(2026-07-27 추가). `DEV_MODE_AUTH`에 묶여 운영 전환 시 자동 off. **실명 포함 → 커밋 금지**. **2026-07-28: 저장 경로를 회차 폴더로 옮겨 덮어쓰기 사고를 없앴다**(예전에는 앱이 늘 `page_N.jpg`로 보내 매 분석마다 이전 회차가 사라졌다) | **임계값이 여러 등기부로 확정되면 저장 코드(`SAVE_OCR_RAW`·`_save_raw_ocr`) 제거.** 기능 폐기 시 본체(ocr.py)와 함께 삭제 | ⏳ |
 | `frontend` 뷰어의 **좌표 진단 토글**(`_debug`, `registry_viewer_screen.dart`) | 매칭된 좌표의 터치 영역을 파랗게 그리고 원본/표시 크기를 로그로 찍는 개발용 스위치. 현재 `kDebugMode`로 릴리스에서는 숨김 | **✅ 2026-07-27 제거 완료.** 실기기(SM-S931N)에서 터치 판정이 정확한 것이 확인되어 토글·파란 네모·`_debug` 상태를 전부 걷어냈다. 위젯 테스트의 디버그 케이스는 그 자리를 이어받아 **그어짐 중간 상태** 검사로 바뀌었다 | ✅ |
 | `backend/app/services/ocr.py` · `ocr_layout.py` · `highlight.py` | OCR 하이라이트 본체 3종 | **기능 폐기 시 삭제**(+ `report_builder.analyze`의 병렬 호출 되돌리기 + `contract.py`의 `Highlight`/`highlights`/`highlightNotice`/`checkedNotes` 제거) | ⏳ |
 | `backend/tests/test_highlight.py` | 하이라이트 테스트 39건. 그중 9건은 `out/ocr_*.json`이 있을 때만 실행(없으면 skip) | 위 본체와 함께 | ⏳ |

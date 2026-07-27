@@ -581,6 +581,14 @@ class DocumentCheck:
     ok_to_highlight_any: bool = True  # 아무거나 칠해도 되는가
     notice: str | None = None  # 사용자에게 보여줄 한 줄 (없으면 None)
     reasons: list[str] = field(default_factory=list)  # 로그용 상세
+    # 사진 순서가 등기부 쪽수와 다를 때, **문서 순서로 다시 세운 업로드 인덱스 목록**.
+    # 예: `[3, 2, 1, 0, 4]` = 4번째로 올린 사진이 1쪽이다.
+    #
+    # None이면 정렬하지 않는다 — 순서가 이미 맞거나, **믿고 정렬할 수 없는 상태**다.
+    # 믿을 수 있는 조건은 엄격하다(`_resolve_order` 참고): 모든 사진에서 표식이 읽혔고,
+    # 중복이 없고, 1..M이 빠짐없이 채워질 때만이다. 한 장이라도 `?/?`면 정렬하지 않는다 —
+    # 잘못 세운 순서로 항목을 이으면 **말소 판정이 통째로 어긋난다.**
+    page_order: list[int] | None = None
     # 등기부 꼬리말의 열람일시 `YYYY.MM.DD` — **표시 전용**. 못 읽으면 None이고,
     # 그때는 앱이 그 줄을 아예 그리지 않는다(분석일로 대체하지 않는다 — 분석일을 쓰면
     # 오히려 "오늘 서류"라고 믿게 만들어 지금보다 나빠진다).
@@ -685,32 +693,94 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
         check.reasons.append(f"상단 주소 줄이 서로 다름: {sorted(addresses)}")
         return check
 
-    # ② 사진 순서가 뒤바뀌었는가 — 항목이 페이지를 걸쳐 이어지므로 순서가 틀리면 구조가 깨진다
+    # ② 사진 순서가 뒤바뀌었는가 — 항목이 페이지를 걸쳐 이어지므로 순서가 틀리면 구조가 깨진다.
+    #
+    # 2026-07-28 변경: 예전에는 **무조건 전부 표시 안 함**이었다. 그런데 서버는 올바른
+    # 순서를 이미 알고 있다(표식을 다 읽었으므로). 알면서 화면을 비우는 건 낭비다.
+    # → **믿고 정렬할 수 있는 조건일 때만** 내부적으로 순서를 세운다(`_resolve_order`).
+    #   조건을 못 채우면 예전처럼 보류한다. 이 경계가 이 변경의 본체다.
     if len(markers) >= 2:
         seq = [m[0] for _, m in markers]
         if seq != sorted(seq):
-            check.ok_to_highlight_any = False
-            check.ok_to_highlight_money = False
-            check.notice = "사진 순서가 등기부 쪽수와 달라요. 1쪽부터 순서대로 다시 올려 주세요."
-            check.reasons.append(f"페이지 표식 순서 어긋남: {seq}")
-            return check
+            order = _resolve_order(pages, markers)
+            if order is None:
+                check.ok_to_highlight_any = False
+                check.ok_to_highlight_money = False
+                check.notice = "사진 순서가 등기부 쪽수와 달라요. 1쪽부터 순서대로 다시 올려 주세요."
+                check.reasons.append(f"페이지 표식 순서 어긋남 + 자동 정렬 조건 미충족: {seq}")
+                return check
+            check.page_order = order
+            check.reasons.append(
+                f"페이지 표식 순서 어긋남({seq}) → 자동 정렬 적용 (업로드 인덱스 {order})"
+            )
 
-    # ③ 빠진 페이지가 있는가 — 말소 근거 행이 그 페이지에 있을 수 있다
+    # ③ 빠진 페이지가 있는가 — 말소 근거 행이 그 페이지에 있을 수 있다.
+    #
+    # 2026-07-28 버그 수정: 예전에는 `len(pages) < total`로 봤다. 그러면 **등기부가 아닌
+    # 사진 한 장이 장수를 채워** 이 방어가 통째로 무력화된다(실측: 표식 2/5·3/5·4/5·5/5
+    # 네 장 + 무관한 사진 한 장 → 5장이므로 "누락 없음"으로 통과했다. 정작 빠진 1쪽에는
+    # 표제부·표지가 있었다). **장수가 아니라 실제로 읽힌 쪽 번호**로 판단해야 한다.
     if markers:
         total = markers[0][1][1]
-        if len(pages) < total:
+        covered = {n for _, (n, _) in markers}
+        missing = sorted(set(range(1, total + 1)) - covered)
+        unread = len(pages) - len(markers)
+        if missing:
             check.ok_to_highlight_money = False
             check.notice = (
-                f"등기부 {total}쪽 중 {len(pages)}쪽만 올리셨어요. "
+                f"등기부 {total}쪽 중 {len(covered)}쪽만 확인됐어요. "
                 "빠진 쪽에 중요한 내용이 있을 수 있어 빚 표시는 생략했어요."
             )
             check.reasons.append(
-                f"페이지 누락 의심: 표식은 총 {total}쪽인데 사진은 {len(pages)}장"
+                f"페이지 누락: 총 {total}쪽 중 읽힌 쪽 {sorted(covered)} / 안 읽힌 쪽 {missing}"
+                f" (사진 {len(pages)}장, 표식 못 읽은 사진 {unread}장)"
                 " → 말소 근거 행이 빠진 쪽에 있을 수 있어 금액 표시를 보류"
+            )
+        elif unread:
+            # 쪽 번호는 1..M이 다 나왔는데 표식 없는 사진이 더 있다 = 다른 서류가 섞였을 수 있다.
+            # 같은 등기부라면 모든 쪽 꼬리말에 표식이 찍힌다.
+            check.ok_to_highlight_money = False
+            check.notice = (
+                "쪽 번호가 안 보이는 사진이 섞여 있어요. 쪽 번호(예: 1/5)가 나오게 "
+                "다시 찍으면 빚 표시까지 보여 드릴 수 있어요."
+            )
+            check.reasons.append(
+                f"표식 없는 사진 {unread}장 — 등기부라면 모든 쪽에 표식이 있다"
+                " → 다른 서류 혼입 가능성, 금액 표시를 보류"
             )
     else:
         check.reasons.append("페이지 표식(N/M) 미검출 — 순서·누락을 확인할 수 없음(사진이 잘렸을 수 있음)")
     return check
+
+
+def _resolve_order(
+    pages: list[OcrPage], markers: list[tuple[int, tuple[int, int]]]
+) -> list[int] | None:
+    """**믿고 정렬해도 되는가**를 판정하고, 되면 문서 순서의 업로드 인덱스 목록을 준다.
+
+    이 함수가 이 기능의 전부다. 순서를 잘못 세우면 항목이 엉뚱하게 이어져
+    **말소 판정이 깨지고, 말소된 근저당에 형광펜이 간다** — 이 기능 최악의 오류다.
+    그래서 조건을 하나라도 못 채우면 **None**(= 정렬하지 않고 보류)을 돌려준다.
+
+    조건 넷:
+    1. **모든 사진**에서 표식이 읽혔다 (한 장이라도 `?/?`면 안 된다)
+    2. 표식의 총 쪽수(M)가 전부 같다
+    3. 쪽 번호에 **중복이 없다**
+    4. 1..M이 **빠짐없이** 채워지고, 사진 장수가 정확히 M이다
+    """
+    if len(markers) != len(pages):
+        return None  # ① 표식을 못 읽은 사진이 있다
+    totals = {m[1][1] for m in markers}
+    if len(totals) != 1:
+        return None  # ② 총 쪽수가 서로 다르다 → 다른 등기부가 섞였을 수 있다
+    total = totals.pop()
+    numbers = [m[1][0] for m in markers]
+    if len(set(numbers)) != len(numbers):
+        return None  # ③ 같은 쪽 번호가 두 번 나왔다
+    if set(numbers) != set(range(1, total + 1)) or len(pages) != total:
+        return None  # ④ 1..M이 다 채워지지 않았다
+    by_number = {m[1][0]: pages[m[0]].index for m in markers}
+    return [by_number[n] for n in range(1, total + 1)]
 
 
 def _apply_cancellations(items: list[RegistryItem]) -> None:

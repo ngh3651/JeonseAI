@@ -48,10 +48,11 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ..schemas.contract import Highlight, HighlightBox
 from ..schemas.internal import MoneyEntry, RegistryEntry, RegistryExtract, parse_amount
+from .cross_check import CrossCheck, to_notes as cross_check_notes
 from .formatting import format_won
 from .ocr import OcrResult
 from .ocr_layout import Line, OcrPage, RegistryItem, build_items, check_document
@@ -407,6 +408,32 @@ def _union(boxes: list[tuple[float, float, float, float]]) -> tuple[float, float
     )
 
 
+def _apply_page_order(
+    pages: list[OcrPage], order: list[int] | None
+) -> tuple[list[OcrPage], dict[int, int]]:
+    """(문서 순서로 다시 세운 페이지들, 문서 인덱스 → 업로드 인덱스) 를 만든다.
+
+    `order`가 None이면 아무것도 하지 않는다 — 두 인덱스가 같다(항등 사상).
+    정렬할 때는 각 페이지의 `.index`를 **문서 순서로 다시 매긴다.** `build_items`와
+    `_match_owner`("가장 마지막 등기를 쓴다")가 전부 `.index`를 시간 순서로 믿기 때문이다.
+    업로드 인덱스를 그대로 두면 그 판단이 조용히 뒤집힌다.
+    """
+    if not order:
+        return list(pages), {p.index: p.index for p in pages}
+    by_upload = {p.index: p for p in pages}
+    ordered: list[OcrPage] = []
+    to_upload: dict[int, int] = {}
+    for doc_index, upload_index in enumerate(order):
+        src = by_upload.get(upload_index)
+        if src is None:  # 방어 — `_resolve_order`가 보장하지만 조용히 어긋나면 정렬을 포기한다
+            _log.info(f"[사진점검] ⚠ 정렬 대상 업로드 인덱스 {upload_index}를 찾지 못함 → 정렬 취소")
+            return list(pages), {p.index: p.index for p in pages}
+        ordered.append(replace(src, index=doc_index))
+        to_upload[doc_index] = upload_index
+    _log.info(f"[사진점검] 사진 순서를 문서 순서로 재배열: 업로드 {order} → 1..{len(order)}쪽")
+    return ordered, to_upload
+
+
 def _active_rights_items(items: list[RegistryItem], section: str) -> list[RegistryItem]:
     """해당 구역에서 **말소되지 않은** 항목만. 말소 행 자체도 대상에서 뺀다."""
     return [
@@ -673,14 +700,19 @@ class HighlightResult:
     checked_notes: list[str] = field(default_factory=list)
 
 
-def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResult:
-    """IE 결과 + OCR 좌표 → 계약의 `highlights`. 실패해도 예외를 던지지 않는다."""
+def build_highlights(
+    extract: RegistryExtract,
+    ocr: OcrResult,
+    cross: CrossCheck | None = None,
+) -> HighlightResult:
+    """IE 결과 + OCR 좌표 → 계약의 `highlights`. 실패해도 예외를 던지지 않는다.
+
+    `cross`는 두 번째 추출 경로(LLM 구조화)와의 대조 결과다. **표시와 고지에만** 쓴다 —
+    이 값이 무엇이든 등급·점수는 바뀌지 않는다(판정은 IE 기준 유지).
+    """
     if not ocr.pages:
         _log.info("[매칭] 건너뜀 — OCR 결과 없음 (좌표 없이 리포트 완성)")
         return HighlightResult([])
-
-    items = build_items(ocr.pages)
-    pages = {p.index: p for p in ocr.pages}
 
     # ── 사진 묶음 점검: 같은 등기부인가 / 순서가 맞나 / 빠진 쪽은 없나 ──────
     check = check_document(ocr.pages)
@@ -690,6 +722,16 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
         _log.info("[매칭] 중단 — 사진 묶음 점검 실패로 아무것도 표시하지 않음")
         # 표시를 못 하더라도 "언제 뗀 서류인가"는 알려준다 — 표시와 무관한 사실이다.
         return HighlightResult([], notice=check.notice, viewed_at=check.viewed_at)
+
+    # ── 사진 순서 자동 정렬 (2026-07-28) ────────────────────────────────────
+    # 항목은 페이지를 걸쳐 이어지므로 **문서 순서**로 읽어야 말소 판정이 맞는다.
+    # 그런데 뷰어는 **업로드 순서**로 사진을 보여준다. 그래서 두 인덱스를 갈라 쓴다:
+    #   - 내부 해석(`build_items`·정렬·"가장 마지막 등기") → 문서 순서 인덱스
+    #   - 앱으로 나가는 `Highlight.page` → **원래 업로드 인덱스**
+    # 여기서 틀리면 **남의 사진에 형광펜이 간다.**
+    ordered_pages, to_upload = _apply_page_order(ocr.pages, check.page_order)
+    items = build_items(ordered_pages)
+    pages = {p.index: p for p in ordered_pages}  # 문서 순서 인덱스로 키를 잡는다
 
     canceled_items = [it for it in items if it.canceled]
     if canceled_items:
@@ -711,6 +753,9 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
 
     candidates: list[_Candidate] = []
     failures: list[str] = []
+    # "리포트에는 있는데 사진에서 위치를 못 짚은" 건수 — IE 필드 이름으로 센다.
+    # 교차검증 고지 문장이 이 숫자를 써서 "개수가 왜 다른지"를 사용자가 스스로 풀게 한다.
+    unplaced: dict[str, int] = {}
 
     # ── ① 소유자 이름 (갑구) ────────────────────────────────────────────────
     owner_names = [o.name.strip() for o in extract.current_owners if o.name and o.name.strip()]
@@ -726,11 +771,13 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
         matched = _match_owner(name, items, pages)
         if isinstance(matched, str):
             failures.append(f"갑구 소유자 {mask_name(name)} — {matched}")
+            unplaced["current_owners"] = unplaced.get("current_owners", 0) + 1
             continue
         page_index, box, owner_kind = matched
         norm = _normalize(box, pages[page_index], pad_ratio=0.08)
         if norm is None:
             failures.append(f"갑구 소유자 {mask_name(name)} — 원본 크기를 몰라 정규화 실패")
+            unplaced["current_owners"] = unplaced.get("current_owners", 0) + 1
             continue
         is_corp = owner_kind == "법인"
         if is_corp:
@@ -763,11 +810,13 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
             matched = _match_ranked(rule, rank, amount, items, pages)
             if isinstance(matched, str):
                 failures.append(f"{rule.section} 순위{rank or '?'} {rule.label} — {matched}")
+                unplaced[rule.ie_field] = unplaced.get(rule.ie_field, 0) + 1
                 continue
             page_index, box = matched
             norm = _normalize(box, pages[page_index], pad_ratio=0.05)
             if norm is None:
                 failures.append(f"{rule.section} 순위{rank} {rule.label} — 원본 크기를 몰라 정규화 실패")
+                unplaced[rule.ie_field] = unplaced.get(rule.ie_field, 0) + 1
                 continue
             spec = _SPECS[rule.kind]
             amount_text = f" · {format_won(amount)}" if amount is not None else ""
@@ -790,7 +839,7 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
     # ── ③ OCR 텍스트 감지 (IE 스키마에 없는 3종) ────────────────────────────
     for text_rule in _TEXT_RULES:
         spec = _SPECS[text_rule.kind]
-        for i, (page_index, box) in enumerate(_match_text_rule(text_rule, ocr.pages)):
+        for i, (page_index, box) in enumerate(_match_text_rule(text_rule, ordered_pages)):
             norm = _normalize(box, pages[page_index], pad_ratio=0.08)
             if norm is None:
                 continue
@@ -810,15 +859,16 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
             )
 
     # ── ④ 문서 스칼라 (주소 · 면적 · 서류 종류 · 열람일) ────────────────────
-    candidates += _document_candidates(extract, ocr.pages, pages, check.viewed_at, failures)
+    candidates += _document_candidates(extract, ordered_pages, pages, check.viewed_at, failures)
 
     # ── ⑤ 종류별 상한 → 읽는 순서 정렬 → 뱃지 번호 ──────────────────────────
+    # 정렬은 **문서 순서**(c.page)로 하고, 앱에 내보낼 때만 **업로드 인덱스**로 되돌린다.
     kept, trimmed = _cap_per_kind(candidates)
     kept.sort(key=lambda c: (c.order, c.page, c.box.y, c.box.x))
     highlights = [
         Highlight(
             id=c.id_hint or f"{c.kind}-{i}",
-            page=c.page,
+            page=to_upload.get(c.page, c.page),
             kind=c.kind,
             badge=i + 1,
             box=c.box,
@@ -844,6 +894,9 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
         money_allowed=money_allowed,
         owner_names=owner_names,
         trimmed=trimmed,
+        cross=cross,
+        unplaced=unplaced,
+        reordered=bool(check.page_order),
     )
     if highlights:
         pages_used = sorted({h.page for h in highlights})
@@ -976,6 +1029,9 @@ def _build_checked_notes(
     money_allowed: bool,
     owner_names: list[str],
     trimmed: dict[str, int],
+    cross: CrossCheck | None = None,
+    unplaced: dict[str, int] | None = None,
+    reordered: bool = False,
 ) -> list[str]:
     """**"무엇을 찾아봤고 무엇을 왜 표시하지 않았는지"** 를 사용자 말로 정리한다.
 
@@ -1051,6 +1107,16 @@ def _build_checked_notes(
             f"{noun}은 화면이 가려지지 않게 큰 것부터 {MAX_MARKS_PER_KIND}{unit}만 표시했어요 "
             f"— 외 {count}{unit}은 리포트의 근거 카드에 전부 들어 있어요"
         )
+
+    # ⑤ 사진 순서를 우리가 고쳤다면 그 사실을 말한다 — 조용히 고치면 사용자는
+    #    "내가 순서대로 올렸는데 왜 표시가 이렇지?"를 영영 알 수 없다.
+    if reordered:
+        notes.append("사진 순서가 등기부 쪽수와 달라 자동으로 맞췄어요 — 다시 올리지 않으셔도 돼요")
+
+    # ⑥ 교차검증 — **두 방법으로 읽어 봤다는 사실 자체가 가장 강한 신뢰 장치**다.
+    #    두 경로가 어긋났을 때 조용히 넘어가지 않고 숫자를 그대로 말한다.
+    if cross is not None:
+        notes += cross_check_notes(cross, unplaced=unplaced)
 
     notes.append("표시가 적다는 건 확인할 게 적다는 뜻이에요. 못 읽었다는 뜻이 아니에요.")
 

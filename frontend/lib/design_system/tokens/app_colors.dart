@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 
 abstract final class AppColors {
@@ -79,6 +80,77 @@ abstract final class AppColors {
   // **색으로 구분할 수 없으므로 흰 halo를 함께 그려 '앱이 얹은 것'임을 형태로 알린다.**
   static const Color markerAttention = danger;
   static const Color markerHalo = Color(0xD9FFFFFF);
+
+  // ── 사진 뷰어 재디자인 (2026-07-27 디자인 핸드오프 · **채택 미확정**) ──
+  // 위 마킹 토큰(markerFill·markerAttention…)을 **덮어쓰지 않고 나란히 둔다.**
+  // 재디자인이 반려되면 예전 화면이 그대로 살아 있어야 하기 때문이다.
+  // 빨간 타원 → 형광펜으로 바뀌면서 "원본 빨간 말소선과 색이 겹친다"는 문제 자체가
+  // 사라져, 여기에는 halo 계열 토큰이 없다.
+
+  /// 종이 뒤 배경 — 흰 종이를 띄우기 위한 옅은 초록. 크롬(앱바·레일)은 흰색을 유지한다.
+  static const Color viewerBackdrop = Color(0xFFD9E7DE);
+
+  /// 위치 레일 트랙
+  static const Color viewerRailTrack = Color(0xFFEBEFEC);
+
+  /// 진입 카드 테두리 / 미리보기 스트립 경계선
+  static const Color viewerEntryBorder = Color(0xFFC9E2D4);
+  static const Color viewerEntryDivider = Color(0xFFD7E8DE);
+
+  // 형광펜 — **불투명하게 칠하지 않는다.** BlendMode.multiply로 겹쳐 글자가 비쳐
+  // 보여야 한다(칠한 글자를 못 읽으면 대조라는 목적 자체가 무너진다).
+  /// 따져볼 곳(주황) — 기본 / 선택
+  static const Color markHighlightRisk = Color(0x80FF9F40); // rgba(255,159,64,.5)
+  static const Color markHighlightRiskOn = Color(0xB8FF8A00); // rgba(255,138,0,.72)
+
+  /// 대조할 곳(초록) — 기본 / 선택
+  static const Color markHighlightVerify = Color(0x6B2DA46E); // rgba(45,164,110,.42)
+  static const Color markHighlightVerifyOn = Color(0xB82DA46E); // rgba(45,164,110,.72)
+
+  /// 번호 뱃지·카드 강조 (불투명) — 주황은 흰 배경 5.7:1로 AA 통과
+  static const Color markSolidRisk = Color(0xFFB54708);
+  static const Color markSolidVerify = primary;
+
+  /// 위치 레일의 표시 점 — 8dp 트랙 위 12dp 원이라 글자가 아닌 그래픽 기준(3:1)
+  static const Color markDotRisk = Color(0xFFF79441);
+  static const Color markDotVerify = Color(0xFF2DA46E);
+
+  // 그림자 — 전부 같은 잉크색 rgba(16,24,20,*)에서 불투명도만 다르다.
+  /// 종이 한 장 (0 1 6, .12) · 선택된 카드 (0 2 12, .12)
+  static const Color viewerShadowInk = Color(0x1F101814);
+
+  /// 번호 뱃지 (0 1 4, .28) — 흰 종이 위에서 뱃지가 떠 보이게
+  static const Color viewerShadowBadge = Color(0x47101814);
+
+  /// 하단 시트 (0 -8 30, .20)
+  static const Color viewerShadowSheet = Color(0x33101814);
+
+  /// 리포트 진입 카드 (0 2 12, rgba(20,114,75,.10)) — 브랜드 그린 계열 그림자
+  static const Color viewerEntryShadow = Color(0x1A14724B);
+
+  /// 시트 뒤 딤 — rgba(17,26,22,.42). 앱 기본 [dim](검정 54%)보다 옅고 초록기가 있다.
+  static const Color viewerSheetScrim = Color(0x6B111A16);
+
+  /// 톤 → 형광펜 색. 선택된 표시는 진하게.
+  static Color markHighlight(MarkTone tone, {required bool selected}) =>
+      switch (tone) {
+        MarkTone.verify => selected
+            ? markHighlightVerifyOn
+            : markHighlightVerify,
+        MarkTone.risk => selected ? markHighlightRiskOn : markHighlightRisk,
+      };
+
+  /// 톤 → 뱃지·테두리 등 불투명 색.
+  static Color markSolid(MarkTone tone) => switch (tone) {
+    MarkTone.verify => markSolidVerify,
+    MarkTone.risk => markSolidRisk,
+  };
+
+  /// 톤 → 위치 레일 점 색.
+  static Color markDot(MarkTone tone) => switch (tone) {
+    MarkTone.verify => markDotVerify,
+    MarkTone.risk => markDotRisk,
+  };
 
   // ── 등급 매핑 ────────────────────────────────────────────────
   static Color gradeColor(RiskGrade grade) => switch (grade) {

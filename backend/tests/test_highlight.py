@@ -485,6 +485,73 @@ def address_row(y: float, addr: str) -> list[Word]:
     return [W("[집합건물]", 33, y, 74), W(addr, 116, y, 120)]
 
 
+def viewed_at_row(y: float, text: str = "2026년07월09일") -> list[Word]:
+    """실측 꼬리말 — `열람일시 : 2026년07월09일 17시12분20초` (page_1 L…)."""
+    return [
+        W("열람일시", 53, y, 80),
+        W(":", 147, y, 6),
+        W(text, 164, y, 150),
+        W("17시12분20초", 324, y, 120),
+    ]
+
+
+# ── 열람일시 (표시 전용 — 판정에 쓰지 않는다) ────────────────────────────────
+# 등기부는 열람 시점의 스냅샷이다. 그 뒤에 잡힌 근저당은 이 서류에 없고,
+# 계약 직전 근저당 설정은 실제 전세사기 수법이라 "언제 뗀 서류인가"를 알려야 한다.
+
+
+def test_꼬리말에서_열람일시를_읽는다():
+    base = eul_gu_page()
+    words = list(base.words) + viewed_at_row(950)
+    page = OcrPage(name="p1.jpg", index=0, words=words, lines=group_lines(words),
+                   width=PAGE_W, height=PAGE_H)
+    assert highlight.check_document([page]).viewed_at == "2026.07.09"
+
+
+def test_열람일시가_없으면_None이다():
+    # 못 읽으면 없는 것이다 — 분석일 같은 다른 날짜로 대체하지 않는다.
+    assert highlight.check_document([eul_gu_page()]).viewed_at is None
+
+
+def test_말이_안_되는_날짜는_버린다():
+    base = eul_gu_page()
+    words = list(base.words) + viewed_at_row(950, "2026년13월40일")
+    page = OcrPage(name="p1.jpg", index=0, words=words, lines=group_lines(words),
+                   width=PAGE_W, height=PAGE_H)
+    assert highlight.check_document([page]).viewed_at is None
+
+
+def test_열람일시는_표시를_막는_상황에서도_전달된다():
+    """사진 묶음 점검에 걸려 아무것도 못 칠해도 '언제 뗀 서류인가'는 알려준다."""
+    a = page_with_footer(0, page_no=2, total=5, issue="AAPI-GJBJ-1806")
+    b_words = list(page_with_footer(1, page_no=1, total=5, issue="AAPI-GJBJ-1806").words)
+    b_words += viewed_at_row(1000)
+    b = OcrPage(name="b.jpg", index=1, words=b_words, lines=group_lines(b_words),
+                width=PAGE_W, height=PAGE_H)
+    check = highlight.check_document([a, b])
+    assert check.ok_to_highlight_any is False  # 순서 어긋남
+    assert check.viewed_at == "2026.07.09"
+
+    result = highlight.build_highlights(extract_with(), as_result(a, b))
+    assert result.highlights == []
+    assert result.viewed_at == "2026.07.09"
+
+
+def test_열람일시는_판정에_쓰이지_않는다():
+    """표시 전용 계약 — 열람일시가 있든 없든 좌표·안내는 똑같아야 한다."""
+    plain = eul_gu_page()
+    words = list(plain.words) + viewed_at_row(950)
+    dated = OcrPage(name="d.jpg", index=0, words=words, lines=group_lines(words),
+                    width=PAGE_W, height=PAGE_H)
+    extract = extract_with(mortgages=[MoneyEntry(rank_number="1", amount=36_000_000)])
+
+    a = highlight.build_highlights(extract, as_result(plain))
+    b = highlight.build_highlights(extract, as_result(dated))
+    assert [h.box for h in a.highlights] == [h.box for h in b.highlights]
+    assert a.checked_notes == b.checked_notes
+    assert a.viewed_at is None and b.viewed_at == "2026.07.09"
+
+
 def page_with_footer(index: int, *, page_no: int, total: int, issue: str,
                      addr: str = "행복아파트", cancel: bool = True) -> OcrPage:
     base = eul_gu_page(with_cancel_row=cancel)

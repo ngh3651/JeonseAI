@@ -6,6 +6,7 @@
 /// 여기 담기는 더미 값은 전부 "예시"다.
 library;
 
+import 'registry_mark_kind.dart';
 import 'risk_grade.dart';
 
 /// 분석 요청 — S-04 매물 검색이 수집한 입력값 (더미↔실제 공통 계약 원형).
@@ -133,7 +134,8 @@ class RegistryHighlight {
   /// 업로드한 사진 순서 (0부터) — 몇 번째 사진에 그릴지
   final int page;
 
-  /// `owner` | `mortgage` | `jeonse`
+  /// `owner` | `mortgage` | `jeonse` — **늘어난다.** 화면은 이 문자열을 직접
+  /// 비교하지 말고 [markKind]로 받아 쓴다(색·범례·개수가 거기서 파생된다).
   final String kind;
 
   /// 화면 뱃지 번호 (1부터). 색만으로 정보를 전달하지 않기 위함(접근성)
@@ -147,6 +149,31 @@ class RegistryHighlight {
   /// 이 문장이 어디서 왔는지 — 근거 카드의 sourceText와 같은 역할.
   /// 없으면 시트 문장이 "앱이 그냥 하는 말"로 읽힌다(2026-07-27 서연 리뷰).
   final String? source;
+
+  /// 표시 종류 — 서버가 앱보다 먼저 새 kind를 내보내면 [MarkKind.unknown]으로
+  /// 떨어져 **위험 색**으로 그려진다(모르는 것을 안전 색으로 칠하지 않는다).
+  MarkKind get markKind => MarkKind.fromKey(kind);
+
+  /// 카드에 쓸 한 줄 요약 — **[body]의 첫 문장**이다.
+  ///
+  /// 시안이 요구한 `oneLiner`(별도 한 줄 요약) 필드는 **백엔드에 없다**
+  /// (`backend/app/schemas/contract.py`의 `Highlight` 확인, 2026-07-27).
+  /// 없는 문구를 앱이 지어내면 **그 문장만 출처가 없어져**, "근거 있는 말만 한다"는
+  /// 이 앱의 성질이 카드에서부터 깨진다. 그래서 서버가 준 본문에서 잘라 쓴다.
+  /// 자르는 위치는 첫 마침표(또는 첫 줄바꿈)이며, 문장을 고치거나 덧붙이지 않는다.
+  String get summary {
+    final text = body.trim();
+    final ends = <int>[
+      // 마침표는 포함해서 자르고(문장으로 읽히게), 줄바꿈은 그 앞에서 자른다.
+      for (final mark in const ['. ', '.\n'])
+        if (text.contains(mark)) text.indexOf(mark) + 1,
+      if (text.contains('\n')) text.indexOf('\n'),
+      if (text.endsWith('.')) text.length,
+    ];
+    if (ends.isEmpty) return text;
+    ends.sort();
+    return text.substring(0, ends.first).trim();
+  }
 
   bool get isOwner => kind == 'owner';
 
@@ -182,6 +209,7 @@ class AnalysisReport {
     this.highlights = const [],
     this.highlightNotice,
     this.checkedNotes = const [],
+    this.registryViewedAt,
   });
 
   final String id;
@@ -231,6 +259,15 @@ class AnalysisReport {
   /// 침묵하면 사용자가 "AI가 안 봤다"로 읽어 리포트 신뢰까지 깎인다.
   final List<String> checkedNotes;
 
+  /// 등기부에 인쇄된 **열람일시** `YYYY.MM.DD`. 못 읽으면 null.
+  ///
+  /// [analyzedAt](분석일)과 **다른 날짜다.** 등기부는 열람 시점의 스냅샷이라,
+  /// 그 뒤에 잡힌 근저당은 이 서류에 없다 — 계약 직전 근저당 설정은 실제 전세사기
+  /// 수법이다(실측 샘플: 열람 7/9, 분석 7/27로 18일 차이).
+  /// ⚠ null일 때 [analyzedAt]으로 대신 채우지 않는다. 분석일을 보여 주면 "오늘 서류"로
+  ///   믿게 만들어 아무것도 안 쓰느니만 못하다. **없으면 그 줄 자체를 그리지 않는다.**
+  final String? registryViewedAt;
+
   /// 서버 JSON(api-contract.md §2.1 Report) → 모델.
   factory AnalysisReport.fromJson(Map<String, dynamic> json) => AnalysisReport(
     id: json['id'] as String,
@@ -258,6 +295,8 @@ class AnalysisReport {
     checkedNotes: [
       for (final n in (json['checkedNotes'] as List? ?? const [])) n as String,
     ],
+    // 구버전 서버는 이 필드를 안 보낸다 → null → 앱은 그 줄을 그리지 않는다.
+    registryViewedAt: json['registryViewedAt'] as String?,
   );
 
   /// 위험/확인 필요 등급인 근거의 패턴 라벨 — 판례 매칭·질문 생성기 입력.

@@ -95,6 +95,15 @@ UNKNOWN_SECTION = "미상"
 _PAGE_MARKER = re.compile(r"^(\d{1,3})\s*/\s*(\d{1,3})$")
 # 발급확인번호 — 같은 발급본이면 전 페이지 동일(실측: 1.png·5.png 모두 AAPI-GJBJ-1806)
 _ISSUE_NO = re.compile(r"([A-Z]{3,5}[-－][A-Z]{3,5}[-－]\d{3,5})")
+# 열람일시 — **표시 전용**이다. 판정에 쓰지 않는다.
+#
+# 왜 필요한가: 등기부는 열람 시점의 스냅샷이다. 열람 뒤에 근저당이 새로 잡혔을 수 있고,
+# 계약 직전 근저당 설정은 실제 전세사기 수법이다. 그런데 화면에는 '분석일'만 있어
+# 사용자가 "오늘 서류"로 믿게 된다(실측 샘플: 열람 7/9, 분석 7/27 — 18일 차이).
+#
+# 이미 꼬리말 줄을 훑고 있으므로(_page_footer_facts) 같은 자리에서 함께 읽는다 —
+# OCR을 새로 부르지 않는다. 실측 라인: `열람일시 : 2026년07월09일 17시12분20초`
+_VIEWED_AT = re.compile(r"열람일시[^0-9]{0,4}(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일")
 
 # 표 헤더의 첫 컬럼 이름 (이 word가 있는 줄을 헤더로 보고 컬럼 밴드를 갱신한다)
 _RANK_HEADERS = ("순위번호", "표시번호", "일련번호")
@@ -572,13 +581,20 @@ class DocumentCheck:
     ok_to_highlight_any: bool = True  # 아무거나 칠해도 되는가
     notice: str | None = None  # 사용자에게 보여줄 한 줄 (없으면 None)
     reasons: list[str] = field(default_factory=list)  # 로그용 상세
+    # 등기부 꼬리말의 열람일시 `YYYY.MM.DD` — **표시 전용**. 못 읽으면 None이고,
+    # 그때는 앱이 그 줄을 아예 그리지 않는다(분석일로 대체하지 않는다 — 분석일을 쓰면
+    # 오히려 "오늘 서류"라고 믿게 만들어 지금보다 나빠진다).
+    viewed_at: str | None = None
 
 
-def _page_footer_facts(page: OcrPage) -> tuple[tuple[int, int] | None, str | None, str | None]:
-    """(페이지 표식 (n, m), 발급확인번호, 상단 주소 줄) — 없으면 각각 None."""
+def _page_footer_facts(
+    page: OcrPage,
+) -> tuple[tuple[int, int] | None, str | None, str | None, str | None]:
+    """(페이지 표식 (n, m), 발급확인번호, 상단 주소 줄, 열람일시) — 없으면 각각 None."""
     marker: tuple[int, int] | None = None
     issue: str | None = None
     address: str | None = None
+    viewed: str | None = None
     for line in page.lines:
         squeezed = line.squeezed
         if address is None and _PAGE_HEADER.match(line.display):
@@ -587,13 +603,20 @@ def _page_footer_facts(page: OcrPage) -> tuple[tuple[int, int] | None, str | Non
             m = _ISSUE_NO.search(squeezed)
             if m:
                 issue = m.group(1).replace("－", "-")
+        if viewed is None:
+            m = _VIEWED_AT.search(squeezed)
+            if m:
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                # 말이 안 되는 날짜는 버린다 — 잘못 읽은 값을 화면에 내보내느니 없는 편이 낫다
+                if 2000 <= y <= 2100 and 1 <= mo <= 12 and 1 <= d <= 31:
+                    viewed = f"{y}.{mo:02d}.{d:02d}"
         for w in line.words:
             m = _PAGE_MARKER.match(w.text.strip())
             if m:
                 n, total = int(m.group(1)), int(m.group(2))
                 if 1 <= n <= total <= 200:
                     marker = (n, total)
-    return marker, issue, address
+    return marker, issue, address, viewed
 
 
 def check_document(pages: list[OcrPage]) -> DocumentCheck:
@@ -608,15 +631,22 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
         return check
 
     facts = [_page_footer_facts(p) for p in pages]
-    markers = [(i, m) for i, (m, _, _) in enumerate(facts) if m]
-    issues = {iss for _, iss, _ in facts if iss}
-    addresses = {addr for _, _, addr in facts if addr}
+    markers = [(i, m) for i, (m, _, _, _) in enumerate(facts) if m]
+    issues = {iss for _, iss, _, _ in facts if iss}
+    addresses = {addr for _, _, addr, _ in facts if addr}
+
+    # 열람일시 — 어느 쪽에서든 처음 읽힌 값. **모든 return 경로보다 앞에서** 채운다.
+    # 사진 묶음 점검에 걸려 표시를 못 하더라도 "언제 뗀 서류인가"는 알려줘야 한다.
+    for _, _, _, viewed in facts:
+        if viewed:
+            check.viewed_at = viewed
+            break
 
     # [진단] 사진 점검 실태 — 파일명·개수·참/거짓만 (발급확인번호 값·주소·이름 금지).
     # 모든 return 경로보다 앞에 두어, 어느 분기로 끝나든 한 줄은 반드시 남는다.
     _page_marks = [
         f"{p.name}={m[0]}/{m[1]}" if m else f"{p.name}=?/?"
-        for p, (m, _, _) in zip(pages, facts)
+        for p, (m, _, _, _) in zip(pages, facts)
     ]
     _issue_state = (
         "발급확인번호 없음" if not issues
@@ -638,6 +668,7 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
     _log.info(
         f"[사진점검] {', '.join(_page_marks)}"
         f" | {_issue_state} | {_missing_state} | {_order_state}"
+        f" | 열람일시 {'읽음' if check.viewed_at else '못읽음'}"
     )
 
     # ① 다른 등기부가 섞였는가 — 발급확인번호가 1순위, 상단 주소 줄이 2순위

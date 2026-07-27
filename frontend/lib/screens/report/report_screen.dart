@@ -20,22 +20,43 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
+import 'registry_entry_card.dart';
 
-class ReportScreen extends StatelessWidget {
+class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key, required this.reportId});
 
   final String reportId;
 
   @override
-  Widget build(BuildContext context) {
-    final repo = context.read<AnalysisRepository>();
+  State<ReportScreen> createState() => _ReportScreenState();
+}
 
+class _ReportScreenState extends State<ReportScreen> {
+  /// 리포트는 **한 번만** 불러온다.
+  ///
+  /// 예전에는 StatelessWidget의 build() 안에서 `getReport()`를 불렀다. 그때는 재빌드가
+  /// 드물어 증상이 없었지만, 진입 카드에 사진 미리보기가 들어오면서 이미지 로딩·레이아웃
+  /// 변화로 재빌드가 늘어난다. build마다 새 Future가 생기면 FutureBuilder가 로딩 분기로
+  /// 되돌아가 화면이 깜빡이고 매번 서버 요청이 나간다(뷰어에서 실제로 겪은 문제다).
+  late final Future<AnalysisReport?> _reportFuture;
+
+  String get reportId => widget.reportId;
+
+  @override
+  void initState() {
+    super.initState();
+    _reportFuture = context.read<AnalysisRepository>().getReport(reportId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return FutureBuilder<AnalysisReport?>(
-      future: repo.getReport(reportId),
+      future: _reportFuture,
       builder: (context, snapshot) {
         final AnalysisReport? report = snapshot.data;
 
@@ -103,72 +124,69 @@ class ReportScreen extends StatelessWidget {
     );
   }
 
-  /// '내가 올린 사진에서 보기' 진입점 — **분석 직후 그 세션에서만** 동작한다.
+  /// '내가 올린 사진에서 보기' 진입점.
   ///
-  /// 사진은 메모리에만 두고 영구 저장하지 않는다(등기부에는 실명·주소가 있다).
-  /// 이력에서 다시 연 리포트에는 사진이 없는데, 이때 **카드를 조용히 없애면**
-  /// "어제는 있었는데 사라졌다 = 앱이 고장 났다"로 읽힌다(2026-07-27 서연 리뷰).
-  /// 그래서 카드는 남기고 **왜 없는지 한 줄**로 바꾼다 — 사라짐이 배려로 읽히도록.
+  /// 사진이 없으면(보관을 끈 빌드·파일 소실·이력에서 다시 연 리포트) **카드를 조용히
+  /// 없애지 않는다.** "어제는 있었는데 사라졌다 = 앱이 고장 났다"로 읽히기 때문이다
+  /// (2026-07-27 서연 리뷰). 카드는 남기고 왜 못 여는지 한 줄로 바꾼다.
+  ///
+  /// 미리보기 스트립도 같은 원칙이다 — 표시가 없거나 사진을 못 읽으면 스트립만
+  /// 사라지고 하단 행은 그대로 남는다.
   Widget _originPhotoEntry(BuildContext context, AnalysisReport report) {
-    final hasPhotos = RegistryPhotoStore.instance.hasPhotos(report.id);
+    final paths = RegistryPhotoStore.instance.pathsFor(report.id);
+    final hasPhotos = paths.isNotEmpty;
+
+    // 그릴 수 있는 표시만 — 사진 장수를 넘는 page 인덱스는 버린다(뷰어와 같은 규칙).
+    final marks = [
+      for (final h in report.highlights)
+        if (h.page >= 0 && h.page < paths.length) h,
+    ];
+    final preview = previewMarkOf(marks);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
-      child: AppCard(
+      child: RegistryEntryCard(
+        subtitle: hasPhotos
+            ? _registryViewedLine(report)
+            : '등기부 사진은 안전을 위해 저장하지 않아요. 다시 보려면 새로 분석해 주세요.',
         onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
-        child: Row(
-          children: [
-            Icon(
-              hasPhotos ? Icons.image_search : Icons.lock_outline,
-              size: AppSize.iconLg,
-              color: hasPhotos ? AppColors.primary : AppColors.textMuted,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '내가 올린 사진에서 보기',
-                    style: AppTypography.bodyStrong.copyWith(
-                      color: hasPhotos
-                          ? AppColors.textStrong
-                          : AppColors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    hasPhotos
-                        ? _originPhotoSummary(report)
-                        : '등기부 사진은 안전을 위해 저장하지 않아요. 다시 보려면 새로 분석해 주세요.',
-                    style: AppTypography.caption,
-                  ),
-                ],
+        preview: preview == null
+            ? null
+            : RegistryPreviewSource(
+                path: paths[preview.page],
+                mark: preview,
+                // 뱃지는 **위험만** 센다. 집주인 이름은 위험이 아니라 대조할 곳이라,
+                // 전체 개수를 적으면 "위험 4곳"이라는 사실과 다른 말이 된다.
+                riskCount: MarkLegend.riskCount(marks.map((m) => m.markKind)),
+                totalCount: marks.length,
               ),
-            ),
-            if (hasPhotos)
-              const Icon(
-                Icons.chevron_right,
-                size: AppSize.iconMd,
-                color: AppColors.textMuted,
-              ),
-          ],
-        ),
       ),
     );
   }
 
-  /// 무엇이 표시됐는지 **종류로** 알려준다.
-  /// "확인할 곳 4군데"는 할 일이 4가지인 것처럼 읽혀 바쁜 사용자를 물러서게 한다
-  /// (실제로는 '이름 대조' 한 가지다 — 2026-07-27 서연 리뷰).
-  String _originPhotoSummary(AnalysisReport report) {
-    final owners = report.highlights.where((h) => h.isOwner).length;
-    final risks = report.highlights.length - owners;
-    if (owners > 0 && risks > 0) {
-      return '집주인 이름 $owners곳과 빚 $risks건을 사진 위에 표시했어요';
-    }
-    if (owners > 0) return '집주인 이름 $owners곳을 사진에서 찾아 표시했어요';
-    if (risks > 0) return '확인할 항목 $risks건을 사진 위에 표시했어요';
-    return '올린 사진을 다시 볼 수 있어요';
+  /// 진입 카드 부제 — **등기부를 언제 뗐는지**. 못 읽었으면 null(줄 자체가 사라진다).
+  ///
+  /// 왜 개수가 아니라 날짜인가: 등기부는 열람 시점의 스냅샷이다. 그 뒤에 근저당이
+  /// 새로 잡혔을 수 있고, **계약 직전 근저당 설정은 실제 전세사기 수법**이다. 이 샘플은
+  /// 열람 7/9 · 분석 7/27로 18일 차이가 나는데 화면 어디에도 그 사실이 없었다.
+  /// ⚠ [AnalysisReport.analyzedAt](분석일)로 대체하지 않는다 — 리포트 상단의
+  ///   "2026.07.27 분석"과 다른 날짜이고, 분석일을 넣으면 오히려 "오늘 서류"라고
+  ///   믿게 만들어 지금보다 나빠진다.
+  String? _registryViewedLine(AnalysisReport report) {
+    final viewed = report.registryViewedAt;
+    return viewed == null ? null : '※ $viewed 기준 등기부등본';
+  }
+
+  /// 무엇이 표시됐는지 **종류별 개수로** — `집주인 이름 1곳과 빚 3건을 사진 위에 표시했어요`.
+  ///
+  /// 지금은 진입 카드가 열람일을 쓰느라 화면에 나가지 않지만, 조립 로직은 남겨 둔다
+  /// (종류가 늘면 그대로 따라오는 문구라 다시 쓸 자리가 있다 — 2026-07-27 사용자 지시).
+  String originPhotoSummary(AnalysisReport report) {
+    final phrase = MarkLegend.countPhrase(
+      report.highlights.map((h) => h.markKind),
+    );
+    if (phrase.isEmpty) return '올린 사진을 다시 볼 수 있어요';
+    return '$phrase${MarkLegend.eul(phrase)} 사진 위에 표시했어요';
   }
 
   bool _isStale(AnalysisReport report) =>

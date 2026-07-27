@@ -38,6 +38,3 @@ backend/data/llm_bench/
 
 # 디자인 핸드오프 번들 (등기부 샘플에 실명 포함)
 design_handoff_registry_viewer/
-
-# 디자인 핸드오프 번들 (등기부 샘플에 실명 포함)
-design_handoff_registry_viewer/

@@ -234,6 +234,9 @@ class HighlightResult:
 
     highlights: list[Highlight]
     notice: str | None = None
+    # 등기부 꼬리말의 열람일시 `YYYY.MM.DD` — **표시 전용**. 판정에 쓰지 않는다.
+    # 등기부는 열람 시점의 스냅샷이라, 그 뒤에 잡힌 근저당은 이 서류에 없다.
+    viewed_at: str | None = None
     # **"무엇을 찾아봤고 무엇을 왜 표시하지 않았는지"** 요약. 표시 전용이다.
     #
     # 왜 필요한가 (2026-07-27 페르소나 2인 공통 지적, 이번 리뷰 최다 지적):
@@ -264,7 +267,8 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
         _log.info(f"[사진점검] {reason}")
     if not check.ok_to_highlight_any:
         _log.info("[매칭] 중단 — 사진 묶음 점검 실패로 아무것도 표시하지 않음")
-        return HighlightResult([], notice=check.notice)
+        # 표시를 못 하더라도 "언제 뗀 서류인가"는 알려준다 — 표시와 무관한 사실이다.
+        return HighlightResult([], notice=check.notice, viewed_at=check.viewed_at)
 
     canceled_items = [it for it in items if it.canceled]
     if canceled_items:
@@ -382,7 +386,12 @@ def build_highlights(extract: RegistryExtract, ocr: OcrResult) -> HighlightResul
         _log.info(f"[응답] 사용자 안내: {notice}")
     for note in notes:
         _log.info(f"[응답] 찾아본 것: {note}")
-    return HighlightResult(highlights, notice=notice, checked_notes=notes)
+    return HighlightResult(
+        highlights,
+        notice=notice,
+        checked_notes=notes,
+        viewed_at=check.viewed_at,
+    )
 
 
 def _build_checked_notes(

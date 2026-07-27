@@ -6,9 +6,15 @@
 /// 여기서는 ⑴을 잡는다(⑵·⑶은 앱 로그 + docs/morning-check.md 절차로 확인).
 library;
 
+import 'dart:typed_data' show ByteData;
+import 'dart:ui' show ImageByteFormat;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
+import 'package:jeonse_ai/models/registry_mark_kind.dart';
+import 'package:jeonse_ai/screens/report/registry_document_layout.dart';
 import 'package:jeonse_ai/screens/report/registry_viewer_screen.dart';
 import 'package:jeonse_ai/state/registry_photo_store.dart';
 
@@ -31,6 +37,16 @@ RegistryHighlight _h({
   body: '계약서의 임대인 이름과 상대방 신분증이 이 이름과 같은지 확인하세요. 다르면 계약을 진행하지 마세요.',
   caution: caution,
 );
+
+/// 실기기에서 실제로 올린 사진 5장의 원본 픽셀 크기.
+/// **쪽마다 다르다** — 특히 2쪽만 종횡비가 눈에 띄게 낮다(1.32 vs 1.41~1.47).
+const List<Size> _realPageSizes = [
+  Size(1212, 1776),
+  Size(1162, 1538),
+  Size(1256, 1776),
+  Size(1256, 1778),
+  Size(1256, 1776),
+];
 
 void main() {
   group('좌표 변환 (정규화 → 화면)', () {
@@ -126,20 +142,142 @@ void main() {
       expect(find.textContaining('오류'), findsNothing);
     });
 
-    testWidgets('디버그 모드에서도 예외 없이 그린다', (tester) async {
+    testWidgets('선택된 표시만 번호 뱃지를 갖는다 (시안: 화면에 뱃지 1개)', (tester) async {
+      final marks = [_h(badge: 1), _h(badge: 2, kind: 'mortgage', y: 0.5)];
       await tester.pumpWidget(
         MaterialApp(
-          home: SizedBox(
-            width: 400,
-            height: 500,
-            child: RegistryHighlightOverlay(
-              highlights: [_h()],
-              debug: true,
+          home: Center(
+            child: SizedBox(
+              width: 400,
+              height: 500,
+              child: RegistryHighlightOverlay(
+                highlights: marks,
+                selectedId: marks[1].id,
+              ),
             ),
           ),
         ),
       );
       expect(tester.takeException(), isNull);
+      final painter = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((w) => w.painter)
+          .whereType<HighlightPainter>()
+          .first;
+      expect(painter.selectedId, marks[1].id);
+      // 선택이 바뀌면 다시 그려야 한다 — 안 그러면 뱃지가 옛 자리에 남는다.
+      expect(
+        painter.shouldRepaint(
+          HighlightPainter(highlights: marks, selectedId: marks[0].id),
+        ),
+        isTrue,
+      );
+    });
+
+    testWidgets('선택이 없어도(표시 0건) 예외 없이 그린다', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 400,
+              height: 500,
+              child: RegistryHighlightOverlay(highlights: [_h()]),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    // 예전엔 여기서 '디버그 모드(파란 터치 영역)'를 그렸다. 실기기에서 터치가
+    // 잘 되는 것이 확인돼 그 스위치를 통째로 걷어냈고(2026-07-27), 같은 자리를
+    // 그 스위치를 대체한 **그어짐 중간 상태** 검사로 쓴다.
+    testWidgets('그어지는 도중(진행도 0·중간·1)에도 예외 없이 그린다', (tester) async {
+      for (final progress in const [0.0, 0.37, 1.0]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SizedBox(
+              width: 400,
+              height: 500,
+              child: RegistryHighlightOverlay(
+                highlights: [_h()],
+                selectedId: _h().id,
+                drawProgress: progress,
+              ),
+            ),
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: '진행도 $progress');
+      }
+    });
+  });
+
+  group('형광펜 — 칠한 글자를 여전히 읽을 수 있는가', () {
+    // 이 화면의 존재 이유는 "종이와 화면을 대조하는 것"이다. 표시가 글자를 덮어
+    // 가려 버리면 기능이 통째로 무의미해진다. 그래서 실제로 그려 픽셀을 확인한다.
+    testWidgets('곱하기로 겹쳐 — 검은 글자는 그대로, 흰 종이만 물든다', (tester) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: RepaintBoundary(
+              key: key,
+              child: SizedBox(
+                width: 100,
+                height: 100,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CustomPaint(painter: _FakePaperPainter()),
+                    RegistryHighlightOverlay(
+                      highlights: [_h(x: 0.1, y: 0.4, w: 0.8, h: 0.2)],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      late ByteData pixels;
+      await tester.runAsync(() async {
+        final boundary =
+            key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+        final image = await boundary.toImage(pixelRatio: 1);
+        pixels = (await image.toByteData(format: ImageByteFormat.rawRgba))!;
+        image.dispose();
+      });
+
+      Color at(int x, int y) {
+        final i = (y * 100 + x) * 4;
+        return Color.fromARGB(
+          pixels.getUint8(i + 3),
+          pixels.getUint8(i),
+          pixels.getUint8(i + 1),
+          pixels.getUint8(i + 2),
+        );
+      }
+
+      // 형광펜 아래의 '글자'(검은 줄, y 45~55)는 여전히 검다
+      final onText = at(50, 50);
+      expect(
+        onText.r + onText.g + onText.b,
+        lessThan(0.2),
+        reason: '형광펜이 글자를 덮으면 종이와 대조할 수가 없다',
+      );
+
+      // 형광펜 아래의 흰 종이는 물든다 — 표시가 보이긴 해야 한다
+      final onPaper = at(50, 42);
+      expect(
+        onPaper,
+        isNot(const Color(0xFFFFFFFF)),
+        reason: '아무 변화가 없으면 표시가 보이지 않는다',
+      );
+
+      // 형광펜 바깥은 손대지 않는다
+      expect(at(50, 10), const Color(0xFFFFFFFF));
     });
   });
 
@@ -216,6 +354,325 @@ void main() {
     });
   });
 
+  group('문서 기하 — 쪽 높이를 균등 분할하지 않는다', () {
+    // 시안의 눈금값(20.6/39.2/61.1/81.0%)은 시안 샘플의 계산 결과지 상수가 아니다.
+    // 여기서 잡는 것: 실제 종횡비로 계산했는가, 균등 20%로 퉁쳤는가.
+    final layout = RegistryDocumentLayout.fromSizes(
+      sizes: _realPageSizes,
+      pageWidth: 344,
+    );
+
+    test('쪽 높이 = 폭 × 원본 종횡비', () {
+      expect(layout.pageCount, 5);
+      expect(layout.pageHeight(0), closeTo(344 * 1776 / 1212, 0.01));
+      expect(layout.pageHeight(1), closeTo(344 * 1538 / 1162, 0.01));
+      // 2쪽이 눈에 띄게 짧다 — 균등 분할이면 이 차이가 사라진다.
+      expect(layout.pageHeight(0) - layout.pageHeight(1), greaterThan(40));
+    });
+
+    test('전체 높이 = 쪽 높이 합 + 간격 + 상하 여백', () {
+      final sum = [
+        for (var i = 0; i < layout.pageCount; i++) layout.pageHeight(i),
+      ].fold<double>(0, (a, b) => a + b);
+      expect(
+        layout.totalHeight,
+        closeTo(sum + kPageGap * 4 + kDocPadV * 2, 0.01),
+      );
+    });
+
+    test('쪽 시작 위치는 앞 쪽들의 높이 + 간격을 누적한 값이다', () {
+      expect(layout.pageTop(0), kDocPadV);
+      expect(
+        layout.pageTop(2),
+        closeTo(
+          kDocPadV + layout.pageHeight(0) + layout.pageHeight(1) + kPageGap * 2,
+          0.01,
+        ),
+      );
+    });
+
+    test('레일 눈금은 쪽 경계(쪽 간격 한가운데)에 온다', () {
+      var y = kDocPadV;
+      for (var i = 0; i < layout.pageCount - 1; i++) {
+        y += layout.pageHeight(i);
+        expect(
+          layout.boundaryFraction(i),
+          closeTo((y + kPageGap / 2) / layout.totalHeight, 1e-9),
+        );
+        y += kPageGap;
+      }
+    });
+
+    test('쪽 높이가 다르면 눈금이 균등 분할에서 벗어난다', () {
+      // 가운데 한 쪽만 멀리서 찍혀 짧게 들어온 묶음.
+      // 균등 3분할이면 첫 눈금이 0.33이지만, 실제 높이로 나누면 0.41쯤이다.
+      final skew = RegistryDocumentLayout.fromSizes(
+        sizes: const [Size(1000, 1400), Size(1000, 600), Size(1000, 1400)],
+        pageWidth: 300,
+      );
+      expect(skew.boundaryFraction(0), greaterThan(0.40));
+      expect(skew.boundaryFraction(0), isNot(closeTo(1 / 3, 0.05)));
+    });
+
+    test('눈금은 오름차순이고 0~1 안에 있다', () {
+      final ticks = [for (var i = 0; i < 4; i++) layout.boundaryFraction(i)];
+      expect(ticks, orderedEquals(List.of(ticks)..sort()));
+      expect(ticks.first, greaterThan(0));
+      expect(ticks.last, lessThan(1));
+    });
+
+    test('폭이 달라져도 비율은 그대로다 (360dp ↔ 412dp)', () {
+      final wide = RegistryDocumentLayout.fromSizes(
+        sizes: _realPageSizes,
+        pageWidth: 396,
+      );
+      expect(wide.boundaryFraction(1), closeTo(layout.boundaryFraction(1), 0.01));
+    });
+
+    test('원본 크기를 못 읽은 쪽은 A4 비율로 자리만 잡는다 (뒤 쪽이 밀리지 않게)', () {
+      final broken = RegistryDocumentLayout.fromSizes(
+        sizes: const [Size.zero, Size(1000, 1500)],
+        pageWidth: 300,
+      );
+      expect(broken.pageHeight(0), closeTo(300 * kFallbackPageAspect, 0.01));
+      expect(broken.pageHeight(0), greaterThan(0));
+    });
+
+    test('표시의 문서 내 위치는 쪽 시작 + 쪽 안 상대 위치다', () {
+      // 4쪽(index 3)의 세로 60% 지점
+      final y = layout.markCenterY(3, 0.59, 0.02);
+      expect(y, closeTo(layout.pageTop(3) + layout.pageHeight(3) * 0.6, 0.01));
+      expect(layout.fractionOf(y), inInclusiveRange(0.0, 1.0));
+    });
+  });
+
+  group('스크롤 목표 — 190dp 고정이 아니라 뷰포트 비율', () {
+    test('표시가 화면 위쪽 1/3 지점에 온다', () {
+      expect(
+        scrollTargetFor(markY: 1200, viewportHeight: 600, maxScrollExtent: 5000),
+        closeTo(1000, 0.01),
+      );
+    });
+
+    test('작은 화면과 큰 화면에서 목표가 다르다 (고정값이면 같아진다)', () {
+      final small = scrollTargetFor(
+        markY: 1200,
+        viewportHeight: 480,
+        maxScrollExtent: 5000,
+      );
+      final large = scrollTargetFor(
+        markY: 1200,
+        viewportHeight: 900,
+        maxScrollExtent: 5000,
+      );
+      expect(small, isNot(closeTo(large, 1)));
+    });
+
+    test('맨 위 표시는 음수로 가지 않는다', () {
+      expect(
+        scrollTargetFor(markY: 20, viewportHeight: 600, maxScrollExtent: 5000),
+        0,
+      );
+    });
+
+    test('맨 아래 표시는 스크롤 끝을 넘지 않는다', () {
+      expect(
+        scrollTargetFor(markY: 9000, viewportHeight: 600, maxScrollExtent: 5000),
+        5000,
+      );
+    });
+
+    test('스크롤할 것이 없으면 0', () {
+      expect(
+        scrollTargetFor(markY: 300, viewportHeight: 600, maxScrollExtent: 0),
+        0,
+      );
+    });
+  });
+
+  group('표시 종류 — 두 가지로 하드코딩하지 않는다', () {
+    test('모르는 종류는 위험 쪽으로 떨어진다 (보수적 편향)', () {
+      final kind = MarkKind.fromKey('seizure');
+      expect(kind, MarkKind.unknown);
+      expect(kind.isRisk, isTrue, reason: '모르는 것을 초록(대조할 곳)으로 칠하면 경고를 놓친다');
+    });
+
+    test('아는 종류는 톤이 갈린다', () {
+      expect(MarkKind.fromKey('owner').tone, MarkTone.verify);
+      expect(MarkKind.fromKey('mortgage').tone, MarkTone.risk);
+      expect(MarkKind.fromKey('jeonse').tone, MarkTone.risk);
+    });
+
+    test('범례는 화면에 실제로 있는 종류로만 만든다', () {
+      final legend = MarkLegend.fromKinds([MarkKind.owner, MarkKind.mortgage]);
+      expect(legend.map((e) => e.label), ['이름처럼 대조할 곳', '빚처럼 따져볼 곳']);
+    });
+
+    test('종류가 늘면 범례 문구가 따라 늘어난다', () {
+      final legend = MarkLegend.fromKinds([
+        MarkKind.owner,
+        MarkKind.mortgage,
+        MarkKind.jeonse,
+      ]);
+      expect(legend.length, 2, reason: '톤은 둘이므로 줄은 늘지 않는다');
+      expect(legend.last.label, '빚·전세권처럼 따져볼 곳');
+    });
+
+    test('이름만 있으면 초록 줄 하나만 나온다', () {
+      final legend = MarkLegend.fromKinds([MarkKind.owner]);
+      expect(legend.length, 1);
+      expect(legend.single.tone, MarkTone.verify);
+    });
+
+    test('위험 개수와 전체 표시 개수는 따로 센다', () {
+      // 이름 1 + 빚 3 = 표시 4곳이지만, 이름은 위험이 아니다 → 위험 3곳
+      final kinds = [
+        MarkKind.owner,
+        MarkKind.mortgage,
+        MarkKind.mortgage,
+        MarkKind.mortgage,
+      ];
+      expect(kinds.length, 4);
+      expect(MarkLegend.riskCount(kinds), 3);
+    });
+
+    test('개수 문구는 종류별로 조립한다', () {
+      expect(
+        MarkLegend.countPhrase([
+          MarkKind.owner,
+          MarkKind.mortgage,
+          MarkKind.mortgage,
+          MarkKind.mortgage,
+        ]),
+        '집주인 이름 1곳과 빚 3건',
+      );
+      expect(MarkLegend.countPhrase([MarkKind.owner]), '집주인 이름 1곳');
+      expect(MarkLegend.countPhrase(const []), '');
+    });
+  });
+
+  group('표시하지 못한 것 — 목록 끝 회색 한 줄', () {
+    test('말소로 뺀 것이 있으면 그 사유가 나온다', () {
+      final line = unmarkedNotice([
+        '집주인 이름 1곳 — 사진에서 찾아 표시했어요',
+        '집에 잡힌 빚(근저당) 1건은 **모두 말소된 것으로 확인**해 표시하지 않았어요 — 이미 정리된 빚이에요',
+        '압류·가압류·신탁 같은 표시는 없었어요',
+      ]);
+      expect(line, isNotNull);
+      expect(line, contains('말소'));
+      expect(line, isNot(contains('**')), reason: '마크다운 별표가 화면에 그대로 나가면 안 된다');
+    });
+
+    test('말소 전용이 아니다 — 위치를 못 찾은 것도 같은 자리에 나온다', () {
+      final line = unmarkedNotice([
+        '지금 남아 있는 빚 2건은 리포트에 반영됐지만, 사진에서 위치를 찾지 못했어요 — 리포트의 근거 카드에서 확인하세요',
+      ]);
+      expect(line, contains('찾지 못했어요'));
+    });
+
+    test('여러 사유가 있으면 한 줄로 잇는다', () {
+      final line = unmarkedNotice([
+        '근저당 1건은 말소된 것으로 확인해 표시하지 않았어요',
+        '빚 표시는 이번엔 생략했어요 — 위 안내를 확인해 주세요',
+      ]);
+      expect(line!.split(' · ').length, 2);
+    });
+
+    test('표시하지 못한 것이 없으면 줄 자체가 사라진다', () {
+      expect(
+        unmarkedNotice([
+          '집주인 이름 1곳 — 사진에서 찾아 표시했어요',
+          '지금 남아 있는 빚 3건을 표시했어요',
+          '압류·가압류·신탁 같은 표시는 없었어요',
+        ]),
+        isNull,
+      );
+      expect(unmarkedNotice(const []), isNull);
+    });
+  });
+
+  group('위치 레일', () {
+    final layout = RegistryDocumentLayout.fromSizes(
+      sizes: _realPageSizes,
+      pageWidth: 344,
+    );
+
+    testWidgets('쪽 번호가 쪽 수만큼 나온다', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: RegistryPositionRail(
+                layout: layout,
+                marks: [_h(page: 1), _h(badge: 2, kind: 'mortgage', page: 3)],
+                offset: 0,
+                viewport: 500,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      for (var i = 1; i <= 5; i++) {
+        expect(find.text('$i'), findsOneWidget);
+      }
+    });
+
+    testWidgets('레일을 누르면 그 비율로 이동을 요청한다', (tester) async {
+      double? seeked;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: RegistryPositionRail(
+                layout: layout,
+                marks: [_h()],
+                offset: 0,
+                viewport: 500,
+                onSeek: (f) => seeked = f,
+              ),
+            ),
+          ),
+        ),
+      );
+      // 레일의 터치 영역(트랙 폭 = 레일 폭 − 좌우 패딩) 기준으로 눌러야 한다.
+      final track = tester.getRect(
+        find
+            .descendant(
+              of: find.byType(RegistryPositionRail),
+              matching: find.byType(GestureDetector),
+            )
+            .first,
+      );
+      await tester.tapAt(
+        Offset(track.left + track.width * 0.75, track.center.dy),
+      );
+      expect(seeked, isNotNull);
+      expect(seeked, closeTo(0.75, 0.02));
+    });
+
+    testWidgets('표시가 없어도, 뷰포트를 몰라도 예외 없이 그린다', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: RegistryPositionRail(
+                layout: layout,
+                marks: const [],
+                offset: 0,
+                viewport: 0,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('모델 파싱', () {
     test('서버가 highlights를 안 보내도 빈 목록으로 동작한다', () {
       final report = AnalysisReport.fromJson(_reportJson());
@@ -262,6 +719,21 @@ void main() {
       expect(report.checkedNotes, isEmpty);
       expect(report.highlightNotice, isNull);
     });
+
+    test('등기부 열람일시를 읽는다 — 분석일과 다른 날짜다', () {
+      final json = _reportJson();
+      json['registryViewedAt'] = '2026.07.09';
+      final report = AnalysisReport.fromJson(json);
+      expect(report.registryViewedAt, '2026.07.09');
+      // 열람일(7/9)과 분석일(7/27)은 다른 값이다 — 이 간극이 이 필드의 존재 이유다.
+      // 그 사이에 근저당이 새로 잡혔을 수 있고, 계약 직전 근저당 설정은 실제 수법이다.
+      expect(report.registryViewedAt, isNot(contains('07.27')));
+    });
+
+    test('열람일시를 못 읽으면 null이다 (분석일로 대체하지 않는다)', () {
+      final report = AnalysisReport.fromJson(_reportJson());
+      expect(report.registryViewedAt, isNull);
+    });
   });
 
   group('사진 저장소 (세션 한정)', () {
@@ -301,6 +773,22 @@ void main() {
       expect(RegistryPhotoStore.instance.pathsFor('r3'), isEmpty);
     });
   });
+}
+
+/// 흰 종이 위에 검은 글자 한 줄이 인쇄된 것을 흉내 낸다(폰트 렌더링에 의존하지 않게
+/// 직접 칠한다 — 플랫폼마다 글꼴이 달라 픽셀 검사가 흔들리는 것을 막는다).
+class _FakePaperPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFFFFFFF));
+    canvas.drawRect(
+      Rect.fromLTRB(0, size.height * 0.45, size.width, size.height * 0.55),
+      Paint()..color = const Color(0xFF000000),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FakePaperPainter old) => false;
 }
 
 Map<String, dynamic> _reportJson() => {

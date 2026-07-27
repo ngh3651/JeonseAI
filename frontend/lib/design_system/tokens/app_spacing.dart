@@ -27,6 +27,13 @@ abstract final class AppRadius {
   /// 알약형 (뱃지·칩)
   static const double pill = 999;
 
+  /// 하단 시트 상단 모서리 (2026-07-27 뷰어 재디자인 시안)
+  static const double sheet = 22;
+
+  /// 사진 뷰어 카드 — 캐러셀 카드 15 / 리포트 진입 카드 18
+  static const double viewerCard = 15;
+  static const double viewerEntryCard = 18;
+
   // ── 버튼 전용 라운드 (2026-07-09 F2: 신뢰감 위해 각지게) ──
   // 카드(lg=16)와 달리 버튼만 더 각지게 분리한다. 카드 radius는 유지.
   /// 일반 버튼 라운드

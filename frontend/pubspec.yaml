@@ -67,6 +67,11 @@ flutter:
 
   # 마스코트 '세이프' 상태별 이미지 (assets/mascot/mascot_<state>.png)
   # 경로 매핑은 design_system/components/mascot_safe.dart 한 곳에서만 관리한다.
+  #
+  # 2026-07-27 디자인 핸드오프로 들어왔던 mascot-search / mascot-worried / mascot-point
+  # 세 장은 **삭제했다** — 투명 배경 체크무늬가 픽셀로 구워져 있어 앱에 얹으면 회색
+  # 격자가 그대로 보였다. 같은 포즈가 이미 `mascot_<state>` 쪽에 깨끗하게 있다
+  # (search≈caution, worried≈danger, point≈tip).
   assets:
     - assets/mascot/
 

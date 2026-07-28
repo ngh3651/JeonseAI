@@ -80,9 +80,9 @@
 
 | 대상 | 무엇 | 삭제·교체 시점 | 상태 |
 |---|---|---|---|
-| `docs/night-log.md` | 야간 작업 실시간 진행 로그(2026-07-27). 아침 보고서의 근거 원본 | **아침 보고 확인 후**: `docs/morning-report.md`로 요약이 끝났으면 보존 여부 결정(발표 스토리 원재료로 쓸 수 있음) | ⏳ |
-| `docs/RESUME.md` | 중단 대비 이어받기 메모(4줄 고정 양식) | **작업 종료 시 삭제.** 다음 야간 작업 때 다시 만든다 | ⏳ |
-| `docs/morning-check.md` | 아침에 실기기로 확인하는 절차서 | **확인 완료 후**: 절차가 반복 가치가 있으면 `docs/team-setup.md`로 흡수, 아니면 삭제 | ⏳ |
+| `docs/night-log.md` | 야간 작업 실시간 진행 로그(2026-07-27). 아침 보고서의 근거 원본 | **보존 결정(2026-07-28).** `docs/presentation-material.md`가 이 로그의 실측값을 인용하고 `ocr-highlight-findings.md`도 참조한다 — 발표 스토리의 원재료라 남긴다 | ✅ 보존 |
+| `docs/RESUME.md` | 중단 대비 이어받기 메모(4줄 고정 양식) | **작업 종료 시 삭제.** 다음 야간 작업 때 다시 만든다 | ✅ **2026-07-28 갱신.** 지우는 대신 07-28 세션 상태로 덮어썼다 — 남은 항목 7건이 실제로 있어 빈 파일보다 이 편이 이어받기에 낫다 |
+| `docs/morning-check.md` | 아침에 실기기로 확인하는 절차서 | **확인 완료 후**: 절차가 반복 가치가 있으면 `docs/team-setup.md`로 흡수, 아니면 삭제 | ⏳ **아직 유효.** 2026-07-28 세션에서도 실기기가 연결돼 있지 않아 육안 확인을 못 했다 — 그 확인이 끝나기 전에는 지우지 않는다 |
 | `backend/scripts/test_ocr_coords.py` | 검증 CLI. 로직은 `app/services/ocr_layout.py`로 **이미 승격됨** — 지금은 그 모듈을 검증·시각화하는 역할만 | **좌표 정합이 실기기에서 확정된 뒤 삭제.** 기능 폐기 시 즉시 삭제 | ⏳ |
 | `backend/out/` (`ocr_*.json`, `marked_*.png`, `items_summary.md`) | 검증 산출물. **등기부 소유자 실명 포함** → `.gitignore` 처리(커밋 안 됨) | **E-6 정리 스윕**에서 로컬 폴더 삭제. 단 `ocr_3.json`·`ocr_4.json`은 pytest 픽스처로 쓰이므로(없으면 9건 skip) 그 전까지 보존 | ⏳ |
 | `extraction.py`의 `SAVE_IE_RAW`(개발 모드 IE 추출 결과 저장) → `backend/out/ie_<타임스탬프>.json` | IE가 항목마다 `is_canceled`·`rank_number`·`amount`를 무엇으로 줬는지 크레딧 0원으로 다시 보기 위한 재료(2026-07-27 추가 — 근거 카드 27.8억 vs 하이라이트 14억 불일치를 조사할 때 IE 응답이 없어 재호출해야 했던 경험). `SAVE_OCR_RAW`와 동일하게 `DEV_MODE_AUTH`에 묶여 운영 전환 시 자동 off. **실명·주소 포함 → 커밋 금지** | **IE 말소 판정 정확도가 확인되면 저장 코드(`SAVE_IE_RAW`·`_save_raw_ie`) 제거.** 운영 전환 시 자동으로 꺼지므로 급하지 않음 | ⏳ |
@@ -92,4 +92,23 @@
 | `backend/tests/test_highlight.py` | 하이라이트 테스트 39건. 그중 9건은 `out/ocr_*.json`이 있을 때만 실행(없으면 skip) | 위 본체와 함께 | ⏳ |
 | `frontend/lib/state/registry_photo_store.dart` | 전송 JPEG 경로 보관. 2026-07-27 **세션 메모리 → 앱 영구 저장소 복사**로 전환(결정 ⑤ 뒤집음) | 위 본체와 함께 | ⏳ |
 | `frontend/lib/app/config.dart`의 `devKeepRegistryPhotos` + 저장물 `<앱 문서폴더>/registry_photos/<reportId>/`(page_N.jpg·report.json) + SharedPreferences 키 `registry_photos_v1` | 개발용 사진·리포트 로컬 보관 — 앱/서버 재시작 후에도 뷰어를 열어 **재분석 크레딧을 태우지 않기 위한** 스위치. **등기부 소유자 실명·주소가 기기에 남는다**(최근 5건만 유지) | **제출·시연 빌드에서 `false`로 전환**(그러면 예전 메모리 전용 동작). 실 배포 시에는 스위치·보관 코드·`shared_preferences` 의존성까지 제거하고, 기기에 남은 폴더도 지울 것 | ⏳ |
-| `design_handoff_registry_viewer/` (레포 루트) | 2026-07-27 뷰어 재디자인 디자인 핸드오프 번들 — README(사양서)·HTML 시안·`support.js`·`assets/`(마스코트 3장 + **등기부 실명 샘플 3장**). `.gitignore` 처리(커밋 안 됨) | **뷰어 재디자인 구현 완료 후 로컬 폴더 삭제.** 복사해 뒀던 마스코트 3장은 **투명 배경 체크무늬가 픽셀로 구워져 있어 2026-07-27 삭제**했고, 앱은 기존 `mascot_<state>.png`를 쓴다 | ⏳ |
+| `design_handoff_registry_viewer/` (레포 루트) | **[2026-07-28 보존 결정]** `assets/page1·2·4.png`가 **압류·가압류가 든 복잡 등기부의 유일한 로컬 사본**이 됐다(IE 재현성 측정 5회를 그 이미지로 했다). 지우면 다시 잴 수 없다. 삭제는 사용자 판단 후. — 2026-07-27 뷰어 재디자인 디자인 핸드오프 번들 — README(사양서)·HTML 시안·`support.js`·`assets/`(마스코트 3장 + **등기부 실명 샘플 3장**). `.gitignore` 처리(커밋 안 됨) | **뷰어 재디자인 구현 완료 후 로컬 폴더 삭제.** 복사해 뒀던 마스코트 3장은 **투명 배경 체크무늬가 픽셀로 구워져 있어 2026-07-27 삭제**했고, 앱은 기존 `mascot_<state>.png`를 쓴다 | ⏳ |
+
+---
+
+## [2026-07-28] 읽기 가이드·3경로 야간 작업 산출물
+
+> 이번 세션에서 새로 생긴 것. **대부분은 임시가 아니라 정식 코드**이므로, 정리 대상이
+> 아닌 것도 "왜 정리 대상이 아닌지"를 함께 적는다(다음 사람이 지우려다 멈출 수 있게).
+
+| 대상 | 무엇 | 삭제·교체 시점 | 상태 |
+|---|---|---|---|
+| `backend/app/services/llm/` (5파일) | 국내 LLM provider 추상화 — 정식 코드 | **정리 대상 아님.** [2026-07-22 LLM 다원화] 결정의 구현체다 | — |
+| `backend/app/services/cross_check.py` | 두 경로 대조 + 사용자 고지 — 정식 코드 | **정리 대상 아님** | — |
+| `backend/app/services/artifacts.py` | 원응답 저장 위치·보관 상한 | `SAVE_IE_RAW`·`SAVE_OCR_RAW`를 둘 다 걷어내는 날 함께 삭제 | ⏳ |
+| `backend/app/services/document_parse.py` | DP 호출 + 표 HTML → 텍스트. `LAYOUT_SOURCE=document_parse`일 때만 동작 | **DP를 안 쓰기로 확정되면** 삭제 + `report_builder._layout_text_for()`를 한 줄로 축소 | ⏳ |
+| `backend/scripts/probe_document_parse.py` | DP 조사 CLI (실행 시 크레딧 소모) | **E-6**: 조사가 끝났으므로 삭제 후보. 단 DP 응답 구조가 바뀌면 다시 필요하다 | ⏳ |
+| `backend/scripts/measure_ie_reproducibility.py` | IE 재현성 측정 CLI | **유지 쪽.** 모델·엔드포인트가 바뀔 때마다 다시 돌릴 가치가 있다 | ⏳ |
+| `backend/scripts/compare_llm.py` | 국내 LLM 비교 하네스 (구조화·설명 2역할) | **유지 쪽.** A.X 키가 도착하면 그대로 다시 돌린다 | ⏳ |
+| `backend/out/dp_*.json` · `out/llm_compare/` · `out/runs/` | DP 원응답 · LLM 비교 원본 · 회차별 IE/OCR 원응답. **전부 등기부 실명 포함** | `out/runs/`는 **코드가 최근 5회분만 유지**(artifacts.py). `dp_*`·`llm_compare/`는 **E-6 정리 스윕에서 수동 삭제** | ⏳ |
+| `frontend` 뷰어의 `kUnmarkedNoteMarkers` 문자열 매칭 | 서버 문구를 부분 문자열로 골라 화면에 그리는 임시 방식. **서버가 문구를 바꾸면 조용히 사라진다**(2026-07-28에 실제로 고지 3종이 탈락하고 있었다) | **`checkedNotes`에 분류 태그를 넣는 계약 변경이 승인되면** 이 목록을 통째로 삭제 (`docs/api-contract.md` §9.7에 부채로 명시) | ⏳ |

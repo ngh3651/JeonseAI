@@ -38,7 +38,7 @@ AnalysisReport buildFixtureReport() => AnalysisReport(
   gaugeProgress: 0.8,
   evidences: const [],
   highlights: [
-    fixtureMark(1, 'owner', 1, 0.45, '집주인 이름 · 법인A'),
+    fixtureMark(1, 'owner', 1, 0.45, '집주인 이름 · 주식회사가나다'),
     fixtureMark(2, 'mortgage', 3, 0.25, '집에 잡힌 빚 (근저당권) · 5억원'),
     fixtureMark(3, 'mortgage', 3, 0.62, '집에 잡힌 빚 (근저당권) · 5억원'),
     fixtureMark(4, 'mortgage', 3, 0.77, '집에 잡힌 빚 (근저당권) · 4억원'),

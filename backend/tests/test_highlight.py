@@ -136,7 +136,7 @@ def eul_gu_page_with_footnote() -> OcrPage:
 
 
 def gap_gu_page(index: int = 0) -> OcrPage:
-    """갑구 1장 — 공유자 2명(소유자D·소유자E)."""
+    """갑구 1장 — 공유자 2명(홍길동·김영희)."""
     rows = [section_row("갑구", 40), header_row(90)]
     rows.append(
         [
@@ -148,16 +148,16 @@ def gap_gu_page(index: int = 0) -> OcrPage:
         ]
     )
     rows.append([W("제50495호", 271, 190, 67), W("매매", 394, 190, 28),
-                 W("소유자D", 531, 190, 44), W("○○○○○○-○******", 589, 190, 107)])
+                 W("홍길동", 531, 190, 44), W("900101-*******", 589, 190, 107)])
     rows.append([W("지분", 531, 230, 29), W("2분의", 566, 230, 38), W("1", 612, 230, 8)])
-    rows.append([W("소유자E", 531, 270, 43), W("○○○○○○-○******", 589, 270, 107)])
+    rows.append([W("김영희", 531, 270, 43), W("920202-*******", 589, 270, 107)])
     return make_page(index, rows)
 
 
 def corp_gap_gu_page(index: int = 0) -> OcrPage:
-    """갑구 1장 — 소유자가 **법인**(법인A).
+    """갑구 1장 — 소유자가 **법인**(주식회사가나다).
 
-    실측(2026-07-27 page_2.jpg): 등록번호 `121111-0173575`. 뒤 7자리가 마스킹이 아니라
+    실측(2026-07-27 page_2.jpg): 등록번호 `110111-0000000`. 뒤 7자리가 마스킹이 아니라
     숫자라는 것이 법인 판별 근거다(docs/ocr-highlight-findings.md §2.8).
     """
     rows = [section_row("갑구", 40), header_row(90)]
@@ -170,7 +170,7 @@ def corp_gap_gu_page(index: int = 0) -> OcrPage:
         ]
     )
     rows.append([W("제6363호", 271, 190, 67),
-                 W("법인A", 531, 190, 90), W("121111-0173575", 630, 190, 107)])
+                 W("주식회사가나다", 531, 190, 90), W("110111-0000000", 630, 190, 107)])
     return make_page(index, rows)
 
 
@@ -290,7 +290,7 @@ def test_IE_금액이_사진과_다르면_좌표를_주지_않는다():
 
 
 def test_현재_소유자_이름에_좌표가_붙는다():
-    extract = extract_with(current_owners=[Owner(name="소유자D"), Owner(name="소유자E")])
+    extract = extract_with(current_owners=[Owner(name="홍길동"), Owner(name="김영희")])
     result = _run(extract, as_result(gap_gu_page()))
     assert len(result) == 2
     assert [h.kind for h in result] == ["owner", "owner"]
@@ -302,7 +302,7 @@ def test_현재_소유자_이름에_좌표가_붙는다():
 
 
 def test_단독_소유면_공동명의_안내가_붙지_않는다():
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     result = _run(extract, as_result(gap_gu_page()))
     assert len(result) == 1
     assert result[0].caution is None
@@ -311,18 +311,18 @@ def test_단독_소유면_공동명의_안내가_붙지_않는다():
 def test_IE에_없는_옛_소유자는_칠하지_않는다():
     """사진에 이름이 보여도 IE의 current_owners에 없으면 대상이 아니다.
     지분을 넘긴 옛 소유자를 칠하면 사용자가 그 사람을 임대인으로 오인한다."""
-    extract = extract_with(current_owners=[Owner(name="소유자E")])
+    extract = extract_with(current_owners=[Owner(name="김영희")])
     result = _run(extract, as_result(gap_gu_page()))
-    assert [h.title for h in result] == ["집주인 이름 · 소유자E"]
+    assert [h.title for h in result] == ["집주인 이름 · 김영희"]
 
 
 def test_법인_소유자에게는_법인용_문구가_나간다():
     """법인 임대인에게 '나온 사람 신분증이 이 이름과 같은지 확인하세요'는 **틀린 지시**다.
 
-    계약 자리에 나오는 건 대표이사·직원이고, 그 신분증에 '법인A'이 적혀 있을 리 없다.
+    계약 자리에 나오는 건 대표이사·직원이고, 그 신분증에 '주식회사가나다'이 적혀 있을 리 없다.
     그대로 따르면 정상 계약을 이상하다고 판단하거나 확인 자체를 포기한다.
     """
-    extract = extract_with(current_owners=[Owner(name="법인A")])
+    extract = extract_with(current_owners=[Owner(name="주식회사가나다")])
     result = _run(extract, as_result(corp_gap_gu_page()))
     assert len(result) == 1
     body = result[0].body
@@ -335,14 +335,14 @@ def test_법인_소유자에게는_법인용_문구가_나간다():
 
 def test_개인_소유자_문구는_그대로다():
     """법인 분기를 넣으면서 개인 경로가 바뀌지 않았는지 지킨다."""
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     body = _run(extract, as_result(gap_gu_page()))[0].body
     assert "계약서에 적힌 집주인(임대인) 이름" in body
     assert "회사(법인)" not in body
 
 
 def test_사진에_없는_이름은_좌표_없이_넘어간다():
-    extract = extract_with(current_owners=[Owner(name="홍길동")])
+    extract = extract_with(current_owners=[Owner(name="없는사람")])
     assert _run(extract, as_result(gap_gu_page())) == []
 
 
@@ -352,7 +352,7 @@ def test_사진에_없는_이름은_좌표_없이_넘어간다():
 
 
 def test_좌표는_0과_1_사이로_정규화된다():
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     box = _run(extract, as_result(gap_gu_page()))[0].box
     for value in (box.x, box.y, box.w, box.h):
         assert 0.0 <= value <= 1.0
@@ -361,7 +361,7 @@ def test_좌표는_0과_1_사이로_정규화된다():
 
 
 def test_OCR이_통째로_실패하면_빈_목록을_돌려준다():
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     assert _run(extract, OcrResult(errors=["timeout"])) == []
 
 
@@ -370,20 +370,20 @@ def test_원본_크기를_모르면_좌표를_주지_않는다():
     page = gap_gu_page()
     page.width = 0
     page.height = 0
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     assert _run(extract, as_result(page)) == []
 
 
 def test_페이지_인덱스가_그대로_전달된다():
     """사진 순서가 그대로 유지돼야 앱이 맞는 사진에 그린다."""
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     result = _run(extract, as_result(gap_gu_page(index=2)))
     assert result[0].page == 2
 
 
 @pytest.mark.parametrize(
     "name,masked",
-    [("소유자D", "김○○"), ("주식회사하나은행", "주○○○○○○○"), ("김", "김"), ("", "(이름없음)")],
+    [("홍길동", "홍○○"), ("주식회사가나다", "주○○○○○○"), ("김", "김"), ("", "(이름없음)")],
 )
 def test_로그용_이름_마스킹(name, masked):
     assert highlight.mask_name(name) == masked
@@ -420,9 +420,17 @@ def real_pages() -> list[OcrPage]:
 
 @requires_real
 def test_실제_등기부_갑구_이름_5명이_전부_잡힌다():
+    """⚠ **실명을 저장소에 적지 않는다** (2026-07-28 개인정보 점검).
+
+    예전에는 기대값이 실제 소유자 5명의 이름 그대로였다 — 저장소가 공유되는 이상
+    그 자체가 개인정보 노출이다. 검증하려던 것은 "다섯 명이 **word 단위로 정확히**
+    잡히는가"이므로, 개수와 형태만 본다(이름이 옆 칸까지 번지면 2~4자를 넘는다).
+    """
     items = build_items(real_pages())
     names = [hit.name for it in items if it.section == "갑구" for hit in it.names]
-    assert names == ["소유자A", "소유자B", "소유자C", "소유자D", "소유자E"]
+    assert len(names) == 5
+    assert all(2 <= len(n) <= 4 for n in names), "이름이 옆 칸까지 번졌다"
+    assert all(all("가" <= c <= "힣" for c in n) for n in names)
 
 
 @requires_real
@@ -458,7 +466,10 @@ def test_실제_등기부에서_말소된_근저당은_칠해지지_않는다():
 
 @requires_real
 def test_실제_등기부에서_현재_소유자_이름에_좌표가_붙는다():
-    extract = extract_with(current_owners=[Owner(name="소유자D"), Owner(name="소유자E")])
+    """실명을 적지 않기 위해, 사진에서 읽은 이름을 그대로 IE 입력으로 되먹인다."""
+    items = build_items(real_pages())
+    found = [hit.name for it in items if it.section == "갑구" for hit in it.names]
+    extract = extract_with(current_owners=[Owner(name=n) for n in found[-2:]])
     result = _run(extract, OcrResult(pages=real_pages()))
     assert len(result) == 2
     assert all(h.page == 0 for h in result)  # 둘 다 3.png(첫 페이지)
@@ -473,7 +484,7 @@ def test_실제_등기부에서_현재_소유자_이름에_좌표가_붙는다()
 
 
 def footer_row(y: float, *, page_no: int, total: int, issue: str, addr: str = "행복아파트") -> list[Word]:
-    """실측 꼬리말 — `발급확인번호 AAPI-GJBJ-1806 …` + 우측 하단 `1/5`."""
+    """실측 꼬리말 — `발급확인번호 ABCD-EFGH-0000 …` + 우측 하단 `1/5`."""
     return [
         W("발급확인번호", 300, y, 80),
         W(issue, 400, y, 90),
@@ -523,8 +534,8 @@ def test_말이_안_되는_날짜는_버린다():
 
 def test_열람일시는_표시를_막는_상황에서도_전달된다():
     """사진 묶음 점검에 걸려 아무것도 못 칠해도 '언제 뗀 서류인가'는 알려준다."""
-    a = page_with_footer(0, page_no=2, total=5, issue="AAPI-GJBJ-1806")
-    b_words = list(page_with_footer(1, page_no=1, total=5, issue="AAPI-GJBJ-1806").words)
+    a = page_with_footer(0, page_no=2, total=5, issue="ABCD-EFGH-0000")
+    b_words = list(page_with_footer(1, page_no=1, total=5, issue="ABCD-EFGH-0000").words)
     b_words += viewed_at_row(1000)
     b = OcrPage(name="b.jpg", index=1, words=b_words, lines=group_lines(b_words),
                 width=PAGE_W, height=PAGE_H)
@@ -577,7 +588,7 @@ def page_with_footer(index: int, *, page_no: int, total: int, issue: str,
 def test_페이지_표식으로_쪽수를_읽는다():
     from app.services.ocr_layout import check_document
 
-    check = check_document([page_with_footer(0, page_no=1, total=1, issue="AAPI-GJBJ-1806")])
+    check = check_document([page_with_footer(0, page_no=1, total=1, issue="ABCD-EFGH-0000")])
     assert check.ok_to_highlight_any is True
     assert check.ok_to_highlight_money is True
     assert check.notice is None
@@ -587,7 +598,7 @@ def test_쪽이_빠지면_금액_표시를_보류한다():
     """말소 근거 행이 안 올린 쪽에 있을 수 있다 — 이 경우 빚에 형광펜을 칠하면 안 된다."""
     from app.services.ocr_layout import check_document
 
-    check = check_document([page_with_footer(0, page_no=1, total=5, issue="AAPI-GJBJ-1806")])
+    check = check_document([page_with_footer(0, page_no=1, total=5, issue="ABCD-EFGH-0000")])
     assert check.ok_to_highlight_any is True  # 이름은 계속 보여준다
     assert check.ok_to_highlight_money is False
     assert check.notice and "5쪽 중 1쪽" in check.notice
@@ -597,7 +608,7 @@ def test_쪽이_빠지면_근저당_하이라이트가_실제로_사라진다():
     extract = extract_with(
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)]
     )
-    page = page_with_footer(0, page_no=1, total=5, issue="AAPI-GJBJ-1806", cancel=False)
+    page = page_with_footer(0, page_no=1, total=5, issue="ABCD-EFGH-0000", cancel=False)
     result = highlight.build_highlights(extract, as_result(page))
     assert result.highlights == []
     assert result.notice and "5쪽 중 1쪽" in result.notice
@@ -607,7 +618,7 @@ def test_다른_등기부가_섞이면_아무것도_표시하지_않는다():
     from app.services.ocr_layout import check_document
 
     check = check_document([
-        page_with_footer(0, page_no=1, total=2, issue="AAPI-GJBJ-1806"),
+        page_with_footer(0, page_no=1, total=2, issue="ABCD-EFGH-0000"),
         page_with_footer(1, page_no=2, total=2, issue="BBPI-XXXX-9999"),
     ])
     assert check.ok_to_highlight_any is False
@@ -641,9 +652,9 @@ def test_사진_순서가_뒤바뀌면_믿을_수_있을_때만_자동_정렬한
     from app.services.ocr_layout import check_document
 
     check = check_document([
-        page_with_footer(0, page_no=3, total=3, issue="AAPI-GJBJ-1806"),
-        page_with_footer(1, page_no=1, total=3, issue="AAPI-GJBJ-1806"),
-        page_with_footer(2, page_no=2, total=3, issue="AAPI-GJBJ-1806"),
+        page_with_footer(0, page_no=3, total=3, issue="ABCD-EFGH-0000"),
+        page_with_footer(1, page_no=1, total=3, issue="ABCD-EFGH-0000"),
+        page_with_footer(2, page_no=2, total=3, issue="ABCD-EFGH-0000"),
     ])
     assert check.ok_to_highlight_any is True
     assert check.page_order == [1, 2, 0]  # 2번째로 올린 사진이 1쪽
@@ -762,7 +773,7 @@ def test_구역을_모를_때도_말소를_놓치지_않는다():
 def test_말소된_근저당은_왜_안_칠했는지_사용자에게_말해준다():
     """이 한 줄이 없으면 사용자는 '이 앱이 을구를 안 봤다'로 읽는다 (페르소나 2인 공통)."""
     extract = extract_with(
-        current_owners=[Owner(name="소유자D")],
+        current_owners=[Owner(name="홍길동")],
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=True)],
     )
     result = highlight.build_highlights(extract, as_result(eul_gu_page(), gap_gu_page(index=1)))
@@ -772,7 +783,7 @@ def test_말소된_근저당은_왜_안_칠했는지_사용자에게_말해준�
 
 
 def test_표시가_하나도_없어도_찾아본_항목을_알려준다():
-    extract = extract_with(current_owners=[Owner(name="홍길동")])
+    extract = extract_with(current_owners=[Owner(name="없는사람")])
     result = highlight.build_highlights(extract, as_result(gap_gu_page()))
     assert result.highlights == []
     assert result.checked_notes  # 침묵하지 않는다
@@ -782,7 +793,7 @@ def test_표시가_하나도_없어도_찾아본_항목을_알려준다():
 def test_유효한_근저당을_못_찾으면_리포트로_안내한다():
     """말소돼서 안 칠한 것과, 유효한데 위치를 못 찾은 것이 화면에서 같아 보이면 안 된다."""
     extract = extract_with(
-        current_owners=[Owner(name="소유자D")],
+        current_owners=[Owner(name="홍길동")],
         mortgages=[MoneyEntry(rank_number="7", amount=99_000_000, is_canceled=False)],
     )
     result = highlight.build_highlights(extract, as_result(gap_gu_page()))
@@ -792,14 +803,14 @@ def test_유효한_근저당을_못_찾으면_리포트로_안내한다():
 
 
 def test_시트_문장에_출처가_붙는다():
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     result = highlight.build_highlights(extract, as_result(gap_gu_page()))
     assert result.highlights[0].source and "갑구" in result.highlights[0].source
 
 
 def test_공동명의_안내는_단정이_아니라_권고형이다():
     """'전원 동의가 필요합니다'는 권위 출처 없는 법적 단정 — 앱 신뢰를 흔든다(서연 지적)."""
-    extract = extract_with(current_owners=[Owner(name="소유자D"), Owner(name="소유자E")])
+    extract = extract_with(current_owners=[Owner(name="홍길동"), Owner(name="김영희")])
     caution = highlight.build_highlights(extract, as_result(gap_gu_page())).highlights[0].caution
     assert caution and "가장 안전합니다" in caution
     assert "필요합니다" not in caution

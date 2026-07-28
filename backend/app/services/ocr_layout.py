@@ -40,7 +40,7 @@ _RANK_BAND_MARGIN = 0.15
 _NAME_GAP_RATIO = 2.5
 
 # ── 정규식 ───────────────────────────────────────────────────────────────────
-# 등록번호: 개인 주민번호는 뒤 7자리가 마스킹(`○○○○○○-○******`),
+# 등록번호: 개인 주민번호는 뒤 7자리가 마스킹(`900101-*******`),
 #          법인등록번호는 뒤 7자리가 숫자(`110111-0015671`) — 이것이 개인/법인 판별 근거.
 _ID_PATTERN = re.compile(r"(\d{6})\s*[-－]\s*([0-9*]{6,8})")
 _RANK_TEXT = re.compile(r"^(\d{1,3})(?:[-－](\d{1,2}))?$")
@@ -93,7 +93,7 @@ UNKNOWN_SECTION = "미상"
 
 # 페이지 꼬리말 표식 — 실측(1.png "1/5", 5.png "5/5"). 페이지 순서·누락 판별에 쓴다.
 _PAGE_MARKER = re.compile(r"^(\d{1,3})\s*/\s*(\d{1,3})$")
-# 발급확인번호 — 같은 발급본이면 전 페이지 동일(실측: 1.png·5.png 모두 AAPI-GJBJ-1806)
+# 발급확인번호 — 같은 발급본이면 전 페이지 동일(실측: 1.png·5.png 모두 ABCD-EFGH-0000)
 _ISSUE_NO = re.compile(r"([A-Z]{3,5}[-－][A-Z]{3,5}[-－]\d{3,5})")
 # 열람일시 — **표시 전용**이다. 판정에 쓰지 않는다.
 #
@@ -450,7 +450,7 @@ def _is_valid_name(name: str, kind: str) -> bool:
 def extract_names(line: Line, page_index: int, med_h: float) -> list[NameHit]:
     """등록번호 word를 먼저 찾고 **바로 앞 word**를 이름으로 삼는다.
 
-    문자 단위 정규식(줄 전체를 공백 없이 이어붙여 매칭)은 `매매`+`소유자D`을 한 덩어리로
+    문자 단위 정규식(줄 전체를 공백 없이 이어붙여 매칭)은 `매매`+`홍길동`을 한 덩어리로
     삼켜 bbox가 옆 칸까지 번진다(실측 181px). word 단위로 가면 43px로 정확히 좁혀진다.
     """
     hits: list[NameHit] = []
@@ -461,7 +461,7 @@ def extract_names(line: Line, page_index: int, med_h: float) -> list[NameHit]:
             continue
         kind = "법인" if m.group(2).isdigit() else "개인"
 
-        # ⑴ 같은 word 안에 이름이 붙어 온 경우 ("소유자A○○○○○○-○******")
+        # ⑴ 같은 word 안에 이름이 붙어 온 경우 ("홍길동900101-*******")
         inline = w.text[: m.start()].strip()
         candidates: list[tuple[str, int]] = []
         if inline:

@@ -25,7 +25,7 @@ def ie_extract() -> RegistryExtract:
     """문서 판독(IE) — 압류 3건이라고 본다."""
     return RegistryExtract(
         address="서울특별시 서초구 서초동 123-4",
-        current_owners=[Owner(name="소유자D")],
+        current_owners=[Owner(name="홍길동")],
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)],
         seizures=[
             RegistryEntry(rank_number=str(r), is_canceled=False) for r in ("2", "4", "9")
@@ -37,7 +37,7 @@ def llm_extract(seizure_ranks: tuple[str, ...] = ("9",)) -> RegistryExtract:
     """사진 판독(LLM) — 등기목적을 읽어 압류를 더 적게(정확하게) 본다."""
     return RegistryExtract(
         address="서울특별시 서초구 서초동 123-4",
-        current_owners=[Owner(name="소유자D")],
+        current_owners=[Owner(name="홍길동")],
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)],
         seizures=[RegistryEntry(rank_number=r, is_canceled=False) for r in seizure_ranks],
     )
@@ -131,7 +131,7 @@ def test_불일치_문장에_실명이_들어가지_않는다():
     ie = ie_extract()
     notes = cross_check.to_notes(cross_check.compare(ie, llm_extract()), unplaced={"seizures": 2})
     joined = " ".join(notes)
-    assert "소유자D" not in joined
+    assert "홍길동" not in joined
     assert "서초동" not in joined
 
 

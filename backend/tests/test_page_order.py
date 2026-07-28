@@ -43,7 +43,7 @@ def paged(index: int, *, page_no: int, total: int, rows=None, marker: bool = Tru
     ]
     words = [w for r in base_rows for w in r] + address_row(10, "행복아파트")
     if marker:
-        words += footer_row(950, page_no=page_no, total=total, issue="AAPI-GJBJ-1806")
+        words += footer_row(950, page_no=page_no, total=total, issue="ABCD-EFGH-0000")
     return OcrPage(name=f"page_{index + 1}.jpg", index=index, words=words,
                    lines=group_lines(words), width=PAGE_W, height=PAGE_H)
 
@@ -120,10 +120,10 @@ def shuffled_pair() -> list[OcrPage]:
     gap = gap_gu_page(index=0)
     eul = eul_gu_page(with_cancel_row=False)
     gap_words = list(gap.words) + address_row(10, "행복아파트") + footer_row(
-        950, page_no=2, total=2, issue="AAPI-GJBJ-1806"
+        950, page_no=2, total=2, issue="ABCD-EFGH-0000"
     )
     eul_words = list(eul.words) + address_row(10, "행복아파트") + footer_row(
-        950, page_no=1, total=2, issue="AAPI-GJBJ-1806"
+        950, page_no=1, total=2, issue="ABCD-EFGH-0000"
     )
     return [
         OcrPage(name="a.jpg", index=0, words=gap_words, lines=group_lines(gap_words),
@@ -138,7 +138,7 @@ def test_정렬해도_좌표는_원래_업로드_인덱스로_돌아온다():
     **1쪽 사진 위에 2쪽의 형광펜**이 그려진다."""
     pages = shuffled_pair()
     extract = extract_with(
-        current_owners=[Owner(name="소유자D")],
+        current_owners=[Owner(name="홍길동")],
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)],
     )
     result = highlight.build_highlights(extract, as_result(*pages))
@@ -153,13 +153,13 @@ def test_정렬해도_좌표는_원래_업로드_인덱스로_돌아온다():
 def test_정렬하면_사용자에게_한_줄로_알린다():
     """조용히 고치면 '내가 순서대로 올렸는데 왜?'를 사용자가 영영 알 수 없다."""
     result = highlight.build_highlights(
-        extract_with(current_owners=[Owner(name="소유자D")]), as_result(*shuffled_pair())
+        extract_with(current_owners=[Owner(name="홍길동")]), as_result(*shuffled_pair())
     )
     assert any("자동으로 맞췄어요" in n for n in result.checked_notes)
 
 
 def test_정렬하지_않았으면_그_문구가_없다():
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     result = highlight.build_highlights(extract, as_result(gap_gu_page(0)))
     assert not any("자동으로 맞췄어요" in n for n in result.checked_notes)
 
@@ -183,9 +183,9 @@ def test_정렬_결과가_말소_판정을_바로_세운다():
         [W("기말소", 117, 290, 44), W("제45409호", 270, 290, 68)],
     ]
     w1 = [w for r in rows_page1 for w in r] + address_row(10, "신정동") + footer_row(
-        950, page_no=1, total=2, issue="AAPI-GJBJ-1806")
+        950, page_no=1, total=2, issue="ABCD-EFGH-0000")
     w2 = [w for r in rows_page2 for w in r] + address_row(10, "신정동") + footer_row(
-        950, page_no=2, total=2, issue="AAPI-GJBJ-1806")
+        950, page_no=2, total=2, issue="ABCD-EFGH-0000")
     # 거꾸로 업로드: 0번 = 2쪽(말소 행), 1번 = 1쪽(근저당)
     pages = [
         OcrPage(name="a.jpg", index=0, words=w2, lines=group_lines(w2), width=PAGE_W, height=PAGE_H),

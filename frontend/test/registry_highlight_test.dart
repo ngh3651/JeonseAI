@@ -33,7 +33,7 @@ RegistryHighlight _h({
   kind: kind,
   badge: badge,
   box: HighlightBox(x: x, y: y, w: w, h: h),
-  title: '집주인 이름 · 소유자D',
+  title: '집주인 이름 · 홍길동',
   body: '계약서의 임대인 이름과 상대방 신분증이 이 이름과 같은지 확인하세요. 다르면 계약을 진행하지 마세요.',
   caution: caution,
 );
@@ -71,7 +71,7 @@ void main() {
     });
 
     test('실제 등기부 값으로 계산한 위치가 사람이 기대하는 곳에 온다', () {
-      // 3.png 실측: 이름 '소유자D' bbox (531,597)-(575,613), 원본 878x1030px.
+      // 3.png 실측: 이름 '홍길동' bbox (531,597)-(575,613), 원본 878x1030px.
       // 서버는 8% 여유를 주고 정규화한다 → 대략 x 0.600, y 0.578
       const box = HighlightBox(x: 0.600, y: 0.578, w: 0.055, h: 0.020);
       final rect = highlightRect(box, const Size(878, 1030));
@@ -741,7 +741,7 @@ void main() {
           'kind': 'owner',
           'badge': 2,
           'box': {'x': 0.6, 'y': 0.5, 'w': 0.05, 'h': 0.02},
-          'title': '집주인 이름 · 소유자D',
+          'title': '집주인 이름 · 홍길동',
           'body': '확인하세요',
           'caution': '이 집은 2명 공동명의입니다.',
           'source': '등기부 갑구 — 이 앱이 사진에서 직접 찾은 위치',

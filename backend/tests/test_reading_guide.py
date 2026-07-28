@@ -266,7 +266,7 @@ def test_쪽_누락_보류는_금액_앵커_종류만_막는다():
     from tests.test_highlight import footer_row
 
     base = gap_gu_claims_page()
-    words = list(base.words) + footer_row(1000, page_no=1, total=5, issue="AAPI-GJBJ-1806")
+    words = list(base.words) + footer_row(1000, page_no=1, total=5, issue="ABCD-EFGH-0000")
     page = OcrPage(name="p1.jpg", index=0, words=words, lines=group_lines(words),
                    width=PAGE_W, height=PAGE_H)
     extract = extract_with(
@@ -311,7 +311,7 @@ def test_텍스트_감지_3종은_판정에_쓰이지_않는다():
     권위 출처 + decisions.md 선기록이 필요하다(2026-07-28 보류). 표시만 한다."""
     from app.services import rule_engine
 
-    extract = extract_with(current_owners=[Owner(name="소유자D")])
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
     before = rule_engine.evaluate(extract, deposit=100_000_000, market_price=200_000_000)
     highlight.build_highlights(extract, as_result(header_page(), footer_page(1)))
     after = rule_engine.evaluate(extract, deposit=100_000_000, market_price=200_000_000)
@@ -501,7 +501,7 @@ def test_말소_미결이_아니면_2앵커_종류는_계속_보인다():
     from tests.test_highlight import footer_row
 
     base = gap_gu_claims_page()
-    words = list(base.words) + footer_row(1000, page_no=1, total=5, issue="AAPI-GJBJ-1806")
+    words = list(base.words) + footer_row(1000, page_no=1, total=5, issue="ABCD-EFGH-0000")
     page = OcrPage(name="p1.jpg", index=0, words=words, lines=group_lines(words),
                    width=PAGE_W, height=PAGE_H)
     extract = extract_with(seizures=[entry(rank_number="3", is_canceled=False)])

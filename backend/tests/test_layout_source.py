@@ -44,7 +44,7 @@ def dp_pages() -> list[ParsedPage]:
             elements=[
                 {"category": "heading1", "content": {"text": "등기사항전부증명서(말소사항 포함)"}},
                 {"category": "table", "content": {"html": table_html}},
-                {"category": "footer", "content": {"text": "발급확인번호 AAPI-GJBJ-1806  1/1"}},
+                {"category": "footer", "content": {"text": "발급확인번호 ABCD-EFGH-0000  1/1"}},
             ],
         )
     ]
@@ -185,7 +185,7 @@ def test_어느_경로를_골라도_등급이_같다(monkeypatch, source):
         lambda *a, **k: ParseResult(pages=dp_pages(), elapsed=3.9),
     )
     extract = RegistryExtract(
-        current_owners=[Owner(name="소유자D")],
+        current_owners=[Owner(name="홍길동")],
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)],
     )
     verdict = rule_engine.evaluate(extract, deposit=100_000_000, market_price=300_000_000)
@@ -200,7 +200,7 @@ def test_어느_경로를_골라도_등급이_같다(monkeypatch, source):
 def test_어느_경로를_골라도_좌표는_Document_OCR에서_온다(monkeypatch, source):
     """DP는 낱말 좌표를 주지 않는다(표 하나당 사각형 하나). 좌표 출처는 바뀌지 않는다."""
     monkeypatch.setenv("LAYOUT_SOURCE", source)
-    extract = RegistryExtract(current_owners=[Owner(name="소유자D")])
+    extract = RegistryExtract(current_owners=[Owner(name="홍길동")])
     result = highlight.build_highlights(extract, as_result(gap_gu_page(0)))
     assert [h.kind for h in result.highlights] == ["owner"]
     # 이름 word 하나 크기 — DP 좌표였다면 표 전체(페이지의 20~61%)가 됐을 것이다

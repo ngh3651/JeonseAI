@@ -241,7 +241,20 @@ def run_structure(provider, layout_text: str, ie: RegistryExtract | None, attemp
     return {
         "ok": True,
         "elapsed": elapsed,
-        "counts": {f: len(getattr(got, f, [])) for f in COMPARED_FIELDS},
+        # ⚠ **말소되지 않은 것만** 센다. IE 열(`score.fields[*].ie_count`)이 유효 개수인데
+        #   여기만 raw 길이를 쓰면 **같은 표 안에서 단위가 섞여** "IE 0 vs Solar 2"가
+        #   "Solar가 말소를 놓쳤다"로 오독된다(2026-07-28 judge-reviewer가 잡아냈다 —
+        #   실제로는 Solar가 말소를 정확히 잡았고, 그 오독이 발표 재료에 실릴 뻔했다).
+        "counts": {
+            f: len([x for x in getattr(got, f, []) if getattr(x, "is_active", True)])
+            for f in COMPARED_FIELDS
+        },
+        "counts_raw": {f: len(getattr(got, f, [])) for f in COMPARED_FIELDS},
+        # 말소 판정이 갈리는지 따로 본다 — 이게 두 경로의 진짜 차이가 드러나는 자리다.
+        "canceled": {
+            f: len([x for x in getattr(got, f, []) if not getattr(x, "is_active", True)])
+            for f in COMPARED_FIELDS
+        },
         "score": score_structure(ie, got),
         "fingerprint": h({f: sorted(str(x) for x in getattr(got, f, [])) for f in COMPARED_FIELDS}),
         "raw": dump,
@@ -409,8 +422,8 @@ def _structure_section(results, args) -> list[str]:
     lines = [
         "## 역할 ① 구조화 (OCR 텍스트 → 등기 필드)",
         "",
-        "| provider | 성공 | 중앙 응답(초) | 항목수 일치율 | 순위번호 일치율 | 회차 간 흔들림 |",
-        "|---|---|---|---|---|---|",
+        "| provider | 성공 | 중앙 응답(초) | 항목수 일치율 | 순위번호 일치율 | 말소로 본 항목 | 회차 간 흔들림 |",
+        "|---|---|---|---|---|---|---|",
     ]
     for name, roles in results.items():
         runs = roles.get("structure") or []
@@ -426,9 +439,20 @@ def _structure_section(results, args) -> list[str]:
         rnk = f"{statistics.mean([s['rank_agreement'] for s in scored]):.0%}" if scored else "—"
         prints = {r["fingerprint"] for r in ok}
         wob = "고정" if len(prints) == 1 else f"흔들림({len(prints)}종)"
-        lines.append(f"| `{name}` | {len(ok)}/{len(runs)} | {med:.1f} | {cnt} | {rnk} | {wob} |")
+        cancels = sum(sum(r["canceled"].values()) for r in ok) / len(ok)
+        lines.append(
+            f"| `{name}` | {len(ok)}/{len(runs)} | {med:.1f} | {cnt} | {rnk} | {cancels:.1f} | {wob} |"
+        )
 
-    lines += ["", "### 필드별 항목 수 (IE vs 각 provider, 1회차 기준)", ""]
+    lines += [
+        "",
+        "### 필드별 항목 수 (IE vs 각 provider, 1회차 기준)",
+        "",
+        "> **말소되지 않은 항목만** 셌다. 두 열의 단위가 같아야 비교가 성립한다 —",
+        "> 예전에는 IE 열만 유효 개수이고 provider 열은 raw 길이라 **같은 표에서 단위가 섞였고**,",
+        "> 그 표를 읽고 \"LLM이 말소를 놓쳤다\"는 잘못된 결론을 낼 뻔했다(2026-07-28).",
+        "",
+    ]
     header = "| 필드 | IE |" + "".join(f" {n} |" for n in results)
     lines += [header, "|---" * (len(results) + 2) + "|"]
     for field in COMPARED_FIELDS:

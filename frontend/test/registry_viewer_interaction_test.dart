@@ -85,7 +85,7 @@ void main() {
   group('카드 캐러셀', () {
     testWidgets('표시 하나당 카드 하나 — 제목은 백엔드 문구 그대로', (tester) async {
       await pumpViewer(tester);
-      expect(cardTitle('집주인 이름 · 법인A'), findsOneWidget);
+      expect(cardTitle('집주인 이름 · 주식회사가나다'), findsOneWidget);
       expect(find.text('집에 잡힌 빚 (근저당권) · 4억원'), findsOneWidget);
       expect(find.text('자세히 보기 ›'), findsNWidgets(4));
     });
@@ -175,7 +175,7 @@ void main() {
       await tester.tap(find.text('자세히 보기 ›').first);
       await tester.pumpAndSettle();
 
-      expect(find.text('집주인 이름 · 법인A'), findsWidgets);
+      expect(find.text('집주인 이름 · 주식회사가나다'), findsWidgets);
       expect(
         find.descendant(
           of: find.byType(RegistryMarkSheet),

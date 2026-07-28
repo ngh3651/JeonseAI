@@ -605,3 +605,20 @@ def test_안내_문장에도_같은_규율이_적용된다():
     assert "근거 카드" not in notes
     joined = " ".join(cross_check.to_notes(cross_check.compare(extract, extract)))
     assert "근거 카드" not in joined
+
+
+def test_압류가_있는데_위치를_못_짚으면_그_사실이_화면에_나간다():
+    """앱은 `kUnmarkedNoteMarkers`가 든 문장만 화면에 그린다. 압류·가처분이 있는데
+    위치를 못 짚으면 표시가 0건이 되는데, 이 경고까지 필터에 걸리면 **화면이 통째로 빈다.**
+
+    가처분(`provisional_dispositions`)은 아직 매칭 규칙이 없어 **항상** 이 경로다
+    (2026-07-28 gap-checker 지적).
+    """
+    extract = extract_with(
+        provisional_dispositions=[entry(rank_number="3", is_canceled=False)]
+    )
+    result = highlight.build_highlights(extract, as_result(gap_gu_claims_page()))
+    assert result.highlights == []  # 가처분은 칠할 규칙이 없다
+    joined = " ".join(result.checked_notes)
+    assert "1건 있어요" in joined
+    assert "표시하지 않았어요" in joined, "앱 필터를 통과하지 못해 화면이 빈다"

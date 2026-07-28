@@ -71,11 +71,18 @@ def test_한_장이라도_표식을_못_읽으면_정렬하지_않는다():
 
 
 def test_같은_쪽_번호가_두_번_나오면_정렬하지_않는다():
-    """같은 쪽을 두 번 찍었거나 다른 등기부가 섞였다 — 어느 쪽이든 세울 수 없다."""
+    """같은 쪽을 두 번 찍었거나 다른 등기부가 섞였다 — 어느 쪽이든 세울 수 없다.
+
+    2026-07-28: 중복 감지를 **순서 점검보다 앞**으로 옮겼다. 그래야 진단이 정확해진다 —
+    예전에는 "순서가 달라요"라고 안내했지만 실제 원인은 중복이고, 사용자가 할 일도 다르다
+    (다시 정렬해 올리는 게 아니라 **한 장을 빼야** 한다).
+    이름·주소 같은 대조 항목은 계속 보여준다(`any=True`) — 중복이 그것까지 망치지는 않는다.
+    """
     check = check_document([paged(0, page_no=2, total=3), paged(1, page_no=1, total=3),
                             paged(2, page_no=1, total=3)])
     assert check.page_order is None
-    assert check.ok_to_highlight_any is False
+    assert check.ok_to_highlight_money is False
+    assert check.notice and "같은 쪽 사진" in check.notice
 
 
 def test_총_쪽수가_서로_다르면_정렬하지_않는다():
@@ -251,3 +258,23 @@ def test_어떤_업로드_순서로_넣어도_같은_표시가_나온다(order):
     assert sorted(h.kind for h in result.highlights) == ["address"]
     # 주소는 **문서 1쪽**에 있고, 그 쪽을 몇 번째로 올렸든 그 사진에 붙어야 한다
     assert result.highlights[0].page == order.index(0)
+
+
+def test_같은_쪽_사진이_두_장이면_금액_표시를_보류한다():
+    """표식이 `[1,2,3,3,4,5]`면 **정렬돼 있어** 순서 점검을 건너뛰고, 1..5가 다 채워져
+    누락 점검도 통과한다. 그런데 같은 쪽을 두 번 파싱해 항목이 중복되고, 소유자 표시는
+    "가장 마지막 등기" 규칙 때문에 **사본 쪽**으로 간다(2026-07-28 gap-checker 지적).
+    """
+    pages = [paged(i, page_no=n, total=5) for i, n in enumerate([1, 2, 3, 3, 4, 5])]
+    check = check_document(pages)
+    assert check.ok_to_highlight_money is False
+    assert check.ok_to_highlight_any is True  # 이름·주소 같은 대조 항목은 계속 보여준다
+    assert check.notice and "같은 쪽 사진" in check.notice
+    assert any("쪽 번호 중복" in r for r in check.reasons)
+
+
+def test_중복이_없으면_그대로_통과한다():
+    pages = [paged(i, page_no=i + 1, total=3) for i in range(3)]
+    check = check_document(pages)
+    assert check.ok_to_highlight_money is True
+    assert check.notice is None

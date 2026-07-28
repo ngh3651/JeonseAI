@@ -26,6 +26,7 @@ from . import (
     highlight,
     llm,
     ocr,
+    ocr_layout,
     rule_engine,
     store,
 )
@@ -149,35 +150,46 @@ def _timed(fn, *args, **kwargs):
 
 def _ocr_then_second_opinion(
     images: list[tuple[str, bytes]], run_id: str | None = None
-) -> tuple[ocr.OcrResult, RegistryExtract | None, str | None, str | None]:
+) -> tuple[
+    ocr.OcrResult, RegistryExtract | None, str | None, str | None, "ocr_layout.DocumentCheck | None"
+]:
     """OCR → (성공하면) **두 번째 추출 경로**까지 한 스레드에서 이어 돌린다.
 
     왜 이어 붙이나: 두 번째 경로의 입력이 OCR 결과라 진짜 병렬이 될 수 없다. 대신
     OCR(장당 1.6~3.1초)이 IE(실측 17~26초)보다 훨씬 빨리 끝나므로, 그 뒤에 이어 붙이면
     **IE의 그림자 안에서** 끝나 전체 시간이 거의 늘지 않는다.
 
-    반환: (OCR 결과, 두 번째 경로 추출본|None, provider 이름|None, 실패 사유|None)
+    ⚠ **사진 묶음 점검을 여기서 먼저 한다.** 순서가 뒤섞인 사진을 그대로 LLM에 먹이면
+      LLM만 뒤섞인 문서를 읽게 되고, 그 결과가 "빚은 문서 판독 3건 / 사진 판독 1건" 같은
+      **무서운 교차검증 불일치**로 사용자에게 나간다 — 원인은 등기부가 아니라 우리
+      파이프라인이다(2026-07-28 gap-checker 지적). 점검 결과는 `build_highlights`에
+      그대로 넘겨 **같은 순서·중복 계산 없이** 쓴다.
+
+    반환: (OCR 결과, 두 번째 경로 추출본|None, provider 이름|None, 실패 사유|None, 묶음 점검|None)
     ⚠ 어떤 실패도 밖으로 던지지 않는다 — 이 경로가 없어도 리포트는 그대로 완성된다.
     """
     ocr_result = ocr.run_ocr(images, run_id=run_id)
     if not ocr_result.pages:
-        return ocr_result, None, None, "OCR 결과 없음"
+        return ocr_result, None, None, "OCR 결과 없음", None
 
+    check = ocr_layout.check_document(ocr_result.pages)
     provider = llm.structure_provider()
     if provider is None:
-        return ocr_result, None, None, "두 번째 경로 꺼짐 또는 키 없음"
+        return ocr_result, None, None, "두 번째 경로 꺼짐 또는 키 없음", check
 
     try:
-        layout_text = _layout_text_for(images, ocr_result, run_id)
+        # 정렬이 확정됐으면 **그 순서로** 텍스트를 만든다 (업로드 순서가 아니라).
+        ordered, _, _ = highlight._apply_page_order(ocr_result.pages, check.page_order)
+        layout_text = _layout_text_for(images, ordered, run_id)
         second = provider.structure(layout_text, timeout=llm.STRUCTURE_TIMEOUT_SECONDS)
-        return ocr_result, second, provider.name, None
+        return ocr_result, second, provider.name, None, check
     except Exception as e:  # noqa: BLE001 — 두 번째 경로는 어떤 이유로도 분석을 막지 못한다
         _log.info(f"[LLM:{provider.name}] 구조화 실패 — 교차검증 없이 진행 ({type(e).__name__}: {e})")
-        return ocr_result, None, provider.name, f"{type(e).__name__}"
+        return ocr_result, None, provider.name, f"{type(e).__name__}", check
 
 
 def _layout_text_for(
-    images: list[tuple[str, bytes]], ocr_result: ocr.OcrResult, run_id: str | None
+    images: list[tuple[str, bytes]], pages: list, run_id: str | None
 ) -> str:
     """구조화 경로(경로 ③)에 넘길 **텍스트**를 만든다. `.env`의 `LAYOUT_SOURCE`가 고른다.
 
@@ -195,15 +207,18 @@ def _layout_text_for(
     """
     source = (os.environ.get("LAYOUT_SOURCE", "") or "ocr_layout").strip().lower()
     if source != "document_parse":
-        return llm.render_layout_text(ocr_result.pages)
+        return llm.render_layout_text(pages)
 
     parsed = document_parse.run_document_parse(images, run_id=run_id)
-    if not parsed.ok:
+    # ⚠ **전 장이 성공했을 때만 쓴다.** 한 장이라도 빠지면 반쪽 문서를 LLM에 먹이는 셈이라
+    #   항목 개수가 모자라고, 그 부족분이 "교차검증 불일치"로 둔갑해 사용자에게는
+    #   등기부 문제로 읽힌다(2026-07-28 gap-checker 지적).
+    if not parsed.ok or len(parsed.pages) != len(images):
         _log.info(
-            "[DP] 결과가 없어 ocr_layout 텍스트로 되돌아감"
+            f"[DP] {len(parsed.pages)}/{len(images)}장만 성공 → ocr_layout 텍스트로 되돌아감"
             f" (실패 {len(parsed.errors)}건) — 분석은 그대로 진행"
         )
-        return llm.render_layout_text(ocr_result.pages)
+        return llm.render_layout_text(pages)
     text = document_parse.render_parsed_text(parsed.pages)
     _log.info(
         f"[DP] 레이아웃 출처 = document_parse ({parsed.elapsed:.1f}초, {len(text):,}자)"
@@ -261,8 +276,8 @@ def analyze(
         raise ie_error
     if ocr_error is not None:  # run_ocr는 예외를 삼키지만, 만약을 대비한 최종 방어선
         _log.info(f"[OCR] 예기치 못한 예외 — 좌표 없이 계속 진행 ({type(ocr_error).__name__})")
-        ocr_bundle = (ocr.OcrResult(), None, None, type(ocr_error).__name__)
-    ocr_result, second_extract, second_provider, second_error = ocr_bundle
+        ocr_bundle = (ocr.OcrResult(), None, None, type(ocr_error).__name__, None)
+    ocr_result, second_extract, second_provider, second_error, doc_check = ocr_bundle
 
     assert extract is not None  # ie_error가 없으면 반드시 값이 있다
     # [진단] IE 응답 실태 — 개수/참·거짓만 (이름·등록번호 금지). rank_number 채움 여부 확인용.
@@ -281,7 +296,9 @@ def analyze(
     )
 
     try:
-        highlight_result = highlight.build_highlights(extract, ocr_result, cross=check)
+        highlight_result = highlight.build_highlights(
+            extract, ocr_result, cross=check, check=doc_check
+        )
     except Exception as e:  # noqa: BLE001 — 표시 기능이 분석을 깨뜨리면 안 된다
         _log.info(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})")
         highlight_result = highlight.HighlightResult([])

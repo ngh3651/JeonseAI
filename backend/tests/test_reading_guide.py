@@ -562,3 +562,46 @@ def test_말소된_항목은_상한_계산에도_들어가지_않는다():
     assert len(marks(result, "mortgage")) == 5
     assert "6,000만원" not in titles and "7,000만원" not in titles  # 말소분은 빠진다
     assert "1,000만원" in titles  # 그래서 작은 것까지 자리가 난다
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 문구 규율 — 카드에 보이는 것은 `body`의 **첫 문장**뿐이다
+# ══════════════════════════════════════════════════════════════════════════════
+
+# 2026-07-27 이전에 이미 리뷰를 거친 문구 2종. 이번 규율의 소급 대상이 아니다
+# (바꾸려면 별도 결정이 필요하다 — 기록된 문구를 조용히 갈아치우지 않는다).
+_LEGACY_BODIES = {"mortgage", "jeonse"}
+
+
+@pytest.mark.parametrize(
+    "kind", sorted(k for k, s in highlight._SPECS.items() if s.body and k not in _LEGACY_BODIES)
+)
+def test_첫_문장이_행동으로_끝난다(kind: str):
+    """카드 캐러셀은 `body`의 **첫 문장만** 요약으로 보여준다(`analysis_report.dart`).
+
+    상황 설명이 먼저 오면 카드에는 무서운 사실만 남고 할 일은 시트를 열어야 보인다 —
+    "심장이 내려앉았는데 뭘 하라는 말이 없어요"(2026-07-28 지수).
+    """
+    line = highlight._SPECS[kind].body.split("\n")[0]
+    # 한 줄에 두 문장이 올 수 있다. **첫 문장**이 행동이어야 한다.
+    first = line.split(". ")[0].rstrip()
+    assert first.endswith(("하세요", "마세요", "보세요", "안 돼요", "하세요.", "마세요.", "보세요.", "안 돼요.")), (
+        f"{kind}의 첫 문장이 행동이 아니다: {first[:50]}"
+    )
+
+
+@pytest.mark.parametrize("kind", sorted(highlight._SPECS))
+def test_화면에_없는_이름으로_안내하지_않는다(kind: str):
+    """리포트의 그 목록은 화면에서 **'근거 살펴보기'** 라고 불린다.
+    "근거 카드"라고 쓰면 사용자가 어디인지 못 찾는다(2026-07-28 지수)."""
+    assert "근거 카드" not in highlight._SPECS[kind].body
+
+
+def test_안내_문장에도_같은_규율이_적용된다():
+    from app.services import cross_check
+
+    extract = extract_with(current_owners=[Owner(name="홍길동")])
+    notes = " ".join(highlight.build_highlights(extract, as_result(gap_gu_claims_page())).checked_notes)
+    assert "근거 카드" not in notes
+    joined = " ".join(cross_check.to_notes(cross_check.compare(extract, extract)))
+    assert "근거 카드" not in joined

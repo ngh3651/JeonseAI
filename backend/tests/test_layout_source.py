@@ -111,6 +111,20 @@ def fake_ocr():
     return ocr.OcrResult(pages=[gap_gu_page(0), eul_gu_page()], elapsed=1.0)
 
 
+def fake_pages():
+    """`_layout_text_for`가 받는 것은 **이미 정렬된 페이지 목록**이다(OcrResult가 아니다).
+
+    2026-07-28: 사진 순서 정렬을 두 번째 경로에도 먹이려고 시그니처를 바꿨다 —
+    예전에는 LLM만 뒤섞인 문서를 읽고 그 결과가 '교차검증 불일치'로 나갔다.
+    """
+    return fake_ocr().pages
+
+
+def one_image():
+    """DP는 **전 장이 성공했을 때만** 쓴다 — 장수를 맞춰 줘야 폴백으로 안 떨어진다."""
+    return [("page_1.jpg", b"")]
+
+
 def test_기본값은_ocr_layout이다(monkeypatch):
     """스위치를 넣었다고 동작이 바뀌면 그건 리팩터가 아니라 사양 변경이다."""
     monkeypatch.delenv("LAYOUT_SOURCE", raising=False)
@@ -118,9 +132,9 @@ def test_기본값은_ocr_layout이다(monkeypatch):
     monkeypatch.setattr(
         document_parse, "run_document_parse", lambda *a, **k: called.append(1) or ParseResult()
     )
-    text = report_builder._layout_text_for([], fake_ocr(), None)
+    text = report_builder._layout_text_for(one_image(), fake_pages(), None)
     assert called == [], "기본값에서 DP를 불렀다 — 크레딧이 새 나간다"
-    assert text == llm.render_layout_text(fake_ocr().pages)
+    assert text == llm.render_layout_text(fake_pages())
 
 
 @pytest.mark.parametrize("value", ["ocr_layout", "OCR_LAYOUT", "", "  ", "이상한값"])
@@ -129,7 +143,7 @@ def test_모르는_값이면_기존_경로로_간다(monkeypatch, value):
     monkeypatch.setattr(
         document_parse, "run_document_parse", lambda *a, **k: pytest.fail("DP를 부르면 안 된다")
     )
-    assert report_builder._layout_text_for([], fake_ocr(), None)
+    assert report_builder._layout_text_for(one_image(), fake_pages(), None)
 
 
 def test_document_parse를_고르면_DP_텍스트를_쓴다(monkeypatch):
@@ -139,7 +153,7 @@ def test_document_parse를_고르면_DP_텍스트를_쓴다(monkeypatch):
         "run_document_parse",
         lambda *a, **k: ParseResult(pages=dp_pages(), elapsed=3.9),
     )
-    text = report_builder._layout_text_for([], fake_ocr(), None)
+    text = report_builder._layout_text_for(one_image(), fake_pages(), None)
     assert "1번근저당권설정등기말소" in text
     assert "[heading1]" in text
 
@@ -152,8 +166,8 @@ def test_DP가_실패하면_조용히_기존_경로로_되돌아간다(monkeypat
         "run_document_parse",
         lambda *a, **k: ParseResult(errors=["timeout"]),
     )
-    text = report_builder._layout_text_for([], fake_ocr(), None)
-    assert text == llm.render_layout_text(fake_ocr().pages)
+    text = report_builder._layout_text_for(one_image(), fake_pages(), None)
+    assert text == llm.render_layout_text(fake_pages())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -175,7 +189,7 @@ def test_어느_경로를_골라도_등급이_같다(monkeypatch, source):
         mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)],
     )
     verdict = rule_engine.evaluate(extract, deposit=100_000_000, market_price=300_000_000)
-    report_builder._layout_text_for([], fake_ocr(), None)  # 경로를 실제로 태운다
+    report_builder._layout_text_for(one_image(), fake_pages(), None)  # 경로를 실제로 태운다
     after = rule_engine.evaluate(extract, deposit=100_000_000, market_price=300_000_000)
     assert verdict.grade == after.grade
     assert verdict.gauge_progress == after.gauge_progress
@@ -198,3 +212,18 @@ def test_DP_모듈은_좌표를_들고_다니지_않는다():
     page = ParsedPage(index=0, name="p", elements=[{"category": "table", "content": {}}])
     assert not hasattr(page, "coordinates")
     assert "coordinates" not in ParsedPage.__dataclass_fields__
+
+
+def test_DP가_일부_장만_성공하면_기존_경로로_되돌아간다(monkeypatch):
+    """반쪽 문서를 LLM에 먹이면 항목 개수가 모자라고, 그 부족분이 **교차검증 불일치로
+    둔갑해** 사용자에게는 등기부 문제로 읽힌다(2026-07-28 gap-checker 지적)."""
+    monkeypatch.setenv("LAYOUT_SOURCE", "document_parse")
+    monkeypatch.setattr(
+        document_parse,
+        "run_document_parse",
+        lambda *a, **k: ParseResult(pages=dp_pages(), elapsed=3.9, errors=["2장 실패"]),
+    )
+    images = [("page_1.jpg", b""), ("page_2.jpg", b""), ("page_3.jpg", b"")]
+    text = report_builder._layout_text_for(images, fake_pages(), None)
+    assert text == llm.render_layout_text(fake_pages())
+    assert "1번근저당권설정등기말소" not in text  # DP 텍스트를 쓰지 않았다

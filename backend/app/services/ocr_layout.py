@@ -693,6 +693,28 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
         check.reasons.append(f"상단 주소 줄이 서로 다름: {sorted(addresses)}")
         return check
 
+    # ①-b 같은 쪽 사진이 두 장인가 — 순서가 맞아 보여도 구조가 깨진다.
+    #
+    # 실측 시나리오(2026-07-28 gap-checker): 5쪽 완본 + 3쪽 사본 1장 = 6장.
+    # 표식이 `[1,2,3,3,4,5]`라 **정렬돼 있어** 순서 점검을 건너뛰고, 1..5가 다 채워져
+    # 누락 점검도 통과한다. 그런데 `build_items`가 3쪽을 두 번 파싱해 같은 항목이 두 번
+    # 생기고, 소유자 표시는 "가장 마지막 등기" 규칙 때문에 **사본 쪽**으로 간다.
+    # 중복 자체가 "무엇이 진짜인지 모른다"는 뜻이므로 금액 표시를 보류한다.
+    if markers:
+        numbers = [m[0] for _, m in markers]
+        dupes = sorted({n for n in numbers if numbers.count(n) > 1})
+        if dupes:
+            check.ok_to_highlight_money = False
+            check.notice = (
+                "같은 쪽 사진이 두 번 올라와 있어요. 한 쪽당 한 장씩만 올리면 "
+                "빚 표시까지 보여 드릴 수 있어요."
+            )
+            check.reasons.append(
+                f"쪽 번호 중복: {dupes} (표식 {numbers}) → 같은 항목이 두 번 읽혀"
+                " 금액 표시를 보류"
+            )
+            return check
+
     # ② 사진 순서가 뒤바뀌었는가 — 항목이 페이지를 걸쳐 이어지므로 순서가 틀리면 구조가 깨진다.
     #
     # 2026-07-28 변경: 예전에는 **무조건 전부 표시 안 함**이었다. 그런데 서버는 올바른

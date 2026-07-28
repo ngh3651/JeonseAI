@@ -786,7 +786,9 @@ def test_유효한_근저당을_못_찾으면_리포트로_안내한다():
         mortgages=[MoneyEntry(rank_number="7", amount=99_000_000, is_canceled=False)],
     )
     result = highlight.build_highlights(extract, as_result(gap_gu_page()))
-    assert any("리포트의 근거 카드에서 확인" in n for n in result.checked_notes)
+    # 화면에 실제로 있는 이름으로 안내해야 한다 — 리포트의 그 목록 제목은 '근거 살펴보기'다
+    # (2026-07-28 지수 지적: "근거 카드가 어디인지 몰라요")
+    assert any("'근거 살펴보기'에서 확인" in n for n in result.checked_notes)
 
 
 def test_시트_문장에_출처가_붙는다():

@@ -111,12 +111,24 @@ PreviewCrop previewCropFor({
   );
 }
 
-/// 미리보기에 쓸 표시를 고른다 — **첫 번째 위험 표시**, 없으면 첫 표시, 그것도 없으면 null.
+/// 미리보기에 쓸 표시를 고른다 — **가장 무거운 표시** 하나. 없으면 null.
+///
+/// 2026-07-28 변경: 예전에는 "목록 순서상 첫 번째 위험 표시"였다. 그런데 그 순서가
+/// **등기부 읽는 순서**로 바뀌면서 `separate_land`(표제부)가 `auction`·`seizure`·`mortgage`를
+/// 전부 이겼다 — **경매가 시작된 집인데 미리보기에 토지 별도등기가 뜬다.**
+/// 하필 토지 별도등기·공동담보·신청사건은 decisions.md에 "판정 승격 보류 — 표시만 한다"로
+/// 적힌 항목이라, 사용자가 리포트에서 보는 단 하나의 형광펜이 **등급에 1도 기여하지 않는
+/// 항목**이 된다(2026-07-28 서연·design-reviewer 공통 지적).
+///
+/// → [MarkKind.weight]로 고른다. **뱃지 번호와 문서 순서는 읽는 순서 그대로 둔다** —
+///   두 축을 분리하는 것이 요점이다.
 RegistryHighlight? previewMarkOf(List<RegistryHighlight> marks) {
-  for (final m in marks) {
-    if (m.markKind.isRisk) return m;
-  }
-  return marks.isEmpty ? null : marks.first;
+  if (marks.isEmpty) return null;
+  final risky = marks.where((m) => m.markKind.isRisk).toList();
+  final pool = risky.isNotEmpty ? risky : marks;
+  return pool.reduce(
+    (a, b) => b.markKind.weight > a.markKind.weight ? b : a,
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════

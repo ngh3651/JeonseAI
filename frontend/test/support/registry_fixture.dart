@@ -120,3 +120,47 @@ class FakeAnalysisRepository extends AnalysisRepository {
   @override
   Future<void> deleteReport(String id) async {}
 }
+
+/// **최악 조합** 리포트 — 15종이 전부 등장하고 종류당 상한(5건)도 채운다.
+///
+/// 왜 따로 두나 (2026-07-28 design-reviewer 지적): [buildFixtureReport]는
+/// `owner` + `mortgage`뿐이라 **3종 시절 세계**를 잰다. 하단 크롬(범례·회색 줄)이
+/// 15종에서 얼마나 커지는지는 그 픽스처로 절대 드러나지 않는다.
+/// 문서 영역 하한 400dp를 지키는 테스트는 **최악 조합으로 재야** 의미가 있다.
+AnalysisReport buildWorstCaseReport() {
+  const kinds = [
+    'address', 'area', 'separate_land', 'doc_title', 'owner',
+    'provisional_seizure', 'seizure', 'auction', 'trust',
+    'mortgage', 'jeonse', 'lease_registration', 'joint_collateral',
+    'pending_application', 'viewed_at',
+  ];
+  final marks = <RegistryHighlight>[];
+  var badge = 1;
+  for (final kind in kinds) {
+    marks.add(fixtureMark(badge, kind, badge % 4 + 1, 0.1 + (badge % 8) * 0.1,
+        '$kind · 최악 조합 표시'));
+    badge++;
+  }
+  return AnalysisReport(
+    id: 'r1',
+    alias: '샘플빌라 제101호',
+    address: '서울특별시 샘플구 샘플동 1-1 샘플빌라 제101호',
+    analyzedAt: DateTime(2026, 7, 27),
+    grade: RiskGrade.danger,
+    headline: '계약 전 반드시 전문가 확인이 필요해요',
+    nextAction: '전문가 상담부터 받으세요',
+    topRiskSummary: '선순위 채권',
+    deposit: 130000000,
+    marketPrice: 200000000,
+    seniorDebtAmount: 1400000000,
+    gaugeProgress: 0.8,
+    evidences: const [],
+    highlights: marks,
+    checkedNotes: const [
+      '집에 잡힌 빚(근저당) 2건은 **모두 말소된 것으로 확인**해 표시하지 않았어요 — 이미 정리된 빚이에요',
+      '압류는 8건 중 큰 것부터 5건만 사진에 표시했어요. 나머지 3건은 화면이 가려져서 표시하지 않았어요 — 리포트의 근거 목록에는 8건 다 들어 있어요',
+      '사진 순서가 등기부 쪽수와 달라 자동으로 맞췄어요 — 다시 올리지 않으셔도 돼요',
+      '서류 내용을 2가지 방법으로 교차 확인했어요 — 빚(근저당) 3건, 가압류 3건 외 2종 일치',
+    ],
+  );
+}

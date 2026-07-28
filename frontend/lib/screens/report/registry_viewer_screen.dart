@@ -49,6 +49,7 @@ import '../../models/registry_mark_kind.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../state/registry_photo_store.dart';
 import 'registry_document_layout.dart';
+import 'registry_entry_card.dart' show previewMarkOf;
 import 'registry_mark_carousel.dart';
 import 'registry_mark_sheet.dart';
 import 'registry_mark_stripe.dart';
@@ -276,7 +277,13 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
     final report = await repo.getReport(widget.reportId);
     final sizes = await Future.wait([for (final p in _paths) _intrinsicSize(p)]);
     final data = _ViewerData(report: report, sizes: sizes);
-    _selected.value ??= data.marks.isEmpty ? null : data.marks.first.id;
+    // 진입 시 선택은 **가장 무거운 표시**다(목록의 첫 표시가 아니라).
+    //
+    // 목록은 등기부 읽는 순서라 첫 표시가 `address`(주소)이고, 그 다음이 `area`(면적)다.
+    // 둘 다 초록이라 **위험 등급 리포트에서도 뷰어 첫인상이 초록**이 된다 —
+    // 보수적 편향(risk-scoring 3절)과 정면으로 충돌한다(2026-07-28 design-reviewer).
+    // 뱃지 번호·문서 스크롤 순서는 읽는 순서 그대로 두고, **선택만** 무게순으로 연다.
+    _selected.value ??= previewMarkOf(data.marks)?.id;
     return data;
   }
 

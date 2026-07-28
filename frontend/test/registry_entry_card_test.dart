@@ -228,4 +228,40 @@ void main() {
       expect(find.byIcon(Icons.chevron_right), findsNothing);
     });
   });
+
+  _previewWeight();
+}
+
+void _previewWeight() {
+  group('미리보기 선택 — 읽는 순서가 아니라 무게순 (2026-07-28)', () {
+    RegistryHighlight mark(String kind, int badge) => RegistryHighlight(
+      id: '$kind-$badge',
+      page: 0,
+      kind: kind,
+      badge: badge,
+      box: const HighlightBox(x: 0.1, y: 0.1, w: 0.1, h: 0.02),
+      title: kind,
+      body: '본문',
+    );
+
+    test('경매가 토지 별도등기를 이긴다 (목록에서는 별도등기가 앞이어도)', () {
+      // 목록 순서 = 등기부 읽는 순서라 separate_land(order 30)가 auction(62)보다 앞이다.
+      final picked = previewMarkOf([
+        mark('address', 1),
+        mark('separate_land', 2),
+        mark('auction', 3),
+        mark('mortgage', 4),
+      ]);
+      expect(picked?.kind, 'auction');
+    });
+
+    test('위험 표시가 없으면 대조할 곳 중 가장 무거운 것', () {
+      final picked = previewMarkOf([mark('address', 1), mark('owner', 2)]);
+      expect(picked?.kind, 'owner');
+    });
+
+    test('표시가 없으면 null — 스트립 없이 하단 행만 남는다', () {
+      expect(previewMarkOf(const []), isNull);
+    });
+  });
 }

@@ -539,16 +539,39 @@ void main() {
       expect(MarkLegend.verifyCount(kinds), 1);
     });
 
-    test('종류가 3개를 넘으면 범례를 "등"으로 접는다', () {
-      // 종류가 15개로 늘면서 전부 나열하면 범례가 화면을 잡아먹는다.
+    test('종류가 많으면 범례에서 이름을 빼고 색-의미만 남긴다', () {
+      // 360dp 가용 폭 328dp인데 이름을 붙이면 364dp가 되어 Wrap이 두 줄이 되고,
+      // 문서 영역이 하한 400dp 아래로 떨어진다(2026-07-28 design-reviewer 실측).
       final legend = MarkLegend.fromKinds([
         MarkKind.address,
         MarkKind.owner,
         MarkKind.viewedAt,
         MarkKind.seizure,
       ]);
-      expect(legend.first.label, '주소·이름 등 대조할 곳');
-      expect(legend.last.label, '압류처럼 따져볼 곳');
+      expect(legend.first.label, '대조할 곳');
+      expect(legend.last.label, '따져볼 곳');
+    });
+
+    test('한쪽만 많아도 양쪽 다 이름을 뺀다', () {
+      // 한 줄만 이름이 붙어 있으면 "이쪽만 종류가 있다"로 읽힌다.
+      final legend = MarkLegend.fromKinds([
+        MarkKind.owner, // verify 1종
+        MarkKind.seizure, MarkKind.auction, MarkKind.mortgage, // risk 3종
+      ]);
+      expect(legend.map((e) => e.label), ['대조할 곳', '따져볼 곳']);
+    });
+
+    test('미리보기는 가장 무거운 표시를 고른다 (목록 첫 표시가 아니라)', () {
+      // 목록 순서는 등기부 읽는 순서라 separate_land(표제부)가 auction(갑구)보다 앞이다.
+      // 그 순서로 고르면 **경매가 시작된 집인데 미리보기가 토지 별도등기**가 된다.
+      expect(MarkKind.auction.weight, greaterThan(MarkKind.separateLand.weight));
+      expect(MarkKind.seizure.weight, greaterThan(MarkKind.jointCollateral.weight));
+      expect(MarkKind.mortgage.weight, greaterThan(MarkKind.pendingApplication.weight));
+      // 모르는 종류는 무겁게 — 보수적 편향
+      expect(MarkKind.unknown.weight, greaterThan(MarkKind.mortgage.weight));
+      // 무게는 **등급이 아니다** — 톤(색)은 무게와 무관하게 정해진다
+      expect(MarkKind.separateLand.tone, MarkTone.risk);
+      expect(MarkKind.owner.tone, MarkTone.verify);
     });
 
     test('새로 추가된 종류가 전부 파싱된다 (서버 kind ↔ 앱 enum)', () {

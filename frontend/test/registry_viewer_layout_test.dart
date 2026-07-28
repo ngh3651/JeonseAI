@@ -100,9 +100,11 @@ void main() {
 
     expect(find.byType(RegistryPositionRail), findsOneWidget);
     expect(find.byType(RegistryMarkCarousel), findsOneWidget);
-    // 범례 — 색상만 다르고 형태가 같은 두 표시의 유일한 구분 단서다
-    expect(find.text('이름처럼 대조할 곳'), findsOneWidget);
-    expect(find.text('빚처럼 따져볼 곳'), findsOneWidget);
+    // 범례 — 색상만 다르고 형태가 같은 두 표시의 유일한 구분 단서다.
+    // ⚠ 고정 문자열로 못 박지 않는다. 종류가 많으면 이름을 빼고 `대조할 곳`만 남기므로
+    //   (2026-07-28), 문자열을 박으면 **범례를 줄이는 개선이 테스트에 막힌다.**
+    expect(find.textContaining('대조할 곳'), findsWidgets);
+    expect(find.textContaining('따져볼 곳'), findsWidgets);
     // 회색 한 줄 — 리포트엔 근저당 4건인데 카드가 3장인 이유를 대는 자리
     expect(find.textContaining('말소'), findsOneWidget);
   });
@@ -117,5 +119,65 @@ void main() {
     await pumpViewer(tester);
     expect(find.byIcon(Icons.bug_report), findsNothing);
     expect(find.byIcon(Icons.bug_report_outlined), findsNothing);
+  });
+
+  _worstCaseLayout();
+}
+
+/// 최악 조합(15종 전부 + 고지 4줄)에서도 문서 영역 하한이 지켜지는가.
+///
+/// 2026-07-28 design-reviewer 지적: 기존 픽스처는 `owner`+`mortgage`뿐이라
+/// **3종 시절 세계**를 잰다. 하단 크롬이 15종에서 얼마나 커지는지는 드러나지 않는다.
+void _worstCaseLayout() {
+  group('최악 조합 — 15종이 전부 나와도 문서가 400dp 이상 남는가', () {
+    late Directory temp;
+
+    setUp(() async {
+      RegistryPhotoStore.instance.clear();
+      temp = await Directory.systemTemp.createTemp('viewer_worst');
+      RegistryPhotoStore.instance.register('r1', await writeFixturePhotos(temp));
+    });
+
+    tearDown(() async {
+      RegistryPhotoStore.instance.clear();
+      if (temp.existsSync()) await temp.delete(recursive: true);
+    });
+
+    testWidgets('문서 영역이 하한 아래로 내려가지 않는다', (tester) async {
+      tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
+      tester.view.devicePixelRatio = 3;
+      tester.view.padding = const FakeViewPadding(
+        top: kStatusBar * 3,
+        bottom: kGestureBar * 3,
+      );
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AnalysisRepository>.value(
+          value: FakeAnalysisRepository(buildWorstCaseReport()),
+          child: const MaterialApp(home: RegistryViewerScreen(reportId: 'r1')),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final document = tester.getSize(
+        find.ancestor(
+          of: find.byType(ListView).first,
+          matching: find.byType(Expanded),
+        ),
+      );
+      debugPrint('[최악 조합 세로 예산] 문서 ${document.height.toStringAsFixed(1)}dp');
+      expect(
+        document.height,
+        greaterThanOrEqualTo(kMinDocumentHeight),
+        reason:
+            '15종이 전부 나오는 등기부에서 문서가 ${document.height.toStringAsFixed(0)}dp로 '
+            '줄었다. 범례가 두 줄이 됐거나 회색 줄이 늘었다 — 하단 크롬을 다시 줄일 때다.',
+      );
+    });
   });
 }

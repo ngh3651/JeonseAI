@@ -115,4 +115,6 @@
 | `backend/scripts/measure_ie_reproducibility.py` | IE 재현성 측정 CLI | **유지 쪽.** 모델·엔드포인트가 바뀔 때마다 다시 돌릴 가치가 있다 | ⏳ |
 | `backend/scripts/compare_llm.py` | 국내 LLM 비교 하네스 (구조화·설명 2역할) | **유지 쪽.** A.X 키가 도착하면 그대로 다시 돌린다 | ⏳ |
 | `backend/out/dp_*.json` · `out/llm_compare/` · `out/runs/` | DP 원응답 · LLM 비교 원본 · 회차별 IE/OCR 원응답. **전부 등기부 실명 포함** | `out/runs/`는 **코드가 최근 5회분만 유지**(artifacts.py). `dp_*`·`llm_compare/`는 **E-6 정리 스윕에서 수동 삭제** | ⏳ |
+| `backend/scripts/check_market_price.py` | 실거래가 조회 검증 CLI(2026-07-29). 주소→법정동코드→조회→집계를 사람이 읽는 형태로 찍는다. **공공 API라 크레딧 소모 없음** | **시세 자동조회가 analyze에 배선된 뒤**: 개발 도구로 유지할지 결정(`run_rules.py`와 동일 취급). 기능을 도입하지 않기로 하면 `market_price.py`·`lawd_code.py`와 함께 삭제 | ⏳ |
+| `backend/out/runs/<회차>/molit_*.json` | 실거래가 원응답 저장분(`market_price.SAVE_MOLIT_RAW`, `DEV_MODE_AUTH`에 묶임). 지번·면적·금액은 공개 정보라 개인정보는 아니지만 **어느 지번을 조회했는지**가 남는다 | `out/runs/`는 코드가 최근 5회분만 유지(artifacts.py). 저장 스위치는 **면적·지번 매칭이 여러 등기부로 확정되면 제거** | ⏳ |
 | `frontend` 뷰어의 `kUnmarkedNoteMarkers` 문자열 매칭 | 서버 문구를 부분 문자열로 골라 화면에 그리는 임시 방식. **서버가 문구를 바꾸면 조용히 사라진다**(2026-07-28에 실제로 고지 3종이 탈락하고 있었다) | **`checkedNotes`에 분류 태그를 넣는 계약 변경이 승인되면** 이 목록을 통째로 삭제 (`docs/api-contract.md` §9.7에 부채로 명시) | ⏳ |

@@ -211,7 +211,7 @@ class LawdCandidate:
     matched_tokens: int  # 몇 토큰까지 일치했나 (구 > 시 우선순위 근거)
 
 
-def _address_head(address: str) -> str:
+def address_head(address: str) -> str:
     """주소에서 시도·시군구가 들어 있는 앞부분만 남긴다.
 
     `formatting.short_address`와 같은 관례를 쓴다 — 등기부는 '지번, 도로명'을 병기하는
@@ -246,9 +246,17 @@ def lawd_candidates(address: str) -> list[LawdCandidate]:
     일치한 쪽(구 > 시)이 먼저다 — '경기도 수원시 장안구'는 '경기도 수원시'(41110)와
     '경기도 수원시 장안구'(41111)에 모두 걸리는데, 실거래가 API가 받는 것은 구 단위다.
 
-    ⚠ 이 순서는 **임시**다. '존재 먼저'가 맞는지는 STEP 2에서 강원 춘천시로
-      42110(폐지)과 51110(존재)을 둘 다 찔러 확인한 뒤 근거와 함께 확정한다.
-      과거 거래가 옛 코드로 신고돼 있다면 순서가 뒤집힐 수 있다.
+    ✅ '존재 먼저'는 **2026-07-29 실호출로 확정됐다**(더 이상 임시가 아니다).
+       강원 춘천시로 둘 다 찔러 본 결과, 아파트 매매 2026-06 기준
+         · 42110(강원도 춘천시, 폐지)   → totalCount **0**
+         · 51110(강원특별자치도, 존재)  → totalCount **225**
+       개편 전 거래도 **현행 코드로 조회된다.** 옛 코드로 신고돼 있을 것이라는
+       가정은 틀렸다 — API가 코드 개편에 맞춰 과거분까지 옮겨 놓았다.
+
+    ⚠ 그래도 폐지 행을 후보에서 빼지 않는다. 실거래가 API는 **존재하지 않는 코드에도**
+      정상 응답(`resultCode=000`, `totalCount=0`)을 준다 — 즉 "코드가 틀렸다"와
+      "거래가 없다"를 응답으로 구분할 수 없다. 순서대로 시도해 첫 유효 응답을 쓰는
+      것 말고는 방법이 없고, 폐지 코드는 그 안전망이다.
 
     ⚠ 최장 일치 하나만 남기지 않고 **걸린 것을 모두 담는다.** 실측 근거:
       '경기도 부천시 원미구'는 41192(존재)와 41195(폐지)로 두 번 나오고,
@@ -257,7 +265,7 @@ def lawd_candidates(address: str) -> list[LawdCandidate]:
 
     못 찾으면 빈 목록. 추측하지 않는다.
     """
-    tokens = tuple(_address_head(address).split())
+    tokens = tuple(address_head(address).split())
     if not tokens:
         _warn_unmatched(tokens)
         return []

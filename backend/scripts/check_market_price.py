@@ -73,7 +73,10 @@ def main() -> int:
     print("     공동주택의 동·호는 실거래가에 공개되지 않습니다)")
 
     # 2) 후보를 순서대로 시도 — 잘못된 코드도 '0건'으로 오므로 이 방법뿐이다
-    month_plan = [args.months] if args.months else [mp.DEFAULT_MONTHS, mp.FALLBACK_MONTHS]
+    # 운영 경로는 6개월 한 번만 본다(0건이면 None). --months는 **조사용**이다 —
+    # 적중률 측정처럼 "몇 개월이면 몇 건이 잡히나"를 재려고 손으로 넓혀 보는 용도이지,
+    # 0건일 때 자동으로 넓히는 동작이 아니다.
+    month_plan = [args.months] if args.months else [mp.DEFAULT_MONTHS]
     matched: list[mp.Trade] = []
     used_code = None
     used_months = None
@@ -122,7 +125,10 @@ def main() -> int:
 
     print(f"\n[4] 집계 — {period_from} ~ {period_to} · {len(prices)}건 · LAWD_CD={used_code}")
     if used_months != mp.DEFAULT_MONTHS:
-        print(f"    ⚠ 최근 {mp.DEFAULT_MONTHS}개월에는 거래가 없어 {used_months}개월로 넓혔습니다.")
+        print(
+            f"    ⚠ 조사용으로 {used_months}개월을 봤습니다. 운영 경로는 "
+            f"{mp.DEFAULT_MONTHS}개월만 보고, 0건이면 채우지 않습니다."
+        )
     print(f"    최저가   {won(prices[0]):>16}")
     q1 = quantiles(prices, n=4)[0] if len(prices) >= mp.QUANTILE_MIN_SAMPLES else prices[0]
     print(f"    하위25%  {won(q1):>16}   ← 채택 방식")

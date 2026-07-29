@@ -123,14 +123,16 @@ def test_면적이_허용오차_밖이면_제외된다():
     assert sorted(t.area_sqm for t in got) == [84.88, 85.5]
 
 
-def test_인접평형은_기본_허용오차에서_섞이지_않는다():
-    """실측: 같은 단지에 84.74와 84.88이 0.17% 차이로 공존한다.
+def test_사실상_동일면적은_묶고_다른_평형은_제외한다():
+    """실측: 같은 단지에 84.74·84.88(0.17% 차이)과 59.82가 함께 있다.
 
-    ±10%였다면 59.82까지 섞였을 것이다(76.4~93.4). ±1%는 그걸 막는다.
+    ±1%(84.03~85.73)는 84.74를 **일부러 함께 담는다** — 같은 84타입이라 가격이 사실상
+    같고, 표본이 늘면 Q1이 안정되기 때문이다. 막으려는 것은 59.82 같은 **다른 평형**이고,
+    ±10%(76.4~93.4)였다면 그것까지 섞였을 것이다.
     """
     trades = [trade(area=84.74), trade(area=84.88), trade(area=59.82)]
     got = filter_trades(trades, umd_nm=UMD, jibun=JIBUN, area_sqm=84.88)
-    assert sorted(t.area_sqm for t in got) == [84.74, 84.88]  # 59.82는 안 들어온다
+    assert sorted(t.area_sqm for t in got) == [84.74, 84.88]  # 59.82만 빠진다
 
 
 def test_해제거래는_집계_전에_제외된다():
@@ -338,6 +340,46 @@ def test_지번이_숫자가_아니면_None():
 @pytestmark_lawd
 def test_법정동코드를_못_찾으면_None():
     assert mp.parse_address_parts("없는시도 없는구 없는동 1") is None
+
+
+# ── 기간 확장 금지 (봉인) ───────────────────────────────────────────────────
+
+
+def test_0건일_때_기간을_자동으로_넓히지_않는다(monkeypatch):
+    """운영 경로는 6개월만 본다. 0건이면 None으로 끝난다.
+
+    한때 '0건이면 12개월로 1회 확장'이 들어갔다가 되돌렸다 — 그 동작이 만든 값이
+    8.5개월 전 거래 1건을 오늘의 시세로 쓰는 것이었다. 다시 들어오지 못하게 봉인한다.
+    """
+    calls: list[int] = []
+
+    def fake_collect(lawd_cd, *, months, house_types, today, run_id):
+        calls.append(months)
+        return [], []  # 항상 0건
+
+    monkeypatch.setattr(mp, "collect_trades", fake_collect)
+    monkeypatch.setattr(mp, "_load_api_key", lambda: "dummy")
+
+    result, _ = mp.lookup_market_price(
+        lawd_cd="11470", umd_nm=UMD, jibun=JIBUN, area_sqm=84.88, today=date(2026, 7, 29)
+    )
+    assert result is None
+    assert calls == [mp.DEFAULT_MONTHS]  # 6개월 한 번만. 재시도 없음
+    assert not hasattr(mp, "FALLBACK_MONTHS")  # 확장 상수 자체가 없어야 한다
+
+
+def test_매칭되면_6개월_결과를_그대로_쓴다(monkeypatch):
+    def fake_collect(lawd_cd, *, months, house_types, today, run_id):
+        return [trade(price=1_500_000_000)], []
+
+    monkeypatch.setattr(mp, "collect_trades", fake_collect)
+    result, _ = mp.lookup_market_price(
+        lawd_cd="11470", umd_nm=UMD, jibun=JIBUN, area_sqm=84.88, today=date(2026, 7, 29)
+    )
+    assert result is not None
+    assert result.months_used == 6
+    assert result.period_from == "2026-02"
+    assert result.period_to == "2026-07"
 
 
 # ── 단독·다가구 제외 ────────────────────────────────────────────────────────

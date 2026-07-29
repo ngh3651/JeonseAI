@@ -115,28 +115,35 @@ HOUSE_TYPE_LABELS = {"apt": "아파트", "row_house": "연립·다세대", "offi
 # (표제부 '건물내역'을 힌트로 써서 호출 수를 줄이는 길이 있으나 지금은 하지 않는다.)
 ALL_HOUSE_TYPES = ("apt", "row_house", "officetel")
 
-# 조회 기간 — [2026-07-29 결정]
-# 기본 6개월. 0건이면 **12개월로 한 번만** 넓힌다. 그 이상 넓히지 않는다.
+# 조회 기간 — [2026-07-29 확정] **6개월 고정. 0건이면 None으로 끝낸다.**
 #
 # 왜 최근 1개월이 비어 보이나: 부동산거래신고법상 신고 기한이 **계약일로부터 30일**이라
 # 최근 한 달은 구조적으로 미완성이다. 시장이 아니라 제도 때문이다.
 #
-# 왜 무한정 넓히지 않나 (실측 단지 84.88㎡ 기준): 조회 기간을 늘리면
+# 왜 0건일 때 기간을 넓히지 않나 (실측 단지 84.88㎡ 기준): 조회 기간을 늘리면
 # 시세가 체계적으로 내려간다 — 6개월 Q1 21.75억 / 12개월 19.30억 / 24개월 17.50억.
 # 상승장에서는 옛 저가 거래가 통계량 종류와 무관하게 값을 끌어내린다.
 # 즉 **우리가 고른 기간이 판정을 흔든다.** 짧게 고정하는 것이 유일한 방어다.
+#
+# 한때 '0건이면 12개월로 1회 확장'을 넣었다가 되돌렸다. 그 동작이 실제로 만든 값이
+# **2025-11-14 거래 1건을 2026-07-29의 시세로 쓰는 것**이었다 — 8.5개월 전, 표본 1건.
+# 채우려는 유혹이 정확히 이렇게 생긴다는 실례라 기록해 둔다.
 DEFAULT_MONTHS = 6
-FALLBACK_MONTHS = 12
 
-# 면적 허용오차 — [2026-07-29 실측 확정]
+# 면적 허용오차 — [2026-07-29 실측 확정] ±1%
+#
 # 등기부 전유면적과 API 전용면적은 **같은 건축물대장에서 나와 정확히 일치한다.**
 # 실측 1쌍: 등기부 표제부 114.756㎡ ↔ API excluUseAr 114.756 (소수점 3자리까지 동일).
-# 따라서 허용오차는 '평형을 넓게 묶기' 위한 것이 아니라 **OCR/추출 반올림을 흡수**하기
-# 위한 것이다. ±1%면 충분하다.
+# 그러니 값 자체를 맞추는 데는 허용오차가 필요 없다. ±1%를 두는 목적은 둘이다:
+#   ⑴ OCR·추출 과정의 반올림 흡수 (114.756이 114.75로 읽히는 경우)
+#   ⑵ 같은 지번 안의 **사실상 동일 면적**을 함께 묶기
 #
-# 왜 애초 계획한 ±10%를 쓰지 않나: 같은 단지에 84.74와 84.88이 **0.17% 차이로 공존**한다.
-# ±10%(84.88 기준 76.4~93.4㎡)는 인접 평형을 섞을 수 있고, 값이 다른 물건을 한 바구니에
-# 넣으면 시세가 흐려진다. 실측상 ±1%로도 대상 평형 10건이 전부 잡혔다.
+# ⚠ ±1%는 84.74와 84.88을 **가르지 않고 함께 담는다**(84.88의 하한이 84.03이므로).
+#   이건 버그가 아니라 의도다 — 둘은 0.17% 차이라 같은 84타입이고 가격도 사실상 같아,
+#   함께 담으면 표본이 늘어 Q1이 안정된다.
+#   막으려는 것은 **다른 평형**이다: 같은 단지의 59.82㎡는 ±1%(84.03~85.73)에서 제외되고,
+#   애초 계획했던 ±10%(76.4~93.4)였다면 섞였을 것이다. 값이 다른 물건을 한 바구니에
+#   넣으면 시세가 흐려지므로 ±10%는 쓰지 않는다.
 AREA_TOLERANCE_RATIO = 0.01
 
 # 집계에서 최저가 대신 하위 25% 분위수를 쓰는 표본 하한.
@@ -496,31 +503,32 @@ def lookup_market_price(
     today: date | None = None,
     run_id: str | None = None,
     house_types: tuple[str, ...] = ALL_HOUSE_TYPES,
+    months: int = DEFAULT_MONTHS,
 ) -> tuple[MarketPriceResult | None, list[str]]:
     """시군구 코드 + 읍면동/지번/면적 → 시세. 못 구하면 `(None, 실패목록)`.
 
-    기간 정책 [2026-07-29 결정]: 기본 6개월. **0건이면 12개월로 한 번만** 넓힌다.
-    그 이상은 넓히지 않는다 — 넓히면 언젠가 숫자는 나오지만 그게 '오래된 거래를
-    시세로 쓰는' 틀린 값이다. 확장했을 때 `months_used`가 12로 내려가므로,
-    호출부는 "6개월 내 거래 없음"을 사용자에게 알릴 수 있다.
+    기간 정책 [2026-07-29 확정]: **6개월 한 번만 본다. 0건이면 None으로 끝낸다.**
+
+    ⚠ 0건일 때 기간을 자동으로 넓히지 않는다. 한때 '6개월 0건이면 12개월로 1회 확장'을
+      넣었다가 되돌렸다 — 넓히면 언젠가 숫자는 나오지만, 그게 정확히 **오래된 거래를
+      시세로 쓰는** 금지 대상이다. 실제로 그 동작에서 나온 값이 2025-11-14 거래 1건을
+      2026-07-29의 시세로 쓰는 것이었다(8.5개월 전, 표본 1건).
+
+    `months`는 **측정·조사용 파라미터**다(적중률 실험, CLI `--months`). 운영 호출은
+    기본값 6을 그대로 쓴다.
     """
     today = today or date.today()
-    all_errors: list[str] = []
 
-    for months in (DEFAULT_MONTHS, FALLBACK_MONTHS):
-        trades, errors = collect_trades(
-            lawd_cd, months=months, house_types=house_types, today=today, run_id=run_id
-        )
-        all_errors.extend(errors)
-        matched = filter_trades(trades, umd_nm=umd_nm, jibun=jibun, area_sqm=area_sqm)
-        if matched:
-            period_from, period_to = _period_bounds(months, today)
-            return (
-                aggregate(
-                    matched, period_from=period_from, period_to=period_to, months_used=months
-                ),
-                all_errors,
-            )
-        _log.info(f"[시세] {months}개월 매칭 0건 — {umd_nm} {jibun} {area_sqm}㎡")
+    trades, errors = collect_trades(
+        lawd_cd, months=months, house_types=house_types, today=today, run_id=run_id
+    )
+    matched = filter_trades(trades, umd_nm=umd_nm, jibun=jibun, area_sqm=area_sqm)
+    if not matched:
+        _log.info(f"[시세] {months}개월 매칭 0건 → 시세를 채우지 않습니다 ({umd_nm} {area_sqm}㎡)")
+        return None, errors
 
-    return None, all_errors
+    period_from, period_to = _period_bounds(months, today)
+    return (
+        aggregate(matched, period_from=period_from, period_to=period_to, months_used=months),
+        errors,
+    )

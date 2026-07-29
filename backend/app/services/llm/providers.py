@@ -31,8 +31,10 @@ class UpstageSolarProvider(OpenAiCompatibleProvider):
     model_env = "UPSTAGE_MODEL"
     base_url = "https://api.upstage.ai/v1/solar"
 
-    def _payload(self, messages: list[dict], max_tokens: int, json_mode: bool) -> dict:
-        payload = super()._payload(messages, max_tokens, json_mode)
+    def _payload(
+        self, messages: list[dict], max_tokens: int, json_mode: bool, temperature: float
+    ) -> dict:
+        payload = super()._payload(messages, max_tokens, json_mode, temperature)
         # 문장 생성·표 옮겨적기는 복잡 추론이 필요 없다 — 빠르고 저비용
         payload["reasoning_effort"] = "low"
         return payload
@@ -57,8 +59,10 @@ class ExaoneProvider(OpenAiCompatibleProvider):
     # 사고를 꺼도 여유는 조금 둔다 (JSON이 길어질 수 있다).
     extra_max_tokens = 1000
 
-    def _payload(self, messages: list[dict], max_tokens: int, json_mode: bool) -> dict:
-        payload = super()._payload(messages, max_tokens, json_mode)
+    def _payload(
+        self, messages: list[dict], max_tokens: int, json_mode: bool, temperature: float
+    ) -> dict:
+        payload = super()._payload(messages, max_tokens, json_mode, temperature)
         # ⚠ **추론(thinking)을 끈다.** 2026-07-28 실측:
         #   - 켠 상태로 등기부 구조화를 시키면 사고에 6,143~8,717자를 쓰고 생성 토큰
         #     상한에 먼저 닿아 `content`가 **빈 문자열**로 돌아온다(3/3 전부 실패).

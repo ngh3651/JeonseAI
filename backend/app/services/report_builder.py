@@ -253,6 +253,22 @@ def analyze(
       ②·③은 실패해도 리포트가 지금과 똑같이 완성된다.
     ⚠ ③이 항목을 더 찾아도 **등급은 바뀌지 않는다.** 불일치는 `checkedNotes`로
       사용자에게 말해줄 뿐이다(`tests/test_cross_check.py`가 이 경계를 못 박는다).
+
+    **무엇이 이 함수를 실패시킬 수 있는가** (2026-07-28 전수 점검 — 실기기 500의 교훈):
+
+    | 단계 | 실패하면 | 왜 |
+    |---|---|---|
+    | ① IE 추출 | **분석 실패(그대로 던진다)** | 판정할 재료가 없다 |
+    | 규칙 판정·리포트 조립 | **분석 실패** | 보여줄 결론 자체가 없다 |
+    | ② OCR / ③ 구조화 | 좌표·교차검증 없이 진행 | 표시 전용 |
+    | 교차검증 대조 | 고지 없이 진행 | 표시 전용 |
+    | 하이라이트 매칭 | 좌표 없이 진행 | 표시 전용 |
+    | 설명 문장 생성 | 폴백 문구로 진행 | 판정은 이미 나와 있다 |
+    | 이력 저장·원응답 정리·완료 로그 | **그냥 진행** | 리포트가 이미 완성된 뒤다 |
+
+    아래 두 줄이 이 표의 전부다: **판정과 조립만 실패할 수 있다.** 나머지 계층은
+    `try/except Exception` + `_log.error(exc_info=True)`로 감싼다 — 조용히 삼키지는
+    않되, 사용자에게서 리포트를 빼앗지도 않는다.
     """
     t0 = time.perf_counter()
     # 이 분석 1회를 가리키는 이름. IE·OCR 원응답이 **같은 폴더**에 나란히 남아,
@@ -291,16 +307,20 @@ def analyze(
         f" | 경매·신탁 {len(extract.auction_commencements) + len(extract.trust_registrations)}건"
     )
     # 두 경로 대조 — **표시와 고지에만** 쓴다. 아래 `rule_engine`에는 `extract`(IE)만 간다.
-    check = cross_check.compare(
-        extract, second_extract, provider=second_provider, error=second_error
-    )
+    try:
+        check = cross_check.compare(
+            extract, second_extract, provider=second_provider, error=second_error
+        )
+    except Exception as e:  # noqa: BLE001 — 고지 계층이 분석을 깨뜨리면 안 된다
+        _log.error("[교차검증] ⚠ 예기치 못한 예외 — 교차검증 없이 진행", exc_info=True)
+        check = cross_check.CrossCheck(ran=False, provider=second_provider, error=type(e).__name__)
 
     try:
         highlight_result = highlight.build_highlights(
             extract, ocr_result, cross=check, check=doc_check
         )
     except Exception as e:  # noqa: BLE001 — 표시 기능이 분석을 깨뜨리면 안 된다
-        _log.info(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})")
+        _log.error(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})", exc_info=True)
         highlight_result = highlight.HighlightResult([])
 
     report, explain_source = _build(
@@ -314,16 +334,29 @@ def analyze(
         checked_notes=highlight_result.checked_notes,
         registry_viewed_at=highlight_result.viewed_at,
     )
-    store.add(report)
-    # 진단용 원응답은 **최근 N회분만** 남긴다. 등기부 실명·주소가 담긴 파일이라,
-    # "시연 전에 비운다"는 절차가 아니라 코드가 지운다(artifacts.py 참고).
-    artifacts.prune_runs()
-    artifacts.prune_legacy_flat_files()
-    _log.info(
-        f"[분석 완료] 주소: {report.address} | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
-        f" | 판정: {report.grade} (게이지 {report.gaugeProgress}) | 설명: {explain_source}"
-        f" | 하이라이트: {len(report.highlights)}건"
-        f" | 교차검증: {'일치 ' + str(len(check.agreed)) + '종/불일치 ' + str(len(check.disagreed)) + '종' if check.ran else '없음(' + str(second_error) + ')'}"
-        f" | 총 {time.perf_counter() - t0:.1f}초"
-    )
+    # ── 여기서부터 리포트는 **이미 완성됐다.** 아래는 기록·정리·로그뿐이다 ──────────
+    # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
+    # 2026-07-28 실기기 500이 정확히 이 모양이었다(리포트 완성 → 마지막 문장에서 사망).
+    # 그래서 이 아래 전부를 감싼다 — 실패해도 사용자는 리포트를 받는다.
+    try:
+        store.add(report)
+    except Exception:  # noqa: BLE001 — 이력 저장 실패로 이번 분석을 잃지 않는다
+        _log.error("[이력] ⚠ 저장 실패 — 이번 리포트는 응답으로만 나갑니다", exc_info=True)
+    try:
+        # 진단용 원응답은 **최근 N회분만** 남긴다. 등기부 실명·주소가 담긴 파일이라,
+        # "시연 전에 비운다"는 절차가 아니라 코드가 지운다(artifacts.py 참고).
+        artifacts.prune_runs()
+        artifacts.prune_legacy_flat_files()
+    except Exception:  # noqa: BLE001 — 뒷정리 실패는 다음 분석 때 다시 시도된다
+        _log.error("[진단저장] ⚠ 원응답 정리 실패", exc_info=True)
+    try:
+        _log.info(
+            f"[분석 완료] 주소: {report.address} | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
+            f" | 판정: {report.grade} (게이지 {report.gaugeProgress}) | 설명: {explain_source}"
+            f" | 하이라이트: {len(report.highlights)}건"
+            f" | 교차검증: {'일치 ' + str(len(check.agreed)) + '종/불일치 ' + str(len(check.disagreed)) + '종' if check.ran else '없음(' + str(second_error) + ')'}"
+            f" | 총 {time.perf_counter() - t0:.1f}초"
+        )
+    except Exception:  # noqa: BLE001 — 로그 한 줄 만들다 요청을 죽이는 일은 없어야 한다
+        _log.error("[분석 완료] 요약 로그 생성 실패 (리포트는 정상)", exc_info=True)
     return report

@@ -12,6 +12,10 @@
   LLM이 여분 키(grade 등)를 실어 보내면 검증 실패 → 폴백.
 - 호출 실패·타임아웃(재시도 1회)·검증 실패·금지어 → fallback_texts로 **해당 부분만**
   치환하고 리포트는 항상 완성된다(분석 실패로 격상 금지).
+- 2026-07-28 확장: **우리 코드의 버그(TypeError 등)도 같은 취급**을 받는다.
+  실패 원인이 네트워크든 시그니처 오타든 사용자에게는 똑같이 "안 나온 화면"이다.
+  단 코드 버그는 재시도하지 않고 `_log.error`에 traceback을 남긴다 — 폴백이 조용하면
+  같은 버그를 또 못 찾는다.
 - nextAction("지금 해야 할 일")은 결정적 템플릿 유지 — 행동 지시 문장이라 LLM 드리프트를
   원천 차단. 향후 LLM 생성으로 전환하려면 payload에 필드를 추가하고 검증을 붙인다.
 """
@@ -74,6 +78,15 @@ _BANNED_PHRASES = (
 # 필드 길이 상한(표시 안정용 인프라 수치) — 초과 시 해당 필드 폴백
 # headline은 프롬프트 지시(40자 이내)+여유 5자 — 홈에서 3초 안에 한 줄로 읽히게(서연 리뷰)
 _MAX_LEN = {"headline": 45, "easy_explanation": 240}
+
+#: **재시도할 가치가 있는** 실패 — 호출·응답·검증 계층. 다시 부르면 될 수도 있다.
+#: 이 목록 밖의 예외도 폴백은 되지만(아래 `generate` 참고) 재시도는 하지 않는다.
+_EXPECTED_FAILURES = (
+    requests.exceptions.RequestException,
+    LlmError,
+    ValueError,  # json.loads 실패 포함
+    ValidationError,
+)
 
 
 class EvidenceExplanation(BaseModel):
@@ -165,9 +178,30 @@ def _field_ok(kind: str, text: str) -> bool:
 
 
 def generate(verdict: RuleVerdict) -> ExplanationResult:
-    """판정 → 설명 텍스트. 어떤 실패에도 완성된 texts를 돌려준다(리포트 항상 완성)."""
-    base = fallback_texts.build(verdict)  # 결정적 기본값 — 실패 시 이대로 나간다
+    """판정 → 설명 텍스트. **어떤 실패에도** 완성된 texts를 돌려준다(리포트 항상 완성).
 
+    이 함수의 보증은 "예외를 빠뜨리지 않고 잘 잡았다"가 아니라 **구조**다 —
+    실제 작업은 전부 `_generate_with_llm`이 하고, 여기서는 그 바깥을 통째로 감싼다.
+    안쪽 어디에서 무엇이 터지든(호출·파싱·검증·우리 코드 버그·provider 생성 실패까지)
+    사용자는 폴백 문구로 완성된 리포트를 받는다. 2026-07-28 실기기 500의 교훈이다.
+
+    ⚠ 단 하나 예외: `fallback_texts.build`가 터지면 그대로 던진다. 폴백 문구조차
+      만들 수 없다면 보여줄 것이 아무것도 없다 — 그건 진짜 실패다.
+    """
+    base = fallback_texts.build(verdict)  # 결정적 기본값 — 실패 시 이대로 나간다
+    try:
+        return _generate_with_llm(verdict, base)
+    except Exception as e:  # noqa: BLE001 — 구조적 방어선 (위 docstring 참고)
+        _log.error(
+            f"[설명] ⚠ 설명 생성 경로에서 예기치 못한 예외 — 폴백 문구로 리포트 완성"
+            f" ({type(e).__name__}: {str(e)[:120]})",
+            exc_info=True,
+        )
+        return ExplanationResult(texts=base, source="폴백")
+
+
+def _generate_with_llm(verdict: RuleVerdict, base: dict) -> ExplanationResult:
+    """실제 생성·검증·병합. 예외를 밖으로 낼 수 있다 — `generate`가 받아낸다."""
     provider = llm.explain_provider()
     api_key = _load_api_key()  # 목 호출 호환용 인자 (실제 키는 provider가 직접 읽는다)
     if not provider.available:
@@ -193,10 +227,27 @@ def generate(verdict: RuleVerdict) -> ExplanationResult:
             content = _call_solar(messages, api_key)
             payload = ExplanationPayload.model_validate(json.loads(content))
             break
-        except (requests.exceptions.RequestException, LlmError, ValueError, ValidationError) as e:
+        except _EXPECTED_FAILURES as e:
+            # 예상된 실패 — 호출·응답·검증. 다시 부르면 될 수도 있다.
             last_error = f"{type(e).__name__}: {str(e)[:120]}"
             if attempt < MAX_ATTEMPTS:
                 _log.info(f"[설명:{provider.name}] {attempt}차 시도 실패 → 재시도 (원인: {last_error})")
+        except Exception as e:  # noqa: BLE001 — 설명 생성이 분석을 죽이지 못하게 하는 마지막 방어선
+            # **우리 코드의 버그다.** 리포트는 이미 완성돼 있으므로 폴백으로 내보내되,
+            # 재시도는 하지 않는다(같은 코드가 같은 자리에서 또 터진다 — 크레딧만 태운다).
+            #
+            # ⚠ 절대 조용히 넘어가지 않는다. 2026-07-28 실기기 첫 실행에서
+            #   `TypeError: _payload() takes 4 positional arguments but 5 were given`이
+            #   여기까지 왔는데 잡히지 않아 **완성된 리포트를 든 채로 요청이 500으로 죽었다.**
+            #   사용자에게는 네트워크 실패든 우리 버그든 똑같이 "안 나온 화면"이다.
+            #   그래서 폴백은 넓게 잡고, 대신 **traceback을 로그에 남겨** 다음엔 바로 찾는다.
+            last_error = f"{type(e).__name__}: {str(e)[:120]}"
+            _log.error(
+                f"[설명:{provider.name}] ⚠ 예기치 못한 예외 — 코드 버그 의심,"
+                f" 재시도 없이 폴백 ({last_error})",
+                exc_info=True,
+            )
+            break
 
     if payload is None:
         _log.info(

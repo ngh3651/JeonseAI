@@ -55,7 +55,14 @@ from ..schemas.internal import MoneyEntry, RegistryEntry, RegistryExtract, parse
 from .cross_check import CrossCheck, to_notes as cross_check_notes
 from .formatting import eun_neun, format_won
 from .ocr import OcrResult
-from .ocr_layout import Line, OcrPage, RegistryItem, build_items, check_document
+from .ocr_layout import (
+    DocumentCheck,
+    Line,
+    OcrPage,
+    RegistryItem,
+    build_items,
+    check_document,
+)
 
 _log = logging.getLogger("jeonseai")
 
@@ -728,11 +735,18 @@ def build_highlights(
     extract: RegistryExtract,
     ocr: OcrResult,
     cross: CrossCheck | None = None,
+    check: DocumentCheck | None = None,
 ) -> HighlightResult:
     """IE 결과 + OCR 좌표 → 계약의 `highlights`. 실패해도 예외를 던지지 않는다.
 
     `cross`는 두 번째 추출 경로(LLM 구조화)와의 대조 결과다. **표시와 고지에만** 쓴다 —
     이 값이 무엇이든 등급·점수는 바뀌지 않는다(판정은 IE 기준 유지).
+
+    `check`는 **이미 끝난 사진 묶음 점검**이다. `report_builder`가 두 번째 경로에
+    같은 순서를 먹이려고 한 번 먼저 돌리므로, 그 결과를 그대로 받아 쓴다. 주지 않으면
+    여기서 직접 돌린다(단독 호출·테스트 경로). 받아 쓰는 이유는 낭비를 줄이려는 것보다
+    **두 경로가 서로 다른 순서를 쓸 여지를 없애려는** 쪽이 크다 — 순서가 갈리면
+    LLM은 A장을 읽고 형광펜은 B장에 간다.
     """
     if not ocr.pages:
         # **침묵 금지.** 예전에는 빈 결과만 돌려줘서 화면에 사진만 뜨고 범례·회색 줄이
@@ -749,7 +763,9 @@ def build_highlights(
         )
 
     # ── 사진 묶음 점검: 같은 등기부인가 / 순서가 맞나 / 빠진 쪽은 없나 ──────
-    check = check_document(ocr.pages)
+    # 호출부가 이미 돌렸으면 그 결과를 쓴다 (위 docstring 참고).
+    if check is None:
+        check = check_document(ocr.pages)
     for reason in check.reasons:
         _log.info(f"[사진점검] {reason}")
     if not check.ok_to_highlight_any:

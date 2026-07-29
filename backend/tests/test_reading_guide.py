@@ -347,6 +347,34 @@ def test_면적_숫자가_사진에_없으면_짚지_않는다():
     assert "area" not in kinds_of(result)
 
 
+@pytest.mark.parametrize("area_text, area", [("55.56m2", 55.56), ("39.52m2", 39.52)])
+def test_면적_단위가_ASCII_m2로_읽혀도_짚어준다(area_text: str, area: float):
+    """실측(2026-07-29 진단): Document OCR은 `㎡`(U+33A1)를 **한 번도** 내보내지 않는다.
+
+    저장된 원응답 두 건(`out/runs/20260729_141708_879` 4쪽 · `20260728_225552_594` 5쪽)의
+    면적 단위 표기 **20건이 전부 ASCII `m2`**(m + U+0032)였고, `㎡`·`m²`는 0건이었다.
+    게다가 숫자와 단위가 **한 word로 붙어** 나온다(`55.56m2` conf 0.91 / `39.52m2` conf 0.96).
+
+    단위 정규식이 `㎡|m²`뿐이면 면적 줄이 `continue`로 걸러져 **숫자를 보지도 못하고**
+    탈락한다 — 조명·해상도가 다른 두 문서가 똑같이 실패한 이유다. 사진 품질 문제가
+    아니라 규칙 버그이므로 여기서 못 박는다.
+    """
+    extract = extract_with(exclusive_area_sqm=area)
+    result = highlight.build_highlights(extract, as_result(header_page(area_text=area_text)))
+    assert "area" in kinds_of(result)
+    # 제목은 IE 값 기준이라 표기는 `㎡`를 그대로 유지한다 (사진 표기와 무관).
+    assert f"{area:g}㎡" in marks(result, "area")[0].title
+
+
+def test_면적_단위가_없는_줄의_숫자는_여전히_짚지_않는다():
+    """`m2`를 허용해도 **단위 없는 숫자**는 안 된다 — 대지권비율·다른 층 면적과
+    구분할 수 없어, 단위를 같은 줄에 요구하는 2앵커 사고방식이 무너지면 안 된다."""
+    rows = [[W("철근콘크리트구조", 200, 190, 130), W("55.56", 340, 190, 46)]]
+    extract = extract_with(exclusive_area_sqm=55.56)
+    result = highlight.build_highlights(extract, as_result(make_page(0, rows)))
+    assert "area" not in kinds_of(result)
+
+
 def test_주소_줄은_여러_쪽에_반복돼도_한_곳만_짚는다():
     """주소는 모든 쪽 머리에 인쇄된다. 다 칠하면 '확인할 곳'이 쪽수만큼 부풀어
     개수 문구가 거짓말이 된다."""

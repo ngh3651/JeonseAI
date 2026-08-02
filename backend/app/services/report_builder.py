@@ -24,6 +24,7 @@ from . import (
     extraction,
     fallback_texts,
     highlight,
+    lawd_code,
     llm,
     ocr,
     ocr_layout,
@@ -350,8 +351,11 @@ def analyze(
     except Exception:  # noqa: BLE001 — 뒷정리 실패는 다음 분석 때 다시 시도된다
         _log.error("[진단저장] ⚠ 원응답 정리 실패", exc_info=True)
     try:
+        # ⚠ 주소 전체를 찍지 않는다(2026-08-03) — 로그 파일만으로 물건이 특정된다.
+        #   `lawd_code.address_head` 관례대로 앞 2토큰(시도+시군구)까지만 남긴다.
+        _addr_head = " ".join(lawd_code.address_head(report.address).split()[:2]) or "(미확인)"
         _log.info(
-            f"[분석 완료] 주소: {report.address} | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
+            f"[분석 완료] 지역: {_addr_head} | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
             f" | 판정: {report.grade} (게이지 {report.gaugeProgress}) | 설명: {explain_source}"
             f" | 하이라이트: {len(report.highlights)}건"
             f" | 교차검증: {'일치 ' + str(len(check.agreed)) + '종/불일치 ' + str(len(check.disagreed)) + '종' if check.ran else '없음(' + str(second_error) + ')'}"

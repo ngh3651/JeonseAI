@@ -1,0 +1,74 @@
+{
+  "_안내": [
+    "공시가격·기준시가 원본 CSV의 '어느 컬럼이 무엇인지'를 적는 유일한 파일입니다.",
+    "코드에는 컬럼 이름이 하나도 박혀 있지 않습니다 — 파일이 바뀌면 여기만 고치세요.",
+    "값이 null이면 '아직 모른다'는 뜻이고, 그 상태에서는 조회가 조용히 실패하지 않고",
+    "'무엇을 실행하라'는 안내와 함께 멈춥니다.",
+    "",
+    "채우는 법:  python scripts/inspect_price_source.py <파일경로> --write",
+    "  → 구조를 분석해 이 파일의 초안을 만들어 줍니다. 사람이 검토·수정한 뒤",
+    "    verified 를 true 로 바꾸면 그때부터 사용됩니다."
+  ],
+  "schema_version": 1,
+  "sources": {
+    "official_price": {
+      "label": "국토교통부 공동주택 공시가격",
+      "source_name": "국토교통부 공동주택 공시가격 (부동산공시가격 알리미)",
+      "as_of": null,
+      "_as_of_안내": "공시기준일 'YYYY-MM-DD'. 2025년분이면 '2025-01-01'. 파일에 고시일자 컬럼이 있으면 columns.as_of 를 채우면 행마다 그 값을 씁니다.",
+      "verified": false,
+      "_verified_안내": "사람이 실제 파일로 컬럼·단위를 확인했으면 true. false면 조회가 안내와 함께 멈춥니다.",
+      "file_encoding": null,
+      "delimiter": null,
+      "has_header": true,
+      "price_unit": null,
+      "_price_unit_안내": "'won' | 'thousand_won' | 'man_won' — 가격 컬럼의 단위.",
+      "price_is_total": null,
+      "_price_is_total_안내": "true=호별 총액, false=단위면적(㎡)당 단가. false면 (전용면적+공유면적)을 곱해 총액으로 바꿉니다.",
+      "columns": {
+        "bjd_cd": null,
+        "sido": null,
+        "sigungu": null,
+        "umd": null,
+        "jibun_full": null,
+        "jibun_bon": null,
+        "jibun_bu": null,
+        "dong_nm": null,
+        "ho_nm": null,
+        "area_sqm": null,
+        "area_common_sqm": null,
+        "price": null,
+        "as_of": null
+      }
+    },
+    "tax_base": {
+      "label": "국세청 오피스텔 및 상업용건물 기준시가",
+      "source_name": "국세청 오피스텔 및 상업용 건물 기준시가",
+      "as_of": null,
+      "_as_of_안내": "고시일자 'YYYY-MM-DD'. 2026년분이면 '2026-01-01'.",
+      "verified": false,
+      "_verified_안내": "아래 columns 는 공개된 컬럼 목록으로 만든 **초안**입니다. 실제 파일로 확인하기 전에는 쓰지 않습니다. 특히 '번지'·'호'가 지번의 본번/부번인지, 아니면 건물의 호수인지 반드시 눈으로 확인하세요.",
+      "file_encoding": null,
+      "delimiter": null,
+      "has_header": true,
+      "price_unit": null,
+      "price_is_total": null,
+      "_price_is_total_주의": "국세청 산식은 '호별 기준시가 = 단위면적 기준시가 × (전용면적+공유면적)'입니다. 고시가격 컬럼이 총액인지 단가인지 값 분포로 반드시 확인하세요 — 추측 금지.",
+      "columns": {
+        "bjd_cd": "법정동코드",
+        "sido": null,
+        "sigungu": null,
+        "umd": null,
+        "jibun_full": null,
+        "jibun_bon": "번지",
+        "jibun_bu": "호",
+        "dong_nm": "상가건물동주소",
+        "ho_nm": "상가건물호주소",
+        "area_sqm": "전용면적",
+        "area_common_sqm": "공유면적",
+        "price": "고시가격",
+        "as_of": "고시일자"
+      }
+    }
+  }
+}

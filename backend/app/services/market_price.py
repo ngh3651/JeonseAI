@@ -405,7 +405,8 @@ def parse_address_parts(address: str) -> AddressParts | None:
     umd, jibun_raw = rest[0], rest[1]
     if not _JIBUN_RE.fullmatch(jibun_raw):
         # '산 12-3' 같은 산번지 등 — 실거래가와 표기 대응을 확인하지 못했다
-        _log.info(f"[시세] 지번 형태가 아니라 조회를 건너뜁니다 ({umd})")
+        # ⚠ 읍면동·지번을 로그에 찍지 않는다(2026-08-03). 어느 물건인지 특정된다.
+        _log.info("[시세] 지번 형태가 아니라 조회를 건너뜁니다")
         return None
 
     return AddressParts(
@@ -524,7 +525,10 @@ def lookup_market_price(
     )
     matched = filter_trades(trades, umd_nm=umd_nm, jibun=jibun, area_sqm=area_sqm)
     if not matched:
-        _log.info(f"[시세] {months}개월 매칭 0건 → 시세를 채우지 않습니다 ({umd_nm} {area_sqm}㎡)")
+        # ⚠ 읍면동·지번은 로그에 남기지 않는다 — 법정동코드와 면적까지만(2026-08-03).
+        _log.info(
+            f"[시세] {lawd_cd} {months}개월 매칭 0건 → 시세를 채우지 않습니다 ({area_sqm}㎡)"
+        )
         return None, errors
 
     period_from, period_to = _period_bounds(months, today)

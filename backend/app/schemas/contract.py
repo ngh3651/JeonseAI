@@ -62,6 +62,19 @@ class Highlight(BaseModel):
     source: Optional[str] = None
 
 
+# ── 시세 출처 (§2.8 — 2026-08-03 추가, **선택적**) ─────────────────────────
+# 앱이 이 필드를 통째로 무시해도 기존과 똑같이 동작한다(전부 기본값 있음).
+class MarketPriceAlternative(BaseModel):
+    """채택되지 않은 시세 후보 — "왜 이 값을 썼나"를 사용자에게 공개하기 위한 것."""
+
+    source: str  # manual | actual_trade | official_price | tax_base
+    sourceName: str  # 사람이 읽는 출처명
+    price: int  # 원
+    asOf: Optional[str] = None  # 기준일 또는 조회 기간
+    sampleCount: Optional[int] = None
+    detail: Optional[str] = None
+
+
 # ── 리포트 (§2.1 Report) ───────────────────────────────────────────────────
 class Report(BaseModel):
     id: str
@@ -74,7 +87,20 @@ class Report(BaseModel):
     nextAction: str
     topRiskSummary: str
     deposit: int
+    # 채택된 최종 시세(원). **의미는 예전과 같다** — 판정에 들어가는 집값 하나.
+    # 달라진 것은 이 값이 사용자 입력 말고 자동 조회에서도 올 수 있다는 점뿐이다.
     marketPrice: Optional[int] = None
+    # ── 시세 출처 (2026-08-03 추가, 전부 선택적 — 기존 앱은 무시해도 동작) ──
+    # 숫자만 보여주면 사용자는 그 값이 어디서 왔는지 알 수 없다. "근거를 항상 공개한다"는
+    # 원칙에 따라, 채택된 값에는 **출처·기준일·표본 수**가 늘 따라붙는다.
+    marketPriceSource: Optional[str] = None  # manual|actual_trade|official_price|tax_base
+    marketPriceAsOf: Optional[str] = None  # 공시는 기준일, 실거래가는 조회기간 'YYYY-MM~YYYY-MM'
+    marketPriceSampleCount: Optional[int] = None  # 실거래가일 때만
+    # 실거래가와 공시 기준이 **둘 다** 있을 때의 괴리율(%). 실거래가가 공시 기준보다
+    # 몇 % 높은지. ⚠ **판정에 쓰지 않는다** — 임계값의 권위 있는 출처가 없어 정보 계층에만 둔다.
+    marketPriceGapPct: Optional[int] = None
+    # 채택되지 않은 후보들 — 근거 전면 공개용. 앱은 "다른 기준으로는 얼마였는지"를 보여줄 수 있다.
+    marketPriceAlternatives: list[MarketPriceAlternative] = Field(default_factory=list)
     seniorDebtAmount: int
     evidences: list[Evidence]
     # 선택적 추가 (2026-07-27). 좌표를 못 구하면 빈 목록 — 그래도 리포트는 완성된다.

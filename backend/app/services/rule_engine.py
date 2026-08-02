@@ -25,7 +25,7 @@ from ..schemas.internal import (
     floor_caution,
     worst,
 )
-from . import thresholds as T
+from . import price_normalize, thresholds as T
 from .formatting import format_won, round_half_up
 
 # 판정 출처 문구([판정] sourceText — 계약 §2.2). 리포트 화면 칩에 그대로 노출되므로
@@ -77,7 +77,11 @@ def evaluate(
     if blacklist_entries is None:
         blacklist_entries = load_blacklist()
 
-    ev_jeonse = _judge_jeonse_ratio(deposit, market_price)
+    # 단독·다가구(통건물 등기) 판별 — 전세가율 판정을 보류시키는 안전망.
+    # 주소가 없을 때도 True가 되지만 그쪽은 doc_incomplete가 이미 막고 있어 방향이 같다.
+    whole_building = price_normalize.is_whole_building(extract.address or "")
+
+    ev_jeonse = _judge_jeonse_ratio(deposit, market_price, whole_building=whole_building)
     ev_senior, senior_total = _judge_senior_debt(extract, deposit, market_price)
     ev_ownership = _judge_ownership(extract)
     ev_insurance = _judge_insurance(extract, supplementary)
@@ -122,7 +126,41 @@ def evaluate(
 # ── 근거 카드별 판정 ─────────────────────────────────────────────────────────
 
 
-def _judge_jeonse_ratio(deposit: int, market_price: int | None) -> EvidenceVerdict:
+# 단독·다가구 전세가율 보류 문구 (계산 제외 판별에도 쓰인다)
+WHOLE_BUILDING_PENDING_LABEL = "이 집 유형에는 쓸 수 없어요"
+
+
+def _judge_jeonse_ratio(
+    deposit: int, market_price: int | None, *, whole_building: bool = False
+) -> EvidenceVerdict:
+    # ── 단독·다가구 안전망 [2026-08-03] ──────────────────────────────────────
+    # 다가구는 등기부가 **건물 1개에 1부**라, 앞순위 세입자들의 보증금 합계가
+    # 등기부에 나오지 않는다. 건물 시세 20억에 내 보증금 2억이면 전세가율 10%지만,
+    # 앞선 7세대가 18억을 넣어 놨다면 경매에서 한 푼도 못 받는다.
+    # 즉 이 유형의 **낮은 전세가율은 안전 신호가 아니라 의미 없는 숫자**다.
+    # 그래서 시세를 알아도 '양호'를 만들지 않는다 — 계산 자체를 하지 않는다.
+    if whole_building:
+        return EvidenceVerdict(
+            id="jeonse_ratio",
+            grade=Grade.CAUTION,
+            status_label=WHOLE_BUILDING_PENDING_LABEL,
+            detail_text=(
+                "단독·다가구로 보여 전세가율을 쓰지 않았어요 — 이 유형은 등기부가 건물 1개에 "
+                "1부뿐이라 **나보다 먼저 들어온 세입자들의 보증금 합계가 등기부에 나오지 않습니다.** "
+                "시세 대비 내 보증금 비율이 낮게 나와도 안전하다는 뜻이 아니에요. "
+                "임대인에게 '전입세대 열람내역'과 '확정일자 부여현황'을 요구해 앞순위 보증금을 "
+                "직접 확인하세요."
+            ),
+            source_text=_SRC_JEONSE,
+            action_label="앞순위 보증금 확인하기",
+            facts={
+                "jeonse_ratio_pct": None,
+                "deposit": deposit,
+                "market_price": market_price,
+                "whole_building": True,
+            },
+        )
+
     if market_price is None or market_price <= 0:
         return EvidenceVerdict(
             id="jeonse_ratio",

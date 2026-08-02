@@ -23,6 +23,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..schemas.contract import QuestionGroup, QuestionItem, Report
+from . import price_resolver
 from .formatting import format_won, round_half_up
 from .patterns import LABEL_TO_ID, derive_from_report
 
@@ -113,6 +114,21 @@ def _grade_of_pattern(report: Report, pattern: str) -> str | None:
     return None
 
 
+def _gap_direction(report: Report) -> str | None:
+    """실거래가 ↔ 공시 기준 괴리의 방향. 임계값은 price_resolver의 **잠정값**이다.
+
+    ⚠ 판정이 아니다 — 어떤 질문을 보여줄지 고르는 데만 쓴다.
+    """
+    gap = report.marketPriceGapPct
+    if gap is None:
+        return None
+    if gap >= price_resolver.TRADE_INFLATED_GAP_PCT:
+        return "trade_inflated"
+    if gap <= price_resolver.TRADE_DEPRESSED_GAP_PCT:
+        return "trade_depressed"
+    return "similar"
+
+
 def _condition_met(condition: dict | None, report: Report, pattern: str) -> bool:
     if not condition:
         return True
@@ -121,7 +137,24 @@ def _condition_met(condition: dict | None, report: Report, pattern: str) -> bool
             if _grade_of_pattern(report, pattern) != expected:
                 return False
         elif key == "marketPriceProvided":
+            # ⚠ '값이 있는가'만 본다 — 사용자가 넣었든 자동 조회로 채워졌든 상관없다.
+            #   출처를 가리고 싶으면 아래 marketPriceSource 를 쓴다(2026-08-03 추가).
             if (report.marketPrice is not None) != bool(expected):
+                return False
+        elif key == "marketPriceSource":
+            # 'manual' | 'actual_trade' | 'official_price' | 'tax_base' | 'auto' | 'none'
+            actual = report.marketPriceSource
+            if expected == "auto":
+                if actual is None or actual == price_resolver.SOURCE_MANUAL:
+                    return False
+            elif expected == "none":
+                if actual is not None:
+                    return False
+            elif actual != expected:
+                return False
+        elif key == "marketPriceGap":
+            # 'trade_inflated' | 'trade_depressed' | 'similar'
+            if _gap_direction(report) != expected:
                 return False
         else:
             # 모르는 조건 키 → 노출하지 않음(보수적) + 편집자 안내

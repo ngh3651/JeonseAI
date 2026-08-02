@@ -37,7 +37,9 @@
           "why": "빚이 커서 집이 경매로 넘어가면 보증금 전액을 돌려받기 어려울 수 있어요",
           "safeAnswer": "근저당 말소 또는 감액 조건을 계약서 특약으로 넣어 준다",
           "riskyAnswer": "말로만 괜찮다고 하고 서면 약속은 거부한다",
-          "condition": { "evidenceGrade": "위험" }
+          "condition": {
+            "evidenceGrade": "위험"
+          }
         }
       ]
     },
@@ -50,14 +52,27 @@
           "why": "시세를 알아야 보증금이 집값에 비해 높은지 판단할 수 있어요",
           "safeAnswer": "국토부 실거래가·KB시세 같은 근거 자료를 보여준다",
           "riskyAnswer": "자료 없이 말로만 시세를 알려준다",
-          "condition": { "marketPriceProvided": false }
+          "condition": {
+            "marketPriceProvided": false
+          }
+        },
+        {
+          "question": "이 집 시세는 공공데이터로 자동 조회한 값이에요. 최근 실거래가 자료를 직접 보여주실 수 있나요?",
+          "why": "자동 조회값은 정부가 매긴 공시 기준이라 실제 거래가와 다를 수 있어요",
+          "safeAnswer": "국토부 실거래가·KB시세 같은 근거 자료를 보여준다",
+          "riskyAnswer": "자료 없이 말로만 시세를 알려준다",
+          "condition": {
+            "marketPriceSource": "auto"
+          }
         },
         {
           "question": "보증금이 시세의 {전세가율}인데, 보증금 조정이나 일부 월세 전환이 가능한가요?",
           "why": "보증금이 집값에 가까울수록 집값이 내리면 돌려받기 어려워져요",
           "safeAnswer": "조정 여지를 열어 두고 구체적으로 논의해 준다",
           "riskyAnswer": "시세보다 높은 이유를 설명하지 못한다",
-          "condition": { "marketPriceProvided": true }
+          "condition": {
+            "marketPriceProvided": true
+          }
         }
       ]
     },
@@ -91,6 +106,24 @@
           "safeAnswer": "신분증과 등기부 소유자가 일치한다",
           "riskyAnswer": "대리인인데 위임장이 없다",
           "condition": null
+        },
+        {
+          "question": "실제 거래된 값이 정부가 매긴 공시 기준보다 많이 높아요. 이 가격이 어떻게 정해졌는지 알 수 있을까요?",
+          "why": "값을 부풀려 신고한 뒤 그 값을 근거로 보증금을 높게 받는 수법이 있어요",
+          "safeAnswer": "주변 단지 거래 사례와 비교해 근거를 설명해 준다",
+          "riskyAnswer": "'원래 이 동네가 이 값'이라며 자료를 못 보여준다",
+          "condition": {
+            "marketPriceGap": "trade_inflated"
+          }
+        },
+        {
+          "question": "최근 이 동네 시세가 내려가고 있나요? 계약 시점 시세로 다시 확인해 주실 수 있나요?",
+          "why": "집값이 내려가면 계약 때는 괜찮아 보여도 나갈 때 보증금을 다 못 받을 수 있어요",
+          "safeAnswer": "최근 몇 달 거래 흐름을 자료로 함께 보여준다",
+          "riskyAnswer": "'곧 오른다'는 말만 하고 자료가 없다",
+          "condition": {
+            "marketPriceGap": "trade_depressed"
+          }
         }
       ]
     }

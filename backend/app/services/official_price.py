@@ -181,11 +181,38 @@ def _multiplier_for(source_key: str) -> tuple[float, str]:
 def lookup(
     source_key: str, *, address: str, area_sqm: float | None
 ) -> tuple[OfficialPriceResult | None, list[str]]:
-    """한 소스에서 조회. `(결과|None, 안내·실패 메시지 목록)`.
+    """주소 문자열로 조회. `(결과|None, 안내·실패 메시지 목록)`.
 
     실패를 예외로 던지지 않는다 — 시세 조회 실패가 리포트를 실패시키면 안 된다.
     대신 사람이 읽을 수 있는 메시지를 목록으로 돌려준다.
     """
+    parts = market_price.parse_address_parts(address)
+    if parts is None:
+        try:
+            label = PS.load(source_key).label
+        except PriceSourceNotReady:
+            label = source_key
+        return None, [f"[{label}] 주소에서 시군구·지번을 읽지 못해 조회하지 않았습니다"]
+    return lookup_by_key(
+        source_key,
+        lawd_codes=parts.lawd_codes,
+        jibun=parts.jibun,
+        dong=N.extract_dong(address),
+        ho=N.extract_ho(address),
+        area_sqm=area_sqm,
+    )
+
+
+def lookup_by_key(
+    source_key: str,
+    *,
+    lawd_codes: list[str],
+    jibun: str,
+    dong: str = "",
+    ho: str = "",
+    area_sqm: float | None = None,
+) -> tuple[OfficialPriceResult | None, list[str]]:
+    """이미 뽑아 둔 조회 키로 조회한다 (측정 스크립트가 주소 문자열 없이 쓴다)."""
     notes: list[str] = []
     try:
         cfg = PS.load(source_key)
@@ -204,15 +231,11 @@ def lookup(
         return None, [missing_db_guide(source_key)]
 
     try:
-        parts = market_price.parse_address_parts(address)
-        if parts is None:
-            notes.append(f"[{cfg.label}] 주소에서 시군구·지번을 읽지 못해 조회하지 않았습니다")
+        if not jibun:
+            notes.append(f"[{cfg.label}] 지번을 알 수 없어 조회하지 않았습니다")
             return None, notes
-
-        dong = N.extract_dong(address)
-        ho = N.extract_ho(address)
-        for lawd_cd in parts.lawd_codes:
-            rows = _select_rows(conn, lawd_cd, parts.jibun)
+        for lawd_cd in lawd_codes:
+            rows = _select_rows(conn, lawd_cd, jibun)
             if not rows:
                 continue
             narrowed = _narrow(rows, dong=dong, ho=ho, area_sqm=area_sqm)
@@ -250,7 +273,7 @@ def lookup(
             )
             return result, notes
 
-        notes.append(f"[{cfg.label}] 해당 지번을 찾지 못했습니다 (조회 코드 {len(parts.lawd_codes)}개 시도)")
+        notes.append(f"[{cfg.label}] 해당 지번을 찾지 못했습니다 (조회 코드 {len(lawd_codes)}개 시도)")
         return None, notes
     except sqlite3.Error as e:
         # DB 파일이 손상됐거나 스키마가 다를 때 — 조용히 넘기지 않는다.

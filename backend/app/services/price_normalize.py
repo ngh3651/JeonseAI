@@ -94,9 +94,19 @@ def extract_ho(address: str) -> str:
     return normalize_unit(matches[-1]) if matches else ""
 
 
+# '호수 표기가 있나'와 '호수가 몇 호인가'는 다른 질문이다.
+# 앞의 질문에는 **숫자를 못 읽어도 표기 자체가 있으면 예**라고 답해야 한다 —
+# OCR이 한 글자를 놓쳤거나 문서가 마스킹된 경우('제○○○호')에 "호수 표기가 없다"고
+# 읽으면 집합건물을 통건물로 오인해 전세가율을 통째로 보류하게 된다.
+_HO_PRESENT_RE = re.compile(r"제\s*[0-9○Ｏ\-]{1,6}\s*호(?![가-힣])|[0-9]{1,5}\s*호(?![가-힣])")
+
+
 def has_unit_designation(address: str) -> bool:
-    """'제N호' 같은 **호수 표기**가 있나 — 집합건물(호별 등기) 판별의 1차 신호."""
-    return bool(extract_ho(address))
+    """'제N호' 같은 **호수 표기**가 있나 — 집합건물(호별 등기) 판별의 1차 신호.
+
+    값(몇 호인지)이 필요하면 `extract_ho`를 쓴다. 이 함수는 존재 여부만 본다.
+    """
+    return bool(_HO_PRESENT_RE.search(address or ""))
 
 
 # 등기부 헤더의 서류 종류 표기. `[집합건물]`이면 호별 등기(아파트·빌라·오피스텔),

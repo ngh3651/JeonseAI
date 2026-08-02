@@ -6,8 +6,11 @@
 /// 여기 담기는 더미 값은 전부 "예시"다.
 library;
 
+import 'market_price_source.dart';
 import 'registry_mark_kind.dart';
 import 'risk_grade.dart';
+
+export 'market_price_source.dart' show MarketPriceAlternative, MarketPriceSource;
 
 /// 분석 요청 — S-04 매물 검색이 수집한 입력값 (더미↔실제 공통 계약 원형).
 ///
@@ -210,6 +213,11 @@ class AnalysisReport {
     this.highlightNotice,
     this.checkedNotes = const [],
     this.registryViewedAt,
+    this.marketPriceSource = MarketPriceSource.unknown,
+    this.marketPriceAsOf,
+    this.marketPriceSampleCount,
+    this.marketPriceGapPct,
+    this.marketPriceAlternatives = const [],
   });
 
   final String id;
@@ -268,6 +276,25 @@ class AnalysisReport {
   ///   믿게 만들어 아무것도 안 쓰느니만 못하다. **없으면 그 줄 자체를 그리지 않는다.**
   final String? registryViewedAt;
 
+  // ── 시세 출처 (api-contract.md §2.8 · 2026-08-03 추가, 전부 선택) ──────────
+  // 서버가 안 보내면 unknown/null — 앱은 출처 줄을 그리지 않거나 "확인 필요"로 말한다.
+
+  /// [marketPrice]가 어디서 왔는지. 직접 입력인지 자동 조회인지 화면에 **반드시** 밝힌다.
+  final MarketPriceSource marketPriceSource;
+
+  /// 기준일(공시·기준시가) 또는 조회 기간(실거래가 `2026-02~2026-07`).
+  final String? marketPriceAsOf;
+
+  /// 실거래가일 때의 표본 수 — 1건짜리 시세를 5건짜리처럼 보여 주면 안 된다.
+  final int? marketPriceSampleCount;
+
+  /// 실거래가가 공시 기준보다 몇 % 높은지. 둘 다 있을 때만 온다.
+  /// ⚠ **판정이 아니라 정보다.** 임계값의 권위 있는 출처가 없어 등급을 바꾸지 않는다.
+  final int? marketPriceGapPct;
+
+  /// 채택되지 않은 다른 후보들 — "왜 이 값을 썼나"를 펼쳐 보여 주기 위한 것.
+  final List<MarketPriceAlternative> marketPriceAlternatives;
+
   /// 서버 JSON(api-contract.md §2.1 Report) → 모델.
   factory AnalysisReport.fromJson(Map<String, dynamic> json) => AnalysisReport(
     id: json['id'] as String,
@@ -297,6 +324,17 @@ class AnalysisReport {
     ],
     // 구버전 서버는 이 필드를 안 보낸다 → null → 앱은 그 줄을 그리지 않는다.
     registryViewedAt: json['registryViewedAt'] as String?,
+    // 시세 출처 (§2.8). 구버전 서버면 unknown/null — 앱은 출처 줄을 숨긴다.
+    marketPriceSource: MarketPriceSource.fromWire(
+      json['marketPriceSource'] as String?,
+    ),
+    marketPriceAsOf: json['marketPriceAsOf'] as String?,
+    marketPriceSampleCount: json['marketPriceSampleCount'] as int?,
+    marketPriceGapPct: json['marketPriceGapPct'] as int?,
+    marketPriceAlternatives: [
+      for (final a in (json['marketPriceAlternatives'] as List? ?? const []))
+        MarketPriceAlternative.fromJson(a as Map<String, dynamic>),
+    ],
   );
 
   /// 위험/확인 필요 등급인 근거의 패턴 라벨 — 판례 매칭·질문 생성기 입력.

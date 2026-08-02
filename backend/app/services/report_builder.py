@@ -14,7 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from ..schemas.contract import Evidence, Highlight, Report
+from ..schemas.contract import Evidence, Highlight, MarketPriceAlternative, Report
 from ..schemas.internal import Grade, RegistryExtract, RuleVerdict
 from . import (
     artifacts,
@@ -28,6 +28,8 @@ from . import (
     llm,
     ocr,
     ocr_layout,
+    price_lookup,
+    price_resolver,
     rule_engine,
     store,
 )
@@ -77,8 +79,15 @@ def _build(
     highlight_notice: str | None = None,
     checked_notes: list[str] | None = None,
     registry_viewed_at: str | None = None,
+    price_info: "price_resolver.ResolvedPrice | None" = None,
 ) -> tuple[Report, str]:
-    """조립 본체 — (Report, 설명 출처 라벨)을 돌려준다."""
+    """조립 본체 — (Report, 설명 출처 라벨)을 돌려준다.
+
+    `price_info`가 오면 **그것이 시세의 정본**이다 — `market_price` 인자를 덮어쓴다.
+    (자동조회 결과와 판정에 들어간 값이 어긋나는 경로를 원천 차단한다.)
+    """
+    if price_info is not None:
+        market_price = price_info.price_won
     verdict: RuleVerdict = rule_engine.evaluate(
         extract, deposit=deposit, market_price=market_price
     )
@@ -130,6 +139,26 @@ def _build(
         topRiskSummary=texts["top_risk_summary"],  # [설명]
         deposit=verdict.deposit,  # [판정]
         marketPrice=verdict.market_price,  # [판정]
+        # [출처 — 표시 전용] 판정에 쓰인 값이 어디서 왔는지. 판정에는 영향이 없다.
+        marketPriceSource=price_info.source if price_info else None,
+        marketPriceAsOf=(price_info.as_of or None) if price_info else None,
+        marketPriceSampleCount=price_info.sample_count if price_info else None,
+        marketPriceGapPct=price_info.gap_pct if price_info else None,
+        marketPriceAlternatives=(
+            [
+                MarketPriceAlternative(
+                    source=c.source,
+                    sourceName=c.source_name,
+                    price=c.price_won,
+                    asOf=c.as_of or None,
+                    sampleCount=c.sample_count,
+                    detail=c.detail or None,
+                )
+                for c in price_info.alternatives
+            ]
+            if price_info
+            else []
+        ),
         seniorDebtAmount=verdict.senior_debt_amount,  # [판정]
         evidences=evidences,
         highlights=highlights or [],  # [표시 전용] — 판정에 영향 없음
@@ -324,6 +353,25 @@ def analyze(
         _log.error(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})", exc_info=True)
         highlight_result = highlight.HighlightResult([])
 
+    # ── 시세 자동조회 ────────────────────────────────────────────────────────
+    # 주소는 **OCR/IE 이후에야** 알 수 있으므로 여기가 가장 이른 시점이다.
+    # ⚠ 어떤 실패도 리포트를 막지 못한다. `price_lookup.collect`는 스스로 예외를
+    #   삼키지만, 그 안에서 예상 못 한 일이 나도 여기서 한 번 더 막는다.
+    #   조회가 통째로 죽어도 `price_info`는 사용자 입력값만 담은 결과가 되고,
+    #   그것마저 없으면 `price_won=None` — 지금까지와 똑같이 '확인 필요'로 흐른다.
+    try:
+        price_info = price_lookup.collect(
+            address=extract.address,
+            area_sqm=extract.exclusive_area_sqm,
+            manual_price_won=market_price,
+            run_id=run_id,
+        )
+    except Exception as e:  # noqa: BLE001
+        _log.error(f"[시세] ⚠ 자동조회에서 예기치 못한 예외 — 입력값만 사용 ({type(e).__name__})", exc_info=True)
+        price_info = price_lookup.collect(
+            address=None, area_sqm=None, manual_price_won=market_price, auto=False
+        )
+
     report, explain_source = _build(
         extract,
         deposit=deposit,
@@ -334,6 +382,7 @@ def analyze(
         highlight_notice=highlight_result.notice,
         checked_notes=highlight_result.checked_notes,
         registry_viewed_at=highlight_result.viewed_at,
+        price_info=price_info,
     )
     # ── 여기서부터 리포트는 **이미 완성됐다.** 아래는 기록·정리·로그뿐이다 ──────────
     # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
@@ -354,8 +403,15 @@ def analyze(
         # ⚠ 주소 전체를 찍지 않는다(2026-08-03) — 로그 파일만으로 물건이 특정된다.
         #   `lawd_code.address_head` 관례대로 앞 2토큰(시도+시군구)까지만 남긴다.
         _addr_head = " ".join(lawd_code.address_head(report.address).split()[:2]) or "(미확인)"
+        _price_note = (
+            f"{price_resolver.SOURCE_LABELS.get(report.marketPriceSource, '?')}"
+            f" {format_won(report.marketPrice)}"
+            if report.marketPrice
+            else "없음"
+        )
         _log.info(
-            f"[분석 완료] 지역: {_addr_head} | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
+            f"[분석 완료] 지역: {_addr_head} | 시세: {_price_note}"
+            f" | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
             f" | 판정: {report.grade} (게이지 {report.gaugeProgress}) | 설명: {explain_source}"
             f" | 하이라이트: {len(report.highlights)}건"
             f" | 교차검증: {'일치 ' + str(len(check.agreed)) + '종/불일치 ' + str(len(check.disagreed)) + '종' if check.ran else '없음(' + str(second_error) + ')'}"

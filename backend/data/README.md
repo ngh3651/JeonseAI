@@ -82,8 +82,24 @@
 | `null` | 이 그룹이 나올 때 항상 표시 |
 | `{"evidenceGrade": "위험"}` | 해당 근거 카드가 **"위험"** 등급일 때만 표시 |
 | `{"evidenceGrade": "확인 필요"}` | 해당 근거 카드가 **"확인 필요"** 등급일 때만 표시 |
-| `{"marketPriceProvided": false}` | 사용자가 **시세를 입력하지 않았을 때만** 표시 |
-| `{"marketPriceProvided": true}` | 시세를 입력했을 때만 표시 |
+| `{"marketPriceProvided": false}` | **시세 값이 아예 없을 때만** 표시 |
+| `{"marketPriceProvided": true}` | 시세 값이 있을 때만 표시 (직접 입력이든 자동 조회든) |
+| `{"marketPriceSource": "manual"}` | 사용자가 **직접 입력한** 시세일 때만 |
+| `{"marketPriceSource": "auto"}` | **자동 조회**로 채워진 시세일 때만 (아래 3종 중 무엇이든) |
+| `{"marketPriceSource": "actual_trade"}` | 국토부 실거래가에서 온 값일 때만 |
+| `{"marketPriceSource": "official_price"}` | 공동주택 공시가격 기준값일 때만 |
+| `{"marketPriceSource": "tax_base"}` | 국세청 오피스텔 기준시가일 때만 |
+| `{"marketPriceGap": "trade_inflated"}` | 실거래가가 공시 기준보다 **많이 높을 때만** (시세 부풀리기 의심) |
+| `{"marketPriceGap": "trade_depressed"}` | 실거래가가 공시 기준보다 **많이 낮을 때만** (시세 하락 가능성) |
+| `{"marketPriceGap": "similar"}` | 둘이 비슷할 때만 |
+
+> ⚠ `marketPriceProvided`는 2026-08-03부터 **"사용자가 입력했나"가 아니라 "값이 있나"**를
+> 뜻합니다. 시세를 자동으로 찾아 주는 기능이 생겼기 때문입니다. 입력 여부로 가르고
+> 싶으면 `marketPriceSource`를 쓰세요.
+>
+> ⚠ `marketPriceGap`의 "많이 높다/낮다" 경계는 **아직 잠정값**입니다(실측 전).
+> 실제 물건 30~100건을 재고 나서 정할 예정이라, 지금은 이 조건이 예상보다
+> 자주/드물게 걸릴 수 있습니다.
 
 ### 중괄호 빈칸 (자동으로 숫자가 채워지는 자리)
 

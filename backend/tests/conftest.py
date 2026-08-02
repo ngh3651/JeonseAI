@@ -10,3 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # (explanation._load_api_key의 load_dotenv는 기존 환경변수를 덮지 않으므로 이 값이 유지됨.
 #  LLM 호출 경로를 테스트할 때는 monkeypatch.setenv + _call_solar 목으로 대체한다.)
 os.environ["UPSTAGE_API_KEY"] = ""
+
+# 실거래가(공공 API)도 테스트에서 **절대 호출하지 않는다**. 크레딧은 안 들지만
+# ⑴ 네트워크가 없으면 테스트가 느려지거나 깨지고, ⑵ 조회 결과가 그날 시장 상황에 따라
+# 달라져 테스트가 비결정적이 되며, ⑶ 백그라운드 스레드가 테스트보다 오래 살아남아
+# 로그가 닫힌 파일에 쓰이는 경고가 난다.
+# 키를 비우면 `market_price._load_api_key`가 즉시 MarketPriceError를 내고,
+# `price_lookup`이 그것을 '조회 불가' 안내로 바꾼다 — 리포트는 그대로 완성된다.
+os.environ["MOLIT_API_KEY"] = ""

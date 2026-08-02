@@ -150,5 +150,11 @@
 | `backend/out/dp_*.json` · `out/llm_compare/` · `out/runs/` | DP 원응답 · LLM 비교 원본 · 회차별 IE/OCR 원응답. **전부 등기부 실명 포함** | `out/runs/`는 **코드가 최근 5회분만 유지**(artifacts.py). `dp_*`·`llm_compare/`는 **E-6 정리 스윕에서 수동 삭제** | ⏳ |
 | `backend/scripts/check_market_price.py` | 실거래가 조회 검증 CLI(2026-07-29). 주소→법정동코드→조회→집계를 사람이 읽는 형태로 찍는다. **공공 API라 크레딧 소모 없음** | **시세 자동조회가 analyze에 배선된 뒤**: 개발 도구로 유지할지 결정(`run_rules.py`와 동일 취급). 기능을 도입하지 않기로 하면 `market_price.py`·`lawd_code.py`와 함께 삭제 | ⏳ |
 | `backend/out/runs/<회차>/molit_*.json` | 실거래가 원응답 저장분(`market_price.SAVE_MOLIT_RAW`, `DEV_MODE_AUTH`에 묶임). 지번·면적·금액은 공개 정보라 개인정보는 아니지만 **어느 지번을 조회했는지**가 남는다 | `out/runs/`는 코드가 최근 5회분만 유지(artifacts.py). 저장 스위치는 **면적·지번 매칭이 여러 등기부로 확정되면 제거** | ⏳ |
+| `backend/data/price/raw/` · `backend/data/price/*.sqlite` | 공시가격·기준시가 **원본 CSV/ZIP과 변환 결과**. 원본 수 GB, SQLite 수백 MB. `.gitignore` 처리(커밋 안 됨) | **영구 자산이 아니다** — 매년 새 공시가 나오면 통째로 다시 받아 다시 빌드한다. 시세 기능을 접으면 폴더째 삭제 | ⏳ |
+| `backend/scripts/inspect_price_source.py` | 원본 구조 탐지 CLI. 컬럼 매핑 초안 생성 | **유지 쪽.** 매년 파일이 갱신될 때마다 다시 돌린다(컬럼이 바뀔 수 있다) | — |
+| `backend/scripts/build_price_db.py` | CSV → SQLite 변환 CLI | **유지.** DB는 재생성 산출물이라 이 스크립트가 정본이다 | — |
+| `backend/scripts/price_status.py` | 준비 상태 점검 CLI | **유지.** 팀원이 데이터를 넣을 때 첫 관문 | — |
+| `backend/scripts/measure_price_gap.py` | 괴리·배수 실측 CLI (2026-08-03). **아직 한 번도 실행하지 못했다**(데이터 없음) | **측정이 끝나 decisions.md에 임계값이 확정되면** 개발 도구로 유지할지 결정. 재측정 가치가 있으면 남긴다 | ⏳ |
+| `backend/tests/fixtures/price/*.csv` | 합성 픽스처 2종. **실제 파일 구조가 아니라 우리 가정**을 흉내 낸 것 | **실제 파일을 본 뒤 구조가 다르면 픽스처를 실제 구조에 맞춰 고친다.** 그때까지는 이 한계를 test 파일 상단 주석이 크게 고지한다 | ⏳ |
 | `design_handoff_s04_capture_studio/` (레포 루트) | 2026-08-03 S-04 촬영 스튜디오 디자인 핸드오프 번들 — README(사양서)·`Option-B.dc.html`(동작 프로토타입)·`support.js`·마스코트 사본 1장. `.gitignore` 처리(커밋 안 됨). **등기부 실사진은 들어 있지 않다**(목업은 회색 종이 플레이스홀더) | **구현이 실기기에서 확인되면 로컬 폴더 삭제.** 색·간격을 다시 대조할 일이 남아 있으면 그때까지 보존 | ⏳ |
 | `frontend` 뷰어의 `kUnmarkedNoteMarkers` 문자열 매칭 | 서버 문구를 부분 문자열로 골라 화면에 그리는 임시 방식. **서버가 문구를 바꾸면 조용히 사라진다**(2026-07-28에 실제로 고지 3종이 탈락하고 있었다) | **`checkedNotes`에 분류 태그를 넣는 계약 변경이 승인되면** 이 목록을 통째로 삭제 (`docs/api-contract.md` §9.7에 부채로 명시) | ⏳ |

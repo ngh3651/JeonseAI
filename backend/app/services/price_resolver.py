@@ -185,11 +185,17 @@ def log_decision(resolved: ResolvedPrice) -> None:
     ⚠ 주소·이름·번지를 찍지 않는다 — 각 후보가 이미 자기 안에 법정동코드까지만 담고 있다.
     """
     for c in resolved.candidates:
-        extra = f" · 표본 {c.sample_count}건" if c.sample_count else ""
-        detail = f" · {c.detail}" if c.detail else ""
+        parts = []
+        if c.as_of:  # 사용자 입력값에는 기준일이 없다 — "( 기준"으로 새지 않게
+            parts.append(f"{c.as_of} 기준")
+        if c.sample_count:
+            parts.append(f"표본 {c.sample_count}건")
+        if c.detail:
+            parts.append(c.detail)
+        suffix = f" ({' · '.join(parts)})" if parts else ""
         _log.info(
             f"[시세] 후보 — {SOURCE_LABELS.get(c.source, c.source)}: "
-            f"{c.price_won:,}원 ({c.as_of} 기준{extra}{detail})"
+            f"{c.price_won:,}원{suffix}"
         )
     if resolved.price_won is None:
         _log.info("[시세] 채택: 없음 — 전세가율은 '확인 필요'로 남습니다")

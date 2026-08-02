@@ -157,7 +157,9 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
 
         // ── 계산 내역 (기준가 명시) ──
         _detailRow(
-          noMarketPrice ? '기준가 (시세 미입력 → 보증금 기준)' : '기준가 (입력 시세)',
+          // 2026-08-03: 시세는 사용자 입력일 수도, 자동 조회일 수도 있다 —
+          // "입력 시세"·"미입력"이라고 못 박으면 자동 조회가 붙은 뒤 거짓이 된다.
+          noMarketPrice ? '기준가 (시세를 못 구해 보증금 기준)' : '기준가 (시세)',
           formatWon(base),
         ),
         _detailRow('예상 낙찰가 (${(_ratio * 100).round()}%)', formatWon(salePrice)),

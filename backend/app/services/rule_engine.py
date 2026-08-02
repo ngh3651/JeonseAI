@@ -183,7 +183,9 @@ def _judge_jeonse_ratio(
     else:
         grade = Grade.GOOD
     detail = (
-        f"전세가율 {pct}% — 보증금 {format_won(deposit)} / 입력 시세 {format_won(market_price)}"
+        # 2026-08-03: "입력 시세"라고 못 박지 않는다 — 이 값은 사용자가 넣은 것일 수도,
+        # 공공데이터에서 자동으로 찾아온 것일 수도 있다. 출처는 marketPriceSource가 따로 밝힌다.
+        f"전세가율 {pct}% — 보증금 {format_won(deposit)} / 시세 {format_won(market_price)}"
         f" (주의 {T.JEONSE_RATIO_CAUTION_PCT}% 초과 · 위험 {T.JEONSE_RATIO_DANGER_PCT}% 초과)"
     )
     return EvidenceVerdict(
@@ -236,7 +238,9 @@ def _judge_senior_debt(
     elif market_price is None and total_known > 0:
         grade = Grade.CAUTION
         status = "확인 필요"
-        reasons.append("시세 미입력 — 채권 규모가 과한지 비율로 판단할 수 없음")
+        # 2026-08-03: 자동 조회가 실패했을 수도 있으므로 "미입력"(사용자 탓)이 아니라
+        # "알 수 없음"(사실)으로 말한다.
+        reasons.append("시세를 알 수 없음 — 채권 규모가 과한지 비율로 판단할 수 없음")
     else:
         grade = Grade.GOOD
         status = None

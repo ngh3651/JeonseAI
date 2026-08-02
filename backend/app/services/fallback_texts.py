@@ -108,7 +108,8 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
         return f"{summary} · 시세 입력 필요" if market_missing else summary
     if market_missing:
         # E3(2026-07-09): 다른 카드 요약과 톤 통일 — 상태 토큰(시세 미입력)을 앞세운다.
-        return "시세 미입력 · 입력하면 결과가 더 정확해져요"
+        # 2026-08-03: 자동 조회 실패도 이 자리에 온다 — 사용자가 안 넣은 것처럼 말하지 않는다.
+        return "시세를 못 구했어요 · 직접 넣으면 결과가 더 정확해져요"
     # 전부 양호 + 시세 있음 — 매물 고유 수치로 홈에서 줄 세워 비교 가능하게
     senior = next((e for e in verdict.evidences if e.id == "senior_debt"), None)
     debt_count = 0

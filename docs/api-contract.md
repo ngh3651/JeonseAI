@@ -97,6 +97,10 @@
 | `marketPriceAlternatives` | `MarketPriceAlternative[]` | [표시] | 채택되지 않은 시세 후보들 (기본 `[]`) |
 | `seniorDebtAmount` | integer | [판정] | 선순위 채권 합계(원) — 손실 시뮬레이터 입력 |
 | `evidences` | `Evidence[]` | — | 근거 카드 목록(§2.2) |
+| `highlights` | `Highlight[]` | [표시] | 원본 사진 위 표시 — §9 (기본 `[]`) |
+| `highlightNotice` | string \| null | [표시] | 사진 묶음 안내 한 줄 — §9 |
+| `checkedNotes` | string[] | [표시] | "무엇을 찾아봤나" 요약 — §9 (기본 `[]`) |
+| `registryViewedAt` | string \| null | [표시] | 등기부 열람일시 `YYYY.MM.DD` — §9 |
 
 - **홈/마이 이력 카드**가 쓰는 필드: `id, alias, address, analyzedAt, grade, deposit, topRiskSummary`.
 - **손실 시뮬레이터**가 쓰는 필드: `alias, deposit, marketPrice, seniorDebtAmount` + `evidences`에서 `insurance` 항목의 `grade`(보증보험 가입 미확인 경고 판단). **슬라이더·보험 토글 계산은 앱에서 로컬 수행**(서버 호출 없음). 계산식은 E-4에서 서버 이관 검토.

@@ -50,8 +50,25 @@
 | 대상 | 무엇 | 정리 시점 | 상태 |
 |---|---|---|---|
 | `backend/out/` · `backend/test_samples/` · `design_handoff_registry_viewer/` | 등기부 원본 이미지·OCR/IE 원응답. **소유자 실명 포함** | `.gitignore` 처리됨 — 2026-08-02 `git ls-files`로 **추적 0건 확인**. 로컬 폴더는 E-6 정리 스윕에서 삭제 | ✅ 미추적 확인 |
-| `docs/` 검증 기록 6종(night-log·morning-report·ocr-highlight-findings·highlight-miss-diagnosis·feedback-log·presentation-material) | 실명·주민번호 앞자리·상세주소·건물명이 들어가 있었음 | **2026-08-02 마스킹 완료**(88건). 히스토리에는 남아 있어 별도 처리 예정 | ⏳ 히스토리 |
+| `docs/` 검증 기록 6종(night-log·morning-report·ocr-highlight-findings·highlight-miss-diagnosis·feedback-log·presentation-material) | 실명·주민번호 앞자리·상세주소·건물명이 들어가 있었음 | **2026-08-02 마스킹 완료**(88건) → **2026-08-03 히스토리 재작성으로 과거 커밋에서도 제거** | ✅ |
 | 테스트 픽스처 5종(`test_formatting`·`test_highlight`·`test_page_order`·`test_report_builder`·`registry_highlight_test.dart`) | 실제 물건의 상세주소·건물명을 픽스처로 사용 | **2026-08-02 가상 주소로 교체 완료**(형식 유지). 앞으로 픽스처는 처음부터 가상값으로 만든다 | ✅ |
+
+### 2026-08-03 — git 히스토리 재작성 (되돌릴 수 없음)
+
+`git filter-repo`로 **전 커밋(72개)의 파일 내용과 커밋 메시지**에서 등기부 개인정보를
+치환했다. 2026-08-02 마스킹은 "현재 파일"만 고쳤을 뿐 과거 커밋에는 원본이 그대로
+남아 있었다.
+
+- **이전 커밋 해시는 전부 무효다.** 문서 안의 해시 참조가 2026-08-03 이전 것이라면
+  낡은 값이다. 이번 작업에서 `docs/` 안 참조 47건은 새 해시로 갱신했지만, 그보다
+  오래된 메모·이슈·채팅에 적힌 해시는 더 이상 어떤 커밋도 가리키지 않는다.
+- 팀원은 **기존 로컬 클론을 버리고 다시 clone** 해야 한다(`git pull`은 두 히스토리를
+  뒤섞는다). 안내문: `docs/team-notice-2026-08-03-history-rewrite.md`
+- 커밋 개수·순서·메시지·작성일시는 보존했다(`--prune-empty never`). 바뀐 것은 해시와
+  개인정보 문자열뿐이며, 바이너리 blob 50개는 재작성 전후 SHA가 동일함을 확인했다.
+- 재작성 전 백업: `../JeonseAI-backup.git` (`git clone --mirror`). **이 백업에는 원본
+  개인정보가 그대로 들어 있다** — 공유 금지, 검증이 끝나면 삭제 대상.
+- 치환 규칙 파일은 원본 문자열을 담고 있으므로 저장소 밖에서 쓰고 **작업 후 삭제**했다.
 
 ---
 

@@ -9,7 +9,7 @@
 > 문서가 아니다. 나중에 읽는 사람이 그 자리에 없었어도 무슨 일이 있었는지 재구성할 수
 > 있도록 결정·에러·포기 지점을 전부 남긴다.
 >
-> 브랜치: `feat/ocr-highlight` / 시작 커밋: `4692d12`
+> 브랜치: `feat/ocr-highlight` / 시작 커밋: `a65229c`
 > 최종 보고서는 `docs/morning-report.md`, 중단 대비 요약은 `docs/RESUME.md`.
 
 ---

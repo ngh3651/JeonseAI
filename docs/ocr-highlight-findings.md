@@ -14,7 +14,7 @@
 > 그때의 판단 과정**이고, 앞으로도 "왜 그 숫자였나"를 확인하러 오는 문서다.
 > 새 결정은 이 문서가 아니라 `/add-decision`으로 decisions.md에 적는다.
 >
-> 작업: 2026-07-27 야간 · 브랜치 `feat/ocr-highlight` · 시작 커밋 `4692d12`
+> 작업: 2026-07-27 야간 · 브랜치 `feat/ocr-highlight` · 시작 커밋 `a65229c`
 > 후속: 2026-07-28 야간 (`feat/reading-guide`) — 읽기 가이드 확장·교차검증·DP 조사.
 >       그 세션의 로그는 `docs/night-log-2026-07-28.md`, 보고서는 `docs/morning-report-2026-07-28.md`
 > 진행 로그(시간순 원본): `docs/night-log.md` / 아침 절차서: `docs/morning-check.md`

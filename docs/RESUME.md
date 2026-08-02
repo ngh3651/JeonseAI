@@ -5,13 +5,13 @@
 
 ## 1. 지금 어디까지
 
-**2026-07-28 야간 세션 완료.** 브랜치 `feat/reading-guide` (기점 `5ffcd35` = main = dev).
+**2026-07-28 야간 세션 완료.** 브랜치 `feat/reading-guide` (기점 `8cb6cc5` = main = dev).
 지시받은 작업 A~F + 추가 지시(Document Parse 조사) + §9 자율 과제 **전부 착수·완료**.
 서브에이전트 6종(지수·서연·rule-auditor·gap-checker·design-reviewer·judge-reviewer) 투입.
 
 ## 2. 마지막 커밋
 
-`07f611a` — fix: 리뷰 미반영분 처리. **빌드되는 상태.**
+`c18da09` — fix: 리뷰 미반영분 처리. **빌드되는 상태.**
 검증: 백엔드 pytest **297건** / flutter analyze 무오류 / flutter test **108건**.
 판정 회귀 봉인(`tests/test_verdict_regression.py`)으로 픽스처 7건의 등급이 기점 커밋과 동일함을 확인.
 

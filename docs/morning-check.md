@@ -171,12 +171,12 @@ flutter run
 
 | 어디로 | 명령 |
 |---|---|
-| 야간 작업 **시작 직전** (아무것도 없던 상태) | `git reset --hard 4692d12` |
-| 라운드 0까지 (검증 스크립트만 수정) | `git reset --hard 9845251` |
-| 라운드 1까지 (백엔드만) | `git reset --hard 2e4d764` |
-| 라운드 2까지 (앱 화면까지) | `git reset --hard c58d010` |
-| 라운드 4까지 (방어 로직까지) | `git reset --hard dedaf1c` |
-| 최신 (리뷰 반영까지) | `git reset --hard 1e78b82` |
+| 야간 작업 **시작 직전** (아무것도 없던 상태) | `git reset --hard a65229c` |
+| 라운드 0까지 (검증 스크립트만 수정) | `git reset --hard 87b9ec7` |
+| 라운드 1까지 (백엔드만) | `git reset --hard 862b003` |
+| 라운드 2까지 (앱 화면까지) | `git reset --hard 663468b` |
+| 라운드 4까지 (방어 로직까지) | `git reset --hard 01ca78d` |
+| 최신 (리뷰 반영까지) | `git reset --hard 5032797` |
 
 > 커밋은 전부 **로컬**이다. push 하지 않았다.
 > 모든 커밋은 빌드되는 상태다(각 라운드 끝에서 analyze·test·build를 통과시켰다).

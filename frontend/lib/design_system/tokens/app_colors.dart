@@ -64,6 +64,22 @@ abstract final class AppColors {
   static const Color background = Color(0xFFF5F5F5);
   static const Color dim = Color(0x8A000000); // 바텀시트 딤
 
+  // ── 촬영 스튜디오 (S-04 재디자인 · 2026-08-03 디자인 핸드오프) ─────────────
+  // 핸드오프 명세에 있는데 토큰에 없던 값만 추가한다. 나머지(primary·primaryDeep·
+  // primaryBright·primarySoft·viewerBackdrop·caution·cautionSoft·line·surface…)는
+  // 전부 기존 토큰을 그대로 쓴다 — 새 색 계열을 만들지 않는다.
+
+  /// 카메라 프리뷰·사진 뷰어의 전면 배경. 검정(#000)이 아니라 아주 어두운 초록기다 —
+  /// 앱 전체가 초록 톤이라 순수 검정은 이 앱의 화면처럼 안 보인다.
+  /// 흰 글자 대비 18.6:1로 AA 충족.
+  static const Color cameraBackdrop = Color(0xFF0C100E);
+
+  /// 비활성 주 버튼 — 배경 rgba(22,33,27,.12) / 글자 rgba(22,33,27,.38).
+  /// ⚠ 글자 대비가 낮은 것은 **의도**다(비활성임을 알려야 한다). 대신 사진 0장일 때는
+  ///   버튼을 아예 그리지 않고, 비활성일 때는 '무엇이 모자란지'를 체크 2개로 보여준다.
+  static const Color buttonDisabledBg = Color(0x1F16211B);
+  static const Color buttonDisabledFg = Color(0x6116211B);
+
   // ── 원본 사진 마킹 (S-07b 하이라이트 전용) ────────────────────
   // ⚠ 판정 색과 **계보를 분리**해 둔다. 지금은 값이 같아도, 판정 색을 바꿀 때
   //   마킹까지 따라 바뀌면 안 된다 (마킹은 '위치 안내'이지 '위험도 판정'이 아니다 —

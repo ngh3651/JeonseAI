@@ -10,7 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../design_system/components/amber_hint.dart';
 import '../../design_system/components/app_button.dart';
+import '../../design_system/components/app_callout.dart';
 import '../../design_system/components/app_card.dart';
 import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/components/risk_badge.dart';
@@ -20,6 +22,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../models/market_price_source.dart' show marketPriceSourceLabel;
 import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
@@ -110,6 +113,8 @@ class _ReportScreenState extends State<ReportScreen> {
               Text('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
               const SizedBox(height: AppSpacing.md),
               ..._evidenceCards(context, report),
+              // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
+              ?_priceGapCard(report),
               const SizedBox(height: AppSpacing.xl),
               const Text('다음 행동', style: AppTypography.title),
               const SizedBox(height: AppSpacing.md),
@@ -233,9 +238,11 @@ class _ReportScreenState extends State<ReportScreen> {
 
   /// 결론 헤더 — 등급 크게 + 의사결정 한 줄 + 보증금 (IA §0 + 서연 리뷰 반영)
   Widget _conclusionHeader(AnalysisReport report) {
+    // 2026-08-03: 시세가 자동 조회에서도 올 수 있게 되면서 "(입력값)"이 거짓이 될 수
+    // 있다. 출처를 하드코딩하지 않고 서버가 알려 준 대로 말한다.
     final String priceText = report.marketPrice != null
-        ? '보증금 ${formatWon(report.deposit)} · 시세 ${formatWon(report.marketPrice!)} (입력값)'
-        : '보증금 ${formatWon(report.deposit)} · 시세 미입력';
+        ? '보증금 ${formatWon(report.deposit)} · 시세 ${formatWon(report.marketPrice!)}'
+        : '보증금 ${formatWon(report.deposit)} · 시세를 못 구했어요';
 
     return Column(
       children: [
@@ -284,7 +291,81 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
           textAlign: TextAlign.center,
         ),
+        // 시세 출처 — **이 숫자가 어디서 왔는지**를 결론 옆에서 바로 말한다.
+        // S-04에서 조회가 안 됐더라도 결과 화면에서는 항상 출처가 보여야 한다.
+        const SizedBox(height: AppSpacing.xs),
+        Center(
+          child: AmberHint(
+            tone: report.marketPrice == null
+                ? AmberHintTone.amber
+                : (report.marketPriceSource.isAuto
+                      ? AmberHintTone.positive
+                      : AmberHintTone.neutral),
+            icon: report.marketPrice == null
+                ? Icons.help_outline
+                : (report.marketPriceSource.isAuto
+                      ? Icons.verified_outlined
+                      : Icons.edit_outlined),
+            text: marketPriceSourceLabel(
+              source: report.marketPriceSource,
+              asOf: report.marketPriceAsOf,
+              sampleCount: report.marketPriceSampleCount,
+              hasPrice: report.marketPrice != null,
+            ),
+          ),
+        ),
       ],
+    );
+  }
+
+  /// 시세 괴리 정보 카드 — 실거래가와 정부 공시 기준이 **둘 다** 있을 때만 나온다.
+  ///
+  /// 왜 이걸 보여 주나: 실거래가는 조작할 수 있지만 공시가격은 정부가 매긴다.
+  /// 신축 빌라를 실제 가치보다 비싸게 매매한 것처럼 신고(자전거래)해 부풀린 실거래가를
+  /// 근거로 보증금을 높게 받는 것이 빌라 전세사기의 전형이다.
+  ///
+  /// ⚠ **판정이 아니라 정보다.** 임계값의 권위 있는 출처가 없어 등급을 바꾸지 않는다.
+  ///   그래서 근거 카드(`_evidenceCard`) 대열에 끼우지 않고 **아래에 따로** 붙이고,
+  ///   등급 색(danger/caution)이 아니라 정보 톤(info)을 쓴다 — 새 컴포넌트를 만들지 않고
+  ///   기존 `AppCallout`을 재사용해 과하지 않게 앉힌다.
+  Widget? _priceGapCard(AnalysisReport report) {
+    final int? gap = report.marketPriceGapPct;
+    if (gap == null) return null;
+
+    // 잠정 임계값 — 서버(price_resolver)와 같은 값이다. 실측 후 함께 조정한다.
+    const int inflated = 50;
+    const int depressed = -30;
+
+    final String title;
+    final String text;
+    final CalloutTone tone;
+    if (gap >= inflated) {
+      tone = CalloutTone.caution;
+      title = '실제 거래값이 공시 기준보다 $gap% 높아요';
+      text =
+          '값을 부풀려 신고한 뒤 그 값을 근거로 보증금을 높게 받는 수법이 있어요. '
+          '중개사에게 이 가격이 어떻게 정해졌는지 꼭 물어보세요.';
+    } else if (gap <= depressed) {
+      tone = CalloutTone.caution;
+      title = '공시 기준이 실제 거래값보다 높아요';
+      text =
+          '실거래가가 정부 공시 기준보다 ${gap.abs()}% 낮아요. 최근 시세가 내려가고 있을 수 있어요 — '
+          '계약 시점의 시세를 한 번 더 확인하세요.';
+    } else {
+      tone = CalloutTone.info;
+      title = '실제 거래값과 공시 기준이 비슷해요';
+      text = '두 값의 차이는 $gap%예요. 시세가 특별히 부풀려졌다고 볼 신호는 없어요.';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      child: AppCallout(
+        tone: tone,
+        icon: Icons.balance,
+        title: title,
+        // 이 카드는 '정보'라는 것을 문장으로도 못 박는다 — 등급이 바뀐 줄 알면 안 된다.
+        text: '$text\n\n※ 이 비교는 참고 정보예요. 위험 등급 계산에는 들어가지 않아요.',
+      ),
     );
   }
 

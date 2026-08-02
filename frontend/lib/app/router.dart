@@ -73,7 +73,14 @@ final appRouter = GoRouter(
     ),
 
     // ── 진입·분석 종속 화면 (셸 밖 push) ───────────────────────
-    GoRoute(path: '/analyze', builder: (_, _) => const PropertySearchScreen()),
+    // extra로 [PropertySearchPrefill]을 넘기면 시세·별칭이 미리 채워진다.
+    // ⚠ 2026-08-03 현재 그렇게 넘기는 경로는 아직 없다(재분석 흐름 미구현).
+    //   UI가 값과 **출처 라벨**을 받을 수 있는 구조만 열어 둔 것이다.
+    GoRoute(
+      path: '/analyze',
+      builder: (_, state) =>
+          PropertySearchScreen(prefill: state.extra as PropertySearchPrefill?),
+    ),
     GoRoute(
       path: '/loading',
       builder: (_, state) =>

@@ -41,6 +41,13 @@ abstract final class AppRadius {
 
   /// 미니(컴팩트) 버튼 라운드
   static const double buttonMini = 7;
+
+  /// 입력 필드 라운드 — 촬영 스튜디오(S-04)의 컴팩트 입력 (2026-08-03 핸드오프
+  /// "[변경 제안] 44/10/1.5px"). 기존 md(12)보다 작다. 카드 radius는 건드리지 않는다.
+  static const double input = 10;
+
+  /// 사진 썸네일 — 트레이·카메라 하단·뷰어 레일 공통
+  static const double thumb = 8;
 }
 
 abstract final class AppSize {
@@ -52,6 +59,13 @@ abstract final class AppSize {
 
   /// 최소 터치 영역
   static const double minTouchTarget = 48;
+
+  /// 촬영 스튜디오(S-04)의 컴팩트 입력 필드 높이. 44dp라 최소 터치 영역을 만족한다.
+  static const double inputHeight = 44;
+
+  /// 사진 트레이 썸네일 (74×98) — 세로가 긴 서류 비율
+  static const double trayThumbWidth = 74;
+  static const double trayThumbHeight = 98;
 
   /// 하단 탭바 높이 (중앙 분석 버튼 제외)
   static const double bottomNavHeight = 64;

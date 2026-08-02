@@ -49,3 +49,7 @@ backend/data/llm_bench/
 
 # ������ �ڵ���� ���� (���� ���ÿ� �Ǹ� ����)
 design_handoff_registry_viewer/
+
+# S-04 촬영 스튜디오 디자인 핸드오프 번들 (2026-08-03 — 로컬 참조용)
+# README·HTML 시안·support.js·마스코트 사본. 구현이 끝나면 삭제 (cleanup-tracker 등록)
+design_handoff_s04_capture_studio/

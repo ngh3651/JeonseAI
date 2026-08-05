@@ -34,6 +34,20 @@ def format_won(won: int) -> str:
     return "".join(parts) + "원"
 
 
+def mask_name(name: str) -> str:
+    """이름 마스킹 — `홍길동` → `홍○○`, `주식회사하나은행` → `주식○○○○○○○`.
+
+    2026-08-05: `highlight.py`에 있던 것을 여기로 옮겼다. 설명 생성(`rule_engine`)에서도
+    채무자 이름을 가려야 해서 두 곳이 쓰게 됐는데, 마스킹 규칙이 두 벌이 되면
+    한쪽만 고쳐졌을 때 **한쪽 경로로만 실명이 샌다.** `highlight`는 이 함수를
+    re-export 하므로 기존 `highlight.mask_name` 호출은 그대로 동작한다.
+    """
+    name = (name or "").strip()
+    if len(name) <= 1:
+        return name or "(이름없음)"
+    return name[0] + "○" * (len(name) - 1)
+
+
 def round_half_up(x: float) -> int:
     """Dart double.round()(0.5는 올림) 동작에 맞춘 반올림 — 앱 표시와 일치."""
     return floor(x + 0.5)

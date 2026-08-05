@@ -20,13 +20,14 @@ from pathlib import Path
 from ..schemas.internal import (
     EvidenceVerdict,
     Grade,
+    MoneyEntry,
     RegistryExtract,
     RuleVerdict,
     floor_caution,
     worst,
 )
 from . import price_normalize, thresholds as T
-from .formatting import format_won, round_half_up
+from .formatting import format_won, mask_name, round_half_up
 
 # 판정 출처 문구([판정] sourceText — 계약 §2.2). 리포트 화면 칩에 그대로 노출되므로
 # 사용자 언어로 짧게 유지한다 ("검증 중"·"수동 대조" 같은 내부 프로세스 용어 금지 —
@@ -120,7 +121,29 @@ def evaluate(
         address=extract.address,
         evidences=evidences,
         doc_flags=doc_flags,
+        # 2026-08-05: 설명 재료. **어떤 판정에도 쓰이지 않는다** — 위 pool/overall 계산은
+        # 이 줄 앞에서 이미 끝났고, 여기서 값을 바꿔도 등급은 움직이지 않는다.
+        ownership_history=_ownership_history(extract),
     )
+
+
+def _ownership_history(extract: RegistryExtract) -> dict:
+    """소유권 이전 이력 요약 — 횟수와 최근 이전일. **설명 전용.**
+
+    스키마 description이 이 배열을 "무자본 갭투자 의심 판단에 사용"이라 적어 두었지만
+    (registry_schema.py), 지금 규칙 엔진은 이 값으로 판정하지 않는다. 판정을 새로 만드는
+    것은 권위 출처가 필요한 일이라 이번 범위 밖이고, 여기서는 **설명 재료로만** 넘긴다.
+    """
+    active = [e for e in extract.ownership_changes if e.is_active]
+    dates = []
+    for e in active:
+        raw = e.model_dump().get("receipt_date")
+        if raw:
+            dates.append(str(raw))
+    out: dict = {"change_count": len(active)}
+    if dates:
+        out["latest_receipt_date"] = max(dates)  # 'YYYY-MM-DD' 문자열이라 사전순 = 시간순
+    return out
 
 
 # ── 근거 카드별 판정 ─────────────────────────────────────────────────────────
@@ -193,7 +216,19 @@ def _judge_jeonse_ratio(
         grade=grade,
         detail_text=detail,
         source_text=_SRC_JEONSE,
-        facts={"jeonse_ratio_pct": pct, "deposit": deposit, "market_price": market_price},
+        facts={
+            "jeonse_ratio_pct": pct,
+            "deposit": deposit,
+            "market_price": market_price,
+            # 2026-08-05: **판정에 실제로 쓰인 기준선**을 설명 재료로 함께 넘긴다.
+            # "안전선은 80%인데 이 집은 60%" 같은 문장을 쓰려면 LLM이 80을 알아야 한다.
+            # 값은 thresholds.py 상수 그대로이며 여기서 판정에 다시 쓰이지 않는다.
+            "thresholds": {
+                "caution_over_pct": T.JEONSE_RATIO_CAUTION_PCT,
+                "danger_over_pct": T.JEONSE_RATIO_DANGER_PCT,
+                "source": _SRC_JEONSE,
+            },
+        },
     )
 
 
@@ -272,9 +307,42 @@ def _judge_senior_debt(
             "unknown_amount_count": unknown_count,
             "senior_ratio_pct": senior_pct,
             "combined_ratio_pct": combined_pct,
+            # ── 2026-08-05 설명 재료 (판정에 쓰이지 않음) ──────────────────────
+            "thresholds": {
+                "senior_danger_over_pct": T.SENIOR_DEBT_RATIO_DANGER_PCT,
+                "combined_danger_over_pct": T.COMBINED_RATIO_DANGER_PCT,
+                "source": _SRC_SENIOR,
+            },
+            # 근저당 한 건 한 건의 얼굴. `RegistryEntry`가 extra="allow"라 IE 원본 필드가
+            # 객체에 살아 있는데(감사 §A-4-⑴) 지금까지 설명까지 오지 못했다.
+            # ⚠ 채무자는 개인 이름일 수 있어 마스킹한다. 근저당권자는 은행 등 법인이라 그대로 둔다.
+            "mortgages": [_mortgage_fact(m) for m in active_mortgages],
         },
     )
     return verdict, total_known
+
+
+def _mortgage_fact(m: MoneyEntry) -> dict:
+    """근저당 1건 → 설명용 사실 묶음. **판정에 쓰지 않는다.**
+
+    `RegistryEntry.model_config`가 `extra="allow"`라 IE가 준 원본 키가 그대로 살아 있다.
+    없는 키는 넣지 않는다 — LLM이 빈 값을 보고 문장을 지어내지 않게 한다.
+    """
+    raw = m.model_dump()
+    out: dict = {}
+    if raw.get("rank_number"):
+        out["rank_number"] = str(raw["rank_number"])
+    if raw.get("receipt_date"):
+        out["receipt_date"] = str(raw["receipt_date"])
+    if raw.get("mortgagee"):
+        out["mortgagee"] = str(raw["mortgagee"])  # 은행 등 법인명 — 공개 정보
+    if raw.get("debtor"):
+        out["debtor"] = mask_name(str(raw["debtor"]))  # 개인 이름 가능 → 마스킹
+    if m.amount is not None:
+        out["max_claim_amount"] = m.amount
+    elif m.amount_unknown:
+        out["amount_unknown"] = True
+    return out
 
 
 def _judge_ownership(extract: RegistryExtract) -> EvidenceVerdict:

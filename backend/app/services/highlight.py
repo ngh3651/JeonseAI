@@ -53,7 +53,7 @@ from dataclasses import dataclass, field, replace
 from ..schemas.contract import Highlight, HighlightBox
 from ..schemas.internal import MoneyEntry, RegistryEntry, RegistryExtract, parse_amount
 from .cross_check import CrossCheck, to_notes as cross_check_notes
-from .formatting import eun_neun, format_won
+from .formatting import eun_neun, format_won, mask_name  # mask_name: 2026-08-05 formatting으로 이관(re-export)
 from .ocr import OcrResult
 from .ocr_layout import (
     DocumentCheck,
@@ -402,14 +402,6 @@ _VIEWED_LINE = _rx(r"열람일시")
 # 조명·해상도가 다른 두 문서가 똑같이 전용면적을 놓친 원인이 이것이다.
 # 단위를 **같은 줄에 요구하는 조건 자체는 그대로다**(대지권비율·다른 층 면적과 구분).
 _AREA_UNIT = _rx(r"㎡|m²|[mM]2")
-
-
-def mask_name(name: str) -> str:
-    """로그용 이름 마스킹 — `홍길동` → `김○○`, `주식회사하나은행` → `주식○○○○○○○`."""
-    name = (name or "").strip()
-    if len(name) <= 1:
-        return name or "(이름없음)"
-    return name[0] + "○" * (len(name) - 1)
 
 
 def _normalize(

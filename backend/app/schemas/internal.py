@@ -228,6 +228,27 @@ class EvidenceVerdict(BaseModel):
     facts: dict[str, Any] = Field(default_factory=dict)  # LLM 설명·질문 치환용 수치 사실
 
 
+class PriceProvenance(BaseModel):
+    """시세가 **어디서 왔는가** — 설명 전용 부속 정보 (2026-08-05).
+
+    왜 여기 있나: 2026-08-03에 시세 자동조회가 붙으면서 `market_price`가 사용자 입력일
+    수도, 국토부 실거래가일 수도, 공시가격 기준일 수도 있게 됐다. 그런데 설명 LLM은
+    출처를 볼 통로가 없어 프롬프트가 시키는 대로 **무조건 "입력하신 시세"**라고 불렀다
+    (감사 2026-08-05 §A-4-⑶에서 실호출로 확인).
+
+    ⚠ **판정에 쓰지 않는다.** 규칙 엔진은 이 값을 읽지 않고, 채우는 것도 규칙 엔진이
+      아니라 `report_builder`다(`price_resolver` 결과를 그대로 옮긴다).
+    """
+
+    source: Optional[str] = None  # manual | actual_trade | official_price | tax_base
+    source_name: Optional[str] = None  # 사람이 읽는 출처명
+    as_of: Optional[str] = None  # 기준일 또는 조회 기간
+    sample_count: Optional[int] = None  # 실거래가일 때 표본 수
+    gap_pct: Optional[int] = None  # 실거래가 ↔ 공시 기준 괴리율
+    detail: Optional[str] = None  # 매칭 방법 등 산정 근거 한 줄
+    alternatives: list[dict[str, Any]] = Field(default_factory=list)  # 채택 안 된 후보
+
+
 class RuleVerdict(BaseModel):
     """규칙 엔진의 최종 판정 — E-2 LLM의 유일한 입력(읽기 전용)."""
 
@@ -239,3 +260,8 @@ class RuleVerdict(BaseModel):
     address: Optional[str] = None
     evidences: list[EvidenceVerdict]
     doc_flags: list[str] = Field(default_factory=list)
+    # ── 설명 재료 (2026-08-05 추가) — 전부 선택적. 판정에 쓰이지 않는다. ──
+    # 규칙 엔진이 **이미 계산했거나 이미 손에 쥐고 있던** 값을 설명 계층에도 보여주기
+    # 위한 통로다. 새 판정을 만들지 않으며, 이 필드들이 비어 있어도 판정은 동일하다.
+    price_provenance: Optional[PriceProvenance] = None  # report_builder가 채운다
+    ownership_history: dict[str, Any] = Field(default_factory=dict)  # 소유권 이전 횟수·최근일

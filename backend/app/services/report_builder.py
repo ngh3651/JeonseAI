@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from ..schemas.contract import Evidence, Highlight, MarketPriceAlternative, Report
-from ..schemas.internal import Grade, RegistryExtract, RuleVerdict
+from ..schemas.internal import Grade, PriceProvenance, RegistryExtract, RuleVerdict
 from . import (
     artifacts,
     cross_check,
@@ -41,6 +41,39 @@ _log = logging.getLogger("jeonseai")
 # 근거 카드 표시 순서: 심각한 것 먼저(결론 먼저 원칙), 같은 등급 안에서는 고정 순서
 _CANONICAL_ORDER = ["jeonse_ratio", "senior_debt", "ownership", "insurance", "blacklist"]
 _SEVERITY_ORDER = {Grade.DANGER: 0, Grade.CAUTION: 1, Grade.GOOD: 2}
+
+
+def _price_provenance(price_info) -> PriceProvenance:
+    """`price_resolver.ResolvedPrice` → 설명용 시세 출처 (2026-08-05).
+
+    채택된 후보의 `detail`(매칭 방법·배수 등 산정 근거)까지 옮긴다 — "어떻게 구한 값인가"를
+    LLM이 한 줄로 밝힐 수 있어야 하기 때문이다(출처 공개 원칙).
+    """
+    picked = next(
+        (
+            c
+            for c in price_info.candidates
+            if c.source == price_info.source and c.price_won == price_info.price_won
+        ),
+        None,
+    )
+    return PriceProvenance(
+        source=price_info.source,
+        source_name=picked.source_name if picked else None,
+        as_of=price_info.as_of or None,
+        sample_count=price_info.sample_count,
+        gap_pct=price_info.gap_pct,
+        detail=(picked.detail or None) if picked else None,
+        alternatives=[
+            {
+                "source": c.source,
+                "source_name": c.source_name,
+                "price": c.price_won,
+                "as_of": c.as_of or None,
+            }
+            for c in price_info.alternatives
+        ],
+    )
 
 
 def build_report(
@@ -91,6 +124,11 @@ def _build(
     verdict: RuleVerdict = rule_engine.evaluate(
         extract, deposit=deposit, market_price=market_price
     )
+    # 시세 **출처**를 설명 계층에 넘긴다 (2026-08-05).
+    # ⚠ 규칙 엔진이 판정을 끝낸 **뒤에** 붙인다 — 판정이 이 값을 볼 수 없게 하려는 것이다.
+    #   출처가 무엇이든 등급은 같아야 하고, 실제로 rule_engine은 이 필드를 읽지 않는다.
+    if price_info is not None:
+        verdict.price_provenance = _price_provenance(price_info)
     if use_llm:
         # LLM은 설명 문장만 — 실패 시 내부에서 폴백으로 완성돼 돌아온다(리포트 항상 완성)
         explanation_result = explanation.generate(verdict)

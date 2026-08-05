@@ -20,13 +20,17 @@ import time
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ..explanation import (  # E-2와 동일 정책 공유 (모델·금지어·키 로드)
-    _BANNED_PHRASES,
+from .. import text_guard  # 2026-08-05: 금지어 목록 → 패턴(E-2와 **같은** 검증 공유)
+from ..explanation import (  # E-2와 동일 정책 공유 (모델·키 로드)
     _load_api_key,
-    REASONING_EFFORT,
     SOLAR_BASE_URL,
     SOLAR_MODEL,
 )
+
+#: 판례 설명도 문장 생성이라 복잡 추론이 필요 없다. 예전에는 `explanation`의 상수를
+#: 빌려 썼는데, 그 상수는 정작 그쪽에서 쓰이지 않는 죽은 값이었다(감사 2026-08-05).
+#: 실제로 쓰는 이 파일이 자기 값을 갖는다.
+REASONING_EFFORT = "low"
 from .models import PrecedentExplanation, RetrievedPrecedent
 
 _log = logging.getLogger("jeonseai")
@@ -82,7 +86,7 @@ def _field_ok(kind: str, text: str) -> bool:
         return False
     if len(text) > _MAX_LEN[kind]:
         return False
-    return not any(p in text for p in _BANNED_PHRASES)
+    return text_guard.banned_hit(text) is None
 
 
 def fallback_summary(match: RetrievedPrecedent) -> str:

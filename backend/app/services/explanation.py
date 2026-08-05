@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..schemas.internal import RuleVerdict
-from . import fallback_texts, llm
+from . import fallback_texts, llm, text_guard
 from .llm import LlmError
 from .llm.prompts import EXPLAIN_SYSTEM_PROMPT
 
@@ -44,40 +44,37 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 # [decisions.md 2026-07-07 Solar Pro 연동 스펙 — 공식 쿡북(UpstageAI/cookbook) 원문 근거]
 SOLAR_BASE_URL = "https://api.upstage.ai/v1/solar"  # OpenAI 호환 base_url
 SOLAR_MODEL = "solar-pro2"  # 모델 교체(solar-pro3 등)는 이 상수만 변경
-REASONING_EFFORT = "low"  # 문장 생성은 복잡 추론 불요 — 빠르고 저비용
 REQUEST_TIMEOUT_SECONDS = 60  # 인프라 수치(판정 아님)
 MAX_ATTEMPTS = 2  # 최초 1회 + 재시도 1회
 
-# 단정 금지어 — 보수적 편향(불변 원칙 3). 검출 시 해당 필드만 폴백으로 치환.
-# 2026-07-07 검증 하네스 보강: 실출력에서 "안전 범위입니다"·"문제가 없습니다"·
-# "위험 요소가 없습니다"가 기존 목록을 통과한 것이 확인되어(페르소나 2인·rule-auditor 지적)
-# 부분 문자열 매칭 계열로 확장. 해요체 변형도 포함.
-_BANNED_PHRASES = (
-    "안전합니다",
-    "안전해요",
-    "안전한 집",
-    "안전 범위",
-    "안심하셔도",
-    "안심해도",
-    "안심하세요",
-    "문제없",       # 문제없습니다/문제없어요
-    "문제 없",      # 문제 없습니다/문제 없어요
-    "문제가 없",    # 문제가 없습니다/문제가 없어요
-    "위험 요소가 없",
-    "위험요소가 없",
-    "이상이 없",
-    "걱정하지 않으셔도",
-    "걱정 안 하셔도",
-    "걱정 마세요",
-    "걱정하지 마세요",
-    "확실히 안전",
-    "절대 안전",
-    "100% 안전",
-)
+# 2026-08-05: 여기 있던 `REASONING_EFFORT = "low"`를 지웠다. **이 파일에서 쓰이지 않는
+# 죽은 상수**였다(감사 §C 부수 확인) — 실제 적용은 `llm/providers.py:39`가 하고,
+# 이 이름을 import하던 곳은 `precedent/explainer.py`뿐이라 그쪽은 자기 상수를 갖는다.
+# 죽은 상수를 남겨 두면 "여기를 고치면 바뀐다"고 오해하게 된다.
+
+# 설명 생성에 주는 출력 예산 (2026-08-05 상향 — 감사 §C에서 '관성'으로 분류된 값).
+# 문단을 나눠 쓰게 하면(프롬프트 재설계) 예전 1,500으로는 근거 5장이 잘린다.
+MAX_OUTPUT_TOKENS = 3000
+
+# 단정 금지어·등급 단어·**숫자 화이트리스트**는 2026-08-05에 `text_guard`로 옮기고
+# 방식을 바꿨다. 이유는 그 모듈 docstring에 있다 — 요지는 "부분 문자열 목록은 세 번째로
+# 샜다"(감사 2026-08-05 §B-5-3: `"안전한 범위"`가 `"안전 범위"` 목록을 통과).
+#
+# ⚠ 가드레일의 **정책**(무엇을 언제 검사하나)은 여전히 이 파일에 있다. provider를 바꿔도
+#   가드레일이 따라 바뀌면 안 되기 때문이다(이 파일 모듈 docstring 참고). `text_guard`는
+#   정책이 부르는 **기계**일 뿐이고, provider 계층에서는 보이지 않는다.
 
 # 필드 길이 상한(표시 안정용 인프라 수치) — 초과 시 해당 필드 폴백
 # headline은 프롬프트 지시(40자 이내)+여유 5자 — 홈에서 3초 안에 한 줄로 읽히게(서연 리뷰)
-_MAX_LEN = {"headline": 45, "easy_explanation": 240}
+#
+# 2026-08-05: `easy_explanation` 240 → 600. 근거는 두 가지다.
+#   ⑴ 240의 출처를 못 찾았다(감사 "확인 불가 목록" ①). headline 45와 달리 근거 기록이 없다.
+#   ⑵ 프롬프트를 "기준선 → 이 집 수치 → 무슨 뜻 → 확인할 행동" 4단 문단으로 바꿨다.
+#      실측 폴백 문구(`fallback_texts.easy_explanation`)가 이미 200자를 넘는 경우가 있어
+#      240은 LLM 문장을 폴백보다 짧게 강제하는 셈이었다.
+# 표시 안정성은 앱이 `Text`로 자동 줄바꿈하므로(app_card.dart:154-159) 길이 자체가
+# 화면을 깨뜨리지는 않는다.
+_MAX_LEN = {"headline": 45, "easy_explanation": 600}
 
 #: **재시도할 가치가 있는** 실패 — 호출·응답·검증 계층. 다시 부르면 될 수도 있다.
 #: 이 목록 밖의 예외도 폴백은 되지만(아래 `generate` 참고) 재시도는 하지 않는다.
@@ -120,9 +117,26 @@ def _load_api_key() -> str:
     return os.environ.get("UPSTAGE_API_KEY", "").strip()
 
 
+#: 시세 출처 코드 → LLM이 문장에서 부를 이름 (2026-08-05).
+#: 예전 프롬프트는 무조건 "입력하신 시세"라고 부르게 했는데, 2026-08-03 자동조회가
+#: 붙은 뒤로 그 지시가 **거짓**이 됐다(감사 §A-4-⑶).
+_PRICE_SOURCE_LABELS = {
+    "manual": "직접 입력하신 시세",
+    "actual_trade": "국토교통부 실거래가",
+    "official_price": "공시가격을 기준으로 계산한 값",
+    "tax_base": "국세청 기준시가",
+}
+
+
 def _verdict_for_prompt(verdict: RuleVerdict) -> dict:
-    """LLM에 넘길 판정 요약 — RuleVerdict에서 파생한 값만 (추출 원본·이미지 없음)."""
-    return {
+    """LLM에 넘길 판정 요약 — RuleVerdict에서 파생한 값만 (추출 원본·이미지 없음).
+
+    2026-08-05: 설명 재료를 넓혔다. 늘어난 것은 **규칙 엔진이 이미 계산했거나 이미 손에
+    쥐고 있던 값**뿐이고, 새 판정은 하나도 없다. 날조 방지는 `text_guard`의 숫자
+    화이트리스트가 맡는다 — 재료가 늘면 허용 숫자도 함께 늘어 오탐이 줄고, 재료에 없는
+    수는 여전히 통과하지 못한다.
+    """
+    out: dict = {
         "종합등급": verdict.grade.value,
         "보증금_원": verdict.deposit,
         "시세_원": verdict.market_price,
@@ -139,6 +153,28 @@ def _verdict_for_prompt(verdict: RuleVerdict) -> dict:
             for e in verdict.evidences
         ],
     }
+
+    prov = verdict.price_provenance
+    if prov is not None and prov.source:
+        out["시세출처"] = {
+            "부를_이름": _PRICE_SOURCE_LABELS.get(prov.source, "확인된 시세"),
+            "출처코드": prov.source,
+            "출처명": prov.source_name,
+            "기준일": prov.as_of,
+            "표본수": prov.sample_count,
+            "산정근거": prov.detail,
+            "실거래가_공시기준_괴리율_pct": prov.gap_pct,
+            "채택안된_후보": prov.alternatives,
+        }
+    elif verdict.market_price is None:
+        out["시세출처"] = {"부를_이름": "시세를 알 수 없음", "출처코드": None}
+    else:
+        # price_provenance 없이 market_price만 있는 경로(구 호출부·테스트) — 단정하지 않는다.
+        out["시세출처"] = {"부를_이름": "확인된 시세", "출처코드": None}
+
+    if verdict.ownership_history:
+        out["소유권이전이력"] = verdict.ownership_history
+    return out
 
 
 # 2026-07-07 페르소나 리뷰(지수·서연) 반영해 강화: 해요체 강제·단정 금지·용어 순서·
@@ -164,17 +200,19 @@ def _call_solar(messages: list[dict], api_key: str) -> str:
     system = next((m["content"] for m in messages if m.get("role") == "system"), "")
     user = next((m["content"] for m in messages if m.get("role") == "user"), "")
     return provider.chat(
-        system, user, max_tokens=1500, temperature=llm.EXPLAIN_TEMPERATURE
+        system, user, max_tokens=MAX_OUTPUT_TOKENS, temperature=llm.EXPLAIN_TEMPERATURE
     ).text
 
 
-def _field_ok(kind: str, text: str) -> bool:
-    """금지어·길이 검사 — 실패한 필드만 폴백으로 치환된다."""
-    if not text or not text.strip():
-        return False
-    if len(text) > _MAX_LEN[kind]:
-        return False
-    return not any(p in text for p in _BANNED_PHRASES)
+def _field_reason(kind: str, text: str, allowed: set[float]) -> str | None:
+    """이 필드를 쓸 수 있나 — 쓸 수 있으면 None, 아니면 **사유 문자열**.
+
+    2026-08-05: 불리언(`_field_ok`) → 사유 문자열로 바꿨다. 폴백이 조용하면 무엇이
+    걸렸는지 다음에도 모르기 때문이다(감사 §B-5의 세 건이 전부 '통과한 위반'이었다).
+    """
+    return text_guard.check(text, max_len=_MAX_LEN[kind], allowed=allowed)
+
+
 
 
 def generate(verdict: RuleVerdict) -> ExplanationResult:
@@ -208,11 +246,14 @@ def _generate_with_llm(verdict: RuleVerdict, base: dict) -> ExplanationResult:
         _log.info(f"[설명:{provider.name}] 호출 생략 → 폴백 문구 사용 (원인: API 키 없음)")
         return ExplanationResult(texts=base, source="폴백")
 
+    # 이 dict가 **재료의 정본**이다 — LLM에 보내는 것과 숫자 화이트리스트의 기준이
+    # 같은 객체여야 한다(둘이 어긋나면 정상 문장이 폴백된다).
+    material = _verdict_for_prompt(verdict)
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {
             "role": "user",
-            "content": "판정 JSON:\n" + json.dumps(_verdict_for_prompt(verdict), ensure_ascii=False),
+            "content": "판정 JSON:\n" + json.dumps(material, ensure_ascii=False),
         },
     ]
 
@@ -266,21 +307,34 @@ def _generate_with_llm(verdict: RuleVerdict, base: dict) -> ExplanationResult:
     }
     applied = 0
     dropped = 0
+    #: 폴백 사유를 필드별로 모은다 — 조용한 폴백은 같은 문제를 반복시킨다(2026-08-05).
+    reasons: list[str] = []
+    #: 숫자 화이트리스트의 기준이 되는 **재료**. LLM에 실제로 보낸 것과 같은 dict를 쓴다 —
+    #: 보낸 것과 검사 기준이 어긋나면 정상 문장이 폴백된다.
+    allowed = text_guard.collect_allowed(material)
 
-    if _field_ok("headline", payload.headline):
+    head_reason = _field_reason("headline", payload.headline, allowed)
+    if head_reason is None:
         texts["headline"] = payload.headline.strip()
         applied += 1
     else:
         dropped += 1
+        reasons.append(f"headline={head_reason}")
 
     by_id = {e.id: e.easy_explanation for e in payload.evidences}
     for eid in texts["evidences"]:
         candidate = by_id.get(eid)
-        if candidate is not None and _field_ok("easy_explanation", candidate):
+        if candidate is None:
+            dropped += 1
+            reasons.append(f"{eid}=응답 누락")
+            continue
+        reason = _field_reason("easy_explanation", candidate, allowed)
+        if reason is None:
             texts["evidences"][eid]["easy_explanation"] = candidate.strip()
             applied += 1
         else:
-            dropped += 1  # 누락·금지어·과길이 → 해당 카드만 폴백 유지
+            dropped += 1  # 해당 카드만 폴백 유지
+            reasons.append(f"{eid}={reason}")
 
     elapsed = time.perf_counter() - t0
     if dropped == 0:
@@ -288,10 +342,14 @@ def _generate_with_llm(verdict: RuleVerdict, base: dict) -> ExplanationResult:
         _log.info(f"[Solar] 응답 OK ({elapsed:.1f}초) — 설명 {applied}건 생성")
     elif applied == 0:
         source = "폴백"
-        _log.info(f"[Solar] 응답 수신했으나 사용 가능 문구 0건 → 전체 폴백 ({elapsed:.1f}초)")
+        _log.info(
+            f"[Solar] 응답 수신했으나 사용 가능 문구 0건 → 전체 폴백 ({elapsed:.1f}초)"
+            f" — 사유: {' | '.join(reasons)}"
+        )
     else:
         source = "AI 생성(일부 폴백)"
         _log.info(
-            f"[Solar] 응답 OK ({elapsed:.1f}초) — 설명 {applied}건 생성 · {dropped}건은 금지어/누락으로 폴백"
+            f"[Solar] 응답 OK ({elapsed:.1f}초) — 설명 {applied}건 생성 · {dropped}건 폴백"
+            f" — 사유: {' | '.join(reasons)}"
         )
     return ExplanationResult(texts=texts, source=source)

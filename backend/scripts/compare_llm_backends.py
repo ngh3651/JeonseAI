@@ -54,8 +54,8 @@ load_dotenv(dotenv_path=_BACKEND_ROOT / ".env")
 # 제품 코드 import — 읽기 전용 (프롬프트·스키마·금지어를 실제 제품과 동일하게 쓰기 위함)
 from app.schemas.internal import RegistryExtract  # noqa: E402
 from app.services import rule_engine  # noqa: E402
+from app.services import text_guard  # noqa: E402
 from app.services.explanation import (  # noqa: E402
-    _BANNED_PHRASES,
     _SYSTEM_PROMPT as EXPLANATION_SYSTEM_PROMPT,
     _verdict_for_prompt,
     ExplanationPayload,
@@ -308,7 +308,7 @@ def _measure(provider_name: str, provider: dict, role_name: str, role: dict, rep
                 schema_ok += 1
             except (ValueError, ValidationError, KeyError):
                 pass
-            if any(p in content for p in _BANNED_PHRASES):
+            if text_guard.banned_hit(content):
                 banned_hits += 1
         except Exception as e:  # 응답 구조 이상 포함 — 개별 실패가 전체 실행을 죽이지 않게
             errors += 1

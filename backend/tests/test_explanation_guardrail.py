@@ -6,6 +6,7 @@
 """
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -166,7 +167,8 @@ def test_overlong_field_falls_back(monkeypatch, solar_key, danger_case):
     _, _, verdict = danger_case
     payload = json.loads(valid_content(verdict))
     long_id = payload["evidences"][0]["id"]
-    payload["evidences"][0]["easy_explanation"] = "확인이 필요해요. " * 40  # 240자 초과
+    # 2026-08-05: 상한이 240 → 600으로 올라가(문단 4단 구성) 초과량도 함께 늘렸다.
+    payload["evidences"][0]["easy_explanation"] = "확인이 필요해요. " * 80  # 640자 > 600자
     monkeypatch.setattr(
         explanation, "_call_solar", lambda m, k: json.dumps(payload, ensure_ascii=False)
     )
@@ -244,4 +246,32 @@ def test_llm_input_is_verdict_only(monkeypatch, solar_key, danger_case):
     assert "판정 JSON" in user_content
     assert "종합등급" in user_content
     assert "base64" not in user_content  # 이미지 전달 금지
-    assert "mortgagee" not in user_content  # 추출 원본(채권자명 등) 전달 금지 — 판정 파생만
+
+    # ── 2026-08-05: 봉인 방식을 **블랙리스트 → 화이트리스트**로 바꿨다 ──────────
+    #
+    # 예전에는 `assert "mortgagee" not in user_content` 한 줄이었다. 취지는
+    # decisions.md [2026-07-07] ⑴ "원본 이미지·추출 JSON 전달 금지"였는데, 문자열
+    # 하나를 막는 방식이라 **다른 원본 필드가 새로 실려도 잡지 못했다.**
+    #
+    # 이번에 설명 재료를 넓히면서(근저당 순위·설정일·근저당권자) 그 한 줄이 걸렸다.
+    # 실린 것은 추출 JSON 통째가 아니라 **규칙 엔진이 골라 담은 facts**이지만,
+    # "무엇이 실려도 되는가"를 사람이 매번 판단하게 두면 다음에 또 흐려진다.
+    # 그래서 **최상위 키를 화이트리스트로 못 박는다** — 새 키를 추가하려면 이 목록을
+    # 함께 고쳐야 하고, 그 순간 사람이 한 번 더 생각하게 된다.
+    material = json.loads(user_content.split("판정 JSON:\n", 1)[1])
+    allowed_top = {
+        "종합등급", "보증금_원", "시세_원", "선순위채권합계_원", "문서_플래그",
+        "근거", "시세출처", "소유권이전이력",
+    }
+    assert set(material) <= allowed_top, f"허용되지 않은 최상위 키: {set(material) - allowed_top}"
+
+    # 근거 원소도 마찬가지 — 추출 원본이 통째로 들어오는 경로를 막는다.
+    for e in material["근거"]:
+        assert set(e) <= {"id", "등급", "상태", "판정상세", "수치사실"}
+
+    # **사람 이름은 여전히 금지다.** 소유자 명단은 어떤 경로로도 실리지 않는다.
+    owner_names = [o.get("name") for o in danger_case[0]["registry"].get("current_owners", [])]
+    for name in owner_names:
+        assert name and name not in user_content, f"소유자 실명이 프롬프트에 실렸다: {name}"
+    # 주민등록번호 형태도 금지 (추출 원본이 새는 가장 나쁜 형태)
+    assert not re.search(r"\d{6}\s*-\s*[0-9*]{6,7}", user_content)

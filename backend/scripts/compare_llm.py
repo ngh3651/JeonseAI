@@ -7,7 +7,7 @@ r"""국내 LLM 비교 하네스 — **같은 입력을 여러 provider에 넣고
 각 provider × 각 역할 × N회(기본 3) 반복해 아래를 기록한다:
 - 응답 시간 / 토큰 수(제공하는 경우)
 - 스키마 위반 (제품과 **같은** pydantic 검증: `extra="forbid"`)
-- 금지어 위반 (제품과 **같은** `_BANNED_PHRASES`)
+- 금지어 위반 (제품과 **같은** `text_guard.banned_hit`)
 - IE 결과와의 필드별 일치율 (항목 수 · 순위번호 집합 · 금액 집합)
 - **회차 간 흔들림** — 같은 입력에 다른 답을 주는가
 
@@ -43,7 +43,8 @@ sys.path.insert(0, str(_BACKEND_ROOT))
 
 from app.schemas.internal import RegistryExtract  # noqa: E402
 from app.services import llm, rule_engine  # noqa: E402
-from app.services.explanation import _BANNED_PHRASES, _verdict_for_prompt  # noqa: E402
+from app.services import text_guard  # noqa: E402
+from app.services.explanation import _verdict_for_prompt  # noqa: E402
 from app.services.document_parse import ParsedPage, render_parsed_text  # noqa: E402
 from app.services.llm.base import LlmError  # noqa: E402
 from app.services.ocr_layout import OcrPage, group_lines, parse_words  # noqa: E402
@@ -222,7 +223,9 @@ def _jaccard(a: set, b: set) -> float:
 
 
 def banned_hits(text: str) -> list[str]:
-    return [p for p in _BANNED_PHRASES if p in text]
+    # 2026-08-05: 목록 → 패턴. 제품과 **같은** 검증을 쓴다(text_guard).
+    hit = text_guard.banned_hit(text)
+    return [hit] if hit else []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -476,7 +479,7 @@ def _explain_section(results, args) -> list[str]:
     lines = [
         "## 역할 ② 설명 문장 (판정 JSON → 쉬운 한국어)",
         "",
-        "제품과 **같은** 검증을 그대로 쓴다 — `ExplanationPayload`(extra=forbid) + `_BANNED_PHRASES`.",
+        "제품과 **같은** 검증을 그대로 쓴다 — `ExplanationPayload`(extra=forbid) + `text_guard`.",
         "",
         "| provider | 성공 | 중앙 응답(초) | 스키마 통과 | 금지어 위반 | 해요체 위반 | 회차 간 흔들림 |",
         "|---|---|---|---|---|---|---|",
@@ -500,7 +503,7 @@ def _explain_section(results, args) -> list[str]:
     lines += [
         "",
         "> 금지어·해요체 위반이 있어도 **제품에서는 그 필드만 폴백으로 치환**되므로 화면에 나가지 않는다",
-        "> (`explanation.py`의 `_field_ok`). 이 표는 '얼마나 자주 폴백을 쓰게 되는가'를 재는 것이다.",
+        "> (`explanation.py`의 `_field_reason`). 이 표는 '얼마나 자주 폴백을 쓰게 되는가'를 재는 것이다.",
         "",
     ]
     return lines

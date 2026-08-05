@@ -74,6 +74,7 @@ class OfficialPriceResult:
     area_sqm: float | None  # 매칭된 행의 전용면적
     area_basis: str  # 'exclusive' | 'exclusive_plus_common' — 가격이 어떤 면적 기준인지
     area_mismatch: bool  # 동·호는 맞는데 면적이 허용오차를 벗어남
+    umd_narrowed: bool = False  # 읍면동으로 실제로 좁혔나 (안 맞아서 못 좁혔으면 False)
 
 
 # ── 조회 ─────────────────────────────────────────────────────────────────────
@@ -122,6 +123,29 @@ def _select_rows(conn: sqlite3.Connection, lawd_cd: str, jibun: str) -> list[sql
     return conn.execute(
         f"SELECT * FROM {TABLE_NAME} WHERE lawd_cd = ? AND jibun = ?", (lawd_cd, jibun)
     ).fetchall()
+
+
+def _narrow_by_umd(rows: list[sqlite3.Row], umd: str) -> tuple[list[sqlite3.Row], bool]:
+    """읍면동으로 **1차** 좁히기. `(좁힌 행, 실제로 좁혔나)`.
+
+    왜 필요한가 (2026-08-05): 조회 키가 (시군구 5자리 + 지번)뿐이라 **같은 시군구
+    안 다른 읍면동의 같은 지번이 전부 걸린다.** 공시가격 샘플 99,999행 실측에서
+    (시군구, 지번) 조합 5,339개 중 308개(5.8%)가 읍면동 2개 이상과 겹쳤고 최대
+    5개까지 겹쳤다(표본이 작아 이 값은 하한이다). 그 상태에서 호수가 우연히 같으면
+    (`101호`는 어디에나 있다) 뒤의 최저가 채택이 **다른 동네의 싼 집**을 골라 온다.
+
+    ⚠ **하나도 안 맞으면 좁히지 않는다.** `_narrow`가 "좁힐 근거가 없으면 추측하지
+      않는다"로 만들어져 있는 것과 같은 원칙이다. 등기부 표기와 공적 장부 표기가
+      달라 전부 탈락하면(예: 농촌의 '읍면 + 리') 조회가 통째로 죽는데, 그것은
+      좁히지 않고 기존대로 보는 것보다 나쁘다.
+    """
+    want = N.normalize_umd(umd)
+    if not want:
+        return rows, False
+    hit = [r for r in rows if N.normalize_umd(r["umd"] or "") == want]
+    if not hit:
+        return rows, False
+    return hit, True
 
 
 def _narrow(
@@ -197,6 +221,7 @@ def lookup(
         source_key,
         lawd_codes=parts.lawd_codes,
         jibun=parts.jibun,
+        umd=parts.umd_nm,
         dong=N.extract_dong(address),
         ho=N.extract_ho(address),
         area_sqm=area_sqm,
@@ -208,11 +233,16 @@ def lookup_by_key(
     *,
     lawd_codes: list[str],
     jibun: str,
+    umd: str = "",
     dong: str = "",
     ho: str = "",
     area_sqm: float | None = None,
 ) -> tuple[OfficialPriceResult | None, list[str]]:
-    """이미 뽑아 둔 조회 키로 조회한다 (측정 스크립트가 주소 문자열 없이 쓴다)."""
+    """이미 뽑아 둔 조회 키로 조회한다 (측정 스크립트가 주소 문자열 없이 쓴다).
+
+    `umd`를 주면 같은 시군구·지번 안에서 **읍면동으로 먼저 좁힌다**(`_narrow_by_umd`).
+    안 주거나 하나도 안 맞으면 좁히지 않고 지금까지처럼 전부 본다.
+    """
     notes: list[str] = []
     try:
         cfg = PS.load(source_key)
@@ -238,6 +268,8 @@ def lookup_by_key(
             rows = _select_rows(conn, lawd_cd, jibun)
             if not rows:
                 continue
+            # 읍면동 1차 좁히기 — 안 맞으면 좁히지 않는다(원본 rows 유지)
+            rows, umd_narrowed = _narrow_by_umd(rows, umd)
             narrowed = _narrow(rows, dong=dong, ho=ho, area_sqm=area_sqm)
             if narrowed is None:
                 notes.append(
@@ -264,9 +296,12 @@ def lookup_by_key(
                 area_sqm=picked["area_sqm"],
                 area_basis=area_basis,
                 area_mismatch=area_mismatch,
+                umd_narrowed=umd_narrowed,
             )
             _log.info(
                 f"[시세] {cfg.label} 조회 — {lawd_cd} · {result.as_of} 기준 · "
+                # ⚠ 읍면동 '이름'은 찍지 않는다 — 지번과 함께면 물건이 특정된다(2026-08-03 원칙).
+                f"읍면동 대조 {'함' if umd_narrowed else '못함'} · "
                 f"매칭 {method} {len(pool)}건 → "
                 f"{base:,}원 × {multiplier} = {result.price_won:,}원"
                 + (" ⚠ 동·호는 맞지만 면적 불일치" if area_mismatch else "")

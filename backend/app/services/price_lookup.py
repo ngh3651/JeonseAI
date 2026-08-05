@@ -83,6 +83,11 @@ def _official_candidates(
     out: list[PriceCandidate] = []
     for r in results:
         detail = f"{r.lawd_cd} · 매칭 {r.match_method}"
+        if r.umd_narrowed:
+            detail += " · 읍면동 대조함"
+        elif r.matched_count > 1:
+            # 읍면동을 못 좁힌 채 여러 건이면 **다른 동네가 섞였을 수 있다** — 근거 공개 원칙상 밝힌다.
+            detail += " · ⚠ 읍면동 대조 못함"
         if r.matched_count > 1:
             detail += f" · 같은 조건 {r.matched_count}건 중 최저가"
         if r.multiplier != 1.0:

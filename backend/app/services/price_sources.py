@@ -38,7 +38,8 @@ CANONICAL_FIELDS = (
     "bjd_cd",  # 법정동코드 10자리
     "sido",  # 시도명
     "sigungu",  # 시군구명
-    "umd",  # 읍면동명
+    "eupmyeon",  # 읍·면명 (원본이 읍면/동리 두 칸으로 갈려 있을 때만 — umd와 합쳐진다)
+    "umd",  # 읍면동명(동·리)
     "jibun_full",  # '1234-5' 처럼 한 컬럼에 든 지번
     "jibun_bon",  # 본번
     "jibun_bu",  # 부번

@@ -242,7 +242,9 @@ def normalize_row(
     return (
         lawd_cd,
         bjd_cd or None,
-        get("umd") or None,
+        # 원본이 읍면/동리 두 칸으로 갈려 있으면 합쳐서 하나의 읍면동 이름으로 담는다
+        # (도시는 동리만, 농촌은 '읍면 + 리'). 조회 때 이 값으로 대조한다.
+        N.combine_umd(get("eupmyeon"), get("umd")) or None,
         jibun,
         N.normalize_unit(get("dong_nm")) or None,
         N.normalize_unit(get("ho_nm")) or None,

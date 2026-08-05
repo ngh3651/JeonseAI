@@ -1,0 +1,132 @@
+"""용어 은행 — `data/terms.json` 하나가 두 표면의 원천 (2026-08-05 신설).
+
+왜 만들었나:
+용어 설명이 두 곳에 **따로** 하드코딩돼 있었다 —
+  · 리포트 근거 카드 툴팁: `fallback_texts.TERM_GLOSSARY` (근거 id별 고정 dict, 8개)
+  · 용어 챗봇: `dummy_data._GLOSSARY` (6개)
+같은 용어를 두 곳에서 다르게 설명할 수 있는 구조였고, 실제로 '신탁등기' 설명이 서로
+달랐다. 게다가 근거 id에 미리 매어 둔 방식이라 **LLM이 쓴 단어에 툴팁이 붙지 않았다** —
+'대항력'을 설명에 써도 사전에 없으면 그냥 검은 글씨였다.
+
+그래서:
+  ⑴ 데이터를 파일 하나로 모으고(비개발 팀원이 직접 채울 수 있게),
+  ⑵ 근거 id 고정 매핑 대신 **문장을 훑어 등장한 용어만** 붙인다(`attach`).
+
+⚠ 계약 무변경: 결과는 지금과 같은 `termGlossary: dict[str, str]`이다(계약 §2.2).
+  앱은 "용어가 easyExplanation 본문에 등장해야 함"을 전제하는데, 이 방식이 그 전제를
+  **오히려 더 잘 지킨다** — 등장하지 않은 용어는 애초에 담기지 않는다.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, field
+from pathlib import Path
+
+_log = logging.getLogger("jeonseai")
+
+TERMS_PATH = Path(__file__).resolve().parents[2] / "data" / "terms.json"
+
+
+@dataclass(frozen=True)
+class Term:
+    term: str
+    description: str
+    aliases: tuple[str, ...] = field(default_factory=tuple)
+    chatbot_chip: bool = False
+
+    @property
+    def surfaces(self) -> tuple[str, ...]:
+        """문장에서 이 용어로 볼 표기들 — 정식 명칭 + 별칭."""
+        return (self.term, *self.aliases)
+
+
+_cache: list[Term] | None = None
+
+
+def load() -> list[Term]:
+    """용어 목록. 파일이 깨져도 **빈 목록**으로 끝난다 — 툴팁이 없을 뿐 리포트는 완성된다."""
+    global _cache
+    if _cache is not None:
+        return _cache
+    try:
+        raw = json.loads(TERMS_PATH.read_text(encoding="utf-8"))
+        items = raw.get("terms") or []
+        out: list[Term] = []
+        for x in items:
+            term = str(x.get("term") or "").strip()
+            desc = str(x.get("description") or "").strip()
+            if not term or not desc:
+                continue
+            out.append(
+                Term(
+                    term=term,
+                    description=desc,
+                    aliases=tuple(str(a).strip() for a in (x.get("aliases") or []) if str(a).strip()),
+                    chatbot_chip=bool(x.get("chatbot_chip")),
+                )
+            )
+        _cache = out
+    except Exception as e:  # noqa: BLE001 — 용어 파일이 리포트를 죽이지 못한다
+        _log.error(f"[용어] terms.json 을 읽지 못했어요 — 툴팁 없이 진행 ({type(e).__name__}: {e})")
+        _cache = []
+    return _cache
+
+
+def reload() -> list[Term]:
+    """캐시 비우고 다시 읽기 (테스트·편집 후 확인용)."""
+    global _cache
+    _cache = None
+    return load()
+
+
+def chatbot_terms() -> list[Term]:
+    """용어 챗봇 추천 칩에 띄울 것만."""
+    return [t for t in load() if t.chatbot_chip]
+
+
+def lookup(query: str) -> Term | None:
+    """사용자 입력에서 용어 찾기 — 별칭 포함, **가장 긴 표기 우선**.
+
+    가장 긴 것을 먼저 보는 이유: '근저당권'을 물었는데 '근저당'이 먼저 걸리면
+    덜 정확한 설명이 나간다.
+    """
+    q = (query or "").strip()
+    if not q:
+        return None
+    best: tuple[int, Term] | None = None
+    for t in load():
+        for surface in t.surfaces:
+            if surface and surface in q and (best is None or len(surface) > best[0]):
+                best = (len(surface), t)
+    return best[1] if best else None
+
+
+def attach(text: str) -> dict[str, str]:
+    """문장에 **실제로 등장한** 용어만 골라 `termGlossary` 형태로 (2026-08-05).
+
+    같은 용어가 별칭으로 등장하면 **문장에 쓰인 그 표기**를 키로 쓴다 — 앱이
+    `easyExplanation.indexOf(키)`로 위치를 찾기 때문이다(report_screen.dart:506).
+    키가 본문에 없으면 툴팁이 붙지 않는다.
+
+    긴 표기를 먼저 잡아 짧은 표기에 가려지지 않게 한다('근저당권' vs '근저당').
+    """
+    if not text:
+        return {}
+    pairs: list[tuple[str, str]] = []
+    for t in load():
+        for surface in t.surfaces:
+            if surface and surface in text:
+                pairs.append((surface, t.description))
+    if not pairs:
+        return {}
+    # 긴 표기 우선. 짧은 표기가 긴 표기의 부분 문자열이면 짧은 쪽은 버린다 —
+    # 둘 다 담으면 앱이 '근저당'을 먼저 찾아 '근저당권'을 반으로 자른다.
+    pairs.sort(key=lambda p: -len(p[0]))
+    chosen: dict[str, str] = {}
+    for surface, desc in pairs:
+        if any(surface != k and surface in k for k in chosen):
+            continue
+        chosen.setdefault(surface, desc)
+    return chosen

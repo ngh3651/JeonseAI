@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from .services import terms
 from .schemas.contract import (
     CaseMatch,
     Evidence,
@@ -356,63 +357,24 @@ def matched_cases(risk_patterns: list[str]) -> list[CaseMatch]:
 
 
 # ── 용어 챗봇 (content_repository.dart glossaryTerms / lookupTerm 이식) ──────
-_GLOSSARY: list[GlossaryTerm] = [
-    GlossaryTerm(
-        term="신탁등기",
-        description=(
-            "집의 관리 권한을 신탁회사에 맡겼다는 표시예요. 이 경우 "
-            "집주인 단독으로는 전세 계약을 맺을 수 없는 경우가 많아, 신탁회사의 "
-            "동의가 있었는지 꼭 확인해야 해요."
-        ),
-    ),
-    GlossaryTerm(
-        term="근저당",
-        description=(
-            "집주인이 집을 담보로 돈을 빌렸다는 표시예요. 집이 경매로 "
-            "넘어가면 돈을 빌려준 쪽(주로 은행)이 세입자보다 먼저 돈을 받아가요."
-        ),
-    ),
-    GlossaryTerm(
-        term="전세가율",
-        description=(
-            "보증금이 집값의 몇 %인지를 나타내는 비율이에요. 높을수록 "
-            "집값이 떨어졌을 때 보증금을 돌려받기 어려워져요."
-        ),
-    ),
-    GlossaryTerm(
-        term="확정일자",
-        description=(
-            "전세 계약서에 날짜 도장을 받는 거예요. 이 날짜가 있어야 "
-            "집이 경매로 넘어가도 보증금을 돌려받을 순위가 생겨요."
-        ),
-    ),
-    GlossaryTerm(
-        term="대항력",
-        description=(
-            "집주인이 바뀌어도 세입자가 계속 살 수 있고 보증금을 "
-            "주장할 수 있는 힘이에요. 전입신고 + 실제 거주로 생겨요."
-        ),
-    ),
-    GlossaryTerm(
-        term="우선변제권",
-        description=(
-            "집이 경매로 넘어갔을 때 다른 채권자보다 먼저 보증금을 "
-            "돌려받을 수 있는 권리예요. 대항력 + 확정일자가 있어야 해요."
-        ),
-    ),
-]
+# 2026-08-05: 하드코딩 6개를 없앴다. 용어 원천은 `backend/data/terms.json` 하나다
+# (`services/terms.py`). 리포트 툴팁과 챗봇이 **같은 설명**을 쓰게 하려는 것이다 —
+# 예전에는 두 곳이 따로 있어 '신탁등기' 설명이 서로 달랐다.
+# ⚠ 응답 로직은 바꾸지 않았다(칩 목록 + 부분 문자열 조회). 데이터 원천만 옮겼다.
 
 
 def glossary_terms() -> list[GlossaryTerm]:
-    return list(_GLOSSARY)
+    """추천 칩 목록 — terms.json 에서 chatbot_chip=true 인 것만."""
+    return [GlossaryTerm(term=t.term, description=t.description) for t in terms.chatbot_terms()]
 
 
 def lookup_term(query: str) -> GlossaryTerm | None:
-    q = query.strip()
-    for t in _GLOSSARY:
-        if t.term in q:  # Dart: q.contains(t.term)
-            return t
-    return None
+    """입력에서 용어 찾기 — 별칭 포함, 가장 긴 표기 우선(terms.lookup).
+
+    못 찾으면 None → 라우터가 404 → 앱이 '범위 밖' 거절 문구를 띄운다(가드레일 유지).
+    """
+    found = terms.lookup(query)
+    return GlossaryTerm(term=found.term, description=found.description) if found else None
 
 
 # ── 계약 여정 (content_repository.dart journeyStages 이식) ──────────────────

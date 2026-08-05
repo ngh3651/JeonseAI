@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from ..schemas.internal import EvidenceVerdict, Grade, RuleVerdict
+from . import terms
 from .formatting import round_half_up
 from .rule_engine import BLACKLIST_PENDING_LABEL
 
@@ -36,24 +37,10 @@ TITLES: dict[str, tuple[str, str]] = {
     "blacklist": ("집주인이 위험 명단에 있나요?", "악성임대인 공개 명단"),
 }
 
-TERM_GLOSSARY: dict[str, dict[str, str]] = {
-    "jeonse_ratio": {
-        "전세가율": "보증금이 집값의 몇 %인지 나타내는 비율이에요. 높을수록 집값이 떨어졌을 때 보증금을 돌려받기 어려워져요."
-    },
-    "senior_debt": {
-        "선순위 채권": "집이 경매로 넘어가면 나(세입자)보다 먼저 돈을 받아가는 빚이에요. 이게 많을수록 내 보증금이 뒤로 밀려요.",
-        "근저당권": "집주인이 집을 담보로 돈을 빌렸다는 표시예요. 집이 경매로 넘어가면 돈을 빌려준 쪽(주로 은행)이 세입자보다 먼저 돈을 받아갈 수 있어요.",
-    },
-    "ownership": {
-        "신탁등기": "집의 관리 권한을 신탁회사에 맡겼다는 표시예요. 이 경우 집주인 단독으로는 전세 계약을 맺을 수 없는 경우가 많아요.",
-        "압류": "빚을 갚지 못해 집을 마음대로 팔지 못하도록 묶인 상태예요. 경매로 넘어갈 수 있다는 위험 신호예요.",
-        "가압류": "빚 다툼이 끝나기 전에 집을 미리 못 팔게 묶어둔 상태예요. 집주인이 재산 분쟁 중이라는 신호예요.",
-    },
-    "insurance": {
-        "전세보증금 반환보증": "집주인이 보증금을 못 돌려줄 때 보증기관(HUG 등)이 대신 돌려주는 보험이에요. 가입해두면 보증금을 지킬 안전장치가 생겨요."
-    },
-    "blacklist": {},
-}
+# 2026-08-05: 근거 id별 고정 `TERM_GLOSSARY`를 없앴다. 용어는 이제 `data/terms.json`
+# 한 곳에 모여 있고, **문장에 실제로 등장한 용어만** `terms.attach()`가 붙인다.
+# 예전 방식은 id에 미리 매어 둔 탓에 LLM이 쓴 다른 용어('대항력' 등)에는 툴팁이
+# 붙지 않았고, 반대로 문장에 없는 용어가 담길 수도 있었다(계약 §2.2 전제 위반).
 
 # 홈 카드 3번째 줄(topRiskSummary)용 짧은 라벨
 _RISK_SHORT = {
@@ -123,27 +110,47 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
     return f"전세가율 {pct}% · 먼저 갚을 빚 {debt_count}건"
 
 
+#: 시세를 결정적 문구에서 부를 이름 (2026-08-05).
+#: 폴백 문구도 LLM 프롬프트와 **같은 문제**를 갖고 있었다 — 2026-08-03 자동조회가 붙은
+#: 뒤에도 "입력하신 시세"라고 못 박아, 공시가격에서 온 값에도 그렇게 말했다.
+_PRICE_CALL = {
+    "manual": "입력하신 시세",
+    "actual_trade": "국토교통부 실거래가",
+    "official_price": "공시가격으로 계산한 집값",
+    "tax_base": "국세청 기준시가",
+}
+
+
+def price_call(verdict: RuleVerdict) -> str:
+    """이 리포트에서 시세를 뭐라고 부를지. 출처를 모르면 중립적으로 '시세'."""
+    prov = verdict.price_provenance
+    if prov is not None and prov.source:
+        return _PRICE_CALL.get(prov.source, "확인된 시세")
+    return "시세"
+
+
 def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
     """근거 카드 펼침 1단의 쉬운 설명 — 판정 결과별 결정적 템플릿."""
     f = ev.facts
     if ev.id == "jeonse_ratio":
         if f.get("jeonse_ratio_pct") is None:
             return (
-                "시세를 입력하지 않아 아직 계산할 수 없어요. "
-                "국토부 실거래가·KB시세에서 확인한 금액을 입력하면 바로 알려드릴게요."
+                "시세를 알 수 없어 아직 계산할 수 없어요. "
+                "국토부 실거래가·KB시세에서 확인한 금액을 넣으면 바로 알려드릴게요."
             )
         pct = f["jeonse_ratio_pct"]
+        call = price_call(verdict)
         if ev.grade is Grade.DANGER:
             return (
-                f"보증금이 입력하신 시세의 {pct}%에 달해요(전세가율). 집값이 조금만 내려가도 "
+                f"보증금이 {call}의 {pct}%에 달해요(전세가율). 집값이 조금만 내려가도 "
                 "집을 팔아 보증금을 다 돌려주기 어려운 수준이에요."
             )
         if ev.grade is Grade.CAUTION:
             return (
-                f"보증금이 입력하신 시세의 {pct}%를 차지해요(전세가율). "
+                f"보증금이 {call}의 {pct}%를 차지해요(전세가율). "
                 "시세가 내려가면 보증금을 다 돌려받기 어려울 수 있어요."
             )
-        return f"보증금이 입력하신 시세의 {pct}% 수준이에요. 일반적인 범위지만, 시세 근거는 직접 확인하세요."
+        return f"보증금이 {call}의 {pct}% 수준이에요. 일반적인 범위지만, 시세 근거는 직접 확인하세요."
     if ev.id == "senior_debt":
         if f.get("lease_registration_count"):
             return (
@@ -231,7 +238,7 @@ def build(verdict: RuleVerdict) -> dict:
                 "title": TITLES[ev.id][0],
                 "term_subtitle": TITLES[ev.id][1],
                 "easy_explanation": easy_explanation(ev, verdict),
-                "term_glossary": TERM_GLOSSARY.get(ev.id, {}),
+                "term_glossary": terms.attach(easy_explanation(ev, verdict)),
                 "action_label": action_label(ev),
             }
             for ev in verdict.evidences

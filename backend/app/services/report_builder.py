@@ -32,6 +32,7 @@ from . import (
     price_resolver,
     rule_engine,
     store,
+    terms,
 )
 from .formatting import format_won, short_address
 
@@ -135,6 +136,12 @@ def _build(
         texts, explain_source = explanation_result.texts, explanation_result.source
     else:
         texts, explain_source = fallback_texts.build(verdict), "폴백(강제)"
+
+    # 용어 툴팁 자동 부착 (2026-08-05) — **최종 문장**을 훑는다.
+    # LLM 문장이든 폴백 문장이든 여기를 지나므로, '용어가 본문에 등장해야 한다'는
+    # 계약 §2.2 전제가 어느 경로에서도 깨지지 않는다.
+    for _body in texts["evidences"].values():
+        _body["term_glossary"] = terms.attach(_body.get("easy_explanation") or "")
 
     now = analyzed_at or datetime.now(KST)
     resolved_id = report_id or f"analysis-{int(now.timestamp() * 1000)}"

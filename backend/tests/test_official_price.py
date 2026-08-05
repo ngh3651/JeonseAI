@@ -182,6 +182,90 @@ def test_호가_여러_번_나오면_마지막_것을_쓴다():
     assert N.extract_ho(addr) == "501"
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 지하 호수 오인 차단 (2026-08-05) — decisions.md 참고
+#
+# 실데이터 조회 테스트에서 발견했다: 세종 어진동 지하 '제B110호'(7,614만원)를 조회하면
+# 같은 건물 **지상 110호(3.39억원)** 가 나왔다 — 4.4배 과대평가이고, 시세를 높이는
+# 방향이라 전세가율이 낮아지는 **미탐**이다. 원인은 `_HO_RE` 가 숫자만 잡아 'B'를
+# 버린 것이었다. 아래 테스트가 그 구멍을 봉인한다.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_지하_호수와_지상_호수는_다른_호수다():
+    """**B110 ≠ 110.** 이 한 줄이 무너지면 지하 물건에 지상 시세가 붙는다."""
+    assert N.extract_ho("제B110호") == "B110"
+    assert N.extract_ho("제110호") == "110"
+    assert N.extract_ho("제B110호") != N.extract_ho("제110호")
+    # DB 쪽 정규화도 둘을 구분해야 한다 (같은 규칙으로 비교되므로)
+    assert N.normalize_unit("B110") == "B110"
+    assert N.normalize_unit("110") == "110"
+    assert N.normalize_unit("B110") != N.normalize_unit("110")
+
+
+@pytest.mark.parametrize(
+    "addr,expected,why",
+    [
+        ("제B101호", "B101", "영문 접두는 호수의 일부다 — 버리면 지상 101호가 된다"),
+        ("제b101호", "B101", "대소문자는 같은 호수로 본다"),
+        ("제101호", "101", "숫자만인 기존 표기는 그대로"),
+        ("제101-2호", "101-2", "부호수도 그대로"),
+        ("제비101호", "", "한글 접두는 규칙으로 확실히 읽히지 않는다 — 매칭에 쓰지 않는다"),
+        ("제지층1호", "", "'지층1' 같은 변형은 억지로 해석하지 않는다"),
+        ("제B1F40호", "", "'B1F40' 은 우리 규칙 밖이다"),
+        ("가동101호", "", "'가동101' 을 '101' 로 읽으면 또 다른 억지 해석이다"),
+    ],
+)
+def test_호수_표기를_억지로_해석하지_않는다(addr, expected, why):
+    """규칙으로 확실히 읽히는 것만 쓴다.
+
+    못 구하면 전세가율이 '확인 필요'로 끝나지만, **잘못 구하면 미탐**이다.
+    빈 문자열이 나오면 `_narrow` 가 호 매칭을 건너뛰고 면적 매칭으로 강등한다.
+    """
+    assert N.extract_ho(addr) == expected, why
+
+
+def test_지하_물건에_지상_시세가_붙지_않는다(official_db, monkeypatch):
+    """조회 경로 전체 봉인 — 같은 지번에 B101과 101이 함께 있을 때.
+
+    ⑴ 'B101' 로 물으면 B101 값이 나온다
+    ⑵ '101' 로 물으면 101 값이 나온다
+    ⑶ DB에 없는 'B999' 로 물으면 **999 를 대신 쓰지 않는다**
+    """
+    db = OP.db_path(PS.SOURCE_OFFICIAL_PRICE)
+    conn = sqlite3.connect(db)
+    # 같은 lawd_cd·jibun 에 지하/지상 한 쌍을 넣는다 (픽스처의 1234 지번 사용)
+    conn.executemany(
+        "INSERT INTO price_row (lawd_cd, bjd_cd, umd, jibun, dong_nm, ho_nm,"
+        " area_sqm, area_common_sqm, price_won, as_of, src_line)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            ("11680", "1168010100", "합성동", "1234", None, "B101", 30.0, None,
+             50_000_000, "2025-01-01", 9001),
+            ("11680", "1168010100", "합성동", "1234", None, "101", 30.0, None,
+             500_000_000, "2025-01-01", 9002),
+            ("11680", "1168010100", "합성동", "1234", None, "999", 30.0, None,
+             900_000_000, "2025-01-01", 9003),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    base = "[집합건물] 서울특별시 강남구 합성동 1234"
+
+    r, _ = OP.lookup(PS.SOURCE_OFFICIAL_PRICE, address=f"{base} 제B101호", area_sqm=30.0)
+    assert r is not None and r.base_price_won == 50_000_000, "지하 B101에 지상 101 값이 붙었다"
+
+    r, _ = OP.lookup(PS.SOURCE_OFFICIAL_PRICE, address=f"{base} 제101호", area_sqm=30.0)
+    assert r is not None and r.base_price_won == 500_000_000, "지상 101에 지하 B101 값이 붙었다"
+
+    # DB에 B999는 없다. 999를 대신 쓰면 안 된다 — 호 매칭을 포기하고 면적으로 강등한다.
+    r, _ = OP.lookup(PS.SOURCE_OFFICIAL_PRICE, address=f"{base} 제B999호", area_sqm=30.0)
+    assert r is None or r.match_method != "ho", "없는 지하 호수를 지상 호수로 대체했다"
+    if r is not None:
+        assert r.base_price_won != 900_000_000, "B999 를 999 로 읽었다"
+
+
 @pytest.mark.parametrize(
     "raw,expected",
     [("20250101", "2025-01-01"), ("2025-01-01", "2025-01-01"),

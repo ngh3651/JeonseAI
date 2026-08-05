@@ -11,12 +11,33 @@
 ⚠ 매핑이 준비되지 않았으면 **조용히 넘어가지 않고** 무엇을 하면 되는지 알려주고 멈춘다.
 
 변환이 끝나면 **자기검증**을 한다: 무작위 10건을 원본 파일에서 다시 읽어
-DB 값과 대조한다(줄 번호를 함께 저장해 두기 때문에 정확히 같은 줄을 볼 수 있다).
+DB 값과 대조한다(레코드 번호를 함께 저장해 두기 때문에 정확히 같은 줄을 볼 수 있다).
+
+────────────────────────────────────────────────────────────────────────
+[2026-08-05] `line.split(구분자)` → **`csv.reader`** 로 교체
+
+예전에는 한 줄을 구분자로 그냥 쪼갰다. 그런데 실제 파일 두 개 모두 **값 안에
+쉼표가 들어 있다**:
+  · 공시가격  0.91% (300만 행 중 27,249건) — 단지명 '상원주택(101,102동)'
+  · 기준시가  1.25% (249만 행 중 31,193건) — 상가건물호주소 '"24,25"'
+이 행들은 칸이 통째로 밀려 **가격 자리에 면적이, 면적 자리에 가격이** 들어갔다.
+(inspect 표본에서 전용면적 최댓값이 1,479,000㎡로 찍힌 것이 그 증거다.)
+
+더 나빴던 것은 두 가지다:
+  ⑴ **자기검증이 못 잡았다.** 원본을 같은 파서로 다시 읽어 대조하므로 똑같이
+     틀린 값이 나와 '일치'가 된다. 그래서 파서 교체는 검증 자체를 되살리는 일이다.
+  ⑵ **밀린 행이 우선 채택됐다.** 밀린 가격은 25원·59원처럼 극단적으로 작은데
+     `official_price` 는 후보 중 **최저가**를 고르므로 정상 행을 제친다.
+
+`csv` 모듈은 C 구현이라 스트리밍 성능도 그대로다. 따옴표 해제는 이제 csv 가
+전담하므로 `.strip('"')` 를 따로 하지 않는다(값에 든 정당한 따옴표를 지우지 않게).
+────────────────────────────────────────────────────────────────────────
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import io
 import sqlite3
 import sys
@@ -59,6 +80,18 @@ def open_text(path: Path, member: str | None, encoding: str):
         zf.close()
 
     return picked.filename, io.TextIOWrapper(raw, encoding=encoding, newline=""), _close
+
+
+def open_records(path: Path, member: str | None, cfg: PS.PriceSourceConfig):
+    """(이름, csv.reader, close) — 따옴표·이스케이프를 표준 CSV 규칙으로 해석한다.
+
+    ⚠ `open_text` 가 `newline=""` 로 열기 때문에 값 안에 줄바꿈이 있어도 csv 가
+      한 레코드로 묶어 준다. 그래서 이후 번호는 **물리적 줄 번호가 아니라
+      레코드 번호**다 — 쓰는 쪽과 검증하는 쪽이 같은 정의를 쓰므로 일관된다.
+    """
+    name, stream, close = open_text(path, member, cfg.file_encoding)
+    reader = csv.reader(stream, delimiter=cfg.delimiter or ",")
+    return name, reader, close
 
 
 # ── 행 정규화 ────────────────────────────────────────────────────────────────
@@ -155,7 +188,9 @@ def normalize_row(
         i = idx.get(field)
         if i is None or i >= len(cells):
             return ""
-        return cells[i].strip().strip('"')
+        # 따옴표 해제는 csv.reader 가 이미 했다 — 여기서 또 벗기면 값에 든
+        # 정당한 따옴표까지 지운다(2026-08-05 파서 교체).
+        return cells[i].strip()
 
     if len(cells) < 2:
         stats.short_row += 1
@@ -279,22 +314,26 @@ def self_check(
     idx: dict[str, int],
     multiplier: int,
 ) -> tuple[int, int, list[str]]:
-    """무작위 N건을 **원본 파일에서 다시 읽어** DB 값과 대조한다."""
+    """무작위 N건을 **원본 파일에서 다시 읽어** DB 값과 대조한다.
+
+    ⚠ 이 검증은 파서가 옳다는 것을 증명하지 못한다 — 쓸 때와 **같은 파서**로 다시
+      읽기 때문이다. 실제로 2026-08-05 이전에는 쉼표가 든 행을 양쪽에서 똑같이
+      잘못 쪼개 '일치 10/10'이 나왔다. 그래서 이 검증의 값어치는 파서가 표준
+      규칙(csv)을 따를 때 비로소 생긴다.
+    """
     rows = conn.execute(
         f"SELECT * FROM {OP.TABLE_NAME} ORDER BY RANDOM() LIMIT {SAMPLE_CHECK}"
     ).fetchall()
     if not rows:
         return 0, 0, ["DB가 비어 있어 검증할 수 없습니다"]
-    wanted = {r[11]: r for r in rows}  # src_line → row (컬럼 순서는 CREATE TABLE 그대로)
+    wanted = {r[11]: r for r in rows}  # src_line(레코드 번호) → row (컬럼 순서는 CREATE TABLE 그대로)
 
-    _, stream, close = open_text(path, member, cfg.file_encoding or "utf-8")
+    _, reader, close = open_records(path, member, cfg)
     found: dict[int, list[str]] = {}
     try:
-        for line_no, line in enumerate(stream, start=1):
-            if line_no in wanted:
-                found[line_no] = [
-                    c.strip().strip('"') for c in line.rstrip("\r\n").split(cfg.delimiter)
-                ]
+        for rec_no, cells in enumerate(reader, start=1):
+            if rec_no in wanted:
+                found[rec_no] = [c.strip() for c in cells]
                 if len(found) == len(wanted):
                     break
     finally:
@@ -374,10 +413,12 @@ def main() -> int:
     multiplier = cfg.price_multiplier()
 
     # 헤더 → 정규 필드 인덱스
-    name, stream, close = open_text(path, args.member, cfg.file_encoding)
+    name, reader, close = open_records(path, args.member, cfg)
     try:
-        first = stream.readline().rstrip("\r\n")
-        header = [c.strip().strip('"') for c in first.split(cfg.delimiter)]
+        header = [c.strip() for c in next(reader, [])]
+        if not header:
+            print("[중단] 파일이 비어 있거나 첫 줄을 읽지 못했습니다.")
+            return 2
         if not cfg.has_header:
             header = [f"col{i + 1}" for i in range(len(header))]
     except UnicodeDecodeError as e:
@@ -447,16 +488,15 @@ def main() -> int:
                     return True
         return False
 
-    name, stream, close = open_text(path, args.member, cfg.file_encoding)
+    name, reader, close = open_records(path, args.member, cfg)
     try:
         start_line = 2 if cfg.has_header else 1
-        for line_no, line in enumerate(stream, start=1):
+        for line_no, raw_cells in enumerate(reader, start=1):
             if line_no < start_line:
                 continue
-            line = line.rstrip("\r\n")
-            if not line:
-                continue
-            cells = [c.strip().strip('"') for c in line.split(cfg.delimiter)]
+            if not raw_cells or (len(raw_cells) == 1 and not raw_cells[0].strip()):
+                continue  # 빈 줄
+            cells = [c.strip() for c in raw_cells]
             read += 1
 
             bjd = cells[idx["bjd_cd"]] if "bjd_cd" in idx and idx["bjd_cd"] < len(cells) else ""

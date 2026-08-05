@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from ..schemas.internal import EvidenceVerdict, Grade, RuleVerdict
 from . import terms
-from .formatting import round_half_up
+from .formatting import format_won, round_half_up
 from .rule_engine import BLACKLIST_PENDING_LABEL
 
 HEADLINES: dict[Grade, str] = {
@@ -158,9 +158,26 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
                 "세입자가 있었다는 뜻이라, 같은 일이 반복될 위험을 꼭 확인해야 해요."
             )
         if ev.grade is Grade.DANGER:
+            # 2026-08-05: **수치를 넣는다.** 예전 문구는 "크게 잡혀 있어요"라고만 해
+            # 1억 8,000만원·시세의 90%를 말하지 않았다. LLM 문장이 좋아지면서 폴백과의
+            # 격차가 벌어졌는데, 정작 폴백이 나가는 때는 **Solar가 죽었을 때**다 —
+            # 그때 위험 매물이 숫자 없이 나가면 안 된다.
+            # 값은 전부 facts에서 온다(결정적 템플릿 유지 — 새로 계산하지 않는다).
+            total = f.get("senior_debt_total") or 0
+            count = f.get("mortgage_count") or 0
+            ratio = f.get("senior_ratio_pct")
+            combined = f.get("combined_ratio_pct")
+            head = f"이 집에는 나보다 먼저 갚아야 할 빚(선순위 채권)이 {format_won(total)} 있어요"
+            if count:
+                head += f" — 근저당 {count}건이에요"
+            body = ""
+            if ratio is not None:
+                body = f" 이 빚만으로 {price_call(verdict)}의 {ratio}%예요."
+                if combined is not None:
+                    body += f" 내 보증금까지 더하면 {combined}%가 돼요."
             return (
-                "이 집에는 은행 빚(근저당권)이 크게 잡혀 있어요. 집이 경매로 넘어가면 "
-                "은행이 먼저 돈을 받아가고, 남는 금액에서 보증금을 돌려받게 돼요."
+                f"{head}.{body} 집이 경매로 넘어가면 이 빚을 진 쪽이 먼저 돈을 받아가고, "
+                "남는 금액에서 보증금을 돌려받게 돼요."
             )
         if f.get("unknown_amount_count"):
             return (

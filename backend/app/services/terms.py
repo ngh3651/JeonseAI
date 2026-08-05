@@ -35,6 +35,8 @@ class Term:
     description: str
     aliases: tuple[str, ...] = field(default_factory=tuple)
     chatbot_chip: bool = False
+    verified: bool = False  # 근거를 댈 수 있는가 — false면 응답에서 제외한다
+    source: str = ""  # 근거 또는 '무엇을 확인해야 하는가'
 
     @property
     def surfaces(self) -> tuple[str, ...]:
@@ -42,11 +44,14 @@ class Term:
         return (self.term, *self.aliases)
 
 
-_cache: list[Term] | None = None
+_cache: list[Term] | None = None  # 파일 전체(검수 대기 포함)
 
 
-def load() -> list[Term]:
-    """용어 목록. 파일이 깨져도 **빈 목록**으로 끝난다 — 툴팁이 없을 뿐 리포트는 완성된다."""
+def _load_raw() -> list[Term]:
+    """파일에 적힌 **전부**(검수 대기 포함). 파일이 깨져도 빈 목록으로 끝난다.
+
+    응답에 나가는 경로는 이 함수를 직접 쓰지 않는다 — `load()`가 검수 게이트다.
+    """
     global _cache
     if _cache is not None:
         return _cache
@@ -65,6 +70,8 @@ def load() -> list[Term]:
                     description=desc,
                     aliases=tuple(str(a).strip() for a in (x.get("aliases") or []) if str(a).strip()),
                     chatbot_chip=bool(x.get("chatbot_chip")),
+                    verified=bool(x.get("verified")),
+                    source=str(x.get("source") or "").strip(),
                 )
             )
         _cache = out
@@ -72,6 +79,22 @@ def load() -> list[Term]:
         _log.error(f"[용어] terms.json 을 읽지 못했어요 — 툴팁 없이 진행 ({type(e).__name__}: {e})")
         _cache = []
     return _cache
+
+
+def load() -> list[Term]:
+    """**검수된 용어만** — 응답에 나가는 것은 전부 이 함수를 지난다.
+
+    ⚠ 2026-08-05: `verified=false`인 항목은 여기서 **걸러진다.** 사용자는 툴팁 문장을
+      사실로 읽는데, 35개 설명문이 팀 검수를 받지 않았다. 근거를 댈 수 없는 설명은
+      **안 보여주는 편이 낫다** — 밑줄이 안 붙을 뿐 아무것도 깨지지 않는다.
+      검수 대기 목록: `docs/terms-review-queue.md`
+    """
+    return [t for t in _load_raw() if t.verified]
+
+
+def load_all() -> list[Term]:
+    """검수 대기분까지 **전부** — 검수 큐 문서 생성 등 도구용."""
+    return _load_raw()
 
 
 def reload() -> list[Term]:

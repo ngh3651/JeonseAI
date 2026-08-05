@@ -318,12 +318,51 @@ def test_매핑이_비어_있으면_무엇을_하라고_알려주며_실패한�
     assert "inspect_price_source.py" in str(e.value)
 
 
-def test_커밋된_설정은_기본적으로_미설정_상태다():
-    """실제 파일을 아직 못 봤으므로 verified=false 여야 한다. 자동으로 켜지면 안 된다."""
-    for key in PS.ALL_SOURCES:
-        cfg = PS.load(key)
-        assert cfg.verified is False
-        assert not cfg.ready
+def test_초안_쓰기는_verified를_절대_켜지_않는다(tmp_path, monkeypatch):
+    """`inspect --write` 가 아무리 그럴듯한 초안을 만들어도 **사람 확인 없이 켜지면 안 된다.**
+
+    ────────────────────────────────────────────────────────────────────
+    [2026-08-05] 이 테스트는 원래 `test_커밋된_설정은_기본적으로_미설정_상태다`였다.
+    커밋된 `price_sources.json` 의 `verified` 가 항상 false 인지 봤는데, 그 전제는
+    "실제 파일을 아직 못 봤다"였다. 2026-08-05에 실제 파일 두 개가 도착해 사람이
+    레이아웃 문서로 매핑을 확인했고 빌드 자기검증도 통과해 verified 를 true 로
+    올렸다 — 전제가 사라진 것이지 가드가 틀린 것이 아니다.
+
+    그래서 **지키려던 것만 남긴다**: "자동으로 켜지면 안 된다". 그것은 커밋된 값이
+    아니라 `write_draft` 의 성질이고, 이쪽이 사람이 소스를 정당하게 확인할 때마다
+    깨지지 않는 **지속 가능한 불변조건**이다.
+    ────────────────────────────────────────────────────────────────────
+    """
+    path = tmp_path / "price_sources.json"
+    path.write_text(
+        json.dumps(
+            {"schema_version": 1, "sources": {k: {"columns": {}} for k in PS.ALL_SOURCES}},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(PS, "CONFIG_PATH", path)
+
+    # 호출자가 verified=True 를 대놓고 넣어도 무시해야 한다
+    PS.write_draft(
+        PS.SOURCE_OFFICIAL_PRICE,
+        {
+            "verified": True,
+            "file_encoding": "utf-8",
+            "delimiter": ",",
+            "price_unit": "won",
+            "price_is_total": True,
+            "as_of": "2025-01-01",
+            "columns": {"price": "공시가격", "area_sqm": "전용면적", "bjd_cd": "법정동코드",
+                        "jibun_bon": "본번"},
+        },
+    )
+    cfg = PS.load(PS.SOURCE_OFFICIAL_PRICE)
+    assert cfg.verified is False, "초안 쓰기가 verified 를 켰다 — 사람 확인을 건너뛰게 된다"
+    assert not cfg.ready
+    # 나머지 값은 정상적으로 들어가야 한다(켜지지만 않을 뿐)
+    assert cfg.columns["price"] == "공시가격"
+    assert cfg.price_unit == "won"
 
 
 def test_조회는_매핑_미설정을_예외가_아니라_안내_문구로_돌려준다(tmp_path, monkeypatch):

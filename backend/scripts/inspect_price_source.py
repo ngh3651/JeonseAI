@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import argparse
+import codecs
 import io
 import re
 import sys
@@ -37,7 +38,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.services import price_sources as PS  # noqa: E402
 
 # 시도해 볼 인코딩 — cp949 우선(정부 공개 CSV의 압도적 다수).
-ENCODING_CANDIDATES = ("cp949", "utf-8-sig", "utf-8", "euc-kr", "utf-16")
+# ⚠ utf-16 은 여기 없다. BOM이 있으면 `detect_encoding` 이 먼저 확정하고, BOM이
+#   없는데 후보로 두면 아무 바이트열이나 받아 주는 성질 때문에 UTF-8 파일을
+#   가로채 간다(2026-08-05 실제로 그랬다).
+# ⚠ utf-8-sig 도 BOM 검사로 확정되므로 여기서는 BOM 없는 utf-8 만 본다.
+ENCODING_CANDIDATES = ("cp949", "utf-8", "euc-kr")
 DELIMITER_CANDIDATES = (",", "\t", "|", ";")
 
 _HANGUL = re.compile(r"[가-힣]")
@@ -75,20 +80,67 @@ def open_binary(path: Path, member: str | None):
 # ── 인코딩·구분자 판별 ───────────────────────────────────────────────────────
 
 
+# 표본을 고정 크기로 자르면 **마지막 글자 한가운데가 잘릴 수 있다.** UTF-8 한 글자는
+# 최대 4바이트이므로, 끝에서 이 길이 안쪽에서 난 오류는 '인코딩이 틀렸다'가 아니라
+# '표본이 잘렸다'로 본다. 그보다 앞에서 나면 진짜 틀린 인코딩이다.
+_MAX_CHAR_BYTES = 4
+
+
+def _decode_sample(head: bytes, enc: str) -> tuple[str | None, int]:
+    """(디코드 결과, 잘려서 버린 바이트 수). 인코딩이 틀리면 `(None, 0)`."""
+    try:
+        return head.decode(enc), 0
+    except LookupError:
+        return None, 0
+    except UnicodeDecodeError as e:
+        if e.start >= len(head) - _MAX_CHAR_BYTES:
+            try:
+                return head[: e.start].decode(enc), len(head) - e.start
+            except UnicodeDecodeError:
+                return None, 0
+        return None, 0
+
+
 def detect_encoding(head: bytes) -> tuple[str, str]:
-    """(인코딩, 판단 근거). 실패하면 SystemExit."""
+    """(인코딩, 판단 근거). 실패하면 SystemExit.
+
+    ────────────────────────────────────────────────────────────────────
+    [2026-08-05] 표본 꼬리가 잘려 UTF-8이 탈락하던 문제를 고쳤다.
+
+    예전에는 고정 크기 표본을 그대로 `decode(enc)` 했다. 그 경계가 멀티바이트
+    글자 한가운데를 자르면 **인코딩이 맞는데도** utf-8/utf-8-sig 가 예외로 탈락하고,
+    후보 끝의 utf-16 이 **우연히** 디코드에 성공해 채택됐다(UTF-8 한글 바이트를
+    2바이트씩 재해석하면 한글 음절 영역에 떨어져 '한글 2,776자'가 잡힌다).
+    그러고 나서 실제 읽기에서 "Stream does not start with BOM" 으로 죽었다.
+
+    고친 방식:
+      ⑴ **BOM이 있으면 그것이 가장 확실한 근거다** — 추측하지 않고 바로 확정한다.
+      ⑵ BOM이 없으면 utf-16 은 후보에서 뺀다. BOM 없는 UTF-16 을 이런 파일에서
+         만날 일이 없는데, 아무 바이트열이나 받아 주는 성질 때문에 위험만 크다.
+      ⑶ 표본 **끝에서** 난 디코드 오류(최대 4바이트)는 잘린 꼬리로 보고 구제한다.
+         중간에서 난 오류는 그대로 탈락시킨다.
+    ────────────────────────────────────────────────────────────────────
+    """
+    if head.startswith(codecs.BOM_UTF8):
+        return "utf-8-sig", "파일이 UTF-8 BOM(EF BB BF)으로 시작 — 확정"
+    if head.startswith(codecs.BOM_UTF16_LE) or head.startswith(codecs.BOM_UTF16_BE):
+        return "utf-16", "파일이 UTF-16 BOM으로 시작 — 확정"
+
     reasons: list[str] = []
     for enc in ENCODING_CANDIDATES:
-        try:
-            text = head.decode(enc)
-        except (UnicodeDecodeError, LookupError):
-            reasons.append(f"{enc}: 디코드 실패")
+        text, dropped = _decode_sample(head, enc)
+        if text is None:
+            reasons.append(f"{enc}: 디코드 실패(표본 중간에서 오류) — 아닐 가능성")
             continue
         hangul = len(_HANGUL.findall(text))
         if hangul == 0 and enc in ("cp949", "euc-kr"):
             reasons.append(f"{enc}: 디코드는 됐지만 한글 0자 — 아닐 가능성")
             continue
-        return enc, f"{enc} 로 디코드 성공 (표본에서 한글 {hangul}자 확인) / " + " · ".join(reasons)
+        tail = f" · 표본 끝의 잘린 {dropped}바이트는 무시" if dropped else ""
+        return enc, (
+            f"{enc} 로 디코드 성공 (표본에서 한글 {hangul}자 확인){tail}"
+            + (" / " + " · ".join(reasons) if reasons else "")
+        )
     raise SystemExit(
         "[중단] 인코딩을 판별하지 못했습니다.\n  " + "\n  ".join(reasons)
         + "\n  → 파일을 메모장으로 열어 인코딩을 확인한 뒤 price_sources.json 의 file_encoding 에 직접 적으세요."

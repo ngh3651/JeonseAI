@@ -53,3 +53,8 @@ design_handoff_registry_viewer/
 # S-04 촬영 스튜디오 디자인 핸드오프 번들 (2026-08-03 — 로컬 참조용)
 # README·HTML 시안·support.js·마스코트 사본. 구현이 끝나면 삭제 (cleanup-tracker 등록)
 design_handoff_s04_capture_studio/
+
+# LLM 그림자 로그 (2026-08-05) — 모델 원문이 쌓인다. 개인정보는 마스킹되지만
+# 분량이 크고 재생성 가능한 산출물이라 커밋하지 않는다. 읽는 법:
+#   backend/.venv/Scripts/python.exe backend/scripts/shadow_report.py
+backend/logs/

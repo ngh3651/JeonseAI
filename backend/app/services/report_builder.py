@@ -130,9 +130,16 @@ def _build(
     #   출처가 무엇이든 등급은 같아야 하고, 실제로 rule_engine은 이 필드를 읽지 않는다.
     if price_info is not None:
         verdict.price_provenance = _price_provenance(price_info)
+    # 등기부 자체의 사실도 같은 자리에서 붙인다 (2026-08-05 2차) — 판정 뒤, 설명 앞.
+    verdict.registry_viewed_at = registry_viewed_at
+    verdict.checked_notes = list(checked_notes or [])
+    # 리포트 id를 **설명 생성보다 먼저** 확정한다 — 그림자 로그가 어느 분석인지
+    # 가리키려면 id가 필요하다(계산은 now/report_id에만 의존하므로 순서를 옮겨도 안전).
+    now = analyzed_at or datetime.now(KST)
+    resolved_id = report_id or f"analysis-{int(now.timestamp() * 1000)}"
     if use_llm:
         # LLM은 설명 문장만 — 실패 시 내부에서 폴백으로 완성돼 돌아온다(리포트 항상 완성)
-        explanation_result = explanation.generate(verdict)
+        explanation_result = explanation.generate(verdict, report_id=resolved_id)
         texts, explain_source = explanation_result.texts, explanation_result.source
     else:
         texts, explain_source = fallback_texts.build(verdict), "폴백(강제)"
@@ -143,8 +150,6 @@ def _build(
     for _body in texts["evidences"].values():
         _body["term_glossary"] = terms.attach(_body.get("easy_explanation") or "")
 
-    now = analyzed_at or datetime.now(KST)
-    resolved_id = report_id or f"analysis-{int(now.timestamp() * 1000)}"
     address = verdict.address or "주소 미확인 (등기부 원본 확인 필요)"
     # 별칭 폴백은 축약 주소('○○동'부터) — 홈 카드 제목이 전체 주소로 길어지지 않게.
     # Report.address는 전체 주소 유지(리포트 화면에서 확인) — 계약 §3.1 해석 범위 내.

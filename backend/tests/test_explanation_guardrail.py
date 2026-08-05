@@ -262,6 +262,11 @@ def test_llm_input_is_verdict_only(monkeypatch, solar_key, danger_case):
     allowed_top = {
         "종합등급", "보증금_원", "시세_원", "선순위채권합계_원", "문서_플래그",
         "근거", "시세출처", "소유권이전이력",
+        # 2026-08-05 2차 — 등기부 자체의 사실. 이 세 줄을 **의식적으로** 추가했다는 것이
+        # 화이트리스트 방식의 요점이다(블랙리스트였다면 아무도 몰랐다).
+        "등기부_열람일시",  # 스냅샷 시점. None이면 '읽지 못함'을 명시해 분석일 대체를 막는다
+        "찾아본_것",  # checked_notes — 무엇을 보고 무엇을 왜 뺐는지
+        "배정된_중개사_질문",  # questions.json에서 이 근거에 실제로 배정된 질문 문구
     }
     assert set(material) <= allowed_top, f"허용되지 않은 최상위 키: {set(material) - allowed_top}"
 

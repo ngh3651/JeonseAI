@@ -265,3 +265,10 @@ class RuleVerdict(BaseModel):
     # 위한 통로다. 새 판정을 만들지 않으며, 이 필드들이 비어 있어도 판정은 동일하다.
     price_provenance: Optional[PriceProvenance] = None  # report_builder가 채운다
     ownership_history: dict[str, Any] = Field(default_factory=dict)  # 소유권 이전 횟수·최근일
+    # ── 등기부 자체의 사실 (2026-08-05 2차) — report_builder가 채운다 ──────────
+    # 열람일시: 등기부는 **그 시점의 스냅샷**이다. 계약 직전 근저당 설정이 실제 수법이라
+    # "이 서류는 언제 기준인가"를 설명이 말할 수 있어야 한다.
+    # ⚠ None이면 None인 채로 넘긴다 — 분석일로 대체하면 "오늘 서류"로 믿게 만든다.
+    registry_viewed_at: Optional[str] = None  # 'YYYY.MM.DD'
+    # 무엇을 찾아봤고 무엇을 왜 뺐는지(말소된 근저당 등). "을구를 읽었다"는 신뢰 장치다.
+    checked_notes: list[str] = Field(default_factory=list)

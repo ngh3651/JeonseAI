@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from ..schemas.contract import QuestionGroup, QuestionItem, Report
 from . import price_resolver
 from .formatting import format_won, round_half_up
-from .patterns import LABEL_TO_ID, derive_from_report
+from .patterns import ID_TO_LABEL, LABEL_TO_ID, derive_from_report
 
 _log = logging.getLogger("jeonseai")
 _QUESTIONS_PATH = Path(__file__).resolve().parents[2] / "data" / "questions.json"
@@ -191,6 +192,81 @@ def _render(text: str, values: dict[str, str]) -> str | None:
 
 
 # ── 조립 ─────────────────────────────────────────────────────────────────────
+
+
+# ── 판정(RuleVerdict)에서 질문 문구만 뽑기 (2026-08-05 2차) ─────────────────
+#
+# 왜 필요한가: 설명 LLM이 "중개사에게 ~를 물어보세요"로 문장을 끝내는데, 그 문구가
+# **실제 질문 목록과 어긋날 수 있다.** 질문은 큐레이션 데이터라 LLM이 바꿔 쓰면 안 된다.
+# 그래서 "이 근거에 어떤 질문이 배정됐는지"를 재료로 넘긴다.
+#
+# ⚠ 선택 로직을 **복제하지 않는다.** `build_question_groups`가 쓰는 조건 평가·렌더링을
+#   그대로 재사용하고, 입력만 Report 모양으로 감싼다. 두 벌이 되면 화면의 질문과
+#   설명이 가리키는 질문이 갈라진다 — 이 기능이 막으려던 바로 그 문제다.
+
+
+@dataclass(frozen=True)
+class _EvidenceView:
+    id: str
+    grade: str
+
+
+@dataclass(frozen=True)
+class _VerdictView:
+    """`RuleVerdict`를 Report 모양으로 감싼 어댑터 (읽기 전용, 질문 선택에만 쓴다)."""
+
+    evidences: list[_EvidenceView]
+    deposit: int
+    seniorDebtAmount: int
+    marketPrice: int | None
+    marketPriceSource: str | None
+    marketPriceGapPct: int | None
+
+
+def _view_of(verdict) -> _VerdictView:
+    prov = getattr(verdict, "price_provenance", None)
+    return _VerdictView(
+        evidences=[_EvidenceView(id=e.id, grade=e.grade.value) for e in verdict.evidences],
+        deposit=verdict.deposit,
+        seniorDebtAmount=verdict.senior_debt_amount,
+        marketPrice=verdict.market_price,
+        marketPriceSource=(prov.source if prov else None),
+        marketPriceGapPct=(prov.gap_pct if prov else None),
+    )
+
+
+#: 근거에 매이지 않는 기본 그룹("어떤 집이든 꼭")을 담는 키.
+ALWAYS_KEY = "_always"
+
+
+def questions_for_verdict(verdict) -> dict[str, list[str]]:
+    """판정 → `{근거 id: [질문 문구]}`. 설명 생성의 **재료 전용**이다.
+
+    화면에 나가는 질문(계약 §3.6)은 여전히 `build_question_groups`가 만든다.
+    여기서는 같은 선택 결과의 **문구만** 꺼내 LLM에게 보여 준다.
+    """
+    config = _load_config()
+    if config is None:
+        return {ALWAYS_KEY: [i.question for i in _EMERGENCY_BASE_GROUP.items]}
+
+    view = _view_of(verdict)
+    patterns = [
+        ID_TO_LABEL[e.id] for e in view.evidences if e.grade != "양호" and e.id in ID_TO_LABEL
+    ]
+    values = _render_values(view)
+
+    out: dict[str, list[str]] = {}
+    for group in config.groups:
+        if group.triggerPattern != ALWAYS_PATTERN and group.triggerPattern not in patterns:
+            continue
+        key = LABEL_TO_ID.get(group.triggerPattern, ALWAYS_KEY)
+        for item in group.items:
+            if not _condition_met(item.condition, view, group.triggerPattern):
+                continue
+            question = _render(item.question, values)
+            if question:
+                out.setdefault(key, []).append(question)
+    return out
 
 
 def build_question_groups(report: Report) -> list[QuestionGroup]:

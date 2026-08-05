@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..schemas.internal import RuleVerdict
-from . import fallback_texts, llm, text_guard
+from . import fallback_texts, llm, questions, shadow_llm, text_guard
 from .llm import LlmError
 from .llm.prompts import EXPLAIN_SYSTEM_PROMPT
 
@@ -174,6 +174,23 @@ def _verdict_for_prompt(verdict: RuleVerdict) -> dict:
 
     if verdict.ownership_history:
         out["소유권이전이력"] = verdict.ownership_history
+
+    # ── 등기부 자체의 사실 (2026-08-05 2차) ─────────────────────────────────
+    # 열람일시: 못 읽었으면 **못 읽었다고** 알린다. 비워 두면 LLM이 분석일을 끌어다
+    # "오늘 서류"처럼 말할 수 있다 — 그게 이 값을 넘기는 이유와 정반대다.
+    out["등기부_열람일시"] = verdict.registry_viewed_at or "읽지 못함(분석일로 대체하지 말 것)"
+    if verdict.checked_notes:
+        out["찾아본_것"] = verdict.checked_notes
+
+    # 이 근거에 **실제로 배정된** 중개사 질문. LLM이 "물어보세요"로 끝낼 때 이 표현과
+    # 어긋나지 않게 하려는 것이다. ⚠ 질문은 큐레이션 데이터라 **바꿔 쓰면 안 된다.**
+    try:
+        by_evidence = questions.questions_for_verdict(verdict)
+    except Exception:  # noqa: BLE001 — 재료 하나가 설명 전체를 죽이지 못한다
+        by_evidence = {}
+    if by_evidence:
+        out["배정된_중개사_질문"] = by_evidence
+
     return out
 
 
@@ -215,7 +232,7 @@ def _field_reason(kind: str, text: str, allowed: set[float]) -> str | None:
 
 
 
-def generate(verdict: RuleVerdict) -> ExplanationResult:
+def generate(verdict: RuleVerdict, *, report_id: str = "-") -> ExplanationResult:
     """판정 → 설명 텍스트. **어떤 실패에도** 완성된 texts를 돌려준다(리포트 항상 완성).
 
     이 함수의 보증은 "예외를 빠뜨리지 않고 잘 잡았다"가 아니라 **구조**다 —
@@ -228,7 +245,7 @@ def generate(verdict: RuleVerdict) -> ExplanationResult:
     """
     base = fallback_texts.build(verdict)  # 결정적 기본값 — 실패 시 이대로 나간다
     try:
-        return _generate_with_llm(verdict, base)
+        return _generate_with_llm(verdict, base, report_id=report_id)
     except Exception as e:  # noqa: BLE001 — 구조적 방어선 (위 docstring 참고)
         _log.error(
             f"[설명] ⚠ 설명 생성 경로에서 예기치 못한 예외 — 폴백 문구로 리포트 완성"
@@ -238,7 +255,9 @@ def generate(verdict: RuleVerdict) -> ExplanationResult:
         return ExplanationResult(texts=base, source="폴백")
 
 
-def _generate_with_llm(verdict: RuleVerdict, base: dict) -> ExplanationResult:
+def _generate_with_llm(
+    verdict: RuleVerdict, base: dict, *, report_id: str = "-"
+) -> ExplanationResult:
     """실제 생성·검증·병합. 예외를 밖으로 낼 수 있다 — `generate`가 받아낸다."""
     provider = llm.explain_provider()
     api_key = _load_api_key()  # 목 호출 호환용 인자 (실제 키는 provider가 직접 읽는다)
@@ -263,9 +282,11 @@ def _generate_with_llm(verdict: RuleVerdict, base: dict) -> ExplanationResult:
     t0 = time.perf_counter()
     payload: ExplanationPayload | None = None
     last_error = "알 수 없음"
+    primary_raw: str | None = None  # 그림자 비교용 — 사용자 경로에는 쓰이지 않는다
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             content = _call_solar(messages, api_key)
+            primary_raw = content
             payload = ExplanationPayload.model_validate(json.loads(content))
             break
         except _EXPECTED_FAILURES as e:
@@ -352,4 +373,18 @@ def _generate_with_llm(verdict: RuleVerdict, base: dict) -> ExplanationResult:
             f"[Solar] 응답 OK ({elapsed:.1f}초) — 설명 {applied}건 생성 · {dropped}건 폴백"
             f" — 사유: {' | '.join(reasons)}"
         )
+    # ── 그림자 로깅 (2026-08-05) ────────────────────────────────────────────
+    # 사용자 응답은 이 아래 return으로 이미 확정됐다. 아래 호출은 **데몬 스레드를 띄우고
+    # 즉시 돌아오며**, 돌려주는 값이 없다 — 그림자 출력이 이 함수의 결과에 섞일 방법이
+    # 구조적으로 없다. 꺼져 있으면(기본) 아무 일도 하지 않는다.
+    shadow_llm.maybe_run(
+        material=material,
+        report_id=report_id,
+        grade=verdict.grade.value,
+        primary_name=provider.name,
+        primary_raw=primary_raw,
+        primary_elapsed=elapsed,
+        primary_source=source,
+        max_len=_MAX_LEN,
+    )
     return ExplanationResult(texts=texts, source=source)

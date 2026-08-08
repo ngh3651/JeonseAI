@@ -428,3 +428,63 @@ def test_build_documents_auto_tags_raw_without_seed():
     assert "경매" in docs[0].risk_tags  # 키워드 자동 태깅
     # 출처는 공식이라도 사람 검수 전에는 노출 금지 — verified는 큐레이션 검수로만 승격
     assert docs[0].verified is False
+
+
+# ── 결과 문구 — 승소 판례가 안심 신호로 읽히지 않게 (2026-08-07) ─────────────
+
+
+def test_outcome_text_never_reads_as_reassurance():
+    """세 문구 모두 '이 사람도 결국 법정까지 갔다'로 읽혀야 한다.
+
+    페르소나 2인이 "신탁회사에 보증금 반환 청구 가능", "임차권등기명령 신청 가능"을
+    안심 신호로 읽고 위험을 지웠던 것에 대한 봉인 — '가능'류 낙관 표현이
+    결과 칸에 들어갈 수 없다.
+    """
+    from app.services.precedent.models import OUTCOME_TEXT, OUTCOME_UNKNOWN, OutcomeKind
+
+    assert set(OUTCOME_TEXT) == set(OutcomeKind)  # 분류마다 문구가 있어야 한다
+    for text in [*OUTCOME_TEXT.values(), OUTCOME_UNKNOWN]:
+        assert "가능" not in text
+        assert not any(w in text for w in ("안전", "걱정", "문제없"))
+
+
+def test_won_case_still_frames_the_struggle():
+    """임차인이 이긴 판례여도 '소송까지 가서야 겨우'로 나간다."""
+    from app.services.precedent.models import OUTCOME_TEXT, OutcomeKind
+
+    assert OUTCOME_TEXT[OutcomeKind.WON_AFTER_SUIT] == "소송까지 가서야 겨우 인정받았어요"
+
+
+def test_llm_cannot_author_outcome_sentence():
+    """LLM은 분류만 고른다 — 자유 문장을 보내면 pydantic이 거부한다."""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.services.precedent.models import PrecedentExplanation
+
+    with pytest.raises(ValidationError):
+        PrecedentExplanation(
+            case_id="prec-1",
+            easy_summary="요약이에요",
+            common_point="공통점이에요",
+            outcome_kind="세입자는 신탁회사에 보증금 반환 청구 가능",  # 분류 아님
+        )
+
+
+def test_curated_outcome_wins_over_llm_classification():
+    """큐레이션 outcome이 있으면 그것이 정본 — LLM 분류가 덮어쓰지 못한다."""
+    from app.services.precedent.models import OUTCOME_TEXT, OutcomeKind
+
+    doc_outcome = "임차인이 보증금을 돌려받지 못했어요"
+    # service._build_section의 우선순위: doc.outcome → OUTCOME_TEXT → OUTCOME_UNKNOWN
+    result = doc_outcome or OUTCOME_TEXT[OutcomeKind.WON_AFTER_SUIT]
+
+    assert result == doc_outcome
+
+
+def test_unknown_outcome_does_not_optimize():
+    """분류를 못 얻어도 낙관하지 않는다 (보수적 편향)."""
+    from app.services.precedent.models import OUTCOME_UNKNOWN
+
+    assert "법정까지" in OUTCOME_UNKNOWN
+    assert "확인해" in OUTCOME_UNKNOWN

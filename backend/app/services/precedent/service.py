@@ -19,7 +19,7 @@ from ...schemas.contract import Report
 from ...schemas.internal import Grade, RuleVerdict
 from .. import thresholds as T
 from . import explainer
-from .models import PrecedentSection, RetrievedPrecedent
+from .models import OUTCOME_TEXT, OUTCOME_UNKNOWN, PrecedentSection, RetrievedPrecedent
 from .retrieval import HybridRetriever
 
 # 태그별 결정적 질의 템플릿 — 판례 검색 전용 문장(판정 아님).
@@ -197,8 +197,21 @@ class PrecedentService:
                     # [설명 — LLM 생성 성공 시만, 실패·미호출은 결정적 폴백]
                     "summary": exp.easy_summary if exp else explainer.fallback_summary(m),
                     "commonPoint": exp.common_point if exp else explainer.fallback_common_point(m),
-                    # [판정·조언 — LLM 불가침]
-                    "result": m.doc.outcome or "결과는 원문을 확인해 주세요",
+                    # [결과 — 문구는 코드가 정한다. LLM은 분류만 골랐다]
+                    #   ① 큐레이션 outcome이 있으면 그것이 정본
+                    #   ② 없으면 LLM이 고른 분류를 고정 문구로 치환 (OUTCOME_TEXT)
+                    #   ③ 분류도 없으면 낙관하지 않는 폴백 (OUTCOME_UNKNOWN)
+                    # 자유 문장을 쓰게 두면 승소 판례가 "청구 가능"으로 나와
+                    # 안심 신호로 읽힌다 — models.OutcomeKind docstring 참고.
+                    "result": (
+                        m.doc.outcome
+                        or (
+                            OUTCOME_TEXT.get(exp.outcome_kind)
+                            if exp and exp.outcome_kind
+                            else None
+                        )
+                        or OUTCOME_UNKNOWN
+                    ),
                     "advice": m.doc.advice,
                 }
             )

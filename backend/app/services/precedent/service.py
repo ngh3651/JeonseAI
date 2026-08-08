@@ -190,6 +190,10 @@ class PrecedentService:
                     "caseNo": f"{m.doc.court} {m.doc.case_no}".strip(),
                     "decided": m.doc.decided,
                     "sourceUrl": m.doc.source_url,
+                    # [검수 상태 — 표시 전용] 출처는 공식 DB로 확인됐지만 문구를 사람이
+                    #   아직 읽지 않은 판례가 섞여 있다. 숨기지 않고 화면에 밝힌다.
+                    #   (2026-08-07 검증 2단계 분리 — models.PrecedentDoc 참고)
+                    "curated": m.doc.verified,
                     # [설명 — LLM 생성 성공 시만, 실패·미호출은 결정적 폴백]
                     "summary": exp.easy_summary if exp else explainer.fallback_summary(m),
                     "commonPoint": exp.common_point if exp else explainer.fallback_common_point(m),
@@ -205,3 +209,16 @@ class PrecedentService:
 
     def match_for_report(self, report: Report, *, explain: bool = False) -> PrecedentSection:
         return self._build_section(tags_from_report(report), None, explain=explain)
+
+
+# ── 싱글턴 (2026-08-07 라우터 통합) ──────────────────────────────────────────
+# 인덱스 적재(문서·청크·BM25 코퍼스)는 요청마다 할 일이 아니다. 프로세스 수명 동안
+# 한 번만 만들고 재사용한다. 색인을 다시 만든 뒤에는 서버를 재시작해야 반영된다.
+_service: "PrecedentService | None" = None
+
+
+def get_service() -> PrecedentService:
+    global _service
+    if _service is None:
+        _service = PrecedentService()
+    return _service

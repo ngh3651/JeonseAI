@@ -29,7 +29,20 @@ from app.services.precedent.store import JsonVectorStore
 
 # ── 테스트 코퍼스 헬퍼 ──────────────────────────────────────────────────────
 
-def make_doc(case_id: str, tags: list[str], holding: str, *, verified: bool = True) -> PrecedentDoc:
+def make_doc(
+    case_id: str,
+    tags: list[str],
+    holding: str,
+    *,
+    verified: bool = True,
+    source_verified: bool | None = None,
+) -> PrecedentDoc:
+    """테스트 판례 1건.
+
+    `source_verified`(출처 확인)가 노출 게이트다. `verified`(사람 문구 검수)는
+    게이트가 아니라 화면 표시용이다 — 2026-08-07 검증 2단계 분리.
+    지정하지 않으면 출처는 확인된 것으로 둔다(대부분의 테스트가 노출을 전제로 한다).
+    """
     return PrecedentDoc(
         case_id=case_id,
         case_no=case_id.replace("prec-", ""),
@@ -39,6 +52,7 @@ def make_doc(case_id: str, tags: list[str], holding: str, *, verified: bool = Tr
         summary_easy=f"{tags[0]} 관련 쉬운 요약이에요",
         outcome="임차인이 보증금을 돌려받지 못했어요",
         source_url="https://example.org/case",
+        source_verified=(verified if source_verified is None else source_verified),
         verified=verified,
     )
 

@@ -126,6 +126,11 @@ def build_documents(
                 advice=seed.get("advice"),
                 source_url=source_url,
                 full_text=full_text,
+                # 큐레이션 시드는 출처 링크가 있으면 출처 확인된 것으로 본다.
+                #   (seed_cases.json에 source_verified를 따로 적어 두면 그 값이 우선)
+                source_verified=bool(
+                    seed.get("source_verified", bool(source_url))
+                ),
                 verified=bool(seed.get("verified", False)),
                 curated_by=seed.get("curated_by"),
                 collected_at=seed.get("date"),
@@ -151,9 +156,11 @@ def build_documents(
                 holding=holding,
                 source_url=rd.get("source_url", ""),
                 full_text=rd.get("full_text") or None,
-                # 출처(법제처 공식 원문)는 확실하나 **사람 검수 전** — 노출 게이트가 차단한다.
-                # 큐레이션(seed_cases.json) 검수 후 승격하는 워크플로 (rule-auditor 2026-07-22:
-                # verified는 "공식 DB + 사람 검증" AND 조건으로 운용).
+                # 출처는 법제처 공식 원문이고 source_url이 실재한다 → 노출 허용.
+                #   (2026-08-07: 원래 AND 조건 하나로 묶여 있어 148건이 통째로 막혔다.
+                #    두 축을 분리해, 출처는 자동 확인하고 문구 검수는 따로 표시한다.)
+                source_verified=bool(rd.get("source_url")),
+                # 문구는 아직 사람이 읽지 않았다 — 카드에 "검수 전" 표시가 붙는다.
                 verified=False,
                 curated_by=None,
                 collected_at=rd.get("_collected_at"),

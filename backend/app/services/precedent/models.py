@@ -51,7 +51,17 @@ class PrecedentDoc(BaseModel):
     advice: Optional[str] = None      # "이런 피해를 피하려면" — 큐레이션 전용, LLM 불가침
     source_url: str                   # 출처 링크 (필수 — 지어내기 금지 원칙)
     full_text: Optional[str] = None   # 판례 전문 (법제처 API 수집 시)
-    verified: bool = False            # 공식 DB·사람 검증 여부 (미검증 → 노출 차단)
+    # ── 검증 2단계 (2026-08-07) ──────────────────────────────────────────
+    # 원래 `verified` 하나가 "공식 DB + 사람 검증" AND 조건이었다. 그런데 법제처
+    # 공식 API로 수집하고 관련성까지 판정한 판례 148건이 "사람이 한 줄씩 읽지 않았다"는
+    # 이유로 전부 노출 차단돼, 색인 1,900청크 중 6건만 보이는 상태가 됐다.
+    # 그래서 두 축을 분리한다 — 숨기지 않되, 섞지도 않는다.
+    #   source_verified : 출처가 공식 DB이고 사건번호·링크가 실재한다 (자동 판정 가능)
+    #   verified        : 사람이 문구까지 검수했다 (기존 의미 그대로)
+    # 노출 게이트는 source_verified를 본다. verified=False인 판례는 나가되,
+    # 화면에 "문구 검수 전"임을 밝힌다 (retrieval.py 게이트 · 카드 라벨).
+    source_verified: bool = False     # 출처 확인 — 미확인이면 노출 차단
+    verified: bool = False            # 사람 문구 검수 — 미검수여도 노출은 되되 표시가 붙는다
     curated_by: Optional[str] = None
     collected_at: Optional[str] = None
 

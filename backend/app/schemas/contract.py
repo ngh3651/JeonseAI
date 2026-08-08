@@ -127,6 +127,16 @@ class CaseMatch(BaseModel):
     summary: str
     result: str
     commonPoint: str
+    # ── E-3 라우터 통합 (2026-08-07) — 전부 선택적. 기존 앱은 무시해도 동작한다. ──
+    # 사용자가 판결문을 직접 찾아볼 수 있어야 한다(지어내기 금지 원칙의 검증 통로).
+    sourceUrl: Optional[str] = None
+    decided: Optional[str] = None          # 선고일 YYYYMMDD
+    matchedTags: list[str] = Field(default_factory=list)
+    # "이런 피해를 피하려면" — 큐레이션 전용. LLM이 만들지 않는다.
+    advice: Optional[str] = None
+    # 문구를 사람이 검수했는지. False면 화면에 "검수 전" 표시가 붙는다 —
+    # 출처는 공식 DB로 확인됐지만 쉬운 말 문구는 아직 사람 손을 거치지 않았다는 뜻.
+    curated: bool = False
 
 
 # ── 질문 생성기 (§2.4 QuestionGroup / QuestionItem) ────────────────────────

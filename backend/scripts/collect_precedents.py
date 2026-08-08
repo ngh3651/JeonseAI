@@ -177,7 +177,12 @@ def main() -> None:
     ap.add_argument("--query", help="검색어 (판례명 검색)")
     ap.add_argument("--nb", help="사건번호로 검색 (예: 2005다4529)")
     ap.add_argument("--org", help="법원종류 (대법원 400201, 하위법원 400202)")
-    ap.add_argument("--search", type=int, default=1, help="검색범위 1=판례명 2=본문 (기본 1)")
+    # ★ 기본값을 2(본문)로 둔다. 1(판례명)은 "제목에 그 단어가 든 판례"만 찾아서
+    #   실무에서 쓸 일이 거의 없는데, 기본값이라 모르고 지나치기 쉽다.
+    #   실측(2026-07-29): "대항력" 1→25건 / 2→668건, "임차권등기명령" 1→0건 / 2→109건.
+    #   본문 검색은 무관한 판례도 끌고 오지만, 그건 수집 단계가 아니라
+    #   관련성 판정(ingest)에서 걸러야 한다 — 애초에 못 찾으면 거를 기회도 없다.
+    ap.add_argument("--search", type=int, default=2, help="검색범위 1=판례명 2=본문 (기본 2)")
     ap.add_argument("--max", type=int, default=20, help="최대 수집 건수 (기본 20)")
     ap.add_argument("--oc", help="API 인증값 (기본: .env LAW_API_OC → 없으면 test)")
     args = ap.parse_args()

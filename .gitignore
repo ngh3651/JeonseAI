@@ -58,3 +58,15 @@ design_handoff_s04_capture_studio/
 # 분량이 크고 재생성 가능한 산출물이라 커밋하지 않는다. 읽는 법:
 #   backend/.venv/Scripts/python.exe backend/scripts/shadow_report.py
 backend/logs/
+
+# 서버 실행 로그 (로컬 실행 산출물)
+backend/server.err.log
+backend/server.out.log
+
+# 판례 수집 파이프라인의 로컬 산출물 (2026-08-07 이관 전 작업분).
+# 검수 결과는 backend/data/precedents/raw/*.json 에 `_relevance_reason`으로 보존돼 있다.
+# 이 폴더들은 재생성 가능하거나(청크·벡터DB) 용량이 커서 커밋하지 않는다.
+data/tagged/
+data/chunks.json
+data/chroma/
+data/review_3cases.md

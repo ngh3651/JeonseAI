@@ -21,6 +21,7 @@ from .. import dummy_data
 from ..dependencies import get_current_user
 from ..schemas.contract import CaseMatch, QuestionGroup, Report
 from ..services import patterns, questions, report_builder, store
+from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
 router = APIRouter(prefix="/api", tags=["reports"])
@@ -97,9 +98,19 @@ async def report_cases(report_id: str) -> list[CaseMatch]:
     report = store.get(report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
-    # 서버가 리포트의 근거에서 위험 패턴을 파생해 매칭 (계약 §2.2 note)
-    # 판례 응답은 아직 더미 — E-3에서 data/cases.json 큐레이션 매칭으로 교체
-    return dummy_data.matched_cases(patterns.derive_from_report(report))
+    # E-3 실연동 (2026-08-07): 규칙이 태그를 파생 → 하이브리드 검색 → LLM은 문장만.
+    #   판례가 없으면 빈 목록이 나간다 (지어내지 않는다 — PrecedentSection.fallback_text).
+    #
+    # 결과를 리포트 단위로 캐시한다. 캐시가 없으면 화면에 들어올 때마다 검색 +
+    #   판례 수만큼 Solar 호출이 다시 돌아 매번 수 초를 기다리게 된다.
+    cached = store.get_cases(report_id)
+    if cached is not None:
+        return cached
+
+    section = precedent_service.get_service().match_for_report(report, explain=True)
+    cases = [CaseMatch.model_validate(c) for c in section.cases]
+    store.put_cases(report_id, cases)
+    return cases
 
 
 @router.get("/reports/{report_id}/questions", response_model=list[QuestionGroup])

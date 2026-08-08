@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from .. import dummy_data
-from ..schemas.contract import Report
+from ..schemas.contract import CaseMatch, Report
 
 EXAMPLE_IDS = dummy_data.EXAMPLE_IDS  # {"dummy-danger", "dummy-caution"} — 삭제 금지(403)
 
@@ -37,3 +37,19 @@ def add(report: Report) -> None:
 def remove(report_id: str) -> None:
     global _history
     _history = [r for r in _history if r.id != report_id]
+    _cases_cache.pop(report_id, None)
+
+
+# ── 판례 카드 캐시 (E-3 라우터 통합, 2026-08-07) ─────────────────────────────
+# 판례 섹션은 하이브리드 검색 + 판례 수만큼의 Solar 호출이라 몇 초가 걸린다.
+# 리포트는 한 번 만들어지면 변하지 않으므로 결과를 그대로 재사용한다.
+# (인덱스를 다시 만들면 서버를 재시작해야 반영된다 — precedent/service.get_service 주석 참고)
+_cases_cache: dict[str, list[CaseMatch]] = {}
+
+
+def get_cases(report_id: str) -> list[CaseMatch] | None:
+    return _cases_cache.get(report_id)
+
+
+def put_cases(report_id: str, cases: list[CaseMatch]) -> None:
+    _cases_cache[report_id] = cases

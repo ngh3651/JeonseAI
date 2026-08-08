@@ -13,6 +13,9 @@ class CaseMatch {
     required this.summary,
     required this.result,
     required this.commonPoint,
+    this.sourceUrl,
+    this.advice,
+    this.curated = false,
   });
 
   /// 우리 매물의 위험 패턴 (칩 표시)
@@ -30,12 +33,28 @@ class CaseMatch {
   /// 우리 매물과의 공통점
   final String commonPoint;
 
+  /// 판결문 원문 링크 — 사용자가 직접 확인할 수 있어야 "지어내지 않았다"가 검증된다
+  final String? sourceUrl;
+
+  /// "이런 피해를 피하려면" — 큐레이션 문구 (없을 수 있음)
+  final String? advice;
+
+  /// 문구를 사람이 검수했는지.
+  ///
+  /// 출처(법원·사건번호·링크)는 어느 카드든 공식 DB로 확인된 것이지만,
+  /// 쉬운 말 요약까지 사람이 읽은 판례는 아직 일부다. false면 화면에 그 사실을
+  /// 밝힌다 — 검수된 것과 안 된 것을 **섞어서 내보내지 않기 위한** 표시다.
+  final bool curated;
+
   factory CaseMatch.fromJson(Map<String, dynamic> json) => CaseMatch(
     riskPattern: json['riskPattern'] as String,
     caseNo: json['caseNo'] as String,
     summary: json['summary'] as String,
     result: json['result'] as String,
     commonPoint: json['commonPoint'] as String,
+    sourceUrl: json['sourceUrl'] as String?,
+    advice: json['advice'] as String?,
+    curated: json['curated'] as bool? ?? false,
   );
 }
 

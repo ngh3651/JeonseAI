@@ -168,8 +168,40 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
           _row('결과', c.result, AppColors.danger),
           const SizedBox(height: AppSpacing.sm),
           _row('우리 매물과 공통점', c.commonPoint, AppColors.textBody),
+          if (c.advice != null && c.advice!.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _row('이런 피해를 피하려면', c.advice!, AppColors.primary),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          _sourceLine(c),
         ],
       ),
+    );
+  }
+
+  /// 출처 + 검수 상태 한 줄.
+  ///
+  /// 사건번호·법원은 어느 카드든 공식 DB(법제처)에서 확인된 값이지만, 쉬운 말 요약까지
+  /// 사람이 읽은 판례는 아직 일부다. 그 차이를 화면에서 밝힌다 — 검수된 것과 안 된 것을
+  /// 같은 얼굴로 내보내면, 나중에 한 건이라도 어긋났을 때 전부를 잃는다.
+  Widget _sourceLine(CaseMatch c) {
+    final label = c.curated ? '사람 검수 완료' : '문구 검수 전 · 출처는 확인됨';
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          c.curated ? Icons.verified_outlined : Icons.info_outline,
+          size: 14,
+          color: AppColors.textMuted,
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            c.sourceUrl == null ? label : '$label · 판결문 원문 있음',
+            style: AppTypography.caption,
+          ),
+        ),
+      ],
     );
   }
 

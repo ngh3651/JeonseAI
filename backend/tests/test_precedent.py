@@ -617,6 +617,15 @@ def test_non_lease_case_is_not_indexed():
     from app.services.precedent.ingest import build_documents, is_lease_related
 
     assert not is_lease_related("유치권은 경매절차에서 매각으로 소멸하지 않는다", "건물인도")
+    # ★ 법조문 인용구는 통과시키지 않는다 — 임차권·전세권은 조문에 흔히 나오는
+    #   '권리 이름'이라 그 사건의 쟁점이 아니어도 등장한다(2021다253710 실사례).
+    assert not is_lease_related(
+        "지상권·지역권·전세권 및 등기된 임차권은 저당권·압류채권에 대항할 수 없는 경우 "
+        "매각으로 소멸된다고 규정하는 것과 달리 유치권은 소멸하지 않는다",
+        "건물인도",
+    )
+    # 사람(당사자)이 나오면 통과 — 임차인·임대인은 당사자일 때만 나온다
+    assert is_lease_related("주택임차인은 주택의 인도와 주민등록을 구비하면 대항력을 취득한다")
     assert is_lease_related("임차인의 대항력은 점유 상실 시 소멸한다", None)
     # 판시사항이 일반 법리라도 사건명이 임대차면 남긴다
     assert is_lease_related("채무인수가 이행인수인지 판별하는 기준", "임대차보증금반환")

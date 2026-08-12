@@ -215,7 +215,15 @@ class PrecedentService:
                     #   (2026-08-07 검증 2단계 분리 — models.PrecedentDoc 참고)
                     "curated": m.doc.verified,
                     # [설명 — LLM 생성 성공 시만, 실패·미호출은 결정적 폴백]
-                    "summary": exp.easy_summary if exp else explainer.fallback_summary(m),
+                    # [요약] 큐레이션이 있으면 **그것이 정본** — outcome·advice와 같은 원칙.
+                    #   사람이 원문과 대조해 확정한 문구인데 LLM이 매번 새로 쓰면
+                    #   화면에 나가는 문장이 검수한 문장과 달라져 검수 자체가 무의미해진다.
+                    #   (검수 뒤 seed_cases.json에 summary_easy로 굳힌다)
+                    "summary": (
+                        m.doc.summary_easy
+                        or (exp.easy_summary if exp else None)
+                        or explainer.fallback_summary(m)
+                    ),
                     "commonPoint": exp.common_point if exp else explainer.fallback_common_point(m),
                     # [결과 — 문구는 코드가 정한다. LLM은 분류만 골랐다]
                     #   ① 큐레이션 outcome이 있으면 그것이 정본

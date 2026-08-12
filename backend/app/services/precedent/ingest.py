@@ -121,6 +121,27 @@ def load_raw_docs(raw_dir: Path | None = None) -> list[dict]:
     return docs
 
 
+def load_excluded_cases(path: Path | None = None) -> dict[str, str]:
+    """사람이 '쓰지 않기로' 정한 판례 — {사건번호: 사유}.
+
+    raw 파일을 지우지 않고 여기 기록하는 이유: 지우면 다음 수집 때 같은 판례가
+    다시 들어오고, 왜 뺐는지도 사라진다. 판단을 데이터로 남긴다.
+    """
+    path = path or (_PRECEDENT_DATA_DIR / "excluded_cases.json")
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        print(f"  [경고] excluded_cases.json 파싱 실패 — 제외 목록 무시: {e}")
+        return {}
+    return {
+        _norm_case_no(k): v
+        for k, v in (data.get("excluded") or {}).items()
+        if not k.startswith("_")
+    }
+
+
 def load_seed_cases(path: Path | None = None) -> list[dict]:
     path = path or (_PRECEDENT_DATA_DIR / "seed_cases.json")
     if not path.exists():
@@ -145,6 +166,7 @@ def build_documents(
     """raw + 큐레이션 조인 → PrecedentDoc 목록. (임베딩 없음 — 순수 변환)"""
     raw_docs = load_raw_docs() if raw_docs is None else raw_docs
     seed_cases = load_seed_cases() if seed_cases is None else seed_cases
+    excluded = load_excluded_cases()
 
     raw_by_part: dict[str, dict] = {}
     for rd in raw_docs:
@@ -208,6 +230,9 @@ def build_documents(
             continue
         holding = rd.get("holding_summary") or rd.get("holding_points") or ""
         if not holding:
+            continue
+        # 사람이 검수해 뺀 판례 (excluded_cases.json — 사유가 함께 적혀 있다)
+        if any(part in excluded for part in _case_no_parts(rd.get("case_no", ""))):
             continue
         # 전세사기와 밀접하지 않으면 넣지 않는다 (큐레이션 시드는 사람이 고른 것이라 통과)
         if not is_lease_related(holding, rd.get("case_name")):

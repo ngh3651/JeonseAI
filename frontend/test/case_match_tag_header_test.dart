@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/design_system/components/app_pill.dart';
 import 'package:jeonse_ai/models/content_models.dart';
 import 'package:jeonse_ai/screens/cases/case_match_screen.dart';
+import 'support/ko_finders.dart';
 
 CaseMatch _case({
   String riskPattern = '압류·가압류',
@@ -123,14 +124,14 @@ void main() {
     testWidgets('태그가 소제목으로 보인다', (tester) async {
       await pump(tester, _case(matchedTags: const ['압류·가압류']));
 
-      expect(find.text('압류·가압류'), findsOneWidget);
+      expect(find.koText('압류·가압류'), findsOneWidget);
     });
 
     testWidgets('쉬운 말 라벨로 바뀌어 보인다', (tester) async {
       await pump(tester, _case(matchedTags: const ['선순위 채권']));
 
-      expect(find.text('먼저 갚을 빚'), findsOneWidget);
-      expect(find.text('선순위 채권'), findsNothing);
+      expect(find.koText('먼저 갚을 빚'), findsOneWidget);
+      expect(find.koText('선순위 채권'), findsNothing);
     });
 
     testWidgets('태그가 많아도 상한까지만 — 소제목 줄이 길어지면 "한눈에"가 깨진다', (tester) async {

@@ -17,6 +17,7 @@ import 'package:jeonse_ai/models/registry_mark_kind.dart';
 import 'package:jeonse_ai/screens/report/registry_document_layout.dart';
 import 'package:jeonse_ai/screens/report/registry_viewer_screen.dart';
 import 'package:jeonse_ai/state/registry_photo_store.dart';
+import 'support/ko_finders.dart';
 
 RegistryHighlight _h({
   int badge = 1,
@@ -138,8 +139,8 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('실패'), findsNothing);
-      expect(find.textContaining('오류'), findsNothing);
+      expect(find.koTextContaining('실패'), findsNothing);
+      expect(find.koTextContaining('오류'), findsNothing);
     });
 
     testWidgets('선택된 표시만 번호 뱃지를 갖는다 (시안: 화면에 뱃지 1개)', (tester) async {
@@ -691,7 +692,7 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       for (var i = 1; i <= 5; i++) {
-        expect(find.text('$i'), findsOneWidget);
+        expect(find.koText('$i'), findsOneWidget);
       }
     });
 

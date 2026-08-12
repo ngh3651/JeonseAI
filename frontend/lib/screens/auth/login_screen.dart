@@ -12,6 +12,7 @@ import '../../design_system/components/app_button.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../state/app_session.dart';
+import '../../design_system/text/app_text.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.signup, this.next});
@@ -61,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.signup ? '회원가입' : '로그인')),
+      appBar: AppBar(title: AppText(widget.signup ? '회원가입' : '로그인')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
@@ -88,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           if (_error != null) ...[
             const SizedBox(height: AppSpacing.md),
-            Text(
+            AppText(
               _error!,
               style: AppTypography.caption.copyWith(
                 color: Theme.of(context).colorScheme.error,
@@ -107,6 +108,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _label(String text) => Padding(
     padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-    child: Text(text, style: AppTypography.bodyStrong),
+    child: AppText(text, style: AppTypography.bodyStrong),
   );
 }

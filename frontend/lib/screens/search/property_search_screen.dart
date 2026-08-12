@@ -25,6 +25,7 @@ import '../../models/analysis_report.dart';
 import '../../models/market_price_source.dart';
 import '../../utils/money_format.dart';
 import 'capture_loop_route.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 재진입(재분석 등)에서 넘겨받는 미리 채울 값.
 ///
@@ -197,7 +198,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message, style: AppTypography.body.copyWith(color: Colors.white)),
+          content: AppText(message, style: AppTypography.body.copyWith(color: Colors.white)),
           backgroundColor: AppColors.primaryDeep,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(milliseconds: 2600),
@@ -250,9 +251,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
-              Text(title, style: AppTypography.title),
+              AppText(title, style: AppTypography.title),
               const SizedBox(height: AppSpacing.sm),
-              Text(body, style: AppTypography.body),
+              AppText(body, style: AppTypography.body),
               const SizedBox(height: AppSpacing.xl),
               SizedBox(
                 width: double.infinity,
@@ -262,7 +263,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                     Navigator.of(sheetContext).pop();
                     onCta();
                   },
-                  child: Text(cta),
+                  child: AppText(cta),
                 ),
               ),
             ],
@@ -346,7 +347,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           foregroundColor: empty ? Colors.white : AppColors.textStrong,
           elevation: 0,
           scrolledUnderElevation: 0,
-          title: Text('등기부등본 촬영', style: AppTypography.bodyStrong.copyWith(
+          title: AppText('등기부등본 촬영', style: AppTypography.bodyStrong.copyWith(
             color: empty ? Colors.white : AppColors.textStrong,
           )),
           centerTitle: true,
@@ -401,12 +402,12 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(child: Center(child: _paperStack())),
-                Text(
+                AppText(
                   '등기부등본을\n한 장씩 찍어 주세요',
                   style: AppTypography.headline.copyWith(color: Colors.white),
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Text.rich(
+                AppText.rich(
                   TextSpan(
                     style: AppTypography.body.copyWith(
                       color: Colors.white.withValues(alpha: 0.72),
@@ -435,7 +436,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                       textStyle: AppTypography.button,
                     ),
                     icon: const Icon(Icons.photo_camera, size: AppSize.iconMd),
-                    label: const Text('촬영 시작'),
+                    label: const AppText('촬영 시작'),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
@@ -455,7 +456,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                       textStyle: AppTypography.button,
                     ),
                     icon: const Icon(Icons.photo_library, size: 22),
-                    label: const Text('갤러리에서 고르기'),
+                    label: const AppText('갤러리에서 고르기'),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -537,7 +538,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           constraints: const BoxConstraints(minHeight: 40),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-          child: Text(
+          child: AppText(
             label,
             style: AppTypography.caption.copyWith(
               color: Colors.white.withValues(alpha: strong ? 0.82 : 0.6),
@@ -627,9 +628,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         children: [
           Row(
             children: [
-              Text('예정 전세보증금', style: AppTypography.bodyStrong),
+              AppText('예정 전세보증금', style: AppTypography.bodyStrong),
               const SizedBox(width: 6),
-              Text(
+              AppText(
                 '필수',
                 style: AppTypography.label.copyWith(
                   color: AppColors.primary,
@@ -641,7 +642,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           const SizedBox(height: AppSpacing.sm),
           // ② 28px 한글 표기 — 이 화면에서 **가장 큰 숫자**여야 한다.
           //    (예전 구현은 이걸 13px 캡션으로 내려놨던 것이 가장 큰 문제였다.)
-          Text(
+          AppText(
             won != null ? formatWon(won) : '얼마를 맡기시나요?',
             style: AppTypography.numberLarge.copyWith(
               color: won != null ? AppColors.textStrong : AppColors.textMuted,
@@ -775,11 +776,11 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               children: [
                 Icon(icon, size: AppSize.iconSm, color: AppColors.textMuted),
                 const SizedBox(width: AppSpacing.md),
-                Text(label, style: AppTypography.bodyStrong),
-                Text(' · 선택', style: AppTypography.caption),
+                AppText(label, style: AppTypography.bodyStrong),
+                AppText(' · 선택', style: AppTypography.caption),
                 const Spacer(),
                 Flexible(
-                  child: Text(
+                  child: AppText(
                     summary,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.right,
@@ -916,7 +917,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                   textStyle: AppTypography.button,
                 ),
                 icon: const Icon(Icons.search, size: AppSize.iconMd),
-                label: const Text('분석하기'),
+                label: const AppText('분석하기'),
               ),
             ),
           ],
@@ -935,7 +936,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           color: done ? AppColors.ok : AppColors.textMuted,
         ),
         const SizedBox(width: 5),
-        Text(
+        AppText(
           label,
           style: AppTypography.caption.copyWith(
             color: done ? AppColors.ok : AppColors.textMuted,

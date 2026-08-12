@@ -10,6 +10,7 @@ import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
 import 'app_button.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 본문 속 밑줄 용어. 탭하면 설명 바텀시트가 열린다.
 class TermText extends StatelessWidget {
@@ -35,7 +36,7 @@ class TermText extends StatelessWidget {
     // 2026-07-09 A3: 항상 문장 흐름에 붙는 인라인 렌더.
     // (이전엔 48dp 최소 터치박스+Center로 감싸 용어 앞뒤에 큰 공백이 생겼다.
     //  termSpan이 inline 플래그를 전달하지 않아 문단 속 용어까지 박스로 렌더된 버그.)
-    final Widget label = Text(
+    final Widget label = AppText(
       term,
       style: base.copyWith(
         color: AppColors.primary,
@@ -105,9 +106,9 @@ Future<void> showTermTooltipSheet(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(term, style: AppTypography.headline),
+          AppText(term, style: AppTypography.headline),
           const SizedBox(height: AppSpacing.md),
-          Text(description, style: AppTypography.body),
+          AppText(description, style: AppTypography.body),
           if (onAskChatbot != null) ...[
             const SizedBox(height: AppSpacing.xl),
             AppSecondaryButton(

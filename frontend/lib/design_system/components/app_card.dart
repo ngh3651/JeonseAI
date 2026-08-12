@@ -13,6 +13,7 @@ import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
 import 'risk_badge.dart';
 import 'source_label.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 표면 카드 — 테마의 CardThemeData(테두리·라운드)를 그대로 쓰는 패딩 컨테이너.
 class AppCard extends StatelessWidget {
@@ -137,9 +138,9 @@ class _EvidenceCardState extends State<EvidenceCard> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Text(widget.title, style: AppTypography.title),
+                AppText(widget.title, style: AppTypography.title),
                 const SizedBox(height: AppSpacing.xs),
-                Text(widget.termSubtitle, style: AppTypography.caption),
+                AppText(widget.termSubtitle, style: AppTypography.caption),
                 AnimatedCrossFade(
                   duration: const Duration(milliseconds: 180),
                   crossFadeState: _expanded
@@ -152,9 +153,9 @@ class _EvidenceCardState extends State<EvidenceCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (widget.explanationSpan != null)
-                          Text.rich(widget.explanationSpan!)
+                          AppText.rich(widget.explanationSpan!)
                         else
-                          Text(
+                          AppText(
                             widget.easyExplanation,
                             style: AppTypography.body,
                           ),
@@ -167,7 +168,7 @@ class _EvidenceCardState extends State<EvidenceCard> {
                               color: AppColors.background,
                               borderRadius: BorderRadius.circular(AppRadius.md),
                             ),
-                            child: Text(
+                            child: AppText(
                               widget.detailText!,
                               style: AppTypography.bodyStrong,
                             ),

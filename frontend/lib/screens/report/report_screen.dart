@@ -29,6 +29,7 @@ import '../../repositories/analysis_repository.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import 'registry_entry_card.dart';
+import '../../design_system/text/app_text.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key, required this.reportId});
@@ -71,12 +72,12 @@ class _ReportScreenState extends State<ReportScreen> {
         if (report == null) {
           // 이력 손상/없음 (user-scenario.md §5) — 막다른 길 방지 CTA 포함
           return Scaffold(
-            appBar: AppBar(title: const Text('안전도 리포트')),
+            appBar: AppBar(title: const AppText('안전도 리포트')),
             body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('이 리포트를 불러올 수 없어요', style: AppTypography.body),
+                  const AppText('이 리포트를 불러올 수 없어요', style: AppTypography.body),
                   const SizedBox(height: AppSpacing.lg),
                   AppCompactButton(
                     label: '홈으로',
@@ -90,7 +91,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(report.alias),
+            title: AppText(report.alias),
             actions: [
               IconButton(
                 icon: const Icon(Icons.ios_share),
@@ -108,15 +109,15 @@ class _ReportScreenState extends State<ReportScreen> {
               _nextActionCard(context, report),
               const SizedBox(height: AppSpacing.xl),
               _originPhotoEntry(context, report),
-              const Text('근거 살펴보기', style: AppTypography.title),
+              const AppText('근거 살펴보기', style: AppTypography.title),
               const SizedBox(height: AppSpacing.xs),
-              Text('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
+              AppText('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
               const SizedBox(height: AppSpacing.md),
               ..._evidenceCards(context, report),
               // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
               ?_priceGapCard(report),
               const SizedBox(height: AppSpacing.xl),
-              const Text('다음 행동', style: AppTypography.title),
+              const AppText('다음 행동', style: AppTypography.title),
               const SizedBox(height: AppSpacing.md),
               ..._actionArea(context, report),
               const SizedBox(height: AppSpacing.xxl),
@@ -225,12 +226,12 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
-            child: Text(
+            child: AppText(
               '${formatDaysAgo(report.analyzedAt)} 결과예요 — 계약 직전엔 최신 등기부등본으로 재확인하세요',
               style: AppTypography.caption.copyWith(color: AppColors.caution),
             ),
           ),
-          TextButton(onPressed: () => _stub(context), child: const Text('재분석')),
+          TextButton(onPressed: () => _stub(context), child: const AppText('재분석')),
         ],
       ),
     );
@@ -253,7 +254,7 @@ class _ReportScreenState extends State<ReportScreen> {
           size: 190,
         ),
         const SizedBox(height: AppSpacing.md),
-        Text(
+        AppText(
           report.headline,
           style: AppTypography.headline,
           textAlign: TextAlign.center,
@@ -277,13 +278,13 @@ class _ReportScreenState extends State<ReportScreen> {
           state: _mascotForGrade(report.grade),
         ),
         const SizedBox(height: AppSpacing.md),
-        Text(
+        AppText(
           report.address,
           style: AppTypography.caption,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: AppSpacing.xs),
-        Text(
+        AppText(
           priceText,
           style: AppTypography.caption.copyWith(
             color: AppColors.textBody,
@@ -394,7 +395,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   children: [
                     // D1: '근거 확인'보다 '그래서 뭘 해야 하나'가 사용자의 진짜 관심 —
                     // 제목을 label(12px)에서 title(17px)로 올려 위계를 강조.
-                    Text(
+                    AppText(
                       '지금 해야 할 일',
                       style: AppTypography.title.copyWith(
                         color: AppColors.primary,
@@ -402,7 +403,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     // G7: 결정적 영역이라 볼드 강조 (LLM 생성 아닌 결정적 템플릿 문장)
-                    Text(
+                    AppText(
                       report.nextAction,
                       style: AppTypography.bodyStrong.copyWith(
                         fontWeight: FontWeight.w700,
@@ -590,7 +591,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 children: [
                   Row(
                     children: [
-                      Text(recommended.label, style: AppTypography.bodyStrong),
+                      AppText(recommended.label, style: AppTypography.bodyStrong),
                       const SizedBox(width: AppSpacing.sm),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -601,7 +602,7 @@ class _ReportScreenState extends State<ReportScreen> {
                           color: AppColors.primarySoft,
                           borderRadius: BorderRadius.circular(AppRadius.pill),
                         ),
-                        child: Text(
+                        child: AppText(
                           '추천',
                           style: AppTypography.label.copyWith(
                             color: AppColors.primary,
@@ -611,7 +612,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xs),
-                  Text(recommended.caption, style: AppTypography.caption),
+                  AppText(recommended.caption, style: AppTypography.caption),
                 ],
               ),
             ),
@@ -641,7 +642,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
-                    child: Text(action.label, style: AppTypography.bodyStrong),
+                    child: AppText(action.label, style: AppTypography.bodyStrong),
                   ),
                 ],
               ),
@@ -661,7 +662,7 @@ class _ReportScreenState extends State<ReportScreen> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
-      child: Text(
+      child: AppText(
         '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
         '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
         '확인과 전문가 상담을 통해 이루어져야 합니다.',
@@ -673,6 +674,6 @@ class _ReportScreenState extends State<ReportScreen> {
   void _stub(BuildContext context) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('곧 제공되는 기능이에요')));
+      ..showSnackBar(const SnackBar(content: AppText('곧 제공되는 기능이에요')));
   }
 }

@@ -15,6 +15,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/content_models.dart';
 import '../../repositories/content_repository.dart';
+import '../../design_system/text/app_text.dart';
 
 class JourneyScreen extends StatefulWidget {
   const JourneyScreen({super.key, this.showBack = false});
@@ -65,7 +66,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('계약 여정'),
+        title: const AppText('계약 여정'),
         automaticallyImplyLeading: widget.showBack,
       ),
       body: _loading
@@ -83,7 +84,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          const AppText(
             '단계를 불러오지 못했어요\n서버 연결을 확인해 주세요',
             style: AppTypography.body,
             textAlign: TextAlign.center,
@@ -103,9 +104,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       children: [
-        Text('지금 어디쯤이세요?', style: AppTypography.headline),
+        AppText('지금 어디쯤이세요?', style: AppTypography.headline),
         const SizedBox(height: AppSpacing.xs),
-        Text(
+        AppText(
           '계약 전부터 보증금 반환까지, 지금 단계에 맞춰 할 일을 안내해 드려요',
           style: AppTypography.caption,
         ),
@@ -119,9 +120,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(_stages[i].title, style: AppTypography.bodyStrong),
+                      AppText(_stages[i].title, style: AppTypography.bodyStrong),
                       const SizedBox(height: AppSpacing.xs),
-                      Text(_stages[i].subtitle, style: AppTypography.caption),
+                      AppText(_stages[i].subtitle, style: AppTypography.caption),
                     ],
                   ),
                 ),
@@ -148,14 +149,14 @@ class _JourneyScreenState extends State<JourneyScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: AppText(
                     '현재 단계를 바꾸려면 여기를 눌러요',
                     style: AppTypography.caption,
                   ),
                 ),
                 TextButton(
                   onPressed: () => setState(() => _currentStage = null),
-                  child: const Text('단계 변경'),
+                  child: const AppText('단계 변경'),
                 ),
               ],
             ),
@@ -201,10 +202,10 @@ class _JourneyScreenState extends State<JourneyScreen> {
                 ),
                 const SizedBox(width: AppSpacing.sm),
               ],
-              Expanded(child: Text(stage.title, style: AppTypography.title)),
+              Expanded(child: AppText(stage.title, style: AppTypography.title)),
             ],
           ),
-          subtitle: Text(stage.subtitle, style: AppTypography.caption),
+          subtitle: AppText(stage.subtitle, style: AppTypography.caption),
           childrenPadding: const EdgeInsets.fromLTRB(
             AppSpacing.lg,
             0,
@@ -239,7 +240,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
           contentPadding: EdgeInsets.zero,
           controlAffinity: ListTileControlAffinity.leading,
           activeColor: AppColors.primary,
-          title: Text(item.text, style: AppTypography.body),
+          title: AppText(item.text, style: AppTypography.body),
         ),
         Padding(
           padding: const EdgeInsets.only(
@@ -255,7 +256,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
                 color: AppColors.textMuted,
               ),
               const SizedBox(width: AppSpacing.xs),
-              Expanded(child: Text(item.why, style: AppTypography.caption)),
+              Expanded(child: AppText(item.why, style: AppTypography.caption)),
             ],
           ),
         ),

@@ -20,6 +20,7 @@ import '../../repositories/analysis_repository.dart';
 import '../../state/app_session.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
+import '../../design_system/text/app_text.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -59,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? null
                       : TextButton(
                           onPressed: () => context.go('/my'),
-                          child: const Text('전체 보기'),
+                          child: const AppText('전체 보기'),
                         ),
                 ),
                 if (snapshot.connectionState == ConnectionState.waiting)
@@ -101,9 +102,9 @@ class _HomeScreenState extends State<HomeScreen> {
             size: AppSize.iconMd,
           ),
           const SizedBox(height: AppSpacing.md),
-          const Text('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
+          const AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
           const SizedBox(height: AppSpacing.xs),
-          Text(
+          AppText(
             '서버 연결을 확인해 주세요',
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),
@@ -132,9 +133,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(hello, style: AppTypography.headline),
+              AppText(hello, style: AppTypography.headline),
               const SizedBox(height: AppSpacing.xs),
-              Text(
+              AppText(
                 '오늘도 안전한 전세 계약을 도와드릴게요',
                 style: AppTypography.caption.copyWith(
                   color: AppColors.textMuted,
@@ -147,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (session.isGuest)
           TextButton(
             onPressed: () => context.push('/login?mode=login'),
-            child: const Text('로그인'),
+            child: const AppText('로그인'),
           ),
       ],
     );
@@ -163,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: AppTypography.title),
+          AppText(title, style: AppTypography.title),
           ?trailing,
         ],
       ),
@@ -180,16 +181,16 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(report.alias, style: AppTypography.title),
+                AppText(report.alias, style: AppTypography.title),
                 const SizedBox(height: AppSpacing.xs),
-                Text(
+                AppText(
                   '${formatDate(report.analyzedAt)} 분석 · 보증금 ${formatWon(report.deposit)}',
                   style: AppTypography.caption,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(
+                AppText(
                   report.topRiskSummary,
                   style: AppTypography.caption,
                   maxLines: 1,
@@ -217,9 +218,9 @@ class _HomeScreenState extends State<HomeScreen> {
           // 겹쳐 오독되어(페르소나 2인·design-reviewer) 순한 tip(전구) 톤으로.
           const MascotSafe(size: 64, state: MascotState.tip),
           const SizedBox(height: AppSpacing.lg),
-          const Text('아직 분석한 매물이 없어요', style: AppTypography.title),
+          const AppText('아직 분석한 매물이 없어요', style: AppTypography.title),
           const SizedBox(height: AppSpacing.xs),
-          Text(
+          AppText(
             '등기부등본 사진만 있으면 바로 시작할 수 있어요',
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
             textAlign: TextAlign.center,
@@ -281,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(icon, color: AppColors.primary, size: AppSize.iconMd),
             const SizedBox(height: AppSpacing.sm),
-            Text(
+            AppText(
               label,
               style: AppTypography.label.copyWith(color: AppColors.textBody),
             ),

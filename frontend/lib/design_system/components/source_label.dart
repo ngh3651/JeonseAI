@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class VerdictSourceLabel extends StatelessWidget {
   const VerdictSourceLabel({super.key, this.verdictSource});
@@ -65,7 +66,7 @@ class VerdictSourceLabel extends StatelessWidget {
           const SizedBox(width: AppSpacing.xs),
           // Flexible: 출처가 길면 칩 안에서 줄바꿈 — 화면 밖 오버플로 방지
           Flexible(
-            child: Text(
+            child: AppText(
               text,
               style: AppTypography.label.copyWith(color: color),
               softWrap: true,

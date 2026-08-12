@@ -19,6 +19,7 @@ import 'package:jeonse_ai/state/registry_photo_store.dart';
 import 'package:provider/provider.dart';
 
 import 'support/registry_fixture.dart';
+import 'support/ko_finders.dart';
 
 void main() {
   late Directory temp;
@@ -73,7 +74,7 @@ void main() {
       .whereType<HighlightPainter>()
       .first;
 
-  Finder cardTitle(String text) => find.text(text);
+  Finder cardTitle(String text) => find.koText(text);
 
   /// 캐러셀은 가로로 넘치므로 뒤쪽 카드는 먼저 화면 안으로 끌어와야 누를 수 있다.
   Future<void> tapCard(WidgetTester tester, Finder finder) async {
@@ -86,14 +87,14 @@ void main() {
     testWidgets('표시 하나당 카드 하나 — 제목은 백엔드 문구 그대로', (tester) async {
       await pumpViewer(tester);
       expect(cardTitle('집주인 이름 · 주식회사가나다'), findsOneWidget);
-      expect(find.text('집에 잡힌 빚 (근저당권) · 4억원'), findsOneWidget);
-      expect(find.text('자세히 보기 ›'), findsNWidgets(4));
+      expect(find.koText('집에 잡힌 빚 (근저당권) · 4억원'), findsOneWidget);
+      expect(find.koText('자세히 보기 ›'), findsNWidgets(4));
     });
 
     testWidgets('카드 요약은 백엔드 본문의 첫 문장이다 (지어낸 문구가 없다)', (tester) async {
       await pumpViewer(tester);
       expect(
-        find.textContaining('집이 경매로 넘어가면, 이 돈을 빌려준 곳이'),
+        find.koTextContaining('집이 경매로 넘어가면, 이 돈을 빌려준 곳이'),
         findsWidgets,
       );
     });
@@ -110,7 +111,7 @@ void main() {
 
     testWidgets('자세히 보기를 누르면 첫 탭에 바로 시트가 열린다', (tester) async {
       await pumpViewer(tester);
-      await tester.tap(find.text('자세히 보기 ›').first);
+      await tester.tap(find.koText('자세히 보기 ›').first);
       await tester.pumpAndSettle();
 
       expect(find.byType(RegistryMarkSheet), findsOneWidget);
@@ -145,7 +146,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final links = find.text('자세히 보기 ›');
+      final links = find.koText('자세히 보기 ›');
       expect(links, findsNWidgets(2));
       final a = tester.getRect(links.at(0));
       final b = tester.getRect(links.at(1));
@@ -161,7 +162,7 @@ void main() {
       await pumpViewer(tester);
       final size = tester.getSize(
         find.ancestor(
-          of: find.text('자세히 보기 ›').first,
+          of: find.koText('자세히 보기 ›').first,
           matching: find.byType(Container),
         ).first,
       );
@@ -172,24 +173,24 @@ void main() {
   group('하단 시트', () {
     testWidgets('구성은 번호+제목 → 본문 → 출처. 백엔드 문구만 나온다', (tester) async {
       await pumpViewer(tester);
-      await tester.tap(find.text('자세히 보기 ›').first);
+      await tester.tap(find.koText('자세히 보기 ›').first);
       await tester.pumpAndSettle();
 
-      expect(find.text('집주인 이름 · 주식회사가나다'), findsWidgets);
+      expect(find.koText('집주인 이름 · 주식회사가나다'), findsWidgets);
       expect(
         find.descendant(
           of: find.byType(RegistryMarkSheet),
-          matching: find.textContaining('계약서에 적힌 집주인(임대인) 이름'),
+          matching: find.koTextContaining('계약서에 적힌 집주인(임대인) 이름'),
         ),
         findsOneWidget,
       );
-      expect(find.textContaining('등기부 갑구'), findsOneWidget);
+      expect(find.koTextContaining('등기부 갑구'), findsOneWidget);
     });
 
     // 실기기에서 "시트가 잘 안 닫힌다"가 나왔다. 닫는 길이 셋인데 어느 것이 막혔는지
     // 눈으로는 못 가리므로 셋을 각각 못 박는다.
     Future<void> openSheet(WidgetTester tester) async {
-      await tester.tap(find.text('자세히 보기 ›').first);
+      await tester.tap(find.koText('자세히 보기 ›').first);
       await tester.pumpAndSettle();
       expect(find.byType(RegistryMarkSheet), findsOneWidget);
     }
@@ -230,10 +231,10 @@ void main() {
 
     testWidgets('"중개사에게 물어볼 질문"은 넣지 않는다 (연결할 데이터가 없다)', (tester) async {
       await pumpViewer(tester);
-      await tester.tap(find.text('자세히 보기 ›').first);
+      await tester.tap(find.koText('자세히 보기 ›').first);
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('중개사에게 물어볼 질문'), findsNothing);
+      expect(find.koTextContaining('중개사에게 물어볼 질문'), findsNothing);
     });
   });
 

@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../design_system/components/app_bottom_nav.dart';
 import '../common/analyze_gate.dart';
+import '../../design_system/text/app_text.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key, required this.navigationShell});
@@ -36,7 +37,7 @@ class _MainShellState extends State<MainShell> {
       _lastBackAt = now;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('한 번 더 누르면 종료돼요')));
+        ..showSnackBar(const SnackBar(content: AppText('한 번 더 누르면 종료돼요')));
     } else {
       SystemNavigator.pop();
     }

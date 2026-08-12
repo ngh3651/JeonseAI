@@ -12,6 +12,7 @@ import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class _Page {
   const _Page(this.title, this.body);
@@ -79,7 +80,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () => context.go('/start'),
-                  child: const Text('건너뛰기'),
+                  child: const AppText('건너뛰기'),
                 ),
               ),
               Expanded(
@@ -105,7 +106,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               if (_isLast)
                 TextButton(
                   onPressed: () => context.push('/guide'),
-                  child: const Text('등기부등본이 없다면? 발급 방법 보기'),
+                  child: const AppText('등기부등본이 없다면? 발급 방법 보기'),
                 )
               else
                 const SizedBox(height: AppSize.buttonHeight - AppSpacing.md),
@@ -133,13 +134,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         children: [
           MascotSafe(size: 120, state: state),
           const SizedBox(height: AppSpacing.xxxl),
-          Text(
+          AppText(
             page.title,
             style: AppTypography.headline,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.md),
-          Text(
+          AppText(
             page.body,
             style: AppTypography.body,
             textAlign: TextAlign.center,

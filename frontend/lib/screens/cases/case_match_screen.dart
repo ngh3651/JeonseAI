@@ -22,6 +22,7 @@ import '../../models/analysis_report.dart';
 import '../../models/content_models.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 위험 태그(백엔드 `RISK_TAGS` 어휘) → 화면 라벨.
 ///
@@ -80,7 +81,7 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('판례 매칭')),
+      appBar: AppBar(title: const AppText('판례 매칭')),
       body: FutureBuilder<(AnalysisReport?, List<CaseMatch>)>(
         future: _future,
         builder: (context, snapshot) {
@@ -100,7 +101,7 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
             padding: const EdgeInsets.all(AppSpacing.screenPadding),
             children: [
               // '판례' 첫 등장에 툴팁으로 신뢰 무게를 짧게 설명 (용어는 유지)
-              Text.rich(
+              AppText.rich(
                 TextSpan(
                   style: AppTypography.body,
                   children: [
@@ -117,10 +118,10 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.xl),
-              Text('이 매물에서 눈에 띈 위험', style: AppTypography.title),
+              AppText('이 매물에서 눈에 띈 위험', style: AppTypography.title),
               const SizedBox(height: AppSpacing.sm),
               if (patterns.isEmpty)
-                Text('눈에 띄는 위험 패턴이 없어요', style: AppTypography.caption)
+                AppText('눈에 띄는 위험 패턴이 없어요', style: AppTypography.caption)
               else
                 Wrap(
                   spacing: AppSpacing.sm,
@@ -161,7 +162,7 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
-              Text('판례 데이터는 계속 추가되고 있어요', style: AppTypography.caption),
+              AppText('판례 데이터는 계속 추가되고 있어요', style: AppTypography.caption),
               const SizedBox(height: AppSpacing.xxxl),
             ],
           );
@@ -177,9 +178,9 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
         children: [
           _tagHeader(c),
           const SizedBox(height: AppSpacing.sm),
-          Text(c.caseNo, style: AppTypography.caption),
+          AppText(c.caseNo, style: AppTypography.caption),
           const SizedBox(height: AppSpacing.sm),
-          Text(c.summary, style: AppTypography.bodyStrong),
+          AppText(c.summary, style: AppTypography.bodyStrong),
           const SizedBox(height: AppSpacing.md),
           _row('결과', c.result, AppColors.danger),
           const SizedBox(height: AppSpacing.sm),
@@ -234,7 +235,7 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
         ),
         const SizedBox(width: 4),
         Expanded(
-          child: Text(
+          child: AppText(
             c.sourceUrl == null ? label : '$label · 판결문 원문 있음',
             style: AppTypography.caption,
           ),
@@ -247,9 +248,9 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTypography.caption),
+        AppText(label, style: AppTypography.caption),
         const SizedBox(height: 2),
-        Text(value, style: AppTypography.body.copyWith(color: valueColor)),
+        AppText(value, style: AppTypography.body.copyWith(color: valueColor)),
       ],
     );
   }
@@ -259,7 +260,7 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          AppText(
             retryable ? '데이터를 불러오지 못했어요\n서버 연결을 확인해 주세요' : '리포트를 불러올 수 없어요',
             style: AppTypography.body,
             textAlign: TextAlign.center,

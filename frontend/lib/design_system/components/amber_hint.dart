@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 힌트의 톤 — 색만 다르고 형태는 같다.
 enum AmberHintTone {
@@ -71,7 +72,7 @@ class AmberHint extends StatelessWidget {
             const SizedBox(width: AppSpacing.xs),
           ],
           Expanded(
-            child: Text(
+            child: AppText(
               text,
               // 12px/1.4 — 핸드오프 명세. label(12/w600)보다 가볍게 읽히도록 w400.
               style: AppTypography.label.copyWith(

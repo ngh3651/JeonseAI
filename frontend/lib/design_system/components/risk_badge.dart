@@ -10,6 +10,7 @@ import '../../models/risk_grade.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class RiskBadge extends StatelessWidget {
   const RiskBadge({
@@ -45,7 +46,7 @@ class RiskBadge extends StatelessWidget {
       ),
       // F4: 긴 labelOverride(예: "보류하고 아래 항목을 먼저 확인하세요")도 넘치지 않게 —
       // large일 땐 여러 줄 허용, 작은 뱃지는 한 줄 말줄임.
-      child: Text(
+      child: AppText(
         labelOverride ?? grade.label,
         softWrap: large,
         maxLines: large ? 3 : 1,

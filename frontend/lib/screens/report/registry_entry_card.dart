@@ -23,6 +23,7 @@ import '../../models/analysis_report.dart';
 import '../../models/registry_mark_kind.dart';
 import 'registry_document_layout.dart' show kFallbackPageAspect;
 import 'registry_mark_stripe.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 미리보기 스트립 높이.
 ///
@@ -223,7 +224,7 @@ class RegistryEntryCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
+                            AppText(
                               title,
                               style: AppTypography.bodyStrong.copyWith(
                                 fontWeight: FontWeight.w700,
@@ -234,7 +235,7 @@ class RegistryEntryCard extends StatelessWidget {
                             ),
                             if (subtitle != null) ...[
                               const SizedBox(height: 2),
-                              Text(subtitle!, style: AppTypography.caption),
+                              AppText(subtitle!, style: AppTypography.caption),
                             ],
                           ],
                         ),
@@ -415,7 +416,7 @@ class _PreviewStripState extends State<_PreviewStrip> {
         color: AppColors.markSolid(risky ? MarkTone.risk : MarkTone.verify),
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
-      child: Text(
+      child: AppText(
         label,
         textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
         style: AppTypography.label.copyWith(

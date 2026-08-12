@@ -9,6 +9,7 @@ import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
 import 'mascot_safe.dart';
+import '../../design_system/text/app_text.dart';
 
 class ChatBubble extends StatelessWidget {
   const ChatBubble({
@@ -51,7 +52,7 @@ class ChatBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          AppText(
             text,
             style: AppTypography.body.copyWith(
               color: isUser ? Colors.white : AppColors.textBody,

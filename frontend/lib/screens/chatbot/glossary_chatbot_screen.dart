@@ -18,6 +18,7 @@ import '../../models/content_models.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 import '../common/analyze_gate.dart';
+import '../../design_system/text/app_text.dart';
 
 class _Msg {
   const _Msg(
@@ -140,7 +141,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('용어 챗봇'),
+        title: const AppText('용어 챗봇'),
         automaticallyImplyLeading: false,
       ),
       body: Column(
@@ -197,7 +198,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
         itemCount: terms.length,
         separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
         itemBuilder: (context, i) => ActionChip(
-          label: Text(terms[i]),
+          label: AppText(terms[i]),
           onPressed: () => _ask(terms[i]),
           backgroundColor: AppColors.primarySoft,
           side: BorderSide.none,

@@ -24,6 +24,7 @@ import '../../models/analysis_report.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../utils/money_format.dart';
+import '../../design_system/text/app_text.dart';
 
 class LossSimulatorScreen extends StatefulWidget {
   const LossSimulatorScreen({super.key, required this.reportId});
@@ -55,7 +56,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('손실 시뮬레이터')),
+      appBar: AppBar(title: const AppText('손실 시뮬레이터')),
       body: FutureBuilder<AnalysisReport?>(
         future: _reportFuture,
         builder: (context, snapshot) {
@@ -68,7 +69,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('리포트를 불러올 수 없어요', style: AppTypography.body),
+                  const AppText('리포트를 불러올 수 없어요', style: AppTypography.body),
                   const SizedBox(height: AppSpacing.lg),
                   AppCompactButton(
                     label: '홈으로',
@@ -104,7 +105,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
       children: [
         _exampleBanner(),
         const SizedBox(height: AppSpacing.xl),
-        Text(
+        AppText(
           '${report.alias} · 보증금 ${formatWon(report.deposit)}',
           style: AppTypography.caption,
           textAlign: TextAlign.center,
@@ -112,7 +113,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
         const SizedBox(height: AppSpacing.xxl),
 
         // ── 슬라이더: 쉬운 말 라벨 + '낙찰가율' 툴팁 부제 ──
-        const Text(
+        const AppText(
           '집이 경매로 넘어가 이 가격에 팔린다면?',
           style: AppTypography.title,
           textAlign: TextAlign.center,
@@ -130,10 +131,10 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
               onAskChatbot: () => context.push('/chatbot'),
             ),
             const SizedBox(width: AppSpacing.xs),
-            Text('기준 (예시)', style: AppTypography.caption),
+            AppText('기준 (예시)', style: AppTypography.caption),
           ],
         ),
-        Text(
+        AppText(
           '${(_ratio * 100).round()}%',
           style: AppTypography.numberLarge.copyWith(color: AppColors.primary),
           textAlign: TextAlign.center,
@@ -175,8 +176,8 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
           value: _insured,
           onChanged: (v) => setState(() => _insured = v),
           // C3: 시뮬레이션임이 드러나는 제목 (feedback4 목업)
-          title: const Text('보증보험 적용 시 시뮬레이션', style: AppTypography.bodyStrong),
-          subtitle: Text(
+          title: const AppText('보증보험 적용 시 시뮬레이션', style: AppTypography.bodyStrong),
+          subtitle: AppText(
             '가입 가능 여부를 확인하면 보험 적용 결과를 볼 수 있어요',
             style: AppTypography.caption,
           ),
@@ -194,7 +195,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      AppText(
                         '잠깐 — 이 매물은 보증보험 가입 가능 여부가 아직 확인되지 않았어요. '
                         '가입이 안 될 수도 있으니, 가입 요건부터 먼저 확인하세요.',
                         style: AppTypography.body.copyWith(
@@ -217,7 +218,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                     color: AppColors.okSoft,
                     borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
-                  child: Text(
+                  child: AppText(
                     '보증보험에 가입되어 있으면 보증기관이 보증금을 대신 돌려줘요. '
                     '예상 손실 0원 (예시)',
                     style: AppTypography.body.copyWith(color: AppColors.ok),
@@ -253,7 +254,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
-            child: Text(
+            child: AppText(
               '아래 수치는 예시예요. 실제 계산 기준(낙찰가율 통계·계산식)은 '
               '공식 출처 확보 후 반영돼요.',
               style: AppTypography.caption,
@@ -275,7 +276,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          AppText(
             '시세가 입력되지 않아 보증금을 기준으로 계산한 예시예요. '
             '시세를 입력하면 더 정확해져요.',
             style: AppTypography.body.copyWith(color: AppColors.caution),
@@ -288,7 +289,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
               // 시세 입력은 매물 검색(S-04)과 함께 C-3에서 연결
               ScaffoldMessenger.of(context)
                 ..hideCurrentSnackBar()
-                ..showSnackBar(const SnackBar(content: Text('곧 제공되는 기능이에요')));
+                ..showSnackBar(const SnackBar(content: AppText('곧 제공되는 기능이에요')));
             },
           ),
         ],
@@ -309,13 +310,13 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
       ),
       child: Column(
         children: [
-          Text(
+          AppText(
             '예상 손실액 (예시)',
             style: AppTypography.label.copyWith(color: color),
           ),
           const SizedBox(height: AppSpacing.sm),
           // G7: 결정적 결과 수치 볼드 강조
-          Text(
+          AppText(
             formatWon(loss),
             style: AppTypography.conclusion.copyWith(
               color: color,
@@ -336,9 +337,9 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('예상 반환금', style: AppTypography.caption),
+                AppText('예상 반환금', style: AppTypography.caption),
                 const SizedBox(width: AppSpacing.sm),
-                Text(
+                AppText(
                   formatWon(recovered),
                   style: AppTypography.bodyStrong.copyWith(
                     fontWeight: FontWeight.w700,
@@ -358,8 +359,8 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(child: Text(label, style: AppTypography.body)),
-          Text(value, style: AppTypography.bodyStrong),
+          Expanded(child: AppText(label, style: AppTypography.body)),
+          AppText(value, style: AppTypography.bodyStrong),
         ],
       ),
     );

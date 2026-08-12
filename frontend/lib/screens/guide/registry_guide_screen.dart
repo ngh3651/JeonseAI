@@ -14,6 +14,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../common/analyze_gate.dart';
+import '../../design_system/text/app_text.dart';
 
 class _Step {
   const _Step(this.title, this.body);
@@ -37,12 +38,12 @@ class RegistryGuideScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('등기부등본 발급 가이드')),
+      appBar: AppBar(title: const AppText('등기부등본 발급 가이드')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
           // B3: 정식 명칭은 이 발급 가이드 화면에서만 1회 괄호 병기 (신뢰감)
-          Text('등기부등본(등기사항전부증명서), 이렇게 떼면 돼요', style: AppTypography.headline),
+          AppText('등기부등본(등기사항전부증명서), 이렇게 떼면 돼요', style: AppTypography.headline),
           const SizedBox(height: AppSpacing.xl),
           for (int i = 0; i < _steps.length; i++) ...[
             _stepCard(i + 1, _steps[i]),
@@ -72,7 +73,7 @@ class RegistryGuideScreen extends StatelessWidget {
               color: AppColors.primary,
               shape: BoxShape.circle,
             ),
-            child: Text(
+            child: AppText(
               '$number',
               style: AppTypography.label.copyWith(color: Colors.white),
             ),
@@ -82,9 +83,9 @@ class RegistryGuideScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(step.title, style: AppTypography.bodyStrong),
+                AppText(step.title, style: AppTypography.bodyStrong),
                 const SizedBox(height: AppSpacing.xs),
-                Text(step.body, style: AppTypography.caption),
+                AppText(step.body, style: AppTypography.caption),
               ],
             ),
           ),

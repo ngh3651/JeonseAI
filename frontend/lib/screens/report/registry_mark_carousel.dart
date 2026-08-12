@@ -18,6 +18,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 카드 폭 — 360dp 기준 210, 넓은 화면(≥412dp)에서 240 (시안 "폭 확장").
 const double kCardWidth = 210;
@@ -160,7 +161,7 @@ class _MarkCard extends StatelessWidget {
                         _CardBadge(number: mark.badge, color: color),
                         const SizedBox(width: 7),
                         Expanded(
-                          child: Text(
+                          child: AppText(
                             mark.title,
                             // 제목이 잘리면 금액이 사라진다("집에 잡힌 빚 (근저당권) · 5억원"의
                             // 뒤쪽이 정보의 핵심이다). 그래서 두 줄까지 허용한다.
@@ -176,7 +177,7 @@ class _MarkCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
+                    AppText(
                       mark.summary,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -199,7 +200,7 @@ class _MarkCard extends StatelessWidget {
                 constraints: const BoxConstraints(minHeight: kDetailTapHeight),
                 alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.fromLTRB(13, 12, 13, 11),
-                child: Text(
+                child: AppText(
                   '자세히 보기 ›',
                   style: AppTypography.label.copyWith(
                     fontSize: 12.5,
@@ -229,7 +230,7 @@ class _CardBadge extends StatelessWidget {
       height: kCardBadgeDiameter,
       alignment: Alignment.center,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      child: Text(
+      child: AppText(
         '$number',
         // 사진 위 뱃지와 동작을 맞춘다(그쪽은 캔버스라 시스템 글꼴 확대가 안 걸린다)
         textScaler: TextScaler.noScaling,

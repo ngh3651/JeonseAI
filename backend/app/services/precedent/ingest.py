@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .chunking import chunk_document
 from .embedding import EmbeddingBackend, get_backend
@@ -46,6 +47,25 @@ def _norm_case_no(s: str) -> str:
 def _case_no_parts(raw_case_no: str) -> list[str]:
     """'2019다300095, 300101' → ['2019다300095', '300101'] (정확 일치 조인용)."""
     return [_norm_case_no(p) for p in (raw_case_no or "").split(",") if p.strip()]
+
+
+# 판결문 원문을 제공하는 출처만 "출처 확인됨"으로 인정한다 (2026-08-12).
+#   처음엔 `bool(source_url)`로 뒀는데, 그러면 **뉴스 기사 링크도 통과**한다.
+#   실제로 '건축왕' 전세사기 판례가 slownews.kr 링크로 노출 가능 상태였다.
+#   출처 확인의 뜻은 "URL이 있다"가 아니라 "사용자가 판결문 원문을 볼 수 있다"이다.
+OFFICIAL_SOURCE_HOSTS = (
+    "law.go.kr",      # 법제처 국가법령정보 (정부 공식)
+    "casenote.kr",    # 판결문 전문 DB
+    "scourt.go.kr",   # 대법원 종합법률정보
+)
+
+
+def is_official_source(url: str | None) -> bool:
+    """판결문 원문을 볼 수 있는 출처인가. 뉴스·해설 사이트는 인정하지 않는다."""
+    if not url:
+        return False
+    host = urlparse(url).netloc.lower()
+    return any(host == h or host.endswith("." + h) for h in OFFICIAL_SOURCE_HOSTS)
 
 
 def auto_tags(text: str) -> list[str]:
@@ -101,7 +121,12 @@ def build_documents(
         holding = ""
         full_text = None
         title = None
-        source_url = (seed.get("source_urls") or [None])[0] or seed.get("source_url", "")
+        # 큐레이션은 출처를 여러 개 적어둘 수 있다(뉴스 기사 + 판결문 DB 등).
+        #   **판결문 원문을 볼 수 있는 것을 우선** 고른다 — 첫 번째를 그냥 쓰면
+        #   뉴스 링크가 대표 출처가 되어 "판례를 확인할 수 있다"가 거짓이 된다.
+        #   (실제로 83다카116이 목록에 법제처 URL을 갖고도 bigcase.ai로 나가고 있었다)
+        _urls = [u for u in (seed.get("source_urls") or []) if u] or [seed.get("source_url", "")]
+        source_url = next((u for u in _urls if is_official_source(u)), _urls[0])
         if raw:
             used_raw_ids.add(raw["prec_id"])
             holding = raw.get("holding_summary") or raw.get("holding_points") or ""
@@ -129,7 +154,7 @@ def build_documents(
                 # 큐레이션 시드는 출처 링크가 있으면 출처 확인된 것으로 본다.
                 #   (seed_cases.json에 source_verified를 따로 적어 두면 그 값이 우선)
                 source_verified=bool(
-                    seed.get("source_verified", bool(source_url))
+                    seed.get("source_verified", is_official_source(source_url))
                 ),
                 verified=bool(seed.get("verified", False)),
                 curated_by=seed.get("curated_by"),
@@ -159,7 +184,7 @@ def build_documents(
                 # 출처는 법제처 공식 원문이고 source_url이 실재한다 → 노출 허용.
                 #   (2026-08-07: 원래 AND 조건 하나로 묶여 있어 148건이 통째로 막혔다.
                 #    두 축을 분리해, 출처는 자동 확인하고 문구 검수는 따로 표시한다.)
-                source_verified=bool(rd.get("source_url")),
+                source_verified=is_official_source(rd.get("source_url")),
                 # 문구는 아직 사람이 읽지 않았다 — 카드에 "검수 전" 표시가 붙는다.
                 verified=False,
                 curated_by=None,

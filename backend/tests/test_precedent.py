@@ -538,3 +538,68 @@ def test_ranking_prefers_curated_in_service(corpus_dir: Path):
     ranked = svc.search_by_tags(["신탁등기"])
 
     assert [m.doc.case_id for m in ranked][0] == "prec-curated"
+
+
+# ── 출처 확인 게이트 (2026-08-12) ────────────────────────────────────────────
+
+
+def test_only_judgment_sources_count_as_verified():
+    """뉴스·해설 사이트는 '출처 확인'이 아니다.
+
+    처음엔 `bool(source_url)`로 뒀는데 그러면 뉴스 링크도 통과한다. 실제로
+    '건축왕' 전세사기 판례가 slownews.kr 링크로 노출 가능 상태였다 —
+    사용자가 그 링크를 눌러도 판결문이 아니라 기사가 나온다.
+    """
+    from app.services.precedent.ingest import is_official_source
+
+    assert is_official_source("https://www.law.go.kr/LSW/precInfoP.do?precSeq=1")
+    assert is_official_source("https://casenote.kr/대법원/2019다300095")
+    assert not is_official_source("https://slownews.kr/127605")
+    assert not is_official_source("https://bigcase.ai/cases/x")
+    assert not is_official_source("")
+    assert not is_official_source(None)
+    # 도메인 끝만 같은 사칭 차단
+    assert not is_official_source("https://law.go.kr.evil.com/x")
+
+
+def test_seed_picks_official_url_among_several():
+    """큐레이션이 출처를 여러 개 적어두면 판결문 원문 쪽을 대표로 쓴다."""
+    from app.services.precedent.ingest import build_documents
+
+    seed = [
+        {
+            "case_no": "2019다300095",
+            "court": "대법원",
+            "holding": "신탁원부 기재와 임차인의 대항력에 관한 판시",
+            "risk_tags": ["신탁등기"],
+            # 뉴스가 먼저 적혀 있어도 법제처를 골라야 한다
+            "source_urls": [
+                "https://slownews.kr/127605",
+                "https://www.law.go.kr/LSW/precInfoP.do?precSeq=97557",
+            ],
+            "verified": True,
+        }
+    ]
+    doc = build_documents(raw_docs=[], seed_cases=seed)[0]
+
+    assert "law.go.kr" in doc.source_url
+    assert doc.source_verified is True
+
+
+def test_news_only_seed_is_blocked_from_exposure():
+    """출처가 뉴스뿐이면 노출되지 않는다 — 검수됐다고 표시돼 있어도."""
+    from app.services.precedent.ingest import build_documents
+
+    seed = [
+        {
+            "case_no": "2024도15455",
+            "court": "대법원",
+            "holding": "무자본 갭투자 전세보증금 편취 사건",
+            "risk_tags": ["전세가율"],
+            "source_urls": ["https://slownews.kr/127605"],
+            "verified": True,  # 사람이 검수했다고 해도
+        }
+    ]
+    doc = build_documents(raw_docs=[], seed_cases=seed)[0]
+
+    assert doc.source_verified is False  # 출처가 판결문이 아니라 노출 차단

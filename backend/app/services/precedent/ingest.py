@@ -34,7 +34,17 @@ _AUTO_TAG_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("경매", ("경매", "경락", "낙찰", "배당")),
     ("선순위 채권", ("근저당", "저당권", "채권최고액", "우선변제권")),
     # "편취" 단독은 전세 무관 일반 사기 판례까지 태깅해 제외 (rule-auditor 재감사 2026-07-22)
-    ("전세가율", ("전세사기", "깡통", "갭투자")),
+    #
+    # ★ 판결문은 "전세가율"(법제처 전체 1건)·"깡통전세"(0건)라는 말을 쓰지 않는다.
+    #   이 위험은 법리 쟁점이 아니라 **사실관계**로 나타난다 — 다가구주택에서 앞 세입자들
+    #   보증금 합계가 집값을 넘어 뒤 세입자가 배당을 못 받는 구조다.
+    #   그래서 그 구조를 가리키는 말로 찾는다. '소액임차인 최우선변제'는 보증금을
+    #   다 못 받는 상황에서만 쟁점이 되므로, 낱말 자체가 손실 사례를 가리킨다.
+    #   (실측 2026-08-12: 세 낱말만으로는 색인 48건 중 전세가율 판례가 0건이었다)
+    (
+        "전세가율",
+        ("전세사기", "깡통", "갭투자", "소액임차인", "최우선변제", "선순위 임차인"),
+    ),
     ("대항력", ("대항력", "전입신고", "확정일자")),
     ("보증보험", ("보증보험", "주택도시보증공사", "보증금반환보증")),
 )
@@ -70,6 +80,22 @@ def is_official_source(url: str | None) -> bool:
 
 def auto_tags(text: str) -> list[str]:
     return [tag for tag, keywords in _AUTO_TAG_RULES if any(k in text for k in keywords)]
+
+
+# 전세사기와 밀접하지 않으면 아예 넣지 않는다 (2026-08-12 팀 결정).
+#   자동 태깅은 낱말만 본다. 그래서 **유치권 판례가 "압류" 한 단어로** 압류·가압류
+#   태그를 달고 들어왔다(2021다253710). 사용자는 "내 임대차 얘기"인 줄 알고 열었다가
+#   임대차가 한 번도 안 나오는 판결문을 본다 — 판례를 붙이는 이유 자체가 무너진다.
+#
+#   판시사항이 일반 법리(채무인수·사해행위 등)라 핵심어가 없는 경우가 있어
+#   **사건명도 함께** 본다. 예: '임대차보증금반환' 사건의 판시사항이 채무인수 법리인 경우.
+_LEASE_CORE = ("임차", "임대차", "보증금", "전세")
+
+
+def is_lease_related(holding: str, title: str | None = None) -> bool:
+    """판시사항이나 사건명에 임대차 맥락이 있는가. 없으면 색인에 넣지 않는다."""
+    text = f"{holding or ''} {title or ''}"
+    return any(k in text for k in _LEASE_CORE)
 
 
 def load_raw_docs(raw_dir: Path | None = None) -> list[dict]:
@@ -169,7 +195,15 @@ def build_documents(
         holding = rd.get("holding_summary") or rd.get("holding_points") or ""
         if not holding:
             continue
+        # 전세사기와 밀접하지 않으면 넣지 않는다 (큐레이션 시드는 사람이 고른 것이라 통과)
+        if not is_lease_related(holding, rd.get("case_name")):
+            continue
         tag_basis = " ".join([rd.get("case_name", ""), rd.get("holding_points", ""), holding])
+        tags = auto_tags(tag_basis)
+        # 위험 태그가 하나도 없으면 검색 필터(retrieval의 태그 교집합 게이트)를 영영
+        # 통과하지 못한다. 임베딩·저장 비용만 들고 사용자에게는 절대 닿지 않는 문서다.
+        if not tags:
+            continue
         docs.append(
             PrecedentDoc(
                 case_id=f"prec-{rd['prec_id']}",
@@ -177,7 +211,7 @@ def build_documents(
                 court=rd.get("court") or "법원 미상",
                 decided=_fmt_decided(rd.get("decided")),
                 title=rd.get("case_name"),
-                risk_tags=auto_tags(tag_basis),
+                risk_tags=tags,
                 holding=holding,
                 source_url=rd.get("source_url", ""),
                 full_text=rd.get("full_text") or None,

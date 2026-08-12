@@ -603,3 +603,63 @@ def test_news_only_seed_is_blocked_from_exposure():
     doc = build_documents(raw_docs=[], seed_cases=seed)[0]
 
     assert doc.source_verified is False  # 출처가 판결문이 아니라 노출 차단
+
+
+# ── 관련성 게이트: 전세사기와 밀접하지 않으면 넣지 않는다 (2026-08-12) ────────
+
+
+def test_non_lease_case_is_not_indexed():
+    """유치권 판례가 '압류' 한 단어로 들어오던 경로를 막는다.
+
+    자동 태깅은 낱말만 본다. 사용자는 "내 임대차 얘기"인 줄 알고 카드를 열었다가
+    임대차가 한 번도 안 나오는 판결문을 보게 된다 — 판례를 붙이는 이유가 무너진다.
+    """
+    from app.services.precedent.ingest import build_documents, is_lease_related
+
+    assert not is_lease_related("유치권은 경매절차에서 매각으로 소멸하지 않는다", "건물인도")
+    assert is_lease_related("임차인의 대항력은 점유 상실 시 소멸한다", None)
+    # 판시사항이 일반 법리라도 사건명이 임대차면 남긴다
+    assert is_lease_related("채무인수가 이행인수인지 판별하는 기준", "임대차보증금반환")
+
+    raw = [{
+        "prec_id": "1", "case_no": "2021다253710", "case_name": "건물인도",
+        "court": "대법원", "decided": "20220101",
+        "holding_summary": "유치권은 성립시기에 관계없이 경매절차에서 소멸하지 않는다. 압류 이후 취득한 경우는 제한된다.",
+        "source_url": "https://www.law.go.kr/x",
+    }]
+    assert build_documents(raw_docs=raw, seed_cases=[]) == []
+
+
+def test_untagged_doc_is_not_indexed():
+    """위험 태그가 없으면 검색 필터를 영영 통과 못 한다 — 넣을 이유가 없다."""
+    from app.services.precedent.ingest import build_documents
+
+    raw = [{
+        "prec_id": "2", "case_no": "2020다1", "case_name": "임대차보증금반환",
+        "court": "대법원", "decided": "20200101",
+        # 임대차 맥락은 있지만 어떤 위험 태그 키워드에도 걸리지 않는다
+        "holding_summary": "임대차계약의 합의해지를 인정하기 위한 요건에 관한 법리",
+        "source_url": "https://www.law.go.kr/x",
+    }]
+    assert build_documents(raw_docs=raw, seed_cases=[]) == []
+
+
+def test_every_risk_tag_has_a_query_template():
+    """태그마다 질의문이 있어야 한다 — 없으면 그 위험은 판례를 영영 못 찾는다."""
+    from app.services.precedent.models import RISK_TAGS
+    from app.services.precedent.service import QUERY_TEMPLATES
+
+    assert set(RISK_TAGS) == set(QUERY_TEMPLATES)
+
+
+def test_jeonse_ratio_query_uses_case_vocabulary():
+    """전세가율 질의는 판례가 실제로 쓰는 말을 담아야 한다.
+
+    판결문은 '전세가율'·'깡통전세'를 쓰지 않는다. 그 어휘로만 질의하면 유사도 하한에
+    전부 막혀 이 위험만 판례가 0건이 된다(실측 2026-08-12).
+    """
+    from app.services.precedent.service import QUERY_TEMPLATES
+
+    q = QUERY_TEMPLATES["전세가율"]
+    assert "배당" in q
+    assert any(k in q for k in ("소액임차인", "선순위 임차인"))

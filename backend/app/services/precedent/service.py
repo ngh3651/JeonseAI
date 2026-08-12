@@ -156,8 +156,18 @@ class PrecedentService:
                 if prev is None or m.hybrid_score > prev.hybrid_score:
                     matched = sorted(set(m.doc.risk_tags) & set(tags))
                     merged[m.doc.case_id] = m.model_copy(update={"matched_tags": matched})
+        # 정렬 우선순위 (2026-08-12):
+        #   ① 매칭 태그 수 — 판정과 많이 겹칠수록 위 (피드백 A6)
+        #   ② 사람 문구 검수 여부 — **같은 관련도라면 검수된 판례를 먼저 보여준다**
+        #   ③ 하이브리드 점수
+        #
+        # ②를 ①보다 위에 두지 않는 것이 중요하다. 검수됐다는 이유만으로 덜 맞는 판례가
+        # 대표 카드가 되면, 판례를 붙이는 목적("이 매물과 닮은 사례") 자체가 무너진다.
+        # 검수 여부는 **동점일 때의 기준**이지 관련성을 이기는 기준이 아니다.
         ranked = sorted(
-            merged.values(), key=lambda m: (len(m.matched_tags), m.hybrid_score), reverse=True
+            merged.values(),
+            key=lambda m: (len(m.matched_tags), m.doc.verified, m.hybrid_score),
+            reverse=True,
         )
         return ranked[:MAX_CASES]
 

@@ -488,3 +488,53 @@ def test_unknown_outcome_does_not_optimize():
 
     assert "법정까지" in OUTCOME_UNKNOWN
     assert "확인해" in OUTCOME_UNKNOWN
+
+
+# ── 검수 우선 랭킹 (2026-08-12) ──────────────────────────────────────────────
+
+
+def _rank_key(matched_tags: int, verified: bool, score: float):
+    """service.search_by_tags의 정렬 키와 동일 (정렬 규약을 테스트에 고정)."""
+    return (matched_tags, verified, score)
+
+
+def test_curated_wins_only_at_equal_relevance():
+    """같은 관련도면 검수된 판례가 먼저 — 관련성을 이기지는 못한다."""
+    # 같은 태그 수: 검수된 쪽이 위 (점수가 더 낮아도)
+    curated_low = _rank_key(1, True, 0.10)
+    raw_high = _rank_key(1, False, 0.90)
+    assert curated_low > raw_high
+
+    # 태그 수가 다르면 관련성이 이긴다 — 검수 여부는 뒤집지 못한다
+    raw_two_tags = _rank_key(2, False, 0.10)
+    curated_one_tag = _rank_key(1, True, 0.99)
+    assert raw_two_tags > curated_one_tag
+
+
+def test_ranking_prefers_curated_in_service(corpus_dir: Path):
+    """실제 검색 경로에서도 같은 관련도면 검수본이 앞에 온다."""
+    docs = [
+        make_doc("prec-raw", ["신탁등기"], TRUST_HOLDING, verified=False),
+        make_doc("prec-curated", ["신탁등기"], TRUST_HOLDING, verified=True),
+    ]
+    backend = HashingEmbeddingBackend()
+    chunks = []
+    for d in docs:
+        chunks.extend(chunk_document(d))
+    store = JsonVectorStore(corpus_dir)
+    store.rebuild(chunks, backend.embed_passages([c.text for c in chunks]), backend.signature)
+    (corpus_dir / "docs.jsonl").write_text(
+        "\n".join(json.dumps(d.model_dump(), ensure_ascii=False) for d in docs), encoding="utf-8"
+    )
+    (corpus_dir / "chunks.jsonl").write_text(
+        "\n".join(json.dumps(c.model_dump(), ensure_ascii=False) for c in chunks), encoding="utf-8"
+    )
+
+    svc = PrecedentService(
+        retriever=HybridRetriever(
+            corpus_dir, store=JsonVectorStore(corpus_dir), backend=HashingEmbeddingBackend()
+        )
+    )
+    ranked = svc.search_by_tags(["신탁등기"])
+
+    assert [m.doc.case_id for m in ranked][0] == "prec-curated"

@@ -23,6 +23,28 @@ import '../../models/content_models.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 
+/// 위험 태그(백엔드 `RISK_TAGS` 어휘) → 화면 라벨.
+///
+/// **상단 칩과 판례 카드 소제목이 같은 표를 쓴다.** 둘이 다른 말로 나오면
+/// "이 판례가 위 칩 중 무엇에 대한 것인지"를 사용자가 머릿속에서 번역해야 한다 —
+/// 카드에 소제목을 붙이는 이유 자체가 그 번역을 없애는 것이다.
+///
+/// 표에 없는 태그(압류·가압류, 경매, 임차권등기, 대항력)는 **법률 용어 그대로** 둔다.
+/// 검수받지 않은 쉬운 말을 여기서 지어내면, 화면 문구를 사람이 확정한다는 원칙이
+/// 이 화면에서만 깨진다. 쉬운 말이 필요하면 용어 사전(terms.json)에 먼저 넣는다.
+const Map<String, String> kRiskTagLabel = {
+  '선순위 채권': '먼저 갚을 빚',
+  '신탁등기': '소유권을 맡긴 집',
+  '전세가율': '보증금 비율',
+  '보증보험': '보증보험',
+};
+
+String riskTagLabel(String tag) => kRiskTagLabel[tag] ?? tag;
+
+/// 카드 한 장에 붙일 소제목 최대 개수. 겹친 태그가 많아도 뱃지 줄이 길어지면
+/// "한눈에"라는 목적 자체가 사라진다.
+const int kMaxCardTags = 3;
+
 class CaseMatchScreen extends StatefulWidget {
   const CaseMatchScreen({super.key, required this.reportId});
 
@@ -34,14 +56,6 @@ class CaseMatchScreen extends StatefulWidget {
 
 class _CaseMatchScreenState extends State<CaseMatchScreen> {
   String get reportId => widget.reportId;
-
-  /// 위험 패턴 라벨을 지수도 이해할 쉬운 말로 (매칭 키는 원래 라벨 유지)
-  static const _easyLabel = {
-    '선순위 채권': '먼저 갚을 빚',
-    '신탁등기': '소유권을 맡긴 집',
-    '전세가율': '보증금 비율',
-    '보증보험': '보증보험',
-  };
 
   late Future<(AnalysisReport?, List<CaseMatch>)> _future;
 
@@ -114,7 +128,7 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
                   children: [
                     for (final p in patterns)
                       AppPill(
-                        label: _easyLabel[p] ?? p,
+                        label: riskTagLabel(p),
                         color: AppColors.danger,
                         background: AppColors.dangerSoft,
                       ),
@@ -161,6 +175,8 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _tagHeader(c),
+          const SizedBox(height: AppSpacing.sm),
           Text(c.caseNo, style: AppTypography.caption),
           const SizedBox(height: AppSpacing.sm),
           Text(c.summary, style: AppTypography.bodyStrong),
@@ -176,6 +192,28 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
           _sourceLine(c),
         ],
       ),
+    );
+  }
+
+  /// 카드 맨 위 소제목 — "이 판례는 무엇에 대한 경고인가".
+  ///
+  /// 카드 본문이 요약·결과·공통점·조언 네 문단이라, 소제목 없이는 어느 카드가
+  /// 어느 위험에 대한 것인지 다 읽어야 알 수 있었다(2026-08-12 실기기 확인).
+  /// 상단 "이 매물에서 눈에 띈 위험" 칩과 **같은 라벨·같은 색**을 써서 눈으로
+  /// 바로 이어지게 한다.
+  Widget _tagHeader(CaseMatch c) {
+    final tags = c.displayTags.take(kMaxCardTags).toList();
+    return Wrap(
+      spacing: AppSpacing.xs,
+      runSpacing: AppSpacing.xs,
+      children: [
+        for (final t in tags)
+          AppPill(
+            label: riskTagLabel(t),
+            color: AppColors.danger,
+            background: AppColors.dangerSoft,
+          ),
+      ],
     );
   }
 

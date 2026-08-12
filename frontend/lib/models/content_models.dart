@@ -16,6 +16,7 @@ class CaseMatch {
     this.sourceUrl,
     this.advice,
     this.curated = false,
+    this.matchedTags = const [],
   });
 
   /// 우리 매물의 위험 패턴 (칩 표시)
@@ -46,6 +47,18 @@ class CaseMatch {
   /// 밝힌다 — 검수된 것과 안 된 것을 **섞어서 내보내지 않기 위한** 표시다.
   final bool curated;
 
+  /// 이 판례가 우리 매물의 어떤 위험과 겹쳤는지 (계약 §2.3 matchedTags).
+  ///
+  /// 카드 맨 위 소제목으로 쓴다 — 본문을 다 읽기 전에 "이 판례가 무엇에 관한
+  /// 경고인지"를 먼저 알려야 카드가 눈으로 훑어진다. 서버 정렬도 이 개수가
+  /// 1순위 키라, 위쪽 카드일수록 뱃지가 많은 것이 자연스럽게 보인다.
+  /// 비어 있으면 [riskPattern] 하나로 대신한다.
+  final List<String> matchedTags;
+
+  /// 화면에 그릴 위험 태그 — 비어 있으면 riskPattern으로 폴백.
+  List<String> get displayTags =>
+      matchedTags.isNotEmpty ? matchedTags : [riskPattern];
+
   factory CaseMatch.fromJson(Map<String, dynamic> json) => CaseMatch(
     riskPattern: json['riskPattern'] as String,
     caseNo: json['caseNo'] as String,
@@ -55,6 +68,9 @@ class CaseMatch {
     sourceUrl: json['sourceUrl'] as String?,
     advice: json['advice'] as String?,
     curated: json['curated'] as bool? ?? false,
+    matchedTags:
+        (json['matchedTags'] as List?)?.map((e) => e as String).toList() ??
+        const [],
   );
 }
 

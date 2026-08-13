@@ -653,9 +653,13 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
+          // ⚠ 힌트를 비워 둔다. 예시 숫자('12,000')를 넣었더니 실기기에서 **이미 입력된
+          //   값**으로 읽혔다 — 흐린 글씨는 "빈 칸"이 아니라 "적혀 있는 값"으로 보인다.
+          //   보증금은 판정의 핵심 입력이라, 안 넣은 것을 넣은 줄 알게 하면 안 된다.
+          //   칸이 무엇인지는 위의 '예정 전세보증금'과 '얼마를 맡기시나요?'가 말한다.
           _moneyField(
             controller: _depositCtrl,
-            hint: '12,000',
+            hint: '',
             active: won != null,
             onChanged: (_) => setState(() {}),
           ),
@@ -680,7 +684,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               children: [
                 _moneyField(
                   controller: _priceCtrl,
-                  hint: '20,000',
+                  hint: '',  // 예시값 금지 — 위 보증금 칸과 같은 이유
                   active: _manwonToWon(_priceCtrl.text) != null,
                   onChanged: (_) => setState(() {
                     // 사용자가 손대는 순간 '직접 입력'이 된다 — 자동 조회값을 고쳤는데
@@ -713,7 +717,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 controller: _aliasCtrl,
                 onChanged: (_) => setState(() {}),
                 style: AppTypography.title,
-                decoration: _fieldDecoration(hint: '역삼동 오피스텔', active: false),
+                // 예시값 금지 — '역삼동 오피스텔'이 입력된 별칭으로 읽혔다.
+                // 안 적으면 어떻게 되는지는 접힘 줄의 '주소로 자동'이 이미 말한다.
+                decoration: _fieldDecoration(hint: '', active: false),
               ),
             ),
           ),

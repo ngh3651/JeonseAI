@@ -160,7 +160,8 @@ void main() {
     expect(won.style!.fontSize, 28);
     expect(won.style!.fontWeight, FontWeight.w700);
 
-    // 입력 칸은 세 자리 쉼표 (플레이스홀더도 '12,000'이라 위젯 수로 세지 않고 값으로 본다)
+    // 입력 칸은 세 자리 쉼표 (플레이스홀더는 2026-08-14에 제거됐다 — 예시값이 입력값으로
+    // 오해됐다. 그래도 화면 어딘가에 같은 글자가 또 나올 수 있어 값으로 본다)
     final TextField field = tester.widget(find.byType(TextField).first);
     expect(field.controller!.text, '12,000');
 

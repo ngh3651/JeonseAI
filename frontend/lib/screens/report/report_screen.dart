@@ -1,7 +1,8 @@
 /// S-07 AI 안전도 리포트 — 핵심 화면 (IA.md §6).
 ///
-/// 구조: 결론 헤더(게이지 크게 + 의사결정 한 줄 + 보증금) → 지금 해야 할 일(+질문 버튼)
+/// 구조: 결론 헤더(게이지 크게 + 의사결정 한 줄 + 보증금) → 질문 바로가기
 /// → 근거 카드(최고 심각도 1개 기본 펼침, 용어 툴팁) → 다음 행동(등급별 추천 강조).
+/// (2026-08-14 D5: '지금 해야 할 일' 박스를 빼고 그 안의 질문 버튼만 남겼다.)
 /// 판례·질문 생성기·체크리스트·공유는 C-3에서 실화면 연결 (스텁 문구는 사용자 언어로).
 /// 2026-07-04 C-2 리뷰 3종(design-reviewer·persona 2인) 반영.
 library;
@@ -108,8 +109,12 @@ class _ReportScreenState extends State<ReportScreen> {
               if (_isStale(report)) _staleBanner(context, report),
               _conclusionHeader(report),
               const SizedBox(height: AppSpacing.xl),
-              _nextActionCard(context, report),
-              const SizedBox(height: AppSpacing.xl),
+              // [D5 · 2026-08-14] '지금 해야 할 일' 박스는 뺐고, 그 안에 있던
+              // 질문 바로가기 버튼만 이 자리에 남겼다 (_questionsShortcut 참고).
+              if (report.grade != RiskGrade.ok) ...[
+                Center(child: _questionsShortcut(context, report)),
+                const SizedBox(height: AppSpacing.xl),
+              ],
               _originPhotoEntry(context, report),
               const AppText('근거 살펴보기', style: AppTypography.title),
               const SizedBox(height: AppSpacing.xs),
@@ -380,61 +385,21 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Widget _nextActionCard(BuildContext context, AnalysisReport report) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(
-                Icons.flag_outlined,
-                color: AppColors.primary,
-                size: AppSize.iconMd,
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // D1: '근거 확인'보다 '그래서 뭘 해야 하나'가 사용자의 진짜 관심 —
-                    // 제목을 label(12px)에서 title(17px)로 올려 위계를 강조.
-                    AppText(
-                      '지금 해야 할 일',
-                      style: AppTypography.title.copyWith(
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    // G7: 결정적 영역이라 볼드 강조 (LLM 생성 아닌 결정적 템플릿 문장)
-                    AppText(
-                      report.nextAction,
-                      style: AppTypography.bodyStrong.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          // "아래 질문" 을 찾으러 헤매지 않게 바로가기 제공 (지수 리뷰 반영)
-          if (report.grade != RiskGrade.ok) ...[
-            const SizedBox(height: AppSpacing.md),
-            AppCompactButton(
-              label: '중개사 질문 모아 보기',
-              icon: Icons.quiz_outlined,
-              onPressed: () => context.push('/questions/${report.id}'),
-            ),
-          ],
-        ],
-      ),
+  /// 질문 생성기 바로가기 — 예전 '지금 해야 할 일' 박스에 들어 있던 그 버튼.
+  ///
+  /// [D5 · 2026-08-14] 박스(연초록 배경 + 깃발 아이콘 + `nextAction` 한 문장)는
+  /// 화면에서 뺐다. 결론 헤더 바로 밑에서 게이지·등급과 무게를 다투고 있었다.
+  ///
+  /// 버튼만 남긴 이유: 리포트를 읽은 사람이 **당장 할 수 있는 행동**이 이것이고,
+  /// 없애면 "아래 질문을 찾으러 헤맨다"(2026-07-04 지수 리뷰)가 그대로 돌아온다.
+  /// 질문 생성기로 가는 길이 여기만 있는 것은 아니다 — 하단 '다음 행동'의 추천
+  /// 카드와 근거 카드의 액션 버튼도 같은 곳으로 간다. 그래도 스크롤 없이 닿는
+  /// 입구는 이 하나뿐이라 남긴다.
+  Widget _questionsShortcut(BuildContext context, AnalysisReport report) {
+    return AppCompactButton(
+      label: '중개사 질문 모아 보기',
+      icon: Icons.quiz_outlined,
+      onPressed: () => context.push('/questions/${report.id}'),
     );
   }
 

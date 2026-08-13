@@ -228,7 +228,9 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
 
         // ── 다음 행동 CTA — 불안만 남기고 끝나지 않게 (지수 리뷰 반영) ──
         AppPrimaryButton(
-          label: '리포트로 돌아가 지금 해야 할 일 보기',
+          // 2026-08-14 D5: 리포트에서 '지금 해야 할 일' 박스를 뺐다. 돌아가도 그런
+          // 제목이 없으므로, 실제로 보이는 것(근거 카드)을 가리키게 라벨을 바꾼다.
+          label: '리포트로 돌아가 근거 다시 보기',
           onPressed: () => context.pop(),
         ),
         const SizedBox(height: AppSpacing.xxxl),

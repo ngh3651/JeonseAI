@@ -13,6 +13,7 @@ E-2: 질문은 data/questions.json 템플릿 실연동 완료. 판례만 아직 
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -25,6 +26,9 @@ from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
 router = APIRouter(prefix="/api", tags=["reports"])
+
+# 서버 콘솔 로거 — services 쪽과 같은 이름을 쓴다(main.py가 핸들러를 붙인다).
+_log = logging.getLogger("jeonseai")
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 파일당 10MB (기존 /api/upload와 동일 상한)
 
@@ -107,8 +111,26 @@ async def report_cases(report_id: str) -> list[CaseMatch]:
     if cached is not None:
         return cached
 
-    section = precedent_service.get_service().match_for_report(report, explain=True)
-    cases = [CaseMatch.model_validate(c) for c in section.cases]
+    # ⚠ 이 경로 전체를 감싼다 (2026-08-14 D7). 판례 매칭은 임베딩 호출 → 벡터 검색 →
+    #   Solar 설명 생성으로 이어지는데, 그 어느 단계든 밖에서 끊길 수 있다(크레딧 소진,
+    #   인덱스 미적재, 네트워크). 지금까지는 그때 500이 나가 화면이 **에러**로 덮였다.
+    #
+    #   판례가 없는 것은 이미 정상 상태다 — 앱은 빈 목록을 받으면 "딱 맞는 판례가 아직
+    #   없어요. 위험이 없다는 뜻은 아니니…"를 띄운다(case_match_screen.dart). 촬영 중
+    #   크레딧이 끊겨도 심사위원에게 보일 것은 에러 화면이 아니라 그 문구여야 한다.
+    #
+    #   ⚠ 실패한 결과는 **캐시하지 않는다.** 캐시하면 원인이 사라진 뒤에도 이 리포트는
+    #     영원히 판례 없음으로 굳는다. 다시 들어오면 다시 시도하게 둔다.
+    try:
+        section = precedent_service.get_service().match_for_report(report, explain=True)
+        cases = [CaseMatch.model_validate(c) for c in section.cases]
+    except Exception:  # noqa: BLE001 — 판례가 리포트 화면을 깨뜨리지 못하게 하는 방어선
+        _log.error(
+            "[판례] ⚠ 매칭 실패 — 빈 목록으로 응답합니다"
+            f" (리포트 {report_id}). 앱에는 '딱 맞는 판례가 아직 없어요'가 뜹니다",
+            exc_info=True,
+        )
+        return []
     store.put_cases(report_id, cases)
     return cases
 

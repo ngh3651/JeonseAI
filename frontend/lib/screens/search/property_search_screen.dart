@@ -417,7 +417,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                       //   예전에는 여기가 '찍고 계속'이었는데 그런 버튼은 화면에 없다
                       //   (capture_loop_route.dart의 주 버튼은 '다음 장 찍기'다).
                       //   안내가 가리키는 버튼을 찾지 못하면 안내가 아니라 방해가 된다.
-                      const TextSpan(text: '보통 3~5장이에요. '),
+                      // '보통 3~5장이에요'는 뺐다(2026-08-14) — 장수는 등기부마다 다른데
+                      // 숫자를 먼저 던지면 "3장이면 되는구나"로 읽혀 뒷장을 안 찍는다.
+                      // 이 자리에서 알려야 할 것은 **어떻게 이어 찍는가** 하나뿐이다.
                       TextSpan(
                         text: '다음 장 찍기',
                         style: AppTypography.bodyStrong.copyWith(color: Colors.white),

@@ -413,12 +413,16 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                       color: Colors.white.withValues(alpha: 0.72),
                     ),
                     children: [
-                      const TextSpan(text: '보통 3~5장이에요. 한 번 시작하면 '),
+                      // ⚠ 굵은 글씨는 **촬영 루프의 실제 버튼 라벨과 글자까지 같아야 한다.**
+                      //   예전에는 여기가 '찍고 계속'이었는데 그런 버튼은 화면에 없다
+                      //   (capture_loop_route.dart의 주 버튼은 '다음 장 찍기'다).
+                      //   안내가 가리키는 버튼을 찾지 못하면 안내가 아니라 방해가 된다.
+                      const TextSpan(text: '보통 3~5장이에요. '),
                       TextSpan(
-                        text: '찍고 계속',
+                        text: '다음 장 찍기',
                         style: AppTypography.bodyStrong.copyWith(color: Colors.white),
                       ),
-                      const TextSpan(text: '을 눌러 이어서 찍을 수 있어요.'),
+                      const TextSpan(text: '를 눌러 이어서 찍을 수 있어요.'),
                     ],
                   ),
                 ),

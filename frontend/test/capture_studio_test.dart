@@ -16,6 +16,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/design_system/components/amber_hint.dart';
+import 'package:jeonse_ai/design_system/text/keep_all.dart';
 import 'package:jeonse_ai/design_system/components/photo_tray.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/design_system/tokens/app_spacing.dart';
@@ -36,6 +37,27 @@ final List<int> _onePixelPng = <int>[
   0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
   0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
 ];
+
+/// 화면에 그려진 [AmberHint]에서 **굵게 칠해진 부분**만 뽑는다 (없으면 null).
+///
+/// 위젯의 `emphasis` 필드를 읽지 않고 **실제 스팬 트리**에서 찾는 이유: 필드만 보면
+/// "값은 넘겼는데 화면에는 안 굵은" 경우를 놓친다(문장에서 못 찾으면 통짜로 그린다).
+String? hintEmphasis(WidgetTester tester) {
+  final Text text = tester.widget(
+    find.descendant(of: find.byType(AmberHint), matching: find.byType(Text)),
+  );
+  final InlineSpan? span = text.textSpan;
+  if (span == null) return null;
+  String? bold;
+  span.visitChildren((InlineSpan child) {
+    if (child is TextSpan && child.style?.fontWeight == FontWeight.w700) {
+      bold = stripWordJoiner(child.toPlainText());
+      return false;
+    }
+    return true;
+  });
+  return bold;
+}
 
 void main() {
   setUpAll(() {
@@ -272,10 +294,14 @@ void main() {
     // 못 하는 것을 못 한다고 말하는 원칙은 그대로다 — **말할 자리가 여기가 아니다.**
     // 조회 실패는 리포트 결론 헤더가 '시세를 못 구했어요'로 이미 분명히 말한다.
     expect(find.koTextContaining('비우면 국토부 실거래가·공시가격으로 찾아요'), findsOneWidget);
+    // 이 칸을 비우면 **무엇으로** 찾아오는지가 핵심이라 출처만 굵게 세운다.
+    expect(hintEmphasis(tester), '실거래가·공시가격');
     // 한 줄에 들어가야 한다. 폭을 먹는 것은 **한글 글자 수**다 —
     // Pretendard 12px 한글은 글자당 약 12dp고, 360dp 기기에서 이 힌트가 글자에 쓸 수
     // 있는 폭은 251dp(화면패딩 40·카드패딩 36·힌트패딩 16·아이콘 17을 뺀 값)라
     // **한글 19자가 상한**이다. 띄어쓰기·가운뎃점은 훨씬 좁아 여기서 세지 않는다.
+    // ⚠ 굵기는 줄 수를 바꾸지 않는다 — Pretendard 한글은 굵기와 무관하게 글자 폭이
+    //   같다. 그래서 굵게 칠한 뒤에도 이 상한이 그대로 유효하다.
     final AmberHint hint = tester.widget(find.byType(AmberHint));
     final int hangul = RegExp('[가-힣]').allMatches(hint.text).length;
     expect(hangul, lessThanOrEqualTo(19), reason: '두 줄로 넘어간다 — 문구를 더 줄일 것');

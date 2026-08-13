@@ -760,6 +760,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       //   이미 말한다(report_screen.dart의 결론 헤더). 같은 말을 두 번 하지 않는다.
       return const AmberHint(
         text: '비우면 국토부 실거래가·공시가격으로 찾아요',
+        // 이 칸을 비우면 **무엇으로** 찾아오는지가 핵심이다 — 출처를 굵게 세운다.
+        // (굵기는 줄 수를 바꾸지 않는다 — AmberHint.emphasis 주석 참고)
+        emphasis: '실거래가·공시가격',
         icon: Icons.auto_awesome,
       );
     }

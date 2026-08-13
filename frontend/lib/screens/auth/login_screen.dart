@@ -47,7 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     final name = widget.signup && _nameCtrl.text.trim().isNotEmpty
         ? _nameCtrl.text.trim()
-        : '지수'; // 목업 데모 기본 이름
+        : kDemoUserName; // 목업 데모 기본 이름 (app_session.dart에 한 곳으로 모았다)
     context.read<AppSession>().signIn(name: name);
 
     // 홈으로 리셋해 셸(하단 탭·홈)을 백스택에 두고, next가 있으면 그 위에 push.

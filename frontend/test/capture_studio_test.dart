@@ -255,7 +255,7 @@ void main() {
 
   // ── 시세 칸의 출처 라벨 (Phase 1·2 연결) ─────────────────────────────────
 
-  testWidgets('첫 분석에서는 "앞으로 찾아볼게요 + 모든 집에서 되지는 않아요"를 알린다', (tester) async {
+  testWidgets('첫 분석에서는 "비우면 국토부 실거래가·공시가격으로 찾아요"를 알린다', (tester) async {
     await pumpScreen(tester);
     await tester.tap(find.koText('촬영 시작'));
     await tester.pumpAndSettle();
@@ -267,11 +267,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AmberHint), findsOneWidget);
-    // "못 하는 것을 못 한다고 말한다" — 이 문구는 반드시 남아야 한다.
-    expect(
-      find.koTextContaining('모든 집에서 되지는 않아요'),
-      findsOneWidget,
-    );
+    // 2026-08-14(D3): 예전에는 "모든 집에서 되지는 않아요 — 안 되면 알려드릴게요"까지
+    // 붙어 12px로도 두 줄을 넘겼고, 안내가 입력 칸보다 커 보였다.
+    // 못 하는 것을 못 한다고 말하는 원칙은 그대로다 — **말할 자리가 여기가 아니다.**
+    // 조회 실패는 리포트 결론 헤더가 '시세를 못 구했어요'로 이미 분명히 말한다.
+    expect(find.koTextContaining('비우면 국토부 실거래가·공시가격으로 찾아요'), findsOneWidget);
+    // 한 줄에 들어가야 한다. 폭을 먹는 것은 **한글 글자 수**다 —
+    // Pretendard 12px 한글은 글자당 약 12dp고, 360dp 기기에서 이 힌트가 글자에 쓸 수
+    // 있는 폭은 251dp(화면패딩 40·카드패딩 36·힌트패딩 16·아이콘 17을 뺀 값)라
+    // **한글 19자가 상한**이다. 띄어쓰기·가운뎃점은 훨씬 좁아 여기서 세지 않는다.
+    final AmberHint hint = tester.widget(find.byType(AmberHint));
+    final int hangul = RegExp('[가-힣]').allMatches(hint.text).length;
+    expect(hangul, lessThanOrEqualTo(19), reason: '두 줄로 넘어간다 — 문구를 더 줄일 것');
   });
 
   testWidgets('자동 조회값을 미리 받으면 출처 라벨이 뜬다', (tester) async {

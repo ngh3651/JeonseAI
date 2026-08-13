@@ -9,6 +9,21 @@ venv/
 .env
 *.env
 
+# .env 사본·백업 계열 (2026-08-14)
+# 위 두 줄은 `.env`와 `foo.env`만 잡고, **`.env.bak` · `.env.bak2` · `.env.old` 같은
+# 사본은 놓친다.** 키를 바꾸기 전에 원본을 옆에 복사해 두는 것이 흔한 습관이라,
+# 그렇게 만들어진 파일에는 살아 있는 API 키가 그대로 들어 있다.
+# ⚠ `.env.*` 로 뭉뚱그리지 않는다 — 그러면 **추적 중인 `backend/.env.example`** 까지
+#   대상이 되어, 팀원이 받아야 할 설정 견본이 조용히 사라진다.
+*.env.bak*
+.env.bak*
+*.env.backup*
+.env.backup*
+*.env.old
+.env.old
+*.env.save
+.env.save
+
 # Flutter / Dart
 build/
 .dart_tool/

@@ -20,6 +20,7 @@ from ..schemas.contract import Evidence, Highlight, MarketPriceAlternative, Repo
 from ..schemas.internal import Grade, PriceProvenance, RegistryExtract, RuleVerdict
 from . import (
     artifacts,
+    cancellation,
     cross_check,
     document_parse,
     explanation,
@@ -438,6 +439,26 @@ def analyze(
         f" | 압류·가압류 {len(extract.seizures) + len(extract.provisional_seizures)}건"
         f" | 경매·신탁 {len(extract.auction_commencements) + len(extract.trust_registrations)}건"
     )
+    # ── 말소 확인분 제외 (2026-08-14 D10) ────────────────────────────────────
+    # **판정에 들어가는 사실을 여기서 한 번 바로잡는다.** OCR이 'N번○○등기말소' 행을
+    # 특정 (구역, 순위)에 결합해 확인한 항목에만 `is_canceled`를 찍는다. 규칙 엔진은
+    # 원래부터 유효 항목만 세므로 규칙은 한 줄도 바뀌지 않는다 — 사실이 바뀔 뿐이다.
+    #
+    # ⚠ **왜 여기인가.** 교차검증·하이라이트·판정이 **같은 사실**을 보게 하려면 그 셋보다
+    #   앞이어야 한다. 뒤에 두면 "표시에서는 뺐는데 계산에서는 셌다"가 그대로 남고,
+    #   교차검증은 말소로 이미 설명된 개수 차이를 불일치라고 말하게 된다.
+    # ⚠ 안전 조건(미결 말소·사진 묶음 점검·등기목적 일치)은 전부 `cancellation` 안에 있다.
+    #   하나라도 애매하면 아무것도 빼지 않고 종전대로 센다.
+    try:
+        cancel_result = cancellation.apply_confirmed_cancellations(
+            extract, ocr_result, check=doc_check
+        )
+    except Exception:  # noqa: BLE001 — 사실 보정이 분석을 깨뜨리면 안 된다(종전 계산 유지)
+        _log.error("[판정] ⚠ 말소 제외 중 예기치 못한 예외 — 종전대로 계산합니다", exc_info=True)
+        cancel_result = cancellation.CancellationResult(skipped_reason="예외")
+    if cancel_result.skipped_reason:
+        _log.info(f"[판정] 말소 제외를 적용하지 않았습니다 — {cancel_result.skipped_reason}")
+
     # 두 경로 대조 — **표시와 고지에만** 쓴다. 아래 `rule_engine`에는 `extract`(IE)만 간다.
     try:
         check = cross_check.compare(
@@ -449,7 +470,11 @@ def analyze(
 
     try:
         highlight_result = highlight.build_highlights(
-            extract, ocr_result, cross=check, check=doc_check
+            extract,
+            ocr_result,
+            cross=check,
+            check=doc_check,
+            canceled_excluded=cancel_result.count,
         )
     except Exception as e:  # noqa: BLE001 — 표시 기능이 분석을 깨뜨리면 안 된다
         _log.error(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})", exc_info=True)

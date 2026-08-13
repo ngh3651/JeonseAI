@@ -736,8 +736,14 @@ def build_highlights(
     ocr: OcrResult,
     cross: CrossCheck | None = None,
     check: DocumentCheck | None = None,
+    canceled_excluded: int = 0,
 ) -> HighlightResult:
     """IE 결과 + OCR 좌표 → 계약의 `highlights`. 실패해도 예외를 던지지 않는다.
+
+    `canceled_excluded`는 **말소 확인으로 위험 계산에서 뺀 항목 수**다(2026-08-14 D10,
+    `cancellation.apply_confirmed_cancellations`가 센다). 표시에는 쓰지 않고 고지 문장
+    하나만 바꾼다 — "사진에 표시하지 않았어요"와 "계산에서도 뺐어요"는 사용자에게
+    전혀 다른 말이라, 뺐으면 뺐다고 해야 한다.
 
     `cross`는 두 번째 추출 경로(LLM 구조화)와의 대조 결과다. **표시와 고지에만** 쓴다 —
     이 값이 무엇이든 등급·점수는 바뀌지 않는다(판정은 IE 기준 유지).
@@ -981,6 +987,7 @@ def build_highlights(
         cross=cross,
         unplaced=unplaced,
         reordered=reorder_applied,
+        canceled_excluded=canceled_excluded,
     )
     if highlights:
         pages_used = sorted({h.page for h in highlights})
@@ -1116,6 +1123,7 @@ def _build_checked_notes(
     cross: CrossCheck | None = None,
     unplaced: dict[str, int] | None = None,
     reordered: bool = False,
+    canceled_excluded: int = 0,
 ) -> list[str]:
     """**"무엇을 찾아봤고 무엇을 왜 표시하지 않았는지"** 를 사용자 말로 정리한다.
 
@@ -1144,9 +1152,18 @@ def _build_checked_notes(
     active_mortgages = [m for m in extract.mortgages if m.is_active]
     money_marks = [h for h in highlights if h.kind in ("mortgage", "jeonse", "lease_registration")]
     if canceled_mortgages:
+        # 2026-08-14(D10): 말소분을 **위험 계산에서도** 빼기 시작했다. 예전 문구는
+        # "표시하지 않았어요"까지만 말해서, 사진에는 안 보이는데 합계에는 들어 있는
+        # 상태로 읽혔다(실제로 그랬다 — 그게 이 작업의 발단이다). 뺐으면 뺐다고 한다.
+        # ⚠ 안전 조건에 걸려 계산에서 못 뺀 경우(`canceled_excluded == 0`)에는 예전 문구
+        #   그대로다. 빼지도 않고 뺐다고 말하는 것이 가장 나쁘다.
         notes.append(
             f"집에 잡힌 빚(근저당) {len(canceled_mortgages)}건은 **모두 말소된 것으로 확인**해 "
-            "표시하지 않았어요 — 이미 정리된 빚이에요"
+            + (
+                "위험 계산에서 제외했고 사진에도 표시하지 않았어요 — 이미 정리된 빚이에요"
+                if canceled_excluded
+                else "표시하지 않았어요 — 이미 정리된 빚이에요"
+            )
         )
     if not money_allowed and (active_mortgages or extract.jeonse_rights):
         notes.append("빚 표시는 이번엔 생략했어요 — 위 안내를 확인해 주세요")

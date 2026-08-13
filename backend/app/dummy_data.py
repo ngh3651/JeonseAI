@@ -1,14 +1,14 @@
-"""더미 데이터 — **지금 Flutter 앱 코드 안의 더미를 그대로 이식**한 것.
+"""예시 리포트·큐레이션 콘텐츠 — 홈 화면이 비어 있지 않게 하는 씨앗.
 
-출처(1:1 대응):
-- frontend/lib/repositories/analysis_repository.dart (리포트·근거 카드, 위험/확인필요 2세트)
-- frontend/lib/repositories/content_repository.dart (판례·질문·용어·여정)
-- frontend/lib/utils/money_format.dart (formatWon)
+원래는 D-3에서 **Flutter 앱 안의 더미를 그대로 이식**한 모듈이었다(앱 더미와 서버 더미가
+글자까지 같아야 앱을 서버에 붙였을 때 화면이 그대로 나오기 때문). E-1에서 실판정이,
+E-2·E-3에서 실문구·실판례가 붙으면서 그 역할은 대부분 끝났고, 지금 남은 것은 둘이다:
 
-앱과 서버의 더미가 100% 일치해야 D-3에서 앱을 서버에 연결했을 때 화면이 지금과 똑같이 나온다.
-실제 추출·판정·LLM은 전부 Phase E에서 교체한다(여기서는 값만 옮긴다).
+- **예시 리포트 1건** — 2026-08-14(D13)부터 손으로 적지 않고 **규칙 엔진이 만든다**.
+- **계약 여정 단계** — 아직 큐레이션 원문이 여기 있다(향후 data/로 이관 — cleanup-tracker).
 
-저장·삭제는 DB 없이 **메모리상 리스트로 흉내**만 낸다(서버 재시작 시 초기화).
+저장은 DB 없이 메모리로 흉내만 낸다(서버 재시작 시 초기화). 실제 이력 저장소는
+`services/store.py`다.
 """
 
 from __future__ import annotations
@@ -18,17 +18,17 @@ from datetime import datetime, timedelta, timezone
 from .services import terms
 from .schemas.contract import (
     CaseMatch,
-    Evidence,
     GlossaryTerm,
     JourneyItem,
     JourneyStage,
     Report,
 )
+from .schemas.internal import RegistryExtract
 
 KST = timezone(timedelta(hours=9))
 
 # 앱에서 시연 시작 시 미리 있는 예시 리포트(홈 둘러보기용). 삭제 대상 아님(계약 §3.4).
-EXAMPLE_IDS = {"dummy-danger", "dummy-caution"}
+EXAMPLE_IDS = {"dummy-example"}
 
 
 # ── 금액 포맷 (money_format.dart formatWon 이식) ────────────────────────────
@@ -64,265 +64,88 @@ def _round_half_up(x: float) -> int:
     return floor(x + 0.5)
 
 
-# ── 위험 리포트 빌더 (analysis_repository.dart _buildDangerReport 이식) ──────
-def build_danger_report(
-    *,
-    report_id: str,
-    alias: str | None,
-    analyzed_at: datetime,
-    deposit: int,
-    market_price: int | None,
-    address: str = "서울 강남구 역삼동 123-45",  # 실단계: 표제부 추출 주소
-) -> Report:
-    senior_debt = 180_000_000  # 예시 채권최고액
-    resolved_alias = alias.strip() if (alias and alias.strip()) else address
+# ══════════════════════════════════════════════════════════════════════════════
+# 예시 리포트 — **규칙 엔진이 실제로 만든다** (2026-08-14 D13)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 예전에는 위험·확인필요 두 건을 **손으로 적어** 두었다. 그때는 D-3 단계라 서버 더미가
+# 앱 더미와 글자까지 같아야 했기 때문인데, E-1에서 실판정이 붙은 뒤로는 그 전제가
+# 사라졌고 손으로 적은 값만 남았다. 그 값들은 이미 낡아 있었다 —
+# `sourceText="HUG 공식 기준 등 확정 예정"`은 출처가 확정된 지금 **거짓말**이고,
+# `detailText`의 "(예시)" 표기는 실제 분석 결과와 모양이 달라 한눈에 티가 났다.
+#
+# 그래서 예시를 **깨끗한 등기부 한 장을 규칙 엔진에 통과시킨 결과**로 바꿨다.
+#   ⑴ 등급·근거 카드·출처 문구가 전부 실제 분석과 **같은 경로**에서 나온다.
+#   ⑵ 판정 기준이 바뀌면 예시도 **저절로 따라온다** — 손으로 고칠 값이 없다.
+#   ⑶ 시연 영상에서 홈 화면에 실제 촬영 분석(위험)과 나란히 놓이는데, 그 대비가
+#      "손으로 적은 가짜"가 아니라 같은 엔진의 다른 입력이 된다.
+#
+# ⚠ **한 건만 둔다.** 예전 2건은 홈 이력을 채우려는 것이었으나, 시연에서는 실제 분석이
+#   그 자리를 채운다. 예시가 여럿이면 어느 것이 방금 찍은 것인지 흐려진다.
 
-    # 전세가율 근거 — 시세가 있으면 계산해 보여주고, 없으면 '확인 필요'
-    # (앱 원본: 시세 있으면 grade=확인 필요·statusLabel 없음 / 없으면 statusLabel+시세입력 버튼)
-    if market_price is not None:
-        pct = _round_half_up(deposit / market_price * 100)
-        jeonse = Evidence(
-            id="jeonse_ratio",
-            title="보증금이 집값에 비해 높지 않나요?",
-            termSubtitle="전세가율",
-            grade="확인 필요",
-            easyExplanation=(
-                f"보증금이 입력하신 시세의 {pct}%를 차지해요(전세가율). "
-                "시세가 내려가면 보증금을 다 돌려받기 어려울 수 있어요."
-            ),
-            detailText=(
-                f"전세가율 {pct}% — 보증금 {format_won(deposit)} / "
-                f"입력 시세 {format_won(market_price)} (예시 · 위험 기준선은 출처 확정 후 표시)"
-            ),
-            sourceText="HUG 공식 기준 등 확정 예정",
-            termGlossary={
-                "전세가율": (
-                    "보증금이 집값의 몇 %인지 나타내는 비율이에요. 높을수록 "
-                    "집값이 떨어졌을 때 보증금을 돌려받기 어려워져요."
-                )
-            },
-        )
-    else:
-        jeonse = Evidence(
-            id="jeonse_ratio",
-            title="보증금이 집값에 비해 높지 않나요?",
-            termSubtitle="전세가율",
-            grade="확인 필요",
-            statusLabel="확인 필요",
-            easyExplanation=(
-                "시세를 입력하지 않아 아직 계산할 수 없어요. "
-                "국토부 실거래가·KB시세에서 확인한 금액을 입력하면 바로 알려드릴게요."
-            ),
-            sourceText="HUG 공식 기준 등 확정 예정",
-            actionLabel="시세 입력하기",
-        )
+#: 예시로 쓸 **깨끗한 매물**의 등기부 — 빚도 압류도 신탁도 없는 집.
+#: ⚠ 이름·주소는 지어낸 값이다(실제 등기부의 값을 옮겨 적지 않는다).
+#: ⚠ 주소에 **동·호수가 있어야** 한다. 없으면 단독·다가구로 보여 전세가율 판정이
+#:   보류되고(`price_normalize.is_whole_building`), 종합 등급이 거기 붙들린다.
+_EXAMPLE_REGISTRY: dict = {
+    **{key: [] for key in RegistryExtract.LIST_KEYS},
+    "address": "서울특별시 마포구 성산동 100-1 행복아파트 제102동 제501호",
+    "exclusive_area_sqm": 59.9,
+    "current_owners": [{"name": "홍길동", "share": "단독소유"}],
+    "ownership_changes": [
+        {"rank_number": "2", "receipt_date": "2019-03-14", "cause": "매매", "is_canceled": False}
+    ],
+}
 
-    return Report(
-        id=report_id,
-        alias=resolved_alias,
-        address=address,
-        analyzedAt=analyzed_at.isoformat(),
-        grade="위험",
-        gaugeProgress=0.22,
-        headline="보증금을 지키기 어려운 신호가 보여요",
-        # 상담처 전화번호는 Phase F에서 공식 홈페이지로 확인 후 병기
-        nextAction="계약 전에 HUG 안심전세포털·대한법률구조공단 등에서 전문가 상담부터 받으세요",
-        topRiskSummary="먼저 갚을 빚 신호 2건 · 소유권 이상",
-        deposit=deposit,
-        marketPrice=market_price,
-        seniorDebtAmount=senior_debt,
-        evidences=[
-            Evidence(
-                id="senior_debt",
-                title="나보다 먼저 돈 받아갈 빚이 있나요?",
-                termSubtitle="선순위 채권 · 근저당권",
-                grade="위험",
-                easyExplanation=(
-                    "이 집에는 은행 빚(근저당권)이 크게 잡혀 있어요. 집이 경매로 넘어가면 "
-                    "은행이 먼저 돈을 받아가고, 남는 금액에서 보증금을 돌려받게 돼요."
-                ),
-                detailText=(
-                    "은행이 최대 받아갈 수 있다고 걸어둔 금액(채권최고액) "
-                    "1억 8,000만원 · 근저당권 2건 (예시)"
-                ),
-                termGlossary={
-                    "근저당권": (
-                        "집주인이 집을 담보로 돈을 빌렸다는 표시예요. 집이 경매로 "
-                        "넘어가면 돈을 빌려준 쪽(주로 은행)이 세입자보다 먼저 돈을 받아갈 수 있어요."
-                    )
-                },
-                sourceText="HUG 공식 기준 등 확정 예정",
-                actionLabel="중개사에게 물어볼 질문 보기",
-            ),
-            Evidence(
-                id="ownership",
-                title="집 소유권에 이상 신호가 있나요?",
-                termSubtitle="신탁등기 · 압류 · 가압류",
-                grade="위험",
-                easyExplanation=(
-                    "신탁등기가 설정되어 있어요. 집주인 마음대로 전세 계약을 "
-                    "맺지 못할 수 있어서, 신탁회사의 동의가 있었는지 꼭 확인해야 해요."
-                ),
-                detailText="신탁등기 1건 (예시)",
-                termGlossary={
-                    "신탁등기": (
-                        "집의 관리 권한을 신탁회사에 맡겼다는 표시예요. 이 경우 "
-                        "집주인 단독으로는 전세 계약을 맺을 수 없는 경우가 많아요."
-                    )
-                },
-                sourceText="HUG 공식 기준 등 확정 예정",
-                actionLabel="중개사에게 물어볼 질문 보기",
-            ),
-            jeonse,
-            Evidence(
-                id="insurance",
-                title="보증보험에 가입할 수 있나요?",
-                termSubtitle="전세보증금 반환보증 (HUG 등)",
-                grade="확인 필요",
-                statusLabel="확인 필요",
-                easyExplanation=(
-                    "등기부만으로는 가입 가능 여부를 단정할 수 없어요. "
-                    "가입 요건은 보증기관에서 직접 확인이 필요해요."
-                ),
-                sourceText="HUG 공식 기준 등 확정 예정",
-                actionLabel="중개사에게 물어볼 질문 보기",
-            ),
-            Evidence(
-                id="blacklist",
-                title="집주인이 위험 명단에 있나요?",
-                termSubtitle="악성임대인 공개 명단",
-                grade="양호",
-                easyExplanation=(
-                    "공개 명단에서 발견되지 않았어요. 다만 명단에 없다고 "
-                    "안전이 보장되는 건 아니에요 — 아래 질문으로 직접 확인하세요."
-                ),
-                sourceText="HUG 공식 기준 등 확정 예정",
-                actionLabel="중개사에게 물어볼 질문 보기",
-            ),
-        ],
+#: 보증금 2억 4,000만원 / 시세 5억원 = 전세가율 48%.
+#: HUG 담보인정비율 90%·부동산원 80% 기준 모두 아래라 '양호'로 떨어진다.
+_EXAMPLE_DEPOSIT = 240_000_000
+_EXAMPLE_MARKET_PRICE = 500_000_000
+_EXAMPLE_ID = "dummy-example"
+_EXAMPLE_ALIAS = "성산동 행복아파트"
+
+
+def build_example_report() -> Report:
+    """깨끗한 등기부 1건을 **실제 규칙 엔진에 통과시켜** 예시 리포트를 만든다.
+
+    ⚠ `report_builder`를 **함수 안에서** 불러온다. 모듈 맨 위에서 부르면
+      `report_builder → store → dummy_data → report_builder` 순환 import가 된다.
+      호출 시점(첫 이력 조회)에는 세 모듈이 모두 적재를 마친 뒤다.
+
+    ⚠ `use_llm=False` — 예시 문구까지 Solar를 부르면 서버가 뜰 때마다 크레딧이 샌다.
+      폴백 문구도 결정적 템플릿이라 실제 분석과 같은 문장 구조로 나온다.
+    """
+    from .services import report_builder
+
+    return report_builder.build_report(
+        RegistryExtract.from_raw(_EXAMPLE_REGISTRY),
+        deposit=_EXAMPLE_DEPOSIT,
+        market_price=_EXAMPLE_MARKET_PRICE,
+        alias=_EXAMPLE_ALIAS,
+        report_id=_EXAMPLE_ID,
+        # 홈 카드가 '오늘'로 보이게 — 하루가 지나면 앱이 '오래된 분석' 배너를 띄운다.
+        analyzed_at=datetime.now(KST) - timedelta(hours=3),
+        use_llm=False,
     )
 
 
-def _build_caution_report(analyzed_at: datetime) -> Report:
-    """예시 2 — 확인 필요 매물 (시세 미입력). analysis_repository.dart _cautionReport 이식."""
-    return Report(
-        id="dummy-caution",
-        alias="정자동 빌라",
-        address="경기 성남시 분당구 정자동 456-7",
-        analyzedAt=analyzed_at.isoformat(),
-        grade="확인 필요",
-        gaugeProgress=0.55,
-        headline="몇 가지를 확인한 뒤 결정해도 늦지 않아요",
-        nextAction="보류하고, 아래 질문을 중개사에게 확인한 뒤 결정하세요",
-        topRiskSummary="시세 미입력 · 입력하면 결과가 더 정확해져요",
-        deposit=300_000_000,
-        marketPrice=None,
-        seniorDebtAmount=50_000_000,
-        evidences=[
-            Evidence(
-                id="jeonse_ratio",
-                title="보증금이 집값에 비해 높지 않나요?",
-                termSubtitle="전세가율",
-                grade="확인 필요",
-                statusLabel="확인 필요",
-                easyExplanation=(
-                    "시세를 입력하지 않아 아직 계산할 수 없어요. "
-                    "국토부 실거래가·KB시세에서 확인한 금액을 입력하면 바로 알려드릴게요."
-                ),
-                sourceText="HUG 공식 기준 등 확정 예정",
-                actionLabel="시세 입력하기",
-            ),
-            Evidence(
-                id="senior_debt",
-                title="나보다 먼저 돈 받아갈 빚이 있나요?",
-                termSubtitle="선순위 채권 · 근저당권",
-                grade="양호",
-                easyExplanation=(
-                    "등기부에서 큰 빚은 보이지 않았어요. "
-                    "다만 계약 직전에는 최신 등기부로 다시 확인하세요."
-                ),
-                detailText="근저당권 1건 · 채권최고액 5,000만원 (예시)",
-                sourceText="HUG 공식 기준 등 확정 예정",
-            ),
-            Evidence(
-                id="ownership",
-                title="집 소유권에 이상 신호가 있나요?",
-                termSubtitle="신탁등기 · 압류 · 가압류",
-                grade="양호",
-                easyExplanation="압류·가압류·신탁 같은 이상 신호는 보이지 않았어요. (예시)",
-                sourceText="HUG 공식 기준 등 확정 예정",
-            ),
-            Evidence(
-                id="insurance",
-                title="보증보험에 가입할 수 있나요?",
-                termSubtitle="전세보증금 반환보증 (HUG 등)",
-                grade="확인 필요",
-                statusLabel="확인 필요",
-                easyExplanation=(
-                    "등기부만으로는 가입 가능 여부를 단정할 수 없어요. "
-                    "가입 요건은 보증기관에서 직접 확인이 필요해요."
-                ),
-                sourceText="HUG 공식 기준 등 확정 예정",
-                actionLabel="중개사에게 물어볼 질문 보기",
-            ),
-            Evidence(
-                id="blacklist",
-                title="집주인이 위험 명단에 있나요?",
-                termSubtitle="악성임대인 공개 명단",
-                grade="양호",
-                easyExplanation=(
-                    "공개 명단에서 발견되지 않았어요. 다만 명단에 없다고 "
-                    "안전이 보장되는 건 아니에요 — 아래 질문으로 직접 확인하세요."
-                ),
-                sourceText="HUG 공식 기준 등 확정 예정",
-                actionLabel="중개사에게 물어볼 질문 보기",
-            ),
-        ],
-    )
-
-
-# ── 인메모리 이력 (앱 _history = [caution, danger], 최신순) ─────────────────
-_now = datetime.now(KST)
-_HISTORY: list[Report] = [
-    _build_caution_report(_now - timedelta(hours=1)),
-    build_danger_report(
-        report_id="dummy-danger",
-        alias="역삼동 오피스텔",
-        analyzed_at=_now - timedelta(days=7),
-        deposit=120_000_000,
-        market_price=200_000_000,
-    ),
-]
+# ── 인메모리 이력 — **첫 조회 때 만든다** ────────────────────────────────────
+# 모듈을 읽는 시점에 만들면 위 순환 import에 걸린다(build_example_report 주석 참고).
+_HISTORY: list[Report] | None = None
 
 
 def get_history() -> list[Report]:
+    global _HISTORY
+    if _HISTORY is None:
+        _HISTORY = [build_example_report()]
     return list(_HISTORY)
 
 
-def get_report(report_id: str) -> Report | None:
-    for r in _HISTORY:
-        if r.id == report_id:
-            return r
-    return None
-
-
-def add_analysis(*, deposit: int, market_price: int | None, alias: str | None) -> Report:
-    """analyze() 이식 — 위험 템플릿을 사용자 입력으로 채워 새 리포트를 만들고 이력 맨 앞에 넣는다."""
-    report = build_danger_report(
-        report_id=f"analysis-{int(datetime.now().timestamp() * 1000)}",
-        alias=alias,
-        analyzed_at=datetime.now(KST),
-        deposit=deposit,
-        market_price=market_price,
-    )
-    _HISTORY.insert(0, report)
-    return report
-
-
-def remove_report(report_id: str) -> None:
-    global _HISTORY
-    _HISTORY = [r for r in _HISTORY if r.id != report_id]
-
+# 2026-08-14(D13): `add_analysis` · `get_report` · `remove_report`를 지웠다.
+# 셋 다 D-2 시절 이 모듈이 직접 저장소 노릇을 하던 흔적으로, **이미 어디서도 부르지
+# 않았다**(실제 이력은 `services/store.py`, 분석은 `report_builder.analyze`가 맡는다).
+# `add_analysis`가 붙들고 있던 `build_danger_report`(손으로 적은 위험 리포트 150줄)도
+# 함께 사라졌다 — 그 값들은 출처 문구가 낡아 실제 분석과 어긋나 있었다.
 
 # (위험 패턴 파생은 services/patterns.py로 승격됨 — E-2)
 # ── 판례 (content_repository.dart matchedCases 이식) — E-3에서 data/cases.json으로 교체 ──

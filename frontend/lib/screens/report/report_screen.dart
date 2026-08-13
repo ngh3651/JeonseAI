@@ -10,7 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../design_system/components/amber_hint.dart';
+// [D4 · 2026-08-14] 시세 출처 칩을 렌더링에서 뺐다 → 이 두 import가 함께 놀게 됐다.
+// 칩을 되살릴 때 같이 풀라고 지우지 않고 주석으로 남긴다 (_conclusionHeader 참고).
+// import '../../design_system/components/amber_hint.dart';
+// import '../../models/market_price_source.dart' show marketPriceSourceLabel;
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_callout.dart';
 import '../../design_system/components/app_card.dart';
@@ -22,7 +25,6 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
-import '../../models/market_price_source.dart' show marketPriceSourceLabel;
 import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
@@ -292,29 +294,37 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
           textAlign: TextAlign.center,
         ),
-        // 시세 출처 — **이 숫자가 어디서 왔는지**를 결론 옆에서 바로 말한다.
-        // S-04에서 조회가 안 됐더라도 결과 화면에서는 항상 출처가 보여야 한다.
-        const SizedBox(height: AppSpacing.xs),
-        Center(
-          child: AmberHint(
-            tone: report.marketPrice == null
-                ? AmberHintTone.amber
-                : (report.marketPriceSource.isAuto
-                      ? AmberHintTone.positive
-                      : AmberHintTone.neutral),
-            icon: report.marketPrice == null
-                ? Icons.help_outline
-                : (report.marketPriceSource.isAuto
-                      ? Icons.verified_outlined
-                      : Icons.edit_outlined),
-            text: marketPriceSourceLabel(
-              source: report.marketPriceSource,
-              asOf: report.marketPriceAsOf,
-              sampleCount: report.marketPriceSampleCount,
-              hasPrice: report.marketPrice != null,
-            ),
-          ),
-        ),
+        // ── [D4 · 2026-08-14] 시세 출처 칩을 화면에서 뺐다 ──────────────────────
+        // 실기기에서 결론 바로 아래 "자동 조회 · 공시가격 기준 (2025.1.1)"이 붙으니,
+        // 등급을 읽어야 할 자리에서 시선이 출처 문자열로 새 나갔다.
+        //
+        // ⚠ **출처 표기 자체를 버린 것이 아니다.** 서버 응답의 marketPriceSource ·
+        //   marketPriceAsOf · marketPriceSampleCount는 그대로 살아 있고
+        //   (analysis_report.dart), 모델·계약도 손대지 않았다. 여기 렌더링만 뺐다.
+        //   되돌리려면 아래 주석을 그대로 살리고 파일 상단의
+        //   `marketPriceSourceLabel` import 주석만 함께 풀면 된다.
+        //
+        // const SizedBox(height: AppSpacing.xs),
+        // Center(
+        //   child: AmberHint(
+        //     tone: report.marketPrice == null
+        //         ? AmberHintTone.amber
+        //         : (report.marketPriceSource.isAuto
+        //               ? AmberHintTone.positive
+        //               : AmberHintTone.neutral),
+        //     icon: report.marketPrice == null
+        //         ? Icons.help_outline
+        //         : (report.marketPriceSource.isAuto
+        //               ? Icons.verified_outlined
+        //               : Icons.edit_outlined),
+        //     text: marketPriceSourceLabel(
+        //       source: report.marketPriceSource,
+        //       asOf: report.marketPriceAsOf,
+        //       sampleCount: report.marketPriceSampleCount,
+        //       hasPrice: report.marketPrice != null,
+        //     ),
+        //   ),
+        // ),
       ],
     );
   }

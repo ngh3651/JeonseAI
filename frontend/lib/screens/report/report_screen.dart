@@ -34,6 +34,27 @@ import '../../utils/money_format.dart';
 import 'registry_entry_card.dart';
 import '../../design_system/text/app_text.dart';
 
+/// 악성임대인 명단이 **아직 우리에게 없을 때** 서버가 붙이는 상태 라벨.
+/// 백엔드 `rule_engine.BLACKLIST_PENDING_LABEL`과 **글자까지 같아야 한다** —
+/// 한쪽만 바꾸면 카드가 사라진 채 고지도 안 나가는 최악의 조합이 된다.
+/// (계약에 따로 플래그를 두는 대신 이 라벨을 쓰는 것은 백엔드도 마찬가지다:
+///  `fallback_texts.py`가 같은 방식으로 이 상태를 판별한다.)
+const String kBlacklistPendingLabel = '명단 대조 아직 안 됨';
+
+/// 이 근거가 '매물의 위험'이 아니라 **'우리 데이터가 아직 없다'**를 말하고 있는가.
+///
+/// 서버는 명단 파일이 비면 이 카드를 '확인 필요'로 내보내는데, 화면에서는 다른
+/// 근거들과 나란히 서서 **이 집에 뭔가 걸린 것처럼** 읽혔다. 실제로는 이 집이 아니라
+/// 우리 쪽 준비 상태의 문제다. 그래서 근거 카드 대열에서 빼고 하단 한계 고지로 내린다.
+///
+/// ⚠ 판정에는 아무 영향이 없다. 등급은 서버가 계산하고, 서버의 worst-of 계산은
+///   이 상태의 blacklist를 **이미 제외하고** 있다(`rule_engine.evaluate`).
+///   여기서는 그려진 것을 안 그릴 뿐이다.
+/// ⚠ 명단 데이터가 채워지면 status_label이 '확인 필요'/'명단 일치 — 직접 확인 필요'
+///   또는 null(양호)로 바뀌므로, 이 조건이 저절로 거짓이 되어 **카드가 되돌아온다.**
+bool _isPendingBlacklist(EvidenceItem e) =>
+    e.id == 'blacklist' && e.statusLabel == kBlacklistPendingLabel;
+
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key, required this.reportId});
 
@@ -128,7 +149,7 @@ class _ReportScreenState extends State<ReportScreen> {
               const SizedBox(height: AppSpacing.md),
               ..._actionArea(context, report),
               const SizedBox(height: AppSpacing.xxl),
-              _disclaimer(),
+              _disclaimer(report),
               const SizedBox(height: AppSpacing.xxxl),
             ],
           ),
@@ -404,13 +425,20 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   /// 근거 카드 목록 — 가장 심각한 카드 1개는 기본 펼침 (서연 리뷰 반영)
+  ///
+  /// [D6 · 2026-08-14] 명단 미구축 상태의 악성임대인 카드는 이 대열에서 빠진다.
+  /// 이유는 [_isPendingBlacklist] 참고. 빠진 사실은 하단 한계 고지가 말한다.
   List<Widget> _evidenceCards(BuildContext context, AnalysisReport report) {
-    final int expandedIndex = _mostSevereIndex(report.evidences);
+    final visible = [
+      for (final e in report.evidences)
+        if (!_isPendingBlacklist(e)) e,
+    ];
+    final int expandedIndex = _mostSevereIndex(visible);
     return [
-      for (int i = 0; i < report.evidences.length; i++) ...[
+      for (int i = 0; i < visible.length; i++) ...[
         _evidenceCard(
           context,
-          report.evidences[i],
+          visible[i],
           initiallyExpanded: i == expandedIndex,
         ),
         const SizedBox(height: AppSpacing.md),
@@ -630,18 +658,38 @@ class _ReportScreenState extends State<ReportScreen> {
   /// D4: 전역 면책 안내 — 리포트 최하단 상시 노출(캡처 공유 시 자연 포함).
   /// AA 통과 색(textMuted)·가독 가능한 크기 유지 — 면책의 보호 목적을 지키기 위해
   /// 일부러 최소 크기로 줄이지 않는다.
-  Widget _disclaimer() {
+  ///
+  /// [D6 · 2026-08-14] 명단 미구축이면 그 사실을 여기 한 줄로 얹는다. 근거 카드에서
+  /// 뺐다고 **침묵하면 안 된다** — 안 본 것을 안 봤다고 말하는 것이 이 앱의 원칙이고,
+  /// 침묵은 "명단까지 확인했다"는 오해를 남긴다. 대신 색은 면책보다 진하게 둔다
+  /// (textBody) — 회색으로 묻히면 고지의 목적을 잃는다.
+  Widget _disclaimer(AnalysisReport report) {
+    final bool blacklistPending = report.evidences.any(_isPendingBlacklist);
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
-      child: AppText(
-        '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
-        '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
-        '확인과 전문가 상담을 통해 이루어져야 합니다.',
-        style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (blacklistPending) ...[
+            AppText(
+              '※ 악성임대인 공개 명단은 아직 저희가 데이터를 확보하지 못해 '
+              '이번 분석에서는 판단하지 않았어요. 명단에 없다는 뜻이 아닙니다 — '
+              'HUG 안심전세포털에서 집주인 이름을 직접 확인해 주세요.',
+              style: AppTypography.caption.copyWith(color: AppColors.textBody),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+          AppText(
+            '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
+            '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
+            '확인과 전문가 상담을 통해 이루어져야 합니다.',
+            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+          ),
+        ],
       ),
     );
   }

@@ -9,6 +9,7 @@ library;
 import 'dart:io';
 
 import 'package:jeonse_ai/models/analysis_report.dart';
+import 'package:jeonse_ai/models/compare_result.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 
@@ -119,6 +120,20 @@ class FakeAnalysisRepository extends AnalysisRepository {
 
   @override
   Future<void> deleteReport(String id) async {}
+
+  /// 이 픽스처의 리포트에는 대조 기준 스냅샷이 없다(서버가 분석하며 남기는 것이다).
+  /// 그래서 실기기에서 옛 이력을 눌렀을 때와 같은 "기준 없음" 갈래가 나온다.
+  @override
+  Future<CompareResult> compareRegistry(
+    String reportId,
+    List<String> imagePaths,
+  ) async => CompareResult(
+    outcome: CompareOutcome.noBaseline,
+    headline: '이 분석은 비교 기준으로 쓸 수 없어요',
+    subline: '지금 한 번 떼어 기준을 만들어 두면, 다음에 뗄 때부터 달라진 점을 알려드릴 수 있어요.',
+    baseline: CompareDoc(reportId: reportId, alias: report.alias),
+    current: const CompareDoc(),
+  );
 }
 
 /// **최악 조합** 리포트 — 15종이 전부 등장하고 종류당 상한(5건)도 채운다.

@@ -15,6 +15,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/start_screen.dart';
 import '../screens/cases/case_match_screen.dart';
 import '../screens/chatbot/glossary_chatbot_screen.dart';
+import '../screens/compare/compare_screen.dart';
 import '../screens/guide/registry_guide_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/journey/journey_screen.dart';
@@ -106,6 +107,17 @@ final appRouter = GoRouter(
       path: '/cases/:id',
       builder: (_, state) =>
           CaseMatchScreen(reportId: state.pathParameters['id']!),
+    ),
+    // 등기부 대조 (S-11) — 진행과 결과가 한 라우트다. 결과에서 뒤로가기를 누르면
+    // 로딩 화면이 아니라 **출발한 여정 화면**으로 돌아가야 하기 때문이다.
+    // extra의 [CompareRequest]에는 기준 리포트와 이번에 뗀 사진이 들어 있다
+    // (사진이 비어 있을 수 있다 — 기준 없는 리포트는 촬영 전에 답이 나온다).
+    GoRoute(
+      path: '/compare/:id',
+      builder: (_, state) => CompareScreen(
+        reportId: state.pathParameters['id']!,
+        request: state.extra as CompareRequest?,
+      ),
     ),
     GoRoute(
       path: '/questions/:id',

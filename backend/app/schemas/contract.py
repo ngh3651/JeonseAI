@@ -23,6 +23,13 @@ class Evidence(BaseModel):
     sourceText: Optional[str] = None
     actionLabel: Optional[str] = None
     termGlossary: dict[str, str] = Field(default_factory=dict)
+    # 이 카드의 **설명 문장**을 누가 썼는가 (2026-08-14 D26). additive — 없으면 앱이
+    # 종전 라벨('자동 생성')을 그대로 쓴다.
+    #   · LLM이 쓴 문장  → 실제 호출된 모델 문자열 (예: "solar-pro2")
+    #   · 준비된 문구    → `explanation.FALLBACK_SOURCE_LABEL` ("준비된 문구")
+    # ⚠ **판정 출처가 아니다.** 판정은 언제나 규칙 엔진이고 그 출처는 `sourceText`다.
+    #   이 값은 설명 계층에만 해당하며, 카드마다 다를 수 있다(필드 단위 폴백).
+    explanationSource: Optional[str] = None
 
 
 # ── 원본 사진 하이라이트 (§2.7 — 2026-07-27 추가, **선택적**) ──────────────
@@ -118,6 +125,13 @@ class Report(BaseModel):
     # ⚠ 못 읽으면 None이다. **앱은 분석일(analyzedAt)로 대체하지 않는다** — 분석일을
     #   대신 쓰면 "오늘 서류"라고 믿게 만들어 아무것도 안 쓰느니만 못하다.
     registryViewedAt: Optional[str] = None
+    # 이 분석을 **다음 등기부와 견줄 기준(baseline)으로 쓸 수 있는가** (2026-08-14 S-11).
+    #
+    # 대조는 판정 결과가 아니라 **추출 스냅샷**(소유자·빚·압류 항목)을 맞춰보는 것이라,
+    # 스냅샷을 남기기 전에 만들어진 리포트는 견줄 재료가 없다. 그 사실을 앱이 미리 알아야
+    # "사진부터 찍게 해 놓고 마지막에 못 한다고 말하는" 흐름을 피할 수 있다
+    # (계약 여정 S-11 "기준 없음" 화면은 사진을 받기 전에 나온다).
+    comparable: bool = False
 
 
 # ── 판례 (§2.3 CaseMatch) ──────────────────────────────────────────────────
@@ -136,7 +150,17 @@ class CaseMatch(BaseModel):
     advice: Optional[str] = None
     # 문구를 사람이 검수했는지. False면 화면에 "검수 전" 표시가 붙는다 —
     # 출처는 공식 DB로 확인됐지만 쉬운 말 문구는 아직 사람 손을 거치지 않았다는 뜻.
+    # (2026-08-14 D22: 앱은 이 값을 더 이상 카드에 그리지 않지만, 서버 정렬 기준이자
+    #  제안서 인용 근거라 응답에는 그대로 남긴다.)
     curated: bool = False
+    # ── 읽기 보조 (2026-08-14 D20·D23) — 전부 additive. 없으면 아무 일도 안 난다. ──
+    # 본문에 등장한 어려운 말 → 쉬운 설명. 근거 카드(EvidenceItem)와 **같은 구조·같은
+    # 규칙**이다: 키가 본문에 그대로 있어야 앱이 indexOf로 찾아 점선 밑줄을 붙인다.
+    termGlossary: dict[str, str] = Field(default_factory=dict)
+    # `{필드명: [굵게 그릴 부분 문자열, ...]}` — 필드명은 이 모델의 이름 그대로
+    # (`result` · `commonPoint` · `advice`). **본문을 바꾸지 않는 표시 지시**라,
+    # 문구 변경이 금지된 `advice`에도 안전하다. 못 찾으면 굵기만 안 붙는다.
+    emphasis: dict[str, list[str]] = Field(default_factory=dict)
 
 
 # ── 질문 생성기 (§2.4 QuestionGroup / QuestionItem) ────────────────────────
@@ -158,6 +182,30 @@ class GlossaryTerm(BaseModel):
     description: str
 
 
+class GlossaryAnswer(BaseModel):
+    """챗봇 답 하나 (§3.9 — 2026-08-14 S-12).
+
+    **404를 200으로 바꿨다.** 예전에는 사전에 없으면 404가 나가고 앱이 거절 문구를
+    하드코딩해 띄웠다. 그러면 ⑴ 화면 문구를 서버가 못 정하고 ⑵ LLM 답과 거절을 서로
+    다른 경로로 다뤄야 한다. 이제 **모든 답이 한 모양**으로 나간다.
+
+    `outOfScope=true`면 앱이 답변 아래에 유도 버튼(리포트/분석)을 붙인다 —
+    거절도 정상 답변 톤으로 그린다(경고색·에러 아이콘 금지).
+    """
+
+    answer: str  # 화면에 그대로 그릴 문장 (거절 문구도 여기 들어온다)
+    outOfScope: bool = False
+    # 이 문장을 누가 썼는가 — "검수된 용어 사전" | 실제 모델명 | "준비된 문구"
+    source: str = ""
+    # 답변에 등장한 어려운 말 → 쉬운 설명 (근거 카드·판례와 **같은 메커니즘**)
+    termGlossary: dict[str, str] = Field(default_factory=dict)
+    # 사전 직격일 때만 그 용어명. 자연어 답변·거절이면 None.
+    term: Optional[str] = None
+    # 옛 앱 호환용 거울 필드 — 옛 앱은 `{term, description}`을 기대한다.
+    # 새 앱은 `answer`만 읽는다. 두 값은 항상 같다.
+    description: str = ""
+
+
 # ── 계약 여정 (§2.6 JourneyStage / JourneyItem) ────────────────────────────
 class JourneyItem(BaseModel):
     text: str
@@ -168,3 +216,75 @@ class JourneyStage(BaseModel):
     title: str
     subtitle: str
     items: list[JourneyItem]
+    # ── S-11 재설계 (2026-08-14) — 아래는 전부 선택적. 옛 앱은 무시해도 종전과 같이 동작한다.
+    # 단계는 이제 **체크박스 목록이 아니라 매물에 붙은 타임라인**이라, 각 단계가 어떤
+    # 성격인지(끝난 일/할 일/한참 뒤 일)와 어떤 행동을 붙일지를 데이터가 들고 있어야 한다.
+    #
+    # analysis: 분석 기록이 있으면 자동 완료 · action: 지금 할 일 · later: 1~2년 뒤 일
+    kind: str = "action"
+    # 이 단계에 [다시 떼서 대조하기] 버튼을 붙일지 — 등기부를 다시 떼야 하는 시점인가.
+    compare: bool = False
+    # 이 단계에서 일정 입력을 권할지 (계약서에 날짜가 적히는 시점)
+    askDates: bool = False
+    # 어디서 하는 일인지 알려주는 칩 (예: "주민센터에서", "HUG · HF · SGI")
+    agency: Optional[str] = None
+    # 이 단계에 붙는 사용자 일정 키. 날짜 자체는 **기기에만** 저장되므로 서버는 키만 준다.
+    #   downPayment | contract | balance | moveIn | moveInNext
+    #   (moveInNext = 이사일 다음 날 — 사용자가 따로 넣지 않고 앱이 계산한다)
+    dateKey: Optional[str] = None
+
+
+# ── 등기부 대조 (§2.9 CompareResult — 2026-08-14 S-11) ─────────────────────
+# **규칙 기반이다.** 두 등기부의 항목을 그대로 맞춰본 결과이고 LLM은 개입하지 않는다.
+# 문구도 이 계층에서 만든다(설명 생성 아님 — 값에서 결정되는 고정 문장).
+class CompareDoc(BaseModel):
+    """대조에 참여한 등기부 한 쪽."""
+
+    reportId: Optional[str] = None
+    alias: Optional[str] = None
+    address: Optional[str] = None
+    viewedAt: Optional[str] = None  # 등기부에 인쇄된 열람일 'YYYY.MM.DD' (못 읽으면 None)
+    analyzedAt: Optional[str] = None  # ISO 8601
+    grade: Optional[str] = None  # "위험" | "확인 필요" | "양호"
+    pageCount: Optional[int] = None  # 이번에 올린 사진 장수
+
+
+class CompareRow(BaseModel):
+    """대조 결과 한 줄 — 화면의 카드 1장."""
+
+    # added(새로 생김) | removed(없어짐) | changed(내용이 달라짐) | same(그대로) |
+    # unknown(대조 못 함) | grade(안전도 변화)
+    kind: str
+    tone: str  # danger | caution | neutral — 앱이 색을 고르는 기준
+    marker: str  # 카드 왼쪽 원 안 글자: + − ≠ = ? !
+    title: str
+    subtitle: Optional[str] = None
+    detail: Optional[str] = None  # 회색 상세 박스 (수치·건수)
+    # 새로 생긴 항목의 접수일 'YYYY-MM-DD'. 앱이 사용자의 계약 일정(기기 저장)과 견줘
+    # "계약서 쓴 다음 날이에요" 같은 한 줄을 덧붙일 수 있게 하는 재료다.
+    receiptDate: Optional[str] = None
+    gradeBefore: Optional[str] = None
+    gradeAfter: Optional[str] = None
+    # 이 줄에 붙는 행동 — recapture(빠진 쪽 다시 찍기) | analyze(새로 분석)
+    action: Optional[str] = None
+    actionLabel: Optional[str] = None
+
+
+class CompareResult(BaseModel):
+    # changed(대조함) | partial(일부 못 함) | no_baseline(기준 없음) | different_property(다른 집)
+    result: str
+    headline: str
+    subline: Optional[str] = None
+    baseline: CompareDoc
+    current: CompareDoc
+    daysBetween: Optional[int] = None  # 두 서류 날짜 차이(일). 한쪽이라도 없으면 None
+    comparedCount: int = 0
+    totalCount: int = 0
+    rows: list[CompareRow] = Field(default_factory=list)
+    # 대조 자체에 대한 고지 (예: 같은 집인지 확인하지 못함). 화면 하단 회색 카드.
+    notices: list[str] = Field(default_factory=list)
+    # 같은 집인지 무엇으로 확인했나: "고유번호" | "소재지" | None(확인 못 함)
+    identityBasis: Optional[str] = None
+    # 이번에 뗀 등기부로 만들어진 새 리포트 id. **다른 집이면 None** — 기준 매물의
+    # 보증금으로 계산된 값이라 그 집의 판정으로 쓸 수 없어 이력에서도 지운다.
+    newReportId: Optional[str] = None

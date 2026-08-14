@@ -18,8 +18,12 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../state/app_session.dart';
+import '../../state/journey_schedule_store.dart';
+import '../../utils/korean_date.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
+import '../journey/balance_due_banner.dart';
+import '../journey/journey_actions.dart';
 import '../../design_system/text/app_text.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -47,6 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _greeting(context),
                 const SizedBox(height: AppSpacing.xxl),
+                // 잔금일이 내일인 집이 있으면 **인사 바로 아래**에 경고가 온다.
+                // 홈에 들어온 사람이 그 하루를 모르고 나가는 일이 없게 (S-11).
+                ..._balanceDueBanners(context, history),
                 AppPrimaryButton(
                   // F12: 버튼 안 원형(돋보기) 아이콘 제거 — 라벨만
                   label: '매물 분석 시작하기',
@@ -88,6 +95,37 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  /// 잔금일이 **내일**인 매물의 배너. 일정은 기기에만 있으므로 여기서 직접 견준다.
+  ///
+  /// 여정 탭의 배너와 **같은 위젯**을 쓴다 — 두 곳이 따로 그려지면 한쪽만 고쳐졌을 때
+  /// 홈과 여정이 다른 말을 하게 된다.
+  List<Widget> _balanceDueBanners(
+    BuildContext context,
+    List<AnalysisReport> history,
+  ) {
+    final store = context.watch<JourneyScheduleStore>();
+    final banners = <Widget>[];
+    final seen = <String>{};
+
+    for (final report in history) {
+      final key = journeyPropertyKey(report.address);
+      if (!seen.add(key)) continue; // 같은 집의 옛 분석은 건너뛴다(최신 1건만)
+      final schedule = store.scheduleFor(key);
+      if (!schedule.isBalanceTomorrow) continue;
+      banners.add(
+        BalanceDueBanner(
+          title:
+              '${report.alias} · 잔금일이 내일이에요 · '
+              '${formatMonthDay(schedule.balance!)}',
+          note: '잔금 직전 확인이 이 앱에서 가장 중요한 단계예요',
+          onCompare: () => startRegistryCompare(context, report),
+        ),
+      );
+      banners.add(const SizedBox(height: AppSpacing.lg));
+    }
+    return banners;
   }
 
   /// 이력 로드 실패 — 인라인 에러 + [다시 시도] (user-scenario §5)

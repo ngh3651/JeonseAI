@@ -37,16 +37,24 @@ class ApiContentRepository implements ContentRepository {
     ];
   }
 
+  /// 챗봇 질문 (계약 §3.9). 답·거절이 **같은 200 응답**으로 온다.
+  ///
+  /// ⚠ 타임아웃을 따로 준다: 자연어 질문은 Solar 생성을 타므로 일반 GET(15초)으로는
+  ///   정상 응답도 끊긴다. 서버가 실패하면 스스로 '준비된 문구'로 답하므로 여기서
+  ///   기다리는 시간은 **생성이 성공할 시간**이면 충분하다.
+  ///
+  /// ⚠ `onNotFound` 분기를 **남겨 둔다** — 옛 서버(404=범위 밖)에 붙어도 화면이 살아야
+  ///   한다. 지금 서버는 404를 주지 않는다(빈 질문 제외).
   @override
-  Future<GlossaryTerm?> lookupTerm(String query) async {
-    // 404 = 범위 밖 → null (앱이 가드레일 거절 문구 표시)
+  Future<GlossaryAnswer> askGlossary(String query) async {
     final json = await _api.getJson(
       '/api/glossary/lookup',
       query: {'q': query},
+      timeout: const Duration(seconds: 60),
       onNotFound: () => null,
     );
-    if (json == null) return null;
-    return GlossaryTerm.fromJson(json as Map<String, dynamic>);
+    if (json == null) return GlossaryAnswer.fallback;
+    return GlossaryAnswer.fromJson(json as Map<String, dynamic>);
   }
 
   @override

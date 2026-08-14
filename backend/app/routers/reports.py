@@ -20,8 +20,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from .. import dummy_data
 from ..dependencies import get_current_user
-from ..schemas.contract import CaseMatch, QuestionGroup, Report
-from ..services import patterns, questions, report_builder, store
+from ..schemas.contract import CaseMatch, CompareResult, QuestionGroup, Report
+from ..services import compare, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
@@ -67,6 +67,73 @@ def analyze(
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+@router.post("/reports/{report_id}/compare", response_model=CompareResult)
+def compare_registry(
+    report_id: str,
+    files: list[UploadFile] = File(default=[], description="이번에 뗀 등기부 사진(여러 장)"),
+    user: dict = Depends(get_current_user),  # 인증 필요 (개발 모드=항상 통과)
+) -> CompareResult:
+    """기준 리포트의 등기부와 **이번에 뗀 등기부**를 맞춰본다 (계약 여정 S-11).
+
+    흐름: 새 사진을 그대로 분석 파이프라인에 태워(같은 보증금·같은 별칭) 새 리포트를
+    만들고, 그 추출 스냅샷을 기준 스냅샷과 견준다. 등급 변화를 말할 수 있는 이유가
+    이것이다 — **두 등급 모두 규칙 엔진이 낸 것**이고, 대조는 둘을 나란히 놓을 뿐이다.
+
+    **사진 없이도 부를 수 있다.** 기준 스냅샷이 없으면(이 기능 이전 이력·예시 리포트)
+    사진을 받기 전에 '기준 없음'으로 답한다 — 찍게 해 놓고 마지막에 못 한다고 말하지
+    않기 위해서다. 기준이 있는데 사진이 없으면 400.
+    """
+    base_report = store.get(report_id)
+    if base_report is None:
+        raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
+
+    baseline = store.get_snapshot(report_id)
+    if baseline is None:
+        _log.info(f"[대조] 기준 없음 — 리포트 {report_id}에 스냅샷이 없습니다(사진 요청 안 함)")
+        return compare.no_baseline_result(base_report)
+
+    images: list[tuple[str, bytes]] = []
+    for f in files:
+        data = f.file.read()
+        if not data:
+            continue
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="사진 용량이 너무 커요. 10MB 이하 사진으로 다시 시도해 주세요",
+            )
+        images.append((f.filename or "page.jpg", data))
+    if not images:
+        raise HTTPException(status_code=400, detail="다시 뗀 등기부 사진을 1장 이상 올려 주세요")
+
+    try:
+        # ⚠ 보증금·시세는 **기준 분석과 같은 값**을 쓴다. 다른 값으로 계산하면 등급 차이가
+        #   '서류가 달라져서'인지 '입력이 달라져서'인지 알 수 없어진다.
+        current_report = report_builder.analyze(
+            images,
+            deposit=baseline.deposit,
+            market_price=baseline.manual_market_price,
+            alias=base_report.alias,
+        )
+    except ExtractionError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+    current = store.get_snapshot(current_report.id)
+    if current is None:  # 스냅샷 저장이 실패한 경우 — 견줄 재료가 없다
+        raise HTTPException(
+            status_code=503,
+            detail="이번 서류를 기준과 견주지 못했어요. 잠시 후 다시 시도해 주세요",
+        )
+
+    result = compare.compare(baseline, current)
+    if result.result == "different_property":
+        # 다른 집 서류로 만들어진 리포트다. **기준 매물의 보증금으로 계산된 등급**이라
+        # 그 집의 판정으로 쓸 수 없고, 이력에 남기면 홈 카드가 틀린 등급을 보여준다.
+        store.remove(current_report.id)
+        _log.info(f"[대조] 다른 집이라 이번 분석({current_report.id})을 이력에서 지웠습니다")
+    return result
 
 
 @router.get("/reports", response_model=list[Report])

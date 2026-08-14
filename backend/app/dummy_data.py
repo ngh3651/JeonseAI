@@ -19,8 +19,6 @@ from .services import terms
 from .schemas.contract import (
     CaseMatch,
     GlossaryTerm,
-    JourneyItem,
-    JourneyStage,
     Report,
 )
 from .schemas.internal import RegistryExtract
@@ -200,92 +198,6 @@ def lookup_term(query: str) -> GlossaryTerm | None:
     return GlossaryTerm(term=found.term, description=found.description) if found else None
 
 
-# ── 계약 여정 (content_repository.dart journeyStages 이식) ──────────────────
-_JOURNEY: list[JourneyStage] = [
-    JourneyStage(
-        title="계약 전",
-        subtitle="등기부 분석과 안전도 확인",
-        items=[
-            JourneyItem(
-                text="등기부등본을 떼어 안전도 리포트로 분석하기",
-                why="계약서에 도장을 찍기 전에 위험을 미리 확인해야 해요",
-            ),
-            JourneyItem(
-                text="중개사에게 물어볼 질문 준비하기",
-                why="현장에서 무엇을 확인해야 할지 미리 알고 가면 놓치지 않아요",
-            ),
-        ],
-    ),
-    JourneyStage(
-        title="계약 체결",
-        subtitle="계약서 검토와 특약",
-        items=[
-            JourneyItem(
-                text="계약서 주소가 등기부와 같은지 확인하기",
-                why="주소가 다르면 엉뚱한 집에 계약하는 셈이 될 수 있어요",
-            ),
-            JourneyItem(
-                text="근저당 말소 등 필요한 특약 넣기",
-                why="구두 약속은 지켜지지 않을 수 있어 서면으로 남겨야 해요",
-            ),
-        ],
-    ),
-    JourneyStage(
-        title="잔금일",
-        subtitle="나머지 보증금을 보내는 날",
-        items=[
-            JourneyItem(
-                text="잔금 보내기 직전에 등기부 다시 확인하기",
-                why="계약 후 잔금일 사이에 새 빚이 잡혔을 수 있어요",
-            ),
-        ],
-    ),
-    JourneyStage(
-        title="입주하고 나서 꼭 할 일",
-        subtitle="전입신고·확정일자 — 보증금을 지키는 가장 중요한 단계",
-        items=[
-            JourneyItem(
-                text="이사 당일 바로 전입신고하기",
-                why="전입신고를 해야 대항력이 생겨 보증금을 지킬 수 있어요",
-            ),
-            JourneyItem(
-                text="계약서에 확정일자 받기",
-                why="확정일자가 있어야 경매 시 보증금을 돌려받을 순위가 생겨요",
-            ),
-        ],
-    ),
-    JourneyStage(
-        title="보증보험 가입",
-        subtitle="보증금을 대신 돌려받는 안전장치",
-        items=[
-            JourneyItem(
-                text="전세보증금 반환보증에 가입하기",
-                why="집주인이 보증금을 못 돌려줘도 보증기관이 대신 돌려줘요",
-            ),
-        ],
-    ),
-    JourneyStage(
-        title="만기 전",
-        subtitle="계약 종료 준비",
-        items=[
-            JourneyItem(
-                text="만기 6주 전까지 갱신·퇴거 의사 알리기",
-                why="기한을 놓치면 원치 않게 계약이 자동 연장될 수 있어요",
-            ),
-        ],
-    ),
-    JourneyStage(
-        title="보증금 반환",
-        subtitle="보증금을 돌려받고 마무리",
-        items=[
-            JourneyItem(
-                text="보증금을 돌려받은 뒤 전출 신고하기",
-                why="보증금을 받기 전에 이사하면 대항력을 잃을 수 있어요",
-            ),
-        ],
-    ),
-]
-
-
-def journey_stages() -> list[JourneyStage]:
-    return list(_JOURNEY)
+# ── 계약 여정 단계는 2026-08-14(S-11)부터 `data/journey_stages.json`에 있다 ────────
+# 로더는 `services/journey.py`. 큰레이션 문구를 비개발 팀원이 직접 고칠 수 있게 옆으로 옮겼다
+# (cleanup-tracker.md "계약 여정 단계 → data/ 이관" 항목 완료).

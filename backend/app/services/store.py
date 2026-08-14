@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from .. import dummy_data
 from ..schemas.contract import CaseMatch, Report
+from .compare import RegistrySnapshot
 
 EXAMPLE_IDS = dummy_data.EXAMPLE_IDS  # {"dummy-example"} — 삭제 금지(403)
 
@@ -49,6 +50,26 @@ def remove(report_id: str) -> None:
     global _history
     _history = [r for r in _seeded() if r.id != report_id]
     _cases_cache.pop(report_id, None)
+    _snapshots.pop(report_id, None)
+
+
+# ── 등기부 스냅샷 (S-11 대조, 2026-08-14) ────────────────────────────────────
+# 대조는 **판정이 아니라 추출 결과**를 맞춰보는 것이라, 리포트만으로는 할 수 없다
+# (리포트에는 근저당 몇 건이 어떤 접수일로 잡혔는지가 남지 않는다). 그래서 분석할 때
+# 견줄 재료를 따로 남긴다. 실명은 담지 않는다(services/compare.py 참고).
+#
+# ⚠ 스냅샷이 없는 리포트 = 대조 기준으로 쓸 수 없는 리포트다. 이 기능 이전에 분석한
+#   이력과 예시 리포트가 여기 해당한다 — 앱은 `Report.comparable`로 미리 알고
+#   "기준 없음" 화면을 사진 촬영 **전에** 보여준다.
+_snapshots: dict[str, RegistrySnapshot] = {}
+
+
+def put_snapshot(report_id: str, snapshot: RegistrySnapshot) -> None:
+    _snapshots[report_id] = snapshot
+
+
+def get_snapshot(report_id: str) -> RegistrySnapshot | None:
+    return _snapshots.get(report_id)
 
 
 # ── 판례 카드 캐시 (E-3 라우터 통합, 2026-08-07) ─────────────────────────────

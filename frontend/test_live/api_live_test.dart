@@ -15,6 +15,7 @@
 //   판정값 자체는 백엔드 `tests/test_example_report.py`가 지킨다.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jeonse_ai/models/content_models.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/api_analysis_repository.dart';
 import 'package:jeonse_ai/repositories/api_content_repository.dart';
@@ -75,27 +76,33 @@ void main() {
     expect(groups.map((g) => g.riskLabel), contains('어떤 집이든 꼭'));
   });
 
-  test('여정: 7단계 제목이 앱 더미와 동일', () async {
+  test('여정: 9단계 + 대조 버튼 플래그 (2026-08-14 S-11 재설계)', () async {
     final stages = await content.journeyStages();
-    expect(stages.map((s) => s.title).toList(), [
-      '계약 전',
-      '계약 체결',
-      '잔금일',
-      '입주하고 나서 꼭 할 일',
-      '보증보험 가입',
-      '만기 전',
-      '보증금 반환',
-    ]);
+
+    expect(stages.length, 9);
+    expect(stages.first.title, '집 둘러보고 등기부 분석하기');
+    expect(stages.first.kind, JourneyStageKind.analysis);
+    // 등기부를 다시 떼는 단계는 2·3·4·6단계 — 이 화면의 존재 이유다
+    expect(stages.where((s) => s.compare).length, 4);
+    expect(stages.any((s) => s.dateKey == JourneyDateKey.balance), isTrue);
   });
 
-  test('용어: 목록 조회 / 부분 문자열 조회 / 범위 밖 → null(404)', () async {
+  test('용어: 목록 조회 / 사전 직격 / 판정 요구 거절 (2026-08-14 S-12)', () async {
     final terms = await content.glossaryTerms();
     expect(terms, isNotEmpty);
     expect(terms.map((t) => t.term), contains('신탁등기'));
 
-    final found = await content.lookupTerm('신탁등기가 뭐예요?');
-    expect(found!.term, '신탁등기');
-    expect(await content.lookupTerm('이 집 계약해도 돼요?'), isNull);
+    // ① 사전에 있는 용어 → 검수된 문장 그대로 (LLM 호출 0회)
+    final found = await content.askGlossary('신탁등기가 뭐예요?');
+    expect(found.term, '신탁등기');
+    expect(found.outOfScope, isFalse);
+    expect(found.source, '검수된 용어 사전');
+
+    // ② 판정 요구 → **200 + 거절**(404 아님). LLM에 닿기 전에 규칙이 막는다.
+    final refused = await content.askGlossary('이 집 계약해도 돼요?');
+    expect(refused.outOfScope, isTrue);
+    expect(refused.term, isNull);
+    expect(refused.answer, contains('안전도 리포트'));
   });
 
   test('예시 리포트 삭제 → 403 ApiException (계약 §3.4)', () async {

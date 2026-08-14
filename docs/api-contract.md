@@ -101,6 +101,7 @@
 | `highlightNotice` | string \| null | [표시] | 사진 묶음 안내 한 줄 — §9 |
 | `checkedNotes` | string[] | [표시] | "무엇을 찾아봤나" 요약 — §9 (기본 `[]`) |
 | `registryViewedAt` | string \| null | [표시] | 등기부 열람일시 `YYYY.MM.DD` — §9 |
+| `comparable` | boolean | [메타] | 이 분석을 **다음 등기부와 견줄 기준으로 쓸 수 있는가** — §2.9 (기본 `false`) |
 
 - **홈/마이 이력 카드**가 쓰는 필드: `id, alias, address, analyzedAt, grade, deposit, topRiskSummary`.
 - **손실 시뮬레이터**가 쓰는 필드: `alias, deposit, marketPrice, seniorDebtAmount` + `evidences`에서 `insurance` 항목의 `grade`(보증보험 가입 미확인 경고 판단). **슬라이더·보험 토글 계산은 앱에서 로컬 수행**(서버 호출 없음). 계산식은 E-4에서 서버 이관 검토.
@@ -121,6 +122,12 @@
 | `sourceText` | string \| null | [판정] | 판정 출처 (예: "HUG 공식 기준 등 확정 예정" — E-1에서 실제 출처로 교체) |
 | `actionLabel` | string \| null | [UI] | 다음 행동 버튼 라벨 (예: "중개사에게 물어볼 질문 보기", "시세 입력하기"). null이면 버튼 없음 |
 | `termGlossary` | object(map) | [설명] | `easyExplanation` 속 용어→툴팁 설명. 키=용어, 값=설명 문장 (예: `{"근저당권":"집주인이 …"}`) |
+| `explanationSource` | string? | [설명] | **이 카드의 설명 문장을 누가 썼는가** (2026-08-14 D26 추가 · additive). LLM이 쓴 문장이면 **실제 호출된 모델 문자열**(예: `"solar-pro2"`), 검증에 걸려 미리 준비한 문장이 나갔으면 `"준비된 문구"`. 없으면(옛 리포트) 앱이 종전 라벨 `자동 생성`을 쓴다 |
+
+- ⚠ `explanationSource`는 **판정 출처가 아니다.** 판정은 언제나 규칙 엔진이고 그 출처는 `sourceText`다.
+  설명 계층에만 해당하며, **카드마다 다를 수 있다** — 설명 폴백이 필드 단위라 한 리포트 안에서
+  어떤 카드는 모델 문장, 어떤 카드는 준비된 문구가 된다.
+- ⚠ 한 카드 안에서 경로가 섞이면 **`"준비된 문구"`로 내린다**(과대 표기 금지 · 보수 편향).
 
 - **위험 패턴 파생(중요)**: 판례·질문 엔드포인트가 쓰는 "위험 패턴"은 `evidences` 중 `grade ≠ 양호`인
   항목의 `id`를 아래로 매핑해 만든다. **앱은 이 파생을 하지 않아도 되며(서버가 리포트 id로 계산)**,
@@ -136,6 +143,33 @@
 | `result` | string | [설명] | 결과 (예: "보증금 대부분 손실") |
 | `commonPoint` | string | [설명] | 우리 매물과의 공통점 |
 
+**E-3 추가 (2026-08-07) — additive only.** 기존 5개 필드의 의미는 그대로다.
+
+| 필드 | 타입 | 출처 | 설명 |
+|---|---|---|---|
+| `sourceUrl` | string? | [메타] | 판결문 원문 링크. 지어내지 않았음을 사용자가 직접 검증하는 통로 |
+| `decided` | string? | [메타] | 선고일 |
+| `matchedTags` | string[] | [메타] | 이 판례가 우리 매물의 어떤 위험과 겹쳤는지. 서버 정렬 1순위 키 |
+| `advice` | string? | [큐레이션] | "이런 피해를 피하려면". **LLM이 만들거나 고치지 않는다** |
+| `curated` | bool | [메타] | 사람이 문구까지 검수했는지. 출처 확인(`source_verified`)과는 다른 축 |
+
+**읽기 보조 추가 (2026-08-14 D20·D23) — additive only.** 옛 앱은 두 필드를 무시해도 그대로 동작한다.
+
+| 필드 | 타입 | 출처 | 설명 |
+|---|---|---|---|
+| `termGlossary` | `{string: string}` | [큐레이션] | 본문에 등장한 어려운 말 → 쉬운 설명. **§2.2 `EvidenceItem.termGlossary`와 같은 구조·같은 규칙** |
+| `emphasis` | `{string: string[]}` | [설명] | `{필드명: [굵게 그릴 부분 문자열]}`. 필드명은 이 모델 이름 그대로 — `result` · `commonPoint` · `advice` |
+
+- `termGlossary`의 키는 **본문에 글자 그대로 있어야** 한다. 앱이 `indexOf`로 찾아 점선 밑줄을
+  붙이기 때문이다(근거 카드와 동일 전제). 서버는 검수된 용어(`terms.json` `verified=true`)만 내린다.
+- `emphasis`의 각 문자열도 **해당 필드 본문의 정확한 부분 문자열**이다. Solar가 고르고
+  서버가 검증한다(부분 문자열 일치 · 필드당 2개 이하 · 항목당 30자 이하 · 굵은 글자 합이 본문의 30% 이하).
+  하나라도 어기면 그 필드는 통째로 버리고 **금액·비율·기간 정규식 폴백**으로 내려간다.
+- ⚠ **두 필드 모두 본문을 바꾸지 않는다.** "어디를 어떻게 그릴지"만 가리키므로,
+  문구 변경이 금지된 `advice`에도 안전하게 붙는다. 못 찾으면 표시만 안 붙고 끝난다.
+- ⚠ 마크다운(`**굵게**`)을 본문에 심는 방식은 **쓰지 않는다** — 그러면 검수한 문장과
+  화면에 나가는 문장이 달라진다.
+
 ### 2.4 `QuestionGroup` / `QuestionItem` — 질문 생성기 화면
 ```
 QuestionGroup {
@@ -150,25 +184,102 @@ QuestionItem {
 }
 ```
 
-### 2.5 `GlossaryTerm` — 용어 챗봇 화면
+### 2.5 `GlossaryTerm` / `GlossaryAnswer` — 용어 챗봇 화면 (S-12)
+
+**`GlossaryTerm`** — 추천 칩 목록(`GET /api/glossary`)의 원소.
+
 | 필드 | 타입 | 출처 | 설명 |
 |---|---|---|---|
 | `term` | string | [메타] | 용어 (예: "신탁등기") |
 | `description` | string | [설명] | 쉬운 설명 |
 
-### 2.6 `JourneyStage` / `JourneyItem` — 계약 여정 체크리스트 화면
+**`GlossaryAnswer`** — 챗봇 답 하나(`GET /api/glossary/lookup`). 2026-08-14 추가.
+
+| 필드 | 타입 | 출처 | 설명 |
+|---|---|---|---|
+| `answer` | string | [설명] | 화면에 그대로 그릴 문장. **거절 문구도 여기 들어온다** |
+| `outOfScope` | bool | [메타] | true면 앱이 유도 버튼(리포트/분석)을 붙인다 |
+| `source` | string | [메타] | 이 문장을 누가 썼나 — `"검수된 용어 사전"` \| 실제 모델명 \| `"준비된 문구"` |
+| `termGlossary` | `{용어: 설명}` | [설명] | 답변에 등장한 어려운 말 (근거 카드와 **같은 메커니즘**) |
+| `term` | string \| null | [메타] | 사전 직격일 때만 그 용어명. 자연어 답변·거절이면 null |
+| `description` | string | [설명] | `answer`의 거울 — **옛 앱 호환용**(옛 앱은 `{term, description}`을 기대) |
+
+- **거절도 답이다.** 예전에는 404가 나가고 앱이 거절 문구를 하드코딩했다. 이제 사전 답·LLM 답·거절이 **같은 모양**으로 나가고, 화면 문구는 전부 서버가 정한다.
+- `source`는 **뭉뚱그리지 않는다** — 'AI 생성' 같은 말 대신 실제 모델 문자열을 쓴다(2026-08-14 D26과 같은 원칙). 앱은 이 값을 답변 아래 회색 한 줄로 그대로 보여준다.
+
+### 2.6 `JourneyStage` / `JourneyItem` — 계약 여정 화면 (S-11)
 ```
 JourneyStage {
-  title:    string,         // [UI] 단계명 (예: "잔금일")
-  subtitle: string,         // [UI] 부제 (예: "나머지 보증금을 보내는 날")
-  items:    JourneyItem[]
+  title:    string,         // [UI] 단계명 (예: "잔금 보내는 날")
+  subtitle: string,         // [UI] 부제 (예: "가장 큰 돈이 나가는 날")
+  items:    JourneyItem[],
+  // ── 2026-08-14 S-11 재설계로 더해진 칸. 전부 선택이며 옛 앱은 무시해도 동작한다. ──
+  kind:     string,         // [UI] "analysis" | "action" | "later"  (기본 "action")
+  compare:  boolean,        // [UI] 이 단계에 [다시 떼서 대조하기]를 붙일지 (기본 false)
+  askDates: boolean,        // [UI] 이 단계에서 계약 일정 입력을 권할지 (기본 false)
+  agency:   string | null,  // [UI] 어디서 하는 일인지 칩 (예: "주민센터에서")
+  dateKey:  string | null   // [UI] 붙는 일정 칸 — downPayment|contract|balance|moveIn|moveInNext
 }
 JourneyItem {
   text: string,             // [UI] 할 일
   why:  string              // [설명] "왜 해야 하나요?" 펼침 설명
 }
 ```
-- 여정 데이터는 **정적**(모든 사용자 동일). **체크 상태는 서버가 아니라 앱 로컬에 저장**한다(계약 대상 아님).
+- 여정 데이터는 **정적**(모든 사용자 동일)이고 정본은 `backend/data/journey_stages.json`이다(비개발 팀원이 직접 편집).
+- **날짜 값은 계약에 없다.** 잔금일·이사일은 **기기에만 저장**하고(S-11 State Management), 어디까지 왔는지는 앱이 그 날짜로 계산한다. 서버는 "무엇을 언제 해야 하는가"라는 단계 정의만 준다.
+- `kind="analysis"` 단계의 완료는 상태가 아니라 **"분석 기록이 있다"는 사실**이다 — 사용자가 바꿀 수 없다.
+- `dateKey="moveInNext"`(입주 다음 날)는 **사용자에게 묻지 않는다.** 앱이 이사일 +1일로 계산한다.
+
+### 2.9 `CompareResult` — 등기부 대조 (2026-08-14 추가 · S-11)
+
+**왜 있나**: 등기부는 뗀 시점의 스냅샷이라, 계약 직전에 새로 잡힌 근저당은 이전 서류에
+없다(실제 전세사기 수법). 그래서 잔금 전에 **다시 떼어 기준 서류와 맞춰보는** 기능이다.
+
+**무엇이 아닌가**: 새 판정이 아니다. 두 리포트의 등급은 각자 규칙 엔진이 이미 낸 것이고,
+대조는 **그 둘과 추출 항목을 나란히 놓기만** 한다. LLM은 이 경로에 개입하지 않는다.
+
+```
+CompareResult {
+  result:        string,        // "changed" | "partial" | "no_baseline" | "different_property"
+  headline:      string,        // [규칙] 결론 한 줄
+  subline:       string | null, // [규칙] 몇 가지를 맞춰봤는지 등
+  baseline:      CompareDoc,    // 기준이 된 서류
+  current:       CompareDoc,    // 이번에 뗀 서류 (다른 집이면 날짜만 채워진다)
+  daysBetween:   integer | null,// 두 서류를 뗀 날의 차이. 한쪽이라도 못 읽으면 null
+  comparedCount: integer,       // 맞춰본 항목 수
+  totalCount:    integer,       // 맞춰보려던 항목 수 (집주인·빚·압류·안전도 = 4)
+  rows:          CompareRow[],
+  notices:       string[],      // 대조 자체에 대한 고지 (같은 집인지 확인 못 함 등)
+  identityBasis: string | null, // 같은 집인지 무엇으로 확인했나 — "고유번호" | "소재지" | null
+  newReportId:   string | null  // 이번 서류로 만들어진 리포트 id. **다른 집이면 null**
+}
+CompareDoc { reportId, alias, address, viewedAt, analyzedAt, grade, pageCount }  // 전부 nullable
+CompareRow {
+  kind:        string,        // added|removed|changed|same|unknown|grade
+  tone:        string,        // danger|caution|neutral (색은 앱이 토큰으로 매핑)
+  marker:      string,        // 카드 왼쪽 원 안 글자: + − ≠ = ? !
+  title:       string,
+  subtitle:    string | null,
+  detail:      string | null, // 회색 상세 박스(줄바꿈으로 여러 줄). 첫 줄 = 건수·금액
+  receiptDate: string | null, // 새로 생긴 항목의 접수일 YYYY-MM-DD (앱이 계약 일정과 견줌)
+  gradeBefore: string | null,
+  gradeAfter:  string | null,
+  action:      string | null, // "recapture" | "analyze"
+  actionLabel: string | null
+}
+```
+
+네 갈래가 각각 언제 나오나 (**보수적 편향**이 이 표에 그대로 들어 있다):
+
+| result | 조건 | 화면이 하는 일 |
+|---|---|---|
+| `changed` | 같은 집 + 모든 항목을 맞춰봄 | 변한 것과 **안 변한 것을 모두** 보여준다 |
+| `partial` | 못 읽은 항목이 있거나 같은 집인지 확인 못 함 | 못 본 것을 `unknown`으로 말하고 "달라진 게 없다는 뜻이 아니에요" + 행동 버튼 |
+| `no_baseline` | 기준 리포트에 추출 스냅샷이 없음(이 기능 이전 이력) | 비난이 아니라 초대 톤. **사진을 받기 전에** 나온다 |
+| `different_property` | 고유번호(없으면 소재지·전용면적)가 다름 | **수치를 아예 렌더하지 않는다.** 이번 분석은 이력에서도 지운다 |
+
+- 못 읽은 항목은 `same`이 아니라 **`unknown`**이다. 침묵이 "이상 없음"으로 읽히는 것이 이 화면의 가장 나쁜 실패다.
+- 스냅샷에 **소유자 실명을 저장하지 않는다.** 비교는 프로세스마다 새로 만드는 소금을 섞은 해시로 하고, 화면에는 `김○○`만 나간다.
 
 ### 2.8 시세 출처 (2026-08-03 추가 — **additive only**)
 
@@ -264,20 +375,52 @@ MarketPriceAlternative {
 - **참고**: 실단계 E-2에서 분석 결과 기반 LLM 생성으로 교체(판정 변경 금지). 위험 패턴 파생은 §2.2 note.
 
 ### 3.7 `GET /api/journey-stages` — 계약 여정 단계 · **비회원 허용**
-- **목적**: 계약 여정 체크리스트의 정적 단계 목록.
+- **목적**: 계약 여정의 정적 단계 목록(9단계).
 - **인증**: 불필요.
-- **응답 200**: `JourneyStage[]` (모든 사용자 동일). 체크 상태는 앱 로컬 저장이라 응답에 없음.
+- **응답 200**: `JourneyStage[]` (모든 사용자 동일). **날짜·진행 상태는 응답에 없다** — 일정은 기기에만 저장한다(§2.6).
+- **데이터 정본**: `backend/data/journey_stages.json` (로더 `app/services/journey.py`). 파일이 깨지면 한국어 로그 + 최소 단계로 응답한다 — 여정 탭이 빈 화면이 되지 않게.
+
+### 3.10 `POST /api/reports/{id}/compare` — 등기부 대조 · **인증 필요**
+- **목적**: 기준 리포트의 등기부와 **이번에 뗀 등기부**를 맞춰본다 (S-11 화면 6).
+- **인증**: 개발 모드 통과(§1.2).
+- **요청**: `multipart/form-data`, 필드 `files`(이미지 여러 장). **사진 없이도 호출할 수 있다.**
+- **처리**: 새 사진을 그대로 분석 파이프라인에 태워(**기준과 같은 보증금·시세**) 새 리포트를 만들고, 그 추출 스냅샷을 기준 스냅샷과 견준다. 등급 변화를 말할 수 있는 이유가 이것이다 — 두 등급 모두 규칙 엔진 산출물이다.
+- **응답 200**: `CompareResult`(§2.9).
+  - 기준 스냅샷이 없으면 **사진을 읽지 않고** `no_baseline`으로 답한다(찍게 해 놓고 마지막에 못 한다고 말하지 않기 위해 — 앱은 `Report.comparable`로 미리 안다).
+  - `different_property`면 이번 분석을 **이력에서 지운다**. 기준 매물의 보증금으로 계산된 등급이라 그 집의 판정으로 쓸 수 없다.
+- **에러**: **400** 기준은 있는데 사진이 없음 / **404** 없는 리포트 / **413** 파일 초과 / **402·429** Upstage 크레딧·한도(분석과 동일) / **503** 이번 서류의 스냅샷을 남기지 못함.
+- **비용**: 대조 1회 = 분석 1회(IE + OCR). 그래서 기준이 없을 때는 호출 전에 걸러진다.
 
 ### 3.8 `GET /api/glossary` — 용어 목록(추천 칩) · **비회원 허용**
 - **목적**: 용어 챗봇 진입 시 추천 질문 칩.
 - **인증**: 불필요.
 - **응답 200**: `GlossaryTerm[]`.
 
-### 3.9 `GET /api/glossary/lookup?q={query}` — 용어 조회 · **비회원 허용**
-- **목적**: 챗봇에 입력한 질문에서 용어를 찾아 설명 반환. 못 찾으면 "범위 밖"으로 거절(가드레일).
+### 3.9 `GET /api/glossary/lookup?q={query}` — 챗봇 질문 · **비회원 허용**
+- **목적**: 질문 하나에 답 하나. 용어·제도 설명만 하고, 판정·조언은 **거절**한다(가드레일).
 - **인증**: 불필요.
 - **요청**: 쿼리스트링 `q` = 사용자 입력 문자열.
-- **응답 200**: `GlossaryTerm` 하나(찾음). **404**: 용어 아님 → **범위 밖**. 앱은 "저는 용어를 설명해 드리는 챗봇이에요…" 거절 문구를 띄운다(판정·조언 생성 안 함).
+- **응답 200**: `GlossaryAnswer`(§2.5). **404**: `q`가 비어 있을 때만(클라이언트 오류).
+  - 2026-08-14 변경: **범위 밖도 404가 아니라 200 + `outOfScope=true`**로 나간다.
+    앱이 거절 문구를 하드코딩하던 것을 없애기 위해서다(화면 문구는 서버가 정한다).
+    옛 앱 호환을 위해 404 처리 경로는 앱·서버 양쪽에 남겨 두었다.
+
+**통과 순서 (구현: `app/services/chat.py`)** — 이 순서가 설계의 전부다.
+
+| 층 | 무엇 | LLM 호출 | 결과 |
+|---|---|---|---|
+| **L1** | 판정·조언·법률 요구 차단 (정규식) | **0회** | 거절 (`준비된 문구`) |
+| **L2** | 검수된 용어 사전 직격 | **0회** | 사전 문장 **그대로** (`검수된 용어 사전`) |
+| **L3** | 도메인 게이트 (terms.json에서 생성한 키워드) | **0회** | 부동산 얘기가 아니면 거절 |
+| **L4** | Solar 설명 생성 + 검증 | 1회 | 통과분만 (`source`=모델명) |
+| **L5** | 용어 툴팁 부착 (`termGlossary`) | — | 세 경로가 **합류한 뒤 한 곳에서** |
+
+- **L1이 맨 앞인 이유**: "근저당 잡힌 이 집, 계약해도 돼요?"는 사전에도 걸리고 도메인 키워드도 있다. 판정 요구 게이트가 뒤에 있으면 그대로 새 나간다. **거절을 LLM에게 맡기지 않는다** — 프롬프트는 언젠가 뚫리지만 정규식은 안 뚫린다.
+- **L4 검증** (`text_guard.check_chat`): 금지 표현·등급 단어(리포트와 **같은 패턴**) + 챗봇 전용 3개 —
+  ⑴ **숫자 전면 금지**(챗봇에는 대조할 재료가 없어 화이트리스트를 만들 수 없다. 지어낸 `80%`가 판정 계층과 충돌하는 것을 구조로 막는다) ⑵ 200자 상한(넘으면 **자르지 않고 버린다**) ⑶ `out_of_scope=true`인데 answer가 있으면 answer를 버린다.
+- **출력 스키마에 등급·점수·확률·금액 필드가 없다**(`extra="forbid"`). 리포트와 같은 경계다.
+- **스위치**: `.env`의 `CHATBOT_LLM=off`면 L4를 통째로 건너뛴다 = AI 연결 이전과 완전히 같은 동작(사전 + 거절). 키 없음·타임아웃·JSON 깨짐·검증 실패도 전부 같은 자리로 떨어진다.
+- **모델**: `LLM_CHAT_PROVIDER`(없으면 `LLM_EXPLAIN_PROVIDER` 상속, 기본 `upstage`) · temperature **0.3**(설명 생성 0.6보다 낮다 — 재료가 없어 창작 여지를 줄인다) · max_tokens 400.
 
 ---
 
@@ -293,8 +436,9 @@ MarketPriceAlternative {
 | S-08 판례 매칭 | `GET /api/reports/{id}/cases` | 비회원 허용 |
 | S-09 손실 시뮬레이터 | `GET /api/reports/{id}` (계산은 앱 로컬) | 비회원 허용 |
 | S-10 질문 생성기 | `GET /api/reports/{id}/questions` | 비회원 허용 |
-| S-11 계약 여정 체크리스트 | `GET /api/journey-stages` | 비회원 허용 |
-| S-12 용어 챗봇 | `GET /api/glossary`, `GET /api/glossary/lookup?q=` | 비회원 허용 |
+| S-11 계약 여정 (매물 타임라인) | `GET /api/journey-stages`, `GET /api/reports` | 비회원 허용 |
+| S-11 등기부 대조 (로딩·결과 4갈래) | `POST /api/reports/{id}/compare` | **인증 필요** |
+| S-12 용어 챗봇 (칩 + 자연어 질문) | `GET /api/glossary`, `GET /api/glossary/lookup?q=` | 비회원 허용 |
 | S-13 마이/설정 | `GET /api/reports`, `DELETE /api/reports/{id}` | 조회=비회원 허용 / 삭제=인증 필요 |
 
 **인증 필요는 `POST /api/analyze`와 `DELETE /api/reports/{id}` 둘.** 나머지는 전부 비회원 허용.

@@ -18,7 +18,7 @@ import pytest
 from app.schemas.internal import MoneyEntry, Owner, RegistryEntry, RegistryExtract
 from app.services import highlight
 from app.services.ocr import OcrResult
-from app.services.ocr_layout import OcrPage, group_lines
+from app.services.ocr_layout import OcrPage, build_items, group_lines
 
 from tests.test_highlight import (
     PAGE_H,
@@ -324,13 +324,17 @@ def test_텍스트_감지_3종은_판정에_쓰이지_않는다():
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def test_주소와_서류종류와_면적을_짚어준다():
+def test_주소와_서류종류를_짚어준다():
+    """[2026-08-14 D16] 예전 이름은 `..._면적을_짚어준다`였다.
+
+    전용면적은 매칭은 그대로 하되 **화면 표시만 껐다**(`highlight._DISABLED_KINDS`).
+    그래서 이 테스트에서 면적 관련 단언을 떼고, 그 몫은 아래
+    `test_전용면적은_매칭은_되지만_화면에는_표시하지_않는다`가 이어받는다.
+    """
     extract = extract_with(address="서울특별시 서초구 서초동 123-4", exclusive_area_sqm=39.52)
     result = highlight.build_highlights(extract, as_result(header_page()))
     assert "address" in kinds_of(result)
     assert "doc_title" in kinds_of(result)
-    assert "area" in kinds_of(result)
-    assert "39.52㎡" in marks(result, "area")[0].title
     assert "말소사항 포함" in marks(result, "doc_title")[0].body
 
 
@@ -348,7 +352,7 @@ def test_면적_숫자가_사진에_없으면_짚지_않는다():
 
 
 @pytest.mark.parametrize("area_text, area", [("55.56m2", 55.56), ("39.52m2", 39.52)])
-def test_면적_단위가_ASCII_m2로_읽혀도_짚어준다(area_text: str, area: float):
+def test_면적_단위가_ASCII_m2로_읽혀도_매칭에_성공한다(area_text: str, area: float):
     """실측(2026-07-29 진단): Document OCR은 `㎡`(U+33A1)를 **한 번도** 내보내지 않는다.
 
     저장된 원응답 두 건(`out/runs/20260729_141708_879` 4쪽 · `20260728_225552_594` 5쪽)의
@@ -358,12 +362,31 @@ def test_면적_단위가_ASCII_m2로_읽혀도_짚어준다(area_text: str, are
     단위 정규식이 `㎡|m²`뿐이면 면적 줄이 `continue`로 걸러져 **숫자를 보지도 못하고**
     탈락한다 — 조명·해상도가 다른 두 문서가 똑같이 실패한 이유다. 사진 품질 문제가
     아니라 규칙 버그이므로 여기서 못 박는다.
+
+    [2026-08-14 D16] 예전에는 `build_highlights` 출력에 `area`가 있는지로 확인했다.
+    지금은 표시가 꺼져 있어 출력으로는 볼 수 없으므로, **매칭 함수를 직접** 부른다.
+    이 진단으로 고친 규칙을 되돌리지 않았다는 것이 여기서 확인되어야 한다 —
+    D16은 "매칭을 없앤 것"이 아니라 "표시만 끈 것"이기 때문이다.
     """
-    extract = extract_with(exclusive_area_sqm=area)
-    result = highlight.build_highlights(extract, as_result(header_page(area_text=area_text)))
-    assert "area" in kinds_of(result)
-    # 제목은 IE 값 기준이라 표기는 `㎡`를 그대로 유지한다 (사진 표기와 무관).
-    assert f"{area:g}㎡" in marks(result, "area")[0].title
+    page = header_page(area_text=area_text)
+    matched = highlight._match_area([page], area)
+    assert not isinstance(matched, str), f"ASCII m2 면적 매칭이 깨졌다: {matched}"
+    page_index, box = matched
+    assert page_index == 0 and box[2] > box[0]
+
+
+def test_전용면적은_매칭은_되지만_화면에는_표시하지_않는다():
+    """[2026-08-14 D16] `_DISABLED_KINDS`로 끈 종류는 **번호를 매기기 전에** 빠진다.
+
+    뒤에서 빼면 뱃지가 ①③④…로 비어 사용자는 "표시 하나가 사라졌다"로 읽는다.
+    되돌리려면 `_DISABLED_KINDS`를 비우면 되고, 그때 이 테스트가 먼저 깨져야 한다.
+    """
+    assert "area" in highlight._DISABLED_KINDS
+    extract = extract_with(address="서울특별시 서초구 서초동 123-4", exclusive_area_sqm=39.52)
+    result = highlight.build_highlights(extract, as_result(header_page()))
+    assert "area" not in kinds_of(result)
+    # 번호는 1부터 빈칸 없이 이어진다
+    assert [h.badge for h in result.highlights] == list(range(1, len(result.highlights) + 1))
 
 
 def test_면적_단위가_없는_줄의_숫자는_여전히_짚지_않는다():
@@ -462,8 +485,10 @@ def test_표시는_등기부_읽는_순서로_번호가_매겨진다():
         as_result(header_page(0), gap_gu_claims_page(1), eul_gu_lease_page(2), footer_page(3)),
     )
     order = kinds_of(result)
+    # [2026-08-14 D16] `area`는 `_DISABLED_KINDS`로 꺼져 이 순서에서 빠졌다.
+    # 순서 자체(표제부 → 표지 → 갑구 → 을구 → 문서 상태 → 꼬리말)는 그대로다.
     expected = [
-        "address", "area", "separate_land", "doc_title",
+        "address", "separate_land", "doc_title",
         "seizure", "lease_registration", "joint_collateral",
         "pending_application", "viewed_at",
     ]
@@ -509,6 +534,93 @@ def unbound_cancel_page() -> OcrPage:
         W("2021년9월9일", 269, 400, 95),
     ])
     return make_page(0, rows)
+
+
+def canceled_text_rule_page() -> OcrPage:
+    """을구 — 근저당(순위1)에 `공동담보목록`이 붙어 있고, 그 순위1이 **말소**된 상태.
+
+    2026-08-14 실기기에서 실제로 나온 모양이다(서초동 샘플 4쪽): 말소된 근저당 항목의
+    `공동담보목록 제2020-3966호` 줄에 주황 형광펜이 칠해졌다. 종이에는 빨간 취소선이
+    그어져 있지만 OCR은 선을 읽지 못하므로(docs/ocr-highlight-findings.md §2.5),
+    텍스트 규칙이 말소를 보지 않으면 **취소선 위에 형광펜을 칠하게 된다.**
+    """
+    rows = [section_row("을구", 40), header_row(90)]
+    rows.append([
+        W("1", 66, 150, 11), W("근저당권설정", 117, 150, 91),
+        W("2020년9월7일", 269, 150, 95), W("설정계약", 391, 150, 60),
+        W("채권최고액", 515, 150, 74), W("금500,000,000원", 606, 150, 120),
+    ])
+    rows.append([W("공동담보목록", 200, 210, 92), W("제2020-3966호", 300, 210, 100)])
+    rows.append([
+        W("2", 66, 280, 11), W("1번근저당권설정등기말소", 117, 280, 170),
+        W("2021년4월22일", 269, 280, 95),
+    ])
+    return make_page(0, rows)
+
+
+def test_말소된_항목에_붙은_공동담보에는_칠하지_않는다():
+    """[2026-08-14 D17] 텍스트 규칙 계열의 말소 미확인 — 이 배치의 최우선 수정.
+
+    순위 항목 경로(`_match_ranked`)는 처음부터 말소분을 걸렀는데, OCR 텍스트로만 잡는
+    3종(별도등기·공동담보·신청사건)은 **말소 여부를 아예 보지 않았다.** 그래서 이미
+    말소된 근저당에 딸린 `공동담보목록`이 그대로 칠해졌다.
+    """
+    result = highlight.build_highlights(extract_with(), as_result(canceled_text_rule_page()))
+    assert "joint_collateral" not in kinds_of(result), "말소된 항목의 공동담보가 칠해졌다"
+
+
+def test_말소되지_않은_항목의_공동담보는_그대로_칠한다():
+    """반대 방향 방어 — 말소를 보기 시작했다고 유효한 공동담보까지 지우면 미탐이 된다."""
+    rows = [section_row("을구", 40), header_row(90)]
+    rows.append([
+        W("1", 66, 150, 11), W("근저당권설정", 117, 150, 91),
+        W("2020년9월7일", 269, 150, 95), W("설정계약", 391, 150, 60),
+        W("채권최고액", 515, 150, 74), W("금500,000,000원", 606, 150, 120),
+    ])
+    rows.append([W("공동담보목록", 200, 210, 92), W("제2020-3966호", 300, 210, 100)])
+    result = highlight.build_highlights(extract_with(), as_result(make_page(0, rows)))
+    assert "joint_collateral" in kinds_of(result)
+
+
+def separate_land_canceled_page() -> OcrPage:
+    """표시번호2 `별도등기 있음` + 표시번호3 `2번 별도등기 중 일부 말소`.
+
+    실측(서초동 샘플 2쪽 표제부 대지권의 표시)을 그대로 옮긴 모양이다. 핵심은
+    **말소 기재가 등기목적 칸 밖에 있다**는 점이다 — 대지권 표는 컬럼이 갑구·을구
+    헤더와 어긋나 `item.purpose`가 통째로 빈다. 그래서 `_apply_cancellations`
+    (등기목적 칸만 본다)는 이 말소를 **보지 못하고**, 순위2는 '유효'로 남는다.
+    줄 원문까지 봐야 잡히는 자리다.
+    """
+    rows = [header_row(90)]
+    rows.append([
+        W("2", 66, 150, 11), W("별도등기", 117, 150, 62), W("있음", 190, 150, 32),
+    ])
+    rows.append([
+        W("3", 66, 220, 11),
+        # 등기목적 밴드(순위번호 오른쪽 ~ 접수 왼쪽) **바깥**에 둔다 — 실제 대지권 표와 같다
+        W("2번별도등기중일부말소", 400, 220, 170),
+        W("별도등기", 600, 220, 62), W("있음", 670, 220, 32),
+    ])
+    return make_page(0, rows)
+
+
+def test_다른_줄이_지목한_말소는_등기목적_칸_밖에_있어도_잡는다():
+    """[2026-08-14 D17] `2번 별도등기 중 일부 말소`가 순위2를 지목하고 있다.
+
+    1차 수정에서 이게 살아남았던 이유가 한 글자였다: 줄로 이어붙이면 순위번호가
+    등기목적에 붙어 `3` + `2번…말소` → `32번…말소`가 되고, `(\\d{1,3})번`이 욕심껏
+    `32`를 집어 **있지도 않은 순위32**가 말소된 것으로 읽혔다. 그래서 훑기 전에
+    순위번호 word를 뺀다(`_canceled_by_line_text`).
+    """
+    assert (
+        highlight._canceled_by_line_text(
+            build_items([separate_land_canceled_page()])
+        )
+        # 구역 머리가 없는 합성 페이지라 구역은 '미상'이다. 순위가 '2'로 읽히는 것이 핵심.
+        == {("미상", "2")}
+    )
+    result = highlight.build_highlights(extract_with(), as_result(separate_land_canceled_page()))
+    assert "separate_land" not in kinds_of(result), "말소된 별도등기 기재가 칠해졌다"
 
 
 def test_말소를_못_가려낸_상태면_2앵커_종류도_막는다():

@@ -21,6 +21,7 @@ from ..schemas.internal import Grade, PriceProvenance, RegistryExtract, RuleVerd
 from . import (
     artifacts,
     cancellation,
+    compare,
     cross_check,
     document_parse,
     explanation,
@@ -147,8 +148,14 @@ def _build(
         # LLM은 설명 문장만 — 실패 시 내부에서 폴백으로 완성돼 돌아온다(리포트 항상 완성)
         explanation_result = explanation.generate(verdict, report_id=resolved_id)
     else:
+        _forced = fallback_texts.build(verdict)
         explanation_result = explanation.ExplanationResult(
-            texts=fallback_texts.build(verdict), source="폴백(강제)"
+            texts=_forced,
+            source="폴백(강제)",
+            # LLM을 아예 부르지 않은 경로다 — 모든 카드가 준비된 문구다(D26).
+            evidence_sources={
+                eid: explanation.FALLBACK_SOURCE_LABEL for eid in _forced["evidences"]
+            },
         )
     texts = explanation_result.texts
 
@@ -182,6 +189,9 @@ def _build(
                 sourceText=ev.source_text,  # [판정]
                 actionLabel=t["action_label"],  # [UI]
                 termGlossary=t["term_glossary"],  # [설명]
+                # [설명 출처 · D26] 이 카드의 문장을 모델이 썼는지 준비된 문구인지.
+                # 카드마다 다를 수 있다(설명 폴백은 필드 단위다 — explanation.py 참고).
+                explanationSource=explanation_result.evidence_sources.get(ev.id),
             )
         )
 
@@ -515,6 +525,22 @@ def analyze(
     # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
     # 2026-07-28 실기기 500이 정확히 이 모양이었다(리포트 완성 → 마지막 문장에서 사망).
     # 그래서 이 아래 전부를 감싼다 — 실패해도 사용자는 리포트를 받는다.
+    try:
+        # 다음에 등기부를 다시 뗐을 때 견줄 **기준**을 남긴다 (S-11 대조).
+        # 실패해도 이번 리포트는 그대로 나간다 — 대조를 못 하게 될 뿐이고,
+        # 그 사실은 `comparable=False`로 앱에 정직하게 전달된다.
+        store.put_snapshot(
+            report.id,
+            compare.build_snapshot(
+                extract,
+                report=report,
+                page_count=len(images),
+                manual_market_price=market_price,
+            ),
+        )
+        report.comparable = True
+    except Exception:  # noqa: BLE001
+        _log.error("[대조] ⚠ 기준 스냅샷을 남기지 못했습니다 — 이 리포트는 대조 기준이 될 수 없어요", exc_info=True)
     try:
         store.add(report)
     except Exception:  # noqa: BLE001 — 이력 저장 실패로 이번 분석을 잃지 않는다

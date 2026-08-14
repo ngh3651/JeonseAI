@@ -63,6 +63,9 @@ from .ocr_layout import (
     build_items,
     check_document,
 )
+# 'N번○○말소' 대상 순위를 읽는 정규식. **한 벌만 둔다** — 여기서 다시 쓰면 두 곳이
+# 갈라져 "말소를 보는 눈"이 경로마다 달라진다(그 갈림이 바로 D17의 사고였다).
+from .ocr_layout import _CANCEL_TARGET as CANCEL_TARGET_RE
 
 _log = logging.getLogger("jeonseai")
 
@@ -75,6 +78,23 @@ _log = logging.getLogger("jeonseai")
 # ⚠ 이건 **표시 상한이지 판정 상한이 아니다.** 잘린 항목도 리포트의 '근거 살펴보기'에는 전부
 #   반영돼 있고, 잘렸다는 사실을 `checkedNotes`로 사용자에게 반드시 말한다(침묵 금지).
 MAX_MARKS_PER_KIND = 5
+
+# ── 화면에서 끈 표시 종류 — **지우지 않고 끈다** ──────────────────────────────
+#
+# [D16 · 2026-08-14] `area`(전용면적)를 껐다.
+#
+# 왜: 전용면적은 위험이 아니라 '대조할 곳'인데, 실기기에서 표제부 한복판의
+# `39.52㎡`에 형광펜·번호 뱃지·하단 카드가 전부 붙어 같은 화면의 위험 표시와
+# 시선을 나눠 가졌다. 게다가 안내 문구("계약서에 적힌 면적과 같은 숫자인지
+# 확인하세요")는 **계약서가 아직 없는 사람**에게는 그 자리에서 할 수 없는 일이다.
+# 가리키는 곳을 줄여 따져볼 곳에 시선이 모이게 한다.
+#
+# ⚠ **매칭을 없앤 것이 아니다.** `_match_area`와 2026-07-29 진단(A절)에서 고친
+#   ASCII `m2` 단위 규칙은 그대로 살아 있고, 그 규칙의 테스트도 그대로다.
+#   여기서는 **매칭에 성공한 후보를 표시 목록에서 뺄 뿐**이다.
+# ⚠ 되돌리는 법: 이 집합을 `frozenset()`으로 비우면 끝이다. 다른 곳은 손대지 않았다.
+# ⚠ 뱃지 번호는 이 필터 **뒤에** 매겨진다(아래 ⑤) — ②가 비어 ①③④…가 되지 않는다.
+_DISABLED_KINDS: frozenset[str] = frozenset({"area"})
 
 
 def _rx(pattern: str) -> re.Pattern[str]:
@@ -382,6 +402,16 @@ class TextRule:
     negative: re.Pattern[str] | None = None
 
 
+# 말소 표식 — 텍스트 규칙이 **취소선 그어진 기재를 칠하지 않도록** 보는 글자.
+# 넓게 잡는다(= 애매하면 안 칠한다). 이 판정은 표시만 줄이고 등급·점수와 무관하다.
+_CANCEL_HINT = _rx(r"말소")
+# ⚠ 다만 **모든 등기부에 인쇄되는 상투구**는 말소 표식이 아니다.
+#   표지  : "등기사항전부증명서(**말소사항** 포함)"
+#   꼬리말: "* 실선으로 그어진 부분은 **말소사항**을 표시함."
+#   이 둘을 빼지 않으면 표지·꼬리말에 걸리는 표시 종류가 영영 사라진다
+#   (같은 함정을 `ocr_layout._CANCEL_ANY`가 2026-07-27에 이미 한 번 밟았다).
+_CANCEL_BOILERPLATE = _rx(r"말소사항")
+
 _TEXT_RULES: tuple[TextRule, ...] = (
     TextRule("separate_land", _rx(r"별도등기"), "땅에 따로 걸린 빚 (토지 별도등기)",
              negative=_rx(r"없음|없는")),
@@ -621,10 +651,81 @@ def _match_ranked(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+def _line_owners(items: list[RegistryItem]) -> dict[tuple[int, int], RegistryItem]:
+    """(페이지, 줄) → 그 줄이 속한 등기 항목. 표 밖의 줄은 키가 없다."""
+    owners: dict[tuple[int, int], RegistryItem] = {}
+    for item in items:
+        for page_index, _, line in item.lines:
+            owners[(page_index, line.index)] = item
+    return owners
+
+
+def _canceled_by_line_text(items: list[RegistryItem]) -> set[tuple[str, str]]:
+    """줄 **원문**에서 'N번○○말소'를 훑어 (구역, 순위) 말소 집합을 만든다.
+
+    `_apply_cancellations`(ocr_layout)가 이미 같은 일을 하는데 왜 또 하나:
+    그쪽은 **등기목적 칸 텍스트**(`item.purpose`)만 보고, 대상도 갑구·을구로 한정돼 있다.
+    표제부(대지권의 표시)는 컬럼 밴드가 갑구·을구 헤더와 달라 `purpose`가 통째로 비고,
+    구역 자체도 판정 대상에서 빠져 있다 — 그래서 `2번 별도등기 중 일부 말소`가
+    기록돼 있는데도 표제부 순위2가 '유효'로 남았다(2026-08-14 D17 실측).
+
+    ⚠ **이 결과는 표시 억제에만 쓴다.** `RegistryItem.canceled`를 건드리지 않으므로
+      `cancel_reliable`·`money_allowed`·순위 항목 매칭은 조금도 영향받지 않는다.
+      즉 이 함수는 형광펜을 **덜 칠하게만** 할 수 있다(보수적 편향과 같은 방향).
+
+    ⚠ 훑기 전에 **순위번호 word를 뺀다.** 표는 순위번호와 등기목적이 다른 칸인데
+      줄로 이어붙이면 한 덩어리가 된다: `3` + `2번별도등기중일부말소` → `32번…말소`.
+      그러면 `(\\d{1,3})번`이 욕심껏 `32`를 집어 **있지도 않은 순위32가 말소됐다**가
+      되고, 정작 말소된 순위2는 유효로 남는다(실측 — 이 한 글자 때문에 D17의 ③이
+      1차 수정에서 살아남았다). `_apply_cancellations`가 이 함정을 피하는 이유도
+      같다 — 그쪽은 등기목적 칸(`purpose`)만 보므로 순위번호가 애초에 안 섞인다.
+    """
+    canceled: set[tuple[str, str]] = set()
+    for item in items:
+        for page_index, _, line in item.lines:
+            words = line.words
+            if page_index == item.rank_page_index and line.index == item.rank_line_index:
+                words = [w for w in words if w.box != item.rank_box]
+            for m in CANCEL_TARGET_RE.finditer("".join(w.text for w in words)):
+                canceled.add((item.section, m.group(1)))
+    return canceled
+
+
 def _match_text_rule(
-    rule: TextRule, pages: list[OcrPage]
+    rule: TextRule,
+    pages: list[OcrPage],
+    items: list[RegistryItem],
 ) -> list[tuple[int, tuple[float, float, float, float]]]:
-    """문구가 인쇄된 자리들을 찾는다. 같은 문구가 여러 쪽에 있으면 전부 돌려준다."""
+    """문구가 인쇄된 자리들 중 **말소되지 않은 것만** 돌려준다.
+
+    ── 2026-08-14 D17: 여기가 비어 있었다 ─────────────────────────────────────
+    순위 항목 경로(`_match_ranked`)는 처음부터 `_active_rights_items`로 말소분을
+    걸러냈는데, 이 텍스트 규칙 경로는 **OCR 줄을 그대로 훑기만 해서 말소 여부를
+    아예 보지 않았다.** 그 결과 실기기에서:
+      - `공동담보목록 제2020-3966호` → 소속 을구 순위1은 `1번근저당권설정등기말소`로
+        **이미 말소로 판정돼 있었는데도** 형광펜이 칠해졌다.
+      - `별도등기 있음`(표제부 순위2) → 바로 아래 줄에 `2번 별도등기 중 일부 말소`,
+        그 아래에 `3번 1토지에 관한 별도등기 말소`가 있는 **정리된 기재**인데 칠해졌다.
+    등기부 인쇄물에는 빨간 취소선이 그어져 있지만 OCR은 선을 읽지 못한다
+    (docs/ocr-highlight-findings.md §2.5) — 말소는 텍스트로만 드러나므로,
+    그 텍스트를 보지 않으면 취소선 위에 형광펜을 칠하게 된다.
+
+    ── 어느 줄을 버리는가 (하나라도 걸리면 버린다) ────────────────────────────
+    ⑴ 그 줄이 속한 항목이 **말소**로 판정됐다 (`item.canceled`)
+    ⑵ 그 줄이 속한 항목이 **말소 근거 행 자체**다 (`item.is_cancel_record`)
+    ⑶ 그 줄이 속한 항목의 (구역, 순위)가 다른 줄의 'N번○○말소'에 지목됐다
+       — 표제부처럼 ⑴이 계산되지 않는 구역을 메운다
+    ⑷ 그 줄 자체에 `말소`가 인쇄돼 있다 (모든 등기부에 찍히는 상투구는 제외)
+       — `2번별도등기중일부말소별도등기있음`처럼 **한 줄 안에서 스스로를 정리하는**
+         기재는 ⑴~⑶ 어디에도 안 걸린다. 정규식이 `3번1토지에…`의 숫자 때문에
+         대상 순위를 못 읽는 경우도 여기서 잡힌다.
+
+    표 밖의 줄(표지·꼬리말)은 소속 항목이 없어 ⑴~⑶을 적용할 수 없다. 이때는
+    **버리지 않는다** — 말소는 표(등기 항목)에만 있는 개념이고, 여기서 막으면
+    표지에 인쇄되는 `신청사건`이 통째로 사라진다.
+    """
+    owners = _line_owners(items)
+    canceled_ranks = _canceled_by_line_text(items)
     found: list[tuple[int, tuple[float, float, float, float]]] = []
     for page in pages:
         for line in page.lines:
@@ -633,6 +734,28 @@ def _match_text_rule(
                 continue
             if rule.negative and rule.negative.search(squeezed):
                 continue  # '별도등기 없음' 같은 부정 표기 — 위험이 아니다
+
+            owner = owners.get((page.index, line.index))
+            if owner is not None:
+                if owner.canceled or owner.is_cancel_record:
+                    _log.info(
+                        f"[매칭] — {rule.kind} 후보 {page.index}:L{line.index}는"
+                        f" {owner.section} 순위{owner.rank}(말소)에 속해 칠하지 않음"
+                    )
+                    continue
+                if owner.rank and (owner.section, owner.rank) in canceled_ranks:
+                    _log.info(
+                        f"[매칭] — {rule.kind} 후보 {page.index}:L{line.index}는"
+                        f" {owner.section} 순위{owner.rank}를 지목한 말소 기재가 있어 칠하지 않음"
+                    )
+                    continue
+            if _CANCEL_HINT.search(squeezed) and not _CANCEL_BOILERPLATE.search(squeezed):
+                _log.info(
+                    f"[매칭] — {rule.kind} 후보 {page.index}:L{line.index}는"
+                    " 줄 자체에 말소 기재가 있어 칠하지 않음"
+                )
+                continue
+
             boxes = _words_matching(line, rule.pattern)
             if boxes:
                 found.append((page.index, _union(boxes)))
@@ -929,7 +1052,10 @@ def build_highlights(
         #   (실측: 공동담보 4곳·별도등기 3곳이 각각 같은 사실이었다).
         #   주소 줄에는 이미 같은 규율을 적용해 두었는데(`_first_line_match`) 이 3종에만
         #   빠져 있었다 — 2026-07-28 페르소나 리뷰가 잡았다.
-        for i, (page_index, box) in enumerate(_match_text_rule(text_rule, ordered_pages)[:1]):
+        # ⚠ `items`를 함께 넘긴다 — 말소된 기재에 칠하지 않기 위한 유일한 근거다(D17).
+        for i, (page_index, box) in enumerate(
+            _match_text_rule(text_rule, ordered_pages, items)[:1]
+        ):
             norm = _normalize(box, pages[page_index], pad_ratio=0.08)
             if norm is None:
                 continue
@@ -950,6 +1076,15 @@ def build_highlights(
 
     # ── ④ 문서 스칼라 (주소 · 면적 · 서류 종류 · 열람일) ────────────────────
     candidates += _document_candidates(extract, ordered_pages, pages, check.viewed_at, failures)
+
+    # ── ④-b 화면에서 끈 종류를 뺀다 (D16 — `_DISABLED_KINDS` 참고) ──────────
+    # **뱃지 번호를 매기기 전**에 뺀다. 뒤에서 빼면 ②가 비어 ①③④…가 되어,
+    # 사용자는 "표시 하나가 사라졌다"로 읽는다.
+    dropped_disabled = [c for c in candidates if c.kind in _DISABLED_KINDS]
+    if dropped_disabled:
+        candidates = [c for c in candidates if c.kind not in _DISABLED_KINDS]
+        kinds = ", ".join(sorted({c.kind for c in dropped_disabled}))
+        _log.info(f"[매칭] — 화면에서 끈 종류 {len(dropped_disabled)}건 제외 ({kinds})")
 
     # ── ⑤ 종류별 상한 → 읽는 순서 정렬 → 뱃지 번호 ──────────────────────────
     # 정렬은 **문서 순서**(c.page)로 하고, 앱에 내보낼 때만 **업로드 인덱스**로 되돌린다.
@@ -1157,13 +1292,39 @@ def _build_checked_notes(
         # 상태로 읽혔다(실제로 그랬다 — 그게 이 작업의 발단이다). 뺐으면 뺐다고 한다.
         # ⚠ 안전 조건에 걸려 계산에서 못 뺀 경우(`canceled_excluded == 0`)에는 예전 문구
         #   그대로다. 빼지도 않고 뺐다고 말하는 것이 가장 나쁘다.
-        notes.append(
-            f"집에 잡힌 빚(근저당) {len(canceled_mortgages)}건은 **모두 말소된 것으로 확인**해 "
-            + (
-                "위험 계산에서 제외했고 사진에도 표시하지 않았어요 — 이미 정리된 빚이에요"
-                if canceled_excluded
-                else "표시하지 않았어요 — 이미 정리된 빚이에요"
+        #
+        # ── [D17b · 2026-08-14] "N건은 모두 말소" → "전체 N건 중 M건이 말소" ──────
+        # 예전 문구는 `1건은 **모두** 말소된 것으로 확인해…`였다. 말소분만 세는 숫자라
+        # 틀린 말은 아니었지만, `1건` + `모두`가 붙어 **"이 집 근저당은 총 1건이고 그게 다
+        # 정리됐다"**로 읽혔다. 실제로는 유효 근저당이 3건(합계 14억) 더 있었고, 같은
+        # 화면의 채권최고액에는 형광펜이 칠해져 있었다 — 화면이 스스로와 모순됐다.
+        #
+        # 짝이 되는 "지금 남아 있는 빚 3건을 표시했어요"는 아래에서 따로 만들지만,
+        # 앱은 `kUnmarkedNoteMarkers`에 걸리는 문장만 그리므로(registry_viewer_screen.dart)
+        # 그 문장은 화면에 **닿지 못한다.** 그래서 남은 건수를 **이 문장 안으로** 넣는다.
+        # ⚠ 그래서 이 문장에는 `표시하지 않았`이 반드시 남아 있어야 한다(필터 통과 조건).
+        active_count = len(active_mortgages)
+        total_mortgages = len(canceled_mortgages) + active_count
+        excluded_part = (
+            "위험 계산에서 제외했고 사진에도 표시하지 않았어요"
+            if canceled_excluded
+            else "사진에 표시하지 않았어요"
+        )
+        # "나머지 N건" — **실제로 표시한 것과 어긋나지 않게** 센다. 유효분이 있는데
+        # 위치를 못 짚었으면 "표시했어요"가 거짓이 되므로 그때는 다르게 말한다.
+        mortgage_marks = [h for h in highlights if h.kind == "mortgage"]
+        if active_count == 0:
+            rest = " — 이미 정리된 빚이에요"
+        elif len(mortgage_marks) == active_count:
+            rest = f" — 나머지 {active_count}건은 사진에 표시했어요"
+        else:
+            rest = (
+                f" — 나머지 {active_count}건 중 {len(mortgage_marks)}건만"
+                " 사진에서 위치를 찾았어요"
             )
+        notes.append(
+            f"집에 잡힌 빚(근저당) {total_mortgages}건 중 {len(canceled_mortgages)}건은 "
+            f"말소된 것으로 확인해 {excluded_part}{rest}"
         )
     if not money_allowed and (active_mortgages or extract.jeonse_rights):
         notes.append("빚 표시는 이번엔 생략했어요 — 위 안내를 확인해 주세요")

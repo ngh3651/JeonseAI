@@ -130,12 +130,8 @@ class _ReportScreenState extends State<ReportScreen> {
               if (_isStale(report)) _staleBanner(context, report),
               _conclusionHeader(report),
               const SizedBox(height: AppSpacing.xl),
-              // [D5 · 2026-08-14] '지금 해야 할 일' 박스는 뺐고, 그 안에 있던
-              // 질문 바로가기 버튼만 이 자리에 남겼다 (_questionsShortcut 참고).
-              if (report.grade != RiskGrade.ok) ...[
-                Center(child: _questionsShortcut(context, report)),
-                const SizedBox(height: AppSpacing.xl),
-              ],
+              // [D15 · 2026-08-14] 결론 헤더와 진입 카드 사이에 있던 아웃라인 버튼
+              // '중개사 질문 모아 보기'를 뺐다. 자세한 사유는 아래 주석 참고.
               _originPhotoEntry(context, report),
               const AppText('근거 살펴보기', style: AppTypography.title),
               const SizedBox(height: AppSpacing.xs),
@@ -406,23 +402,19 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  /// 질문 생성기 바로가기 — 예전 '지금 해야 할 일' 박스에 들어 있던 그 버튼.
-  ///
-  /// [D5 · 2026-08-14] 박스(연초록 배경 + 깃발 아이콘 + `nextAction` 한 문장)는
-  /// 화면에서 뺐다. 결론 헤더 바로 밑에서 게이지·등급과 무게를 다투고 있었다.
-  ///
-  /// 버튼만 남긴 이유: 리포트를 읽은 사람이 **당장 할 수 있는 행동**이 이것이고,
-  /// 없애면 "아래 질문을 찾으러 헤맨다"(2026-07-04 지수 리뷰)가 그대로 돌아온다.
-  /// 질문 생성기로 가는 길이 여기만 있는 것은 아니다 — 하단 '다음 행동'의 추천
-  /// 카드와 근거 카드의 액션 버튼도 같은 곳으로 간다. 그래도 스크롤 없이 닿는
-  /// 입구는 이 하나뿐이라 남긴다.
-  Widget _questionsShortcut(BuildContext context, AnalysisReport report) {
-    return AppCompactButton(
-      label: '중개사 질문 모아 보기',
-      icon: Icons.quiz_outlined,
-      onPressed: () => context.push('/questions/${report.id}'),
-    );
-  }
+  // ── [D15 · 2026-08-14] 상단 '중개사 질문 모아 보기' 버튼을 지웠다 ───────────
+  //
+  // D5에서 '지금 해야 할 일' 박스를 걷어내고 그 안의 버튼만 결론 헤더 밑에 남겼었다.
+  // 그때의 이유는 "질문으로 가는 길이 스크롤 없이 닿는 곳에 하나는 있어야 한다"였다.
+  //
+  // 그 이유가 D12(다음 행동 2×2 그리드)로 사라졌다. 지금은 [중개사에게 물어볼 질문]이
+  // 네 칸 중 첫 칸으로 **항상 같은 자리에** 있어, 같은 기능의 입구가 한 화면에 둘이다.
+  // 실기기에서 보니 결론(게이지·등급·주소·보증금)과 '내가 올린 사진에서 보기' 카드
+  // 사이를 초록 아웃라인 버튼이 가로질러, 결론에서 근거로 내려가는 시선이 한 번 끊겼다.
+  //
+  // ⚠ 기능을 없앤 것이 아니다. `/questions/:id` 로 가는 길은 그대로 셋이다 —
+  //   하단 2×2의 첫 칸, 근거 카드의 '중개사에게 물어볼 질문 보기' 액션(`_onEvidenceAction`),
+  //   그리고 판례 화면. 여기서는 **중복된 입구 하나**만 지웠다.
 
   /// 근거 카드 목록 — 가장 심각한 카드 1개는 기본 펼침 (서연 리뷰 반영)
   ///
@@ -475,6 +467,7 @@ class _ReportScreenState extends State<ReportScreen> {
       explanationSpan: _explanationSpan(context, evidence),
       detailText: evidence.detailText,
       sourceText: evidence.sourceText,
+      explanationSource: evidence.explanationSource,
       initiallyExpanded: initiallyExpanded,
       action: evidence.actionLabel == null
           ? null
@@ -500,37 +493,15 @@ class _ReportScreenState extends State<ReportScreen> {
   /// "챗봇에 더 물어보기" 연결은 챗봇 실화면과 함께 C-3에서.
   InlineSpan? _explanationSpan(BuildContext context, EvidenceItem evidence) {
     if (evidence.termGlossary.isEmpty) return null;
-
-    final List<InlineSpan> children = [];
-    String rest = evidence.easyExplanation;
-    while (rest.isNotEmpty) {
-      int bestIndex = -1;
-      String? bestTerm;
-      for (final term in evidence.termGlossary.keys) {
-        final int idx = rest.indexOf(term);
-        if (idx >= 0 && (bestIndex == -1 || idx < bestIndex)) {
-          bestIndex = idx;
-          bestTerm = term;
-        }
-      }
-      if (bestTerm == null) {
-        children.add(TextSpan(text: rest));
-        break;
-      }
-      if (bestIndex > 0) {
-        children.add(TextSpan(text: rest.substring(0, bestIndex)));
-      }
-      children.add(
-        termSpan(
-          context,
-          term: bestTerm,
-          description: evidence.termGlossary[bestTerm]!,
-          onAskChatbot: () => context.push('/chatbot'),
-        ),
-      );
-      rest = rest.substring(bestIndex + bestTerm.length);
-    }
-    return TextSpan(style: AppTypography.body, children: children);
+    // 2026-08-14: 밑줄을 심는 로직을 `buildTermSpan` 한 곳으로 모았다 — 챗봇 답변도
+    // 같은 함수를 쓴다. 화면마다 따로 만들면 한 곳만 고쳐졌을 때 조용히 갈라진다.
+    return buildTermSpan(
+      context,
+      text: evidence.easyExplanation,
+      glossary: evidence.termGlossary,
+      style: AppTypography.body,
+      onAskChatbot: () => context.push('/chatbot'),
+    );
   }
 
   /// 다음 행동 — **네 칸 모두 같은 크기인 2×2 그리드** (2026-08-14 D12).

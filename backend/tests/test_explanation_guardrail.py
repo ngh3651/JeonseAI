@@ -280,3 +280,74 @@ def test_llm_input_is_verdict_only(monkeypatch, solar_key, danger_case):
         assert name and name not in user_content, f"소유자 실명이 프롬프트에 실렸다: {name}"
     # 주민등록번호 형태도 금지 (추출 원본이 새는 가장 나쁜 형태)
     assert not re.search(r"\d{6}\s*-\s*[0-9*]{6,7}", user_content)
+
+
+# ── ⑦ 설명 출처 라벨 — 카드마다 갈린다 (2026-08-14 D26) ──────────────────────
+#
+# 2026-07-09에 'AI 생성' → '자동 생성'으로 바꾼 이유는 그대로 유효하다: 폴백 문장에
+# 모델명을 붙이면 거짓말이다. 그 결정을 되돌리지 않고 **조건부로 정밀화**한 것이 D26이라,
+# "폴백 카드에 모델명이 붙지 않는다"가 이 기능의 봉인점이다.
+
+
+def test_설명_출처는_카드마다_갈린다(danger_case, solar_key, monkeypatch):
+    """한 응답 안에서 어떤 카드는 모델 문장, 어떤 카드는 준비된 문구가 될 수 있다.
+
+    설명 폴백은 **필드 단위**다. 전체 라벨 하나만 두면 준비된 문구를 쓴 카드에까지
+    모델명이 붙어 과대 표기가 된다 — 이 앱에서 가장 하면 안 되는 종류의 거짓말이다.
+    """
+    _, _, verdict = danger_case
+    bad_id = verdict.evidences[0].id
+
+    def mock_call(messages, api_key):
+        return json.dumps(
+            {
+                "headline": "빚이 커서 보증금 회수가 어려울 수 있어요",
+                "evidences": [
+                    {
+                        "id": e.id,
+                        # 첫 카드만 검증에 걸리게 한다 — 재료에 없는 수치(금지 사유).
+                        "easy_explanation": (
+                            "전세가율이 1234%예요"
+                            if e.id == bad_id
+                            else f"{e.id} 항목 설명이에요. 확인이 필요해요."
+                        ),
+                    }
+                    for e in verdict.evidences
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(explanation, "_call_solar", mock_call)
+    result = explanation.generate(verdict)
+
+    assert result.evidence_sources[bad_id] == explanation.FALLBACK_SOURCE_LABEL
+    others = [v for k, v in result.evidence_sources.items() if k != bad_id]
+    assert others, "비교할 다른 카드가 없다"
+    assert all(v == result.model for v in others)
+    assert explanation.FALLBACK_SOURCE_LABEL not in result.model
+
+
+def test_LLM을_아예_못_부르면_모든_카드가_준비된_문구다(danger_case, monkeypatch):
+    """키가 없으면 호출 자체가 없다 — 그때 모델명이 새어 나가면 안 된다."""
+    _, _, verdict = danger_case
+    monkeypatch.setenv("UPSTAGE_API_KEY", "")
+    result = explanation.generate(verdict)
+    assert result.source == "폴백"
+    assert set(result.evidence_sources) == {e.id for e in verdict.evidences}
+    assert all(
+        v == explanation.FALLBACK_SOURCE_LABEL for v in result.evidence_sources.values()
+    )
+
+
+def test_출처_라벨이_리포트_카드까지_실려_나간다(danger_case, solar_key, monkeypatch):
+    """계약(§2.2 explanationSource)까지 이어지지 않으면 화면은 아무것도 못 그린다."""
+    data, extract, verdict = danger_case
+    monkeypatch.setattr(explanation, "_call_solar", lambda m, k: valid_content(verdict))
+    report = report_builder.build_report(
+        extract,
+        deposit=data["inputs"]["deposit"],
+        market_price=data["inputs"]["market_price"],
+        alias="테스트",
+    )
+    assert all(ev.explanationSource for ev in report.evidences)

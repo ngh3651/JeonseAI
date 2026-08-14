@@ -17,8 +17,8 @@ from pathlib import Path
 
 from ...schemas.contract import Report
 from ...schemas.internal import Grade, RuleVerdict
-from .. import thresholds as T
-from . import explainer
+from .. import terms, thresholds as T
+from . import emphasis as emphasis_picker, explainer
 from .models import OUTCOME_TEXT, OUTCOME_UNKNOWN, PrecedentSection, RetrievedPrecedent
 from .retrieval import HybridRetriever
 
@@ -142,6 +142,54 @@ def _verdict_summary(verdict: RuleVerdict | None, tags: list[str]) -> dict:
     return summary
 
 
+#: 카드에서 읽기 보조를 붙일 본문 필드 — 앱이 쓰는 이름 그대로 쓴다(계약 §2.3).
+#: `summary`는 이미 굵게 나가므로 강조 대상이 아니고, 용어 툴팁만 받는다.
+_BODY_FIELDS = ("summary", "result", "commonPoint", "advice")
+_EMPHASIS_FIELDS = ("result", "commonPoint", "advice")
+#: 앱 필드 이름 → LLM이 emphasis를 고를 때 쓰는 키 이름.
+#:
+#: ⚠ `advice`가 여기 들어 있는 것은 **의도적**이며, "advice는 LLM 불가침"
+#:   (decisions.md 2026-07-09) 원칙과 어긋나지 않는다. 그 원칙이 막는 것은 **문구 변경**인데,
+#:   emphasis는 문구를 담지 않는다 — 본문의 부분 문자열이 아니면 `emphasis.validate`가
+#:   폐기하므로 LLM은 advice를 **가리킬 수만 있고 고쳐 쓸 수는 없다**(구조적 보장).
+#:   출력 모델(PrecedentExplanation)에도 여전히 `advice` 필드는 존재하지 않는다.
+#: ⚠ 되돌리려면 이 표에서 `"advice"` 한 줄만 지우면 된다. 그러면 advice의 강조는
+#:   결정적 폴백(금액·비율·기간)만 남고, 실측상 큐레이션 조언에는 숫자가 거의 없어
+#:   **굵게가 사라진다** — 그 사실을 알고 지워야 한다.
+_LLM_EMPHASIS_KEY = {"commonPoint": "common_point", "result": "result", "advice": "advice"}
+
+
+def _attach_reading_aids(case: dict, exp) -> None:
+    """완성된 카드에 **읽기 보조 두 가지**를 붙인다 — 용어 툴팁(D20)·강조 구간(D23).
+
+    ⚠ **본문을 절대 바꾸지 않는다.** 두 필드 모두 "본문의 어디를 어떻게 그릴지"만
+      가리킨다. 그래서 큐레이션 문구(`advice`)에도 안전하게 붙일 수 있다
+      (문구 변경 금지 — decisions.md 2026-07-09).
+
+    ⚠ **여기가 합류점이다.** LLM 성공 경로와 폴백 경로가 위에서 이미 하나로 합쳐진 뒤라,
+      어느 경로로 왔든 화면에 나가는 최종 문장에 대해 **한 번만** 계산된다. 위쪽 분기마다
+      따로 붙였다면 폴백 카드에만 툴팁이 빠지는 식으로 갈렸을 것이다.
+    """
+    # ① 용어 툴팁 — 최종 문장에 **실제로 등장한** 검수된 용어만 (terms.load 게이트가
+    #    `verified=false`를 이미 걸러낸다). 키가 본문에 없으면 앱이 밑줄을 못 붙일 뿐이다.
+    joined = "\n".join(str(case.get(f) or "") for f in _BODY_FIELDS)
+    case["termGlossary"] = terms.attach(joined)
+
+    # ② 강조 구간 — LLM이 고른 것이 검증을 통과하면 그것, 아니면 금액·비율·기간 폴백.
+    llm_picks = getattr(exp, "emphasis", None) or {}
+    picked: dict[str, list[str]] = {}
+    for field in _EMPHASIS_FIELDS:
+        text = str(case.get(field) or "")
+        if not text:
+            continue
+        key = _LLM_EMPHASIS_KEY.get(field)
+        raw = llm_picks.get(key) if key else None
+        chosen = emphasis_picker.choose(text, raw if isinstance(raw, list) else None)
+        if chosen:
+            picked[field] = chosen
+    case["emphasis"] = picked
+
+
 class PrecedentService:
     """판례 섹션 조립기 — E-3 라우터 통합의 진입점.
 
@@ -202,7 +250,7 @@ class PrecedentService:
         cases = []
         for m in matches:
             exp = explanations.get(m.doc.case_id)
-            cases.append(
+            case = (
                 {
                     # [메타 — 검색된 문서에서 복사 (LLM 불개입)]
                     "riskPattern": (m.matched_tags or m.doc.risk_tags or ["기타"])[0],
@@ -243,6 +291,8 @@ class PrecedentService:
                     "advice": m.doc.advice,
                 }
             )
+            _attach_reading_aids(case, exp)
+            cases.append(case)
         return PrecedentSection(cases=cases, explanation_source=source)
 
     def match_for_verdict(self, verdict: RuleVerdict, *, explain: bool = False) -> PrecedentSection:

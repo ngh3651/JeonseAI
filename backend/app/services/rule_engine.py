@@ -97,7 +97,7 @@ def evaluate(
             if ev.grade is Grade.GOOD:
                 ev.grade = floor_caution(ev.grade)
                 ev.status_label = ev.status_label or "확인 필요"
-                note = "등기부 페이지 누락·추출 실패 가능성 — 원본으로 재확인 필요"
+                note = "등기부 쪽이 빠졌거나 읽지 못했을 수 있어요 — 원본으로 다시 확인해 주세요"
                 ev.detail_text = f"{ev.detail_text} · {note}" if ev.detail_text else note
 
     # 종합 등급: worst-of. 단 insurance의 '확인 필요'는 계산에서 제외(위험이면 반영).
@@ -168,8 +168,8 @@ def _judge_jeonse_ratio(
             grade=Grade.CAUTION,
             status_label=WHOLE_BUILDING_PENDING_LABEL,
             detail_text=(
-                "단독·다가구로 보여 전세가율을 쓰지 않았어요 — 이 유형은 등기부가 건물 1개에 "
-                "1부뿐이라 **나보다 먼저 들어온 세입자들의 보증금 합계가 등기부에 나오지 않습니다.** "
+                "단독·다가구로 보여 보증금 비율을 쓰지 않았어요 — 이 유형은 등기부가 건물 1개에 "
+                "1부뿐이라 **나보다 먼저 들어온 세입자들의 보증금 합계가 등기부에 나오지 않아요.** "
                 "시세 대비 내 보증금 비율이 낮게 나와도 안전하다는 뜻이 아니에요. "
                 "임대인에게 '전입세대 열람내역'과 '확정일자 부여현황'을 요구해 앞순위 보증금을 "
                 "직접 확인하세요."
@@ -208,8 +208,13 @@ def _judge_jeonse_ratio(
     detail = (
         # 2026-08-03: "입력 시세"라고 못 박지 않는다 — 이 값은 사용자가 넣은 것일 수도,
         # 공공데이터에서 자동으로 찾아온 것일 수도 있다. 출처는 marketPriceSource가 따로 밝힌다.
-        f"전세가율 {pct}% — 보증금 {format_won(deposit)} / 시세 {format_won(market_price)}"
-        f" (주의 {T.JEONSE_RATIO_CAUTION_PCT}% 초과 · 위험 {T.JEONSE_RATIO_DANGER_PCT}% 초과)"
+        #
+        # [D25 · 2026-08-14] 앞머리를 `전세가율 {pct}%`에서 풀어 썼다. 이 회색 박스에는
+        # 용어 툴팁이 붙지 않아(툴팁은 설명문 전용) '전세가율'이 설명 없는 벽으로 남았다.
+        # ⚠ `%` 문자는 반드시 남아야 한다 — 판례 태그 파생(`tags_from_report`)이 이 글자로
+        #   "실측 비율이 있는 카드"를 가린다. 여기서 %가 사라지면 판례 매칭이 조용히 빈다.
+        f"보증금이 시세의 {pct}%예요 — 보증금 {format_won(deposit)} / 시세 {format_won(market_price)}"
+        f" (주의 기준 {T.JEONSE_RATIO_CAUTION_PCT}% · 위험 기준 {T.JEONSE_RATIO_DANGER_PCT}%)"
     )
     return EvidenceVerdict(
         id="jeonse_ratio",
@@ -254,14 +259,26 @@ def _judge_senior_debt(
         senior_pct = round_half_up(senior_raw)
         combined_pct = round_half_up(combined_raw)
 
+    # [D25 · 2026-08-14] 사유 문구를 쉬운 말로. **숫자·건수·기준값은 한 글자도 바꾸지
+    # 않는다** — `text_guard.collect_allowed`가 이 문자열의 수를 허용 목록으로 삼아
+    # LLM 문장을 검증하므로, 수가 바뀌면 설명이 통째로 폴백된다.
+    # ⚠ `임차권등기`는 판례 태그 파생(`tags_from_report`)이 이 글자를 찾으므로 남긴다.
     reasons: list[str] = []
     if active_lease:
         # 임차권등기 = 과거 보증금 미반환 사고의 증거 (주임법 §3-3, 조건부 채택)
-        reasons.append(f"임차권등기 {len(active_lease)}건 — 과거 보증금 미반환 신호")
+        reasons.append(
+            f"임차권등기 {len(active_lease)}건 — 전에 살던 세입자가 보증금을 못 받았다는 기록이에요"
+        )
     if senior_raw is not None and senior_raw > T.SENIOR_DEBT_RATIO_DANGER_PCT:
-        reasons.append(f"선순위채권 합계가 시세의 {senior_pct}% (기준 {T.SENIOR_DEBT_RATIO_DANGER_PCT}% 초과)")
+        reasons.append(
+            f"나보다 먼저 받아갈 빚이 시세의 {senior_pct}%로,"
+            f" 위험 기준 {T.SENIOR_DEBT_RATIO_DANGER_PCT}%를 넘어요"
+        )
     if combined_raw is not None and combined_raw > T.COMBINED_RATIO_DANGER_PCT:
-        reasons.append(f"보증금+선순위채권이 시세의 {combined_pct}% (기준 {T.COMBINED_RATIO_DANGER_PCT}% 초과)")
+        reasons.append(
+            f"내 보증금까지 더하면 시세의 {combined_pct}%로,"
+            f" 위험 기준 {T.COMBINED_RATIO_DANGER_PCT}%를 넘어요"
+        )
 
     if reasons:
         grade = Grade.DANGER
@@ -269,26 +286,29 @@ def _judge_senior_debt(
     elif unknown_count > 0:
         grade = Grade.CAUTION
         status = "확인 필요"
-        reasons.append(f"금액 미상 채권 {unknown_count}건 — 원본 등기부로 확인 필요")
+        reasons.append(f"금액을 못 읽은 빚 {unknown_count}건 — 원본 등기부로 확인해 주세요")
     elif market_price is None and total_known > 0:
         grade = Grade.CAUTION
         status = "확인 필요"
         # 2026-08-03: 자동 조회가 실패했을 수도 있으므로 "미입력"(사용자 탓)이 아니라
         # "알 수 없음"(사실)으로 말한다.
-        reasons.append("시세를 알 수 없음 — 채권 규모가 과한지 비율로 판단할 수 없음")
+        reasons.append("시세를 알 수 없어요 — 빚이 많은 편인지 비율로 따져볼 수 없어요")
     else:
         grade = Grade.GOOD
         status = None
 
-    parts = [f"유효 채권최고액 등 합계 {format_won(total_known)}"]
-    parts.append(f"근저당 {len(active_mortgages)}건")
+    # [D25 · 2026-08-14] `유효 채권최고액 등 합계 … (말소 제외)`를 쉬운 말로.
+    # 이 한 줄에 '유효 · 채권최고액 · 말소' 세 개가 몰려 있어, 부동산을 모르는 사람에게는
+    # 가장 중요한 숫자가 읽히지 않는 벽이었다. **숫자·건수는 그대로다.**
+    parts = [f"지금 살아 있는 빚 {format_won(total_known)}"]
+    parts.append(f"{len(active_mortgages)}건")
     if active_jeonse:
-        parts.append(f"선순위 전세권 {len(active_jeonse)}건")
+        parts.append(f"나보다 먼저 받아갈 전세권 {len(active_jeonse)}건")
     if active_lease:
         parts.append(f"임차권등기 {len(active_lease)}건")
     if unknown_count:
-        parts.append(f"금액 미상 {unknown_count}건")
-    detail = " · ".join(parts) + " (말소 제외)"
+        parts.append(f"금액을 못 읽은 것 {unknown_count}건")
+    detail = " · ".join(parts) + " (이미 지워진 빚은 뺐어요)"
     if reasons:
         detail += " — " + " / ".join(reasons)
 
@@ -352,13 +372,19 @@ def _judge_ownership(extract: RegistryExtract) -> EvidenceVerdict:
     }
     total = sum(counts.values())
 
+    # [D25 · 2026-08-14] `(유효 기준, 말소 제외)`를 쉬운 말로.
+    # ⚠ 라벨(신탁등기·압류·가압류·가처분·경매개시결정)은 **그대로 둔다** —
+    #   판례 태그 파생(`tags_from_report`)이 이 글자들을 그대로 찾는다.
     if total > 0:
         found = " · ".join(f"{label} {n}건" for label, n in counts.items() if n > 0)
         grade = Grade.DANGER
-        detail = f"{found} (유효 기준, 말소 제외)"
+        detail = f"{found} (지금 살아 있는 것만 세었어요 · 이미 지워진 건 뺐어요)"
     else:
         grade = Grade.GOOD
-        detail = "유효한 신탁등기·압류·가압류·가처분·경매개시결정 없음 (말소 제외)"
+        detail = (
+            "지금 살아 있는 신탁등기·압류·가압류·가처분·경매개시결정은 없었어요"
+            " (이미 지워진 건 뺐어요)"
+        )
 
     return EvidenceVerdict(
         id="ownership",
@@ -389,7 +415,12 @@ def _judge_insurance(extract: RegistryExtract, supplementary: object | None) -> 
         return EvidenceVerdict(
             id="insurance",
             grade=Grade.DANGER,
-            detail_text="가입 결격 신호: " + " · ".join(disqualify) + " (HUG 권리침해 결격 사유)",
+            # [D25] '가입 결격 신호'는 보험 약관 어휘다. 출처 표기(HUG …)는 그대로 둔다.
+            detail_text=(
+                "보증보험에 못 들 수 있는 신호: "
+                + " · ".join(disqualify)
+                + " (HUG 권리침해 결격 사유)"
+            ),
             source_text=_SRC_INSURANCE,
             facts={"disqualify_signals": disqualify},
         )
@@ -397,7 +428,10 @@ def _judge_insurance(extract: RegistryExtract, supplementary: object | None) -> 
         id="insurance",
         grade=Grade.CAUTION,
         status_label="확인 필요",
-        detail_text="등기부만으로는 가입 가능을 단정할 수 없음 — 보증기관에서 직접 확인 필요 (서비스 한계)",
+        detail_text=(
+            "등기부만으로는 보증보험에 들 수 있는지 알 수 없어요 — "
+            "보증기관에 직접 확인해 주세요 (이 앱으로는 여기까지예요)"
+        ),
         source_text=_SRC_INSURANCE,
         facts={"disqualify_signals": []},
     )
@@ -411,7 +445,7 @@ def _judge_blacklist(extract: RegistryExtract, entries: list[dict]) -> EvidenceV
             id="blacklist",
             grade=Grade.CAUTION,
             status_label="확인 필요",
-            detail_text="소유자 이름을 추출하지 못해 명단 대조 불가",
+            detail_text="집주인 이름을 읽지 못해 명단과 맞춰보지 못했어요",
             source_text=_SRC_BLACKLIST,
             facts={"matched": [], "list_size": len(entries)},
         )
@@ -420,7 +454,10 @@ def _judge_blacklist(extract: RegistryExtract, entries: list[dict]) -> EvidenceV
             id="blacklist",
             grade=Grade.CAUTION,
             status_label=BLACKLIST_PENDING_LABEL,
-            detail_text="악성임대인 명단 대조를 아직 못 했어요(큐레이션 준비 중) — 안심전세포털에서 직접 확인 필요",
+            detail_text=(
+                "악성임대인 명단과 아직 맞춰보지 못했어요(자료 준비 중) — "
+                "안심전세포털에서 직접 확인해 주세요"
+            ),
             source_text=_SRC_BLACKLIST,
             facts={"matched": [], "list_size": 0},
         )
@@ -433,14 +470,20 @@ def _judge_blacklist(extract: RegistryExtract, entries: list[dict]) -> EvidenceV
             id="blacklist",
             grade=Grade.CAUTION,
             status_label="명단 일치 — 직접 확인 필요",
-            detail_text=f"공개 명단과 이름 일치: {', '.join(matched)} (동명이인 가능성 — 단정 아님)",
+            detail_text=(
+                f"공개 명단에 같은 이름이 있어요: {', '.join(matched)}"
+                " (이름만 같은 다른 사람일 수 있어요 — 단정이 아니에요)"
+            ),
             source_text=_SRC_BLACKLIST,
             facts={"matched": matched, "list_size": len(entries)},
         )
     return EvidenceVerdict(
         id="blacklist",
         grade=Grade.GOOD,
-        detail_text=f"공개 명단 {len(entries)}건과 대조 — 일치 없음 (명단에 없어도 안전 보장 아님)",
+        detail_text=(
+            f"공개 명단 {len(entries)}건과 맞춰봤어요 — 같은 이름은 없었어요"
+            " (명단에 없다고 안심할 수는 없어요)"
+        ),
         source_text=_SRC_BLACKLIST,
         facts={"matched": [], "list_size": len(entries)},
     )

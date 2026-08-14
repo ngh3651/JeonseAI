@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -126,12 +127,26 @@ def lookup(query: str) -> Term | None:
     return best[1] if best else None
 
 
+def _spaced_pattern(surface: str) -> re.Pattern[str]:
+    """`우선변제권` → `우선[ \\t]*변제[ \\t]*권` 처럼 **글자 사이 공백을 허용**하는 패턴.
+
+    왜 필요한가 (2026-08-14 실측): LLM이 쓴 문장은 `"우선 변제권"`, `"근저당 권"`처럼
+    용어를 띄어 쓴다. 정확 일치만 보던 예전 방식은 그때 툴팁을 **조용히 빠뜨렸다** —
+    화면에는 어려운 말이 그대로 남고 밑줄만 없다(사용자는 뜻을 알 길이 없다).
+
+    ⚠ 줄바꿈은 허용하지 않는다(`[ \\t]`). 문단이 갈린 곳에서 용어가 이어졌다고 보면
+      엉뚱한 자리에 밑줄이 붙는다.
+    """
+    return re.compile(r"[ \t]*".join(re.escape(ch) for ch in surface))
+
+
 def attach(text: str) -> dict[str, str]:
     """문장에 **실제로 등장한** 용어만 골라 `termGlossary` 형태로 (2026-08-05).
 
     같은 용어가 별칭으로 등장하면 **문장에 쓰인 그 표기**를 키로 쓴다 — 앱이
     `easyExplanation.indexOf(키)`로 위치를 찾기 때문이다(report_screen.dart:506).
-    키가 본문에 없으면 툴팁이 붙지 않는다.
+    키가 본문에 없으면 툴팁이 붙지 않는다. 그래서 띄어 쓴 표기를 찾았을 때도
+    **본문에 나타난 그 형태 그대로**(`"우선 변제권"`)를 키로 쓴다.
 
     긴 표기를 먼저 잡아 짧은 표기에 가려지지 않게 한다('근저당권' vs '근저당').
     """
@@ -140,8 +155,11 @@ def attach(text: str) -> dict[str, str]:
     pairs: list[tuple[str, str]] = []
     for t in load():
         for surface in t.surfaces:
-            if surface and surface in text:
-                pairs.append((surface, t.description))
+            if not surface:
+                continue
+            m = _spaced_pattern(surface).search(text)
+            if m:
+                pairs.append((m.group(0), t.description))
     if not pairs:
         return {}
     # 긴 표기 우선. 짧은 표기가 긴 표기의 부분 문자열이면 짧은 쪽은 버린다 —

@@ -135,6 +135,15 @@ class PrecedentExplanation(BaseModel):
     # 결과 **분류**만 받는다. 문구는 OUTCOME_TEXT가 정한다 (위 docstring 참고).
     # 큐레이션 outcome이 있는 판례는 그쪽이 우선이라 이 값은 쓰이지 않는다.
     outcome_kind: Optional[OutcomeKind] = None
+    # ── 강조 구간 (2026-08-14 D23) ──────────────────────────────────────
+    # `{필드명: [본문에서 굵게 그릴 문자열, ...]}`. **문장을 담지 않는다** —
+    # 이미 확정된 본문의 부분 문자열만 담는 '가리키기' 필드다. 검증(부분 문자열
+    # 일치 · 개수 · 길이 · 비율)은 `emphasis.validate`가 하고, 하나라도 어기면
+    # 그 필드는 통째로 버려져 결정적 폴백으로 내려간다.
+    #
+    # ⚠ 이 필드가 생겼다고 LLM이 새 문장을 쓸 수 있게 된 것이 아니다. 값이 본문의
+    #   부분 문자열이 아니면 폐기되므로, **지어낸 문자열은 화면에 닿을 수 없다.**
+    emphasis: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class PrecedentSection(BaseModel):

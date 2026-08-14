@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,7 +52,17 @@ class PrecedentDoc(BaseModel):
     advice: Optional[str] = None      # "이런 피해를 피하려면" — 큐레이션 전용, LLM 불가침
     source_url: str                   # 출처 링크 (필수 — 지어내기 금지 원칙)
     full_text: Optional[str] = None   # 판례 전문 (법제처 API 수집 시)
-    verified: bool = False            # 공식 DB·사람 검증 여부 (미검증 → 노출 차단)
+    # ── 검증 2단계 (2026-08-07) ──────────────────────────────────────────
+    # 원래 `verified` 하나가 "공식 DB + 사람 검증" AND 조건이었다. 그런데 법제처
+    # 공식 API로 수집하고 관련성까지 판정한 판례 148건이 "사람이 한 줄씩 읽지 않았다"는
+    # 이유로 전부 노출 차단돼, 색인 1,900청크 중 6건만 보이는 상태가 됐다.
+    # 그래서 두 축을 분리한다 — 숨기지 않되, 섞지도 않는다.
+    #   source_verified : 출처가 공식 DB이고 사건번호·링크가 실재한다 (자동 판정 가능)
+    #   verified        : 사람이 문구까지 검수했다 (기존 의미 그대로)
+    # 노출 게이트는 source_verified를 본다. verified=False인 판례는 나가되,
+    # 화면에 "문구 검수 전"임을 밝힌다 (retrieval.py 게이트 · 카드 라벨).
+    source_verified: bool = False     # 출처 확인 — 미확인이면 노출 차단
+    verified: bool = False            # 사람 문구 검수 — 미검수여도 노출은 되되 표시가 붙는다
     curated_by: Optional[str] = None
     collected_at: Optional[str] = None
 
@@ -81,6 +92,35 @@ class RetrievedPrecedent(BaseModel):
     matched_tags: list[str] = Field(default_factory=list)  # 판정과 겹친 위험 태그
 
 
+class OutcomeKind(str, Enum):
+    """임차인이 겪은 결과의 **종류** — 문구가 아니라 분류다.
+
+    왜 자유 문장이 아닌가 (2026-07-29 페르소나 2인 리뷰):
+      판례 결과를 LLM이 자유 문장으로 쓰게 했더니 승소 판례가
+      "신탁회사에 보증금 반환 청구 가능", "임차권등기명령 신청 가능"으로 나왔고,
+      **두 페르소나 모두 이를 안심 신호로 읽어 위험을 지웠다**("그럼 해결책이 있네").
+      미탐이 오탐보다 치명적이라는 원칙(CLAUDE.md 3)에 정면으로 어긋난다.
+
+    그래서 LLM은 **셋 중 하나를 고르기만** 하고, 화면에 나갈 문구는 코드가 정한다
+    (OUTCOME_TEXT). 셋 다 "이 사람도 결국 법정까지 갔다"가 먼저 읽히게 썼다.
+    """
+
+    LOST = "lost"                     # 보증금을 돌려받지 못했다
+    PARTIAL = "partial"               # 일부만 돌려받았다
+    WON_AFTER_SUIT = "won_after_suit"  # 소송까지 가서 인정받았다
+
+
+# LLM이 고른 분류 → 화면 문구 (LLM이 문장을 쓰지 않는 단일 지점)
+OUTCOME_TEXT: dict[OutcomeKind, str] = {
+    OutcomeKind.LOST: "결국 보증금을 돌려받지 못했어요",
+    OutcomeKind.PARTIAL: "보증금을 일부만 돌려받았어요",
+    OutcomeKind.WON_AFTER_SUIT: "소송까지 가서야 겨우 인정받았어요",
+}
+
+# 분류를 못 얻었을 때 — 낙관하지 않는다(보수적 편향). 원문 확인을 유도한다.
+OUTCOME_UNKNOWN = "이 사건도 법정까지 갔어요 — 결과는 원문을 확인해 주세요"
+
+
 class PrecedentExplanation(BaseModel):
     """LLM이 채울 수 있는 필드의 전부 — 판정·사건번호·조언 필드는 존재하지 않는다.
 
@@ -92,6 +132,18 @@ class PrecedentExplanation(BaseModel):
     case_id: str                      # 어떤 검색 결과에 대한 설명인지 (서버가 대조 검증)
     easy_summary: str                 # 사건 쉬운 요약 (1~2문장, 해요체)
     common_point: str                 # 이 매물 판정과의 공통점 (1문장, 해요체)
+    # 결과 **분류**만 받는다. 문구는 OUTCOME_TEXT가 정한다 (위 docstring 참고).
+    # 큐레이션 outcome이 있는 판례는 그쪽이 우선이라 이 값은 쓰이지 않는다.
+    outcome_kind: Optional[OutcomeKind] = None
+    # ── 강조 구간 (2026-08-14 D23) ──────────────────────────────────────
+    # `{필드명: [본문에서 굵게 그릴 문자열, ...]}`. **문장을 담지 않는다** —
+    # 이미 확정된 본문의 부분 문자열만 담는 '가리키기' 필드다. 검증(부분 문자열
+    # 일치 · 개수 · 길이 · 비율)은 `emphasis.validate`가 하고, 하나라도 어기면
+    # 그 필드는 통째로 버려져 결정적 폴백으로 내려간다.
+    #
+    # ⚠ 이 필드가 생겼다고 LLM이 새 문장을 쓸 수 있게 된 것이 아니다. 값이 본문의
+    #   부분 문자열이 아니면 폐기되므로, **지어낸 문자열은 화면에 닿을 수 없다.**
+    emphasis: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class PrecedentSection(BaseModel):

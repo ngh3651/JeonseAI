@@ -29,7 +29,20 @@ from app.services.precedent.store import JsonVectorStore
 
 # ── 테스트 코퍼스 헬퍼 ──────────────────────────────────────────────────────
 
-def make_doc(case_id: str, tags: list[str], holding: str, *, verified: bool = True) -> PrecedentDoc:
+def make_doc(
+    case_id: str,
+    tags: list[str],
+    holding: str,
+    *,
+    verified: bool = True,
+    source_verified: bool | None = None,
+) -> PrecedentDoc:
+    """테스트 판례 1건.
+
+    `source_verified`(출처 확인)가 노출 게이트다. `verified`(사람 문구 검수)는
+    게이트가 아니라 화면 표시용이다 — 2026-08-07 검증 2단계 분리.
+    지정하지 않으면 출처는 확인된 것으로 둔다(대부분의 테스트가 노출을 전제로 한다).
+    """
     return PrecedentDoc(
         case_id=case_id,
         case_no=case_id.replace("prec-", ""),
@@ -39,6 +52,7 @@ def make_doc(case_id: str, tags: list[str], holding: str, *, verified: bool = Tr
         summary_easy=f"{tags[0]} 관련 쉬운 요약이에요",
         outcome="임차인이 보증금을 돌려받지 못했어요",
         source_url="https://example.org/case",
+        source_verified=(verified if source_verified is None else source_verified),
         verified=verified,
     )
 
@@ -414,3 +428,247 @@ def test_build_documents_auto_tags_raw_without_seed():
     assert "경매" in docs[0].risk_tags  # 키워드 자동 태깅
     # 출처는 공식이라도 사람 검수 전에는 노출 금지 — verified는 큐레이션 검수로만 승격
     assert docs[0].verified is False
+
+
+# ── 결과 문구 — 승소 판례가 안심 신호로 읽히지 않게 (2026-08-07) ─────────────
+
+
+def test_outcome_text_never_reads_as_reassurance():
+    """세 문구 모두 '이 사람도 결국 법정까지 갔다'로 읽혀야 한다.
+
+    페르소나 2인이 "신탁회사에 보증금 반환 청구 가능", "임차권등기명령 신청 가능"을
+    안심 신호로 읽고 위험을 지웠던 것에 대한 봉인 — '가능'류 낙관 표현이
+    결과 칸에 들어갈 수 없다.
+    """
+    from app.services.precedent.models import OUTCOME_TEXT, OUTCOME_UNKNOWN, OutcomeKind
+
+    assert set(OUTCOME_TEXT) == set(OutcomeKind)  # 분류마다 문구가 있어야 한다
+    for text in [*OUTCOME_TEXT.values(), OUTCOME_UNKNOWN]:
+        assert "가능" not in text
+        assert not any(w in text for w in ("안전", "걱정", "문제없"))
+
+
+def test_won_case_still_frames_the_struggle():
+    """임차인이 이긴 판례여도 '소송까지 가서야 겨우'로 나간다."""
+    from app.services.precedent.models import OUTCOME_TEXT, OutcomeKind
+
+    assert OUTCOME_TEXT[OutcomeKind.WON_AFTER_SUIT] == "소송까지 가서야 겨우 인정받았어요"
+
+
+def test_llm_cannot_author_outcome_sentence():
+    """LLM은 분류만 고른다 — 자유 문장을 보내면 pydantic이 거부한다."""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.services.precedent.models import PrecedentExplanation
+
+    with pytest.raises(ValidationError):
+        PrecedentExplanation(
+            case_id="prec-1",
+            easy_summary="요약이에요",
+            common_point="공통점이에요",
+            outcome_kind="세입자는 신탁회사에 보증금 반환 청구 가능",  # 분류 아님
+        )
+
+
+def test_curated_outcome_wins_over_llm_classification():
+    """큐레이션 outcome이 있으면 그것이 정본 — LLM 분류가 덮어쓰지 못한다."""
+    from app.services.precedent.models import OUTCOME_TEXT, OutcomeKind
+
+    doc_outcome = "임차인이 보증금을 돌려받지 못했어요"
+    # service._build_section의 우선순위: doc.outcome → OUTCOME_TEXT → OUTCOME_UNKNOWN
+    result = doc_outcome or OUTCOME_TEXT[OutcomeKind.WON_AFTER_SUIT]
+
+    assert result == doc_outcome
+
+
+def test_unknown_outcome_does_not_optimize():
+    """분류를 못 얻어도 낙관하지 않는다 (보수적 편향)."""
+    from app.services.precedent.models import OUTCOME_UNKNOWN
+
+    assert "법정까지" in OUTCOME_UNKNOWN
+    assert "확인해" in OUTCOME_UNKNOWN
+
+
+# ── 검수 우선 랭킹 (2026-08-12) ──────────────────────────────────────────────
+
+
+def _rank_key(matched_tags: int, verified: bool, score: float):
+    """service.search_by_tags의 정렬 키와 동일 (정렬 규약을 테스트에 고정)."""
+    return (matched_tags, verified, score)
+
+
+def test_curated_wins_only_at_equal_relevance():
+    """같은 관련도면 검수된 판례가 먼저 — 관련성을 이기지는 못한다."""
+    # 같은 태그 수: 검수된 쪽이 위 (점수가 더 낮아도)
+    curated_low = _rank_key(1, True, 0.10)
+    raw_high = _rank_key(1, False, 0.90)
+    assert curated_low > raw_high
+
+    # 태그 수가 다르면 관련성이 이긴다 — 검수 여부는 뒤집지 못한다
+    raw_two_tags = _rank_key(2, False, 0.10)
+    curated_one_tag = _rank_key(1, True, 0.99)
+    assert raw_two_tags > curated_one_tag
+
+
+def test_ranking_prefers_curated_in_service(corpus_dir: Path):
+    """실제 검색 경로에서도 같은 관련도면 검수본이 앞에 온다."""
+    docs = [
+        make_doc("prec-raw", ["신탁등기"], TRUST_HOLDING, verified=False),
+        make_doc("prec-curated", ["신탁등기"], TRUST_HOLDING, verified=True),
+    ]
+    backend = HashingEmbeddingBackend()
+    chunks = []
+    for d in docs:
+        chunks.extend(chunk_document(d))
+    store = JsonVectorStore(corpus_dir)
+    store.rebuild(chunks, backend.embed_passages([c.text for c in chunks]), backend.signature)
+    (corpus_dir / "docs.jsonl").write_text(
+        "\n".join(json.dumps(d.model_dump(), ensure_ascii=False) for d in docs), encoding="utf-8"
+    )
+    (corpus_dir / "chunks.jsonl").write_text(
+        "\n".join(json.dumps(c.model_dump(), ensure_ascii=False) for c in chunks), encoding="utf-8"
+    )
+
+    svc = PrecedentService(
+        retriever=HybridRetriever(
+            corpus_dir, store=JsonVectorStore(corpus_dir), backend=HashingEmbeddingBackend()
+        )
+    )
+    ranked = svc.search_by_tags(["신탁등기"])
+
+    assert [m.doc.case_id for m in ranked][0] == "prec-curated"
+
+
+# ── 출처 확인 게이트 (2026-08-12) ────────────────────────────────────────────
+
+
+def test_only_judgment_sources_count_as_verified():
+    """뉴스·해설 사이트는 '출처 확인'이 아니다.
+
+    처음엔 `bool(source_url)`로 뒀는데 그러면 뉴스 링크도 통과한다. 실제로
+    '건축왕' 전세사기 판례가 slownews.kr 링크로 노출 가능 상태였다 —
+    사용자가 그 링크를 눌러도 판결문이 아니라 기사가 나온다.
+    """
+    from app.services.precedent.ingest import is_official_source
+
+    assert is_official_source("https://www.law.go.kr/LSW/precInfoP.do?precSeq=1")
+    assert is_official_source("https://casenote.kr/대법원/2019다300095")
+    assert not is_official_source("https://slownews.kr/127605")
+    assert not is_official_source("https://bigcase.ai/cases/x")
+    assert not is_official_source("")
+    assert not is_official_source(None)
+    # 도메인 끝만 같은 사칭 차단
+    assert not is_official_source("https://law.go.kr.evil.com/x")
+
+
+def test_seed_picks_official_url_among_several():
+    """큐레이션이 출처를 여러 개 적어두면 판결문 원문 쪽을 대표로 쓴다."""
+    from app.services.precedent.ingest import build_documents
+
+    seed = [
+        {
+            "case_no": "2019다300095",
+            "court": "대법원",
+            "holding": "신탁원부 기재와 임차인의 대항력에 관한 판시",
+            "risk_tags": ["신탁등기"],
+            # 뉴스가 먼저 적혀 있어도 법제처를 골라야 한다
+            "source_urls": [
+                "https://slownews.kr/127605",
+                "https://www.law.go.kr/LSW/precInfoP.do?precSeq=97557",
+            ],
+            "verified": True,
+        }
+    ]
+    doc = build_documents(raw_docs=[], seed_cases=seed)[0]
+
+    assert "law.go.kr" in doc.source_url
+    assert doc.source_verified is True
+
+
+def test_news_only_seed_is_blocked_from_exposure():
+    """출처가 뉴스뿐이면 노출되지 않는다 — 검수됐다고 표시돼 있어도."""
+    from app.services.precedent.ingest import build_documents
+
+    seed = [
+        {
+            "case_no": "2024도15455",
+            "court": "대법원",
+            "holding": "무자본 갭투자 전세보증금 편취 사건",
+            "risk_tags": ["전세가율"],
+            "source_urls": ["https://slownews.kr/127605"],
+            "verified": True,  # 사람이 검수했다고 해도
+        }
+    ]
+    doc = build_documents(raw_docs=[], seed_cases=seed)[0]
+
+    assert doc.source_verified is False  # 출처가 판결문이 아니라 노출 차단
+
+
+# ── 관련성 게이트: 전세사기와 밀접하지 않으면 넣지 않는다 (2026-08-12) ────────
+
+
+def test_non_lease_case_is_not_indexed():
+    """유치권 판례가 '압류' 한 단어로 들어오던 경로를 막는다.
+
+    자동 태깅은 낱말만 본다. 사용자는 "내 임대차 얘기"인 줄 알고 카드를 열었다가
+    임대차가 한 번도 안 나오는 판결문을 보게 된다 — 판례를 붙이는 이유가 무너진다.
+    """
+    from app.services.precedent.ingest import build_documents, is_lease_related
+
+    assert not is_lease_related("유치권은 경매절차에서 매각으로 소멸하지 않는다", "건물인도")
+    # ★ 법조문 인용구는 통과시키지 않는다 — 임차권·전세권은 조문에 흔히 나오는
+    #   '권리 이름'이라 그 사건의 쟁점이 아니어도 등장한다(2021다253710 실사례).
+    assert not is_lease_related(
+        "지상권·지역권·전세권 및 등기된 임차권은 저당권·압류채권에 대항할 수 없는 경우 "
+        "매각으로 소멸된다고 규정하는 것과 달리 유치권은 소멸하지 않는다",
+        "건물인도",
+    )
+    # 사람(당사자)이 나오면 통과 — 임차인·임대인은 당사자일 때만 나온다
+    assert is_lease_related("주택임차인은 주택의 인도와 주민등록을 구비하면 대항력을 취득한다")
+    assert is_lease_related("임차인의 대항력은 점유 상실 시 소멸한다", None)
+    # 판시사항이 일반 법리라도 사건명이 임대차면 남긴다
+    assert is_lease_related("채무인수가 이행인수인지 판별하는 기준", "임대차보증금반환")
+
+    raw = [{
+        "prec_id": "1", "case_no": "2021다253710", "case_name": "건물인도",
+        "court": "대법원", "decided": "20220101",
+        "holding_summary": "유치권은 성립시기에 관계없이 경매절차에서 소멸하지 않는다. 압류 이후 취득한 경우는 제한된다.",
+        "source_url": "https://www.law.go.kr/x",
+    }]
+    assert build_documents(raw_docs=raw, seed_cases=[]) == []
+
+
+def test_untagged_doc_is_not_indexed():
+    """위험 태그가 없으면 검색 필터를 영영 통과 못 한다 — 넣을 이유가 없다."""
+    from app.services.precedent.ingest import build_documents
+
+    raw = [{
+        "prec_id": "2", "case_no": "2020다1", "case_name": "임대차보증금반환",
+        "court": "대법원", "decided": "20200101",
+        # 임대차 맥락은 있지만 어떤 위험 태그 키워드에도 걸리지 않는다
+        "holding_summary": "임대차계약의 합의해지를 인정하기 위한 요건에 관한 법리",
+        "source_url": "https://www.law.go.kr/x",
+    }]
+    assert build_documents(raw_docs=raw, seed_cases=[]) == []
+
+
+def test_every_risk_tag_has_a_query_template():
+    """태그마다 질의문이 있어야 한다 — 없으면 그 위험은 판례를 영영 못 찾는다."""
+    from app.services.precedent.models import RISK_TAGS
+    from app.services.precedent.service import QUERY_TEMPLATES
+
+    assert set(RISK_TAGS) == set(QUERY_TEMPLATES)
+
+
+def test_jeonse_ratio_query_uses_case_vocabulary():
+    """전세가율 질의는 판례가 실제로 쓰는 말을 담아야 한다.
+
+    판결문은 '전세가율'·'깡통전세'를 쓰지 않는다. 그 어휘로만 질의하면 유사도 하한에
+    전부 막혀 이 위험만 판례가 0건이 된다(실측 2026-08-12).
+    """
+    from app.services.precedent.service import QUERY_TEMPLATES
+
+    q = QUERY_TEMPLATES["전세가율"]
+    assert "배당" in q
+    assert any(k in q for k in ("소액임차인", "선순위 임차인"))

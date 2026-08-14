@@ -20,6 +20,7 @@ import '../components/term_tooltip_sheet.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class ComponentGalleryScreen extends StatelessWidget {
   const ComponentGalleryScreen({super.key});
@@ -27,7 +28,7 @@ class ComponentGalleryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('디자인 시스템 갤러리 (예시 데이터)')),
+      appBar: AppBar(title: const AppText('디자인 시스템 갤러리 (예시 데이터)')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
@@ -44,12 +45,12 @@ class ComponentGalleryScreen extends StatelessWidget {
             ('양호', AppColors.ok),
           ]),
           _section('타이포 (Pretendard)'),
-          const Text('결론 34 Bold', style: AppTypography.conclusion),
-          const Text('숫자 28 Bold — 3,200만원', style: AppTypography.numberLarge),
-          const Text('화면 제목 22', style: AppTypography.headline),
-          const Text('카드 제목 17', style: AppTypography.title),
-          const Text('본문 15 — 등기부등본을 쉽게 읽어드려요.', style: AppTypography.body),
-          const Text(
+          const AppText('결론 34 Bold', style: AppTypography.conclusion),
+          const AppText('숫자 28 Bold — 3,200만원', style: AppTypography.numberLarge),
+          const AppText('화면 제목 22', style: AppTypography.headline),
+          const AppText('카드 제목 17', style: AppTypography.title),
+          const AppText('본문 15 — 등기부등본을 쉽게 읽어드려요.', style: AppTypography.body),
+          const AppText(
             '캡션 13 — 출처: HUG 전세보증 기준 (예시)',
             style: AppTypography.caption,
           ),
@@ -135,7 +136,7 @@ class ComponentGalleryScreen extends StatelessWidget {
           const VerdictSourceLabel(verdictSource: 'HUG 기준 · 예시'),
 
           _section('용어 툴팁 (문장 속 인라인 — 탭해 보세요)'),
-          Text.rich(
+          AppText.rich(
             TextSpan(
               style: AppTypography.body,
               children: [
@@ -181,7 +182,7 @@ class ComponentGalleryScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     MascotSafe(size: 72, state: s),
-                    Text(s.name, style: AppTypography.caption),
+                    AppText(s.name, style: AppTypography.caption),
                   ],
                 ),
             ],
@@ -196,9 +197,9 @@ class ComponentGalleryScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('역삼동 오피스텔', style: AppTypography.title),
+                      AppText('역삼동 오피스텔', style: AppTypography.title),
                       SizedBox(height: AppSpacing.xs),
-                      Text(
+                      AppText(
                         '2026.06.26 분석 · 근저당 2건 (예시)',
                         style: AppTypography.caption,
                       ),
@@ -226,7 +227,7 @@ class ComponentGalleryScreen extends StatelessWidget {
         top: AppSpacing.xxxl,
         bottom: AppSpacing.md,
       ),
-      child: Text(title, style: AppTypography.headline),
+      child: AppText(title, style: AppTypography.headline),
     );
   }
 
@@ -236,7 +237,7 @@ class ComponentGalleryScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: AppTypography.caption),
+          AppText(label, style: AppTypography.caption),
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
@@ -255,7 +256,7 @@ class ComponentGalleryScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: AppSpacing.xs),
-                        Text(
+                        AppText(
                           name,
                           style: AppTypography.label.copyWith(
                             color: AppColors.textMuted,

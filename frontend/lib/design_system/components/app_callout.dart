@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 enum CalloutTone { info, caution, ok, neutral }
 
@@ -67,13 +68,13 @@ class AppCallout extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (title != null) ...[
-                      Text(
+                      AppText(
                         title!,
                         style: AppTypography.label.copyWith(color: c.fg),
                       ),
                       const SizedBox(height: AppSpacing.xs),
                     ],
-                    Text(
+                    AppText(
                       text,
                       style: tone == CalloutTone.neutral
                           ? AppTypography.caption

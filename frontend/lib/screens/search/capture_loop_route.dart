@@ -20,6 +20,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 어두운 전면 화면들의 공통 시스템 UI 스타일 (상태바까지 어두워진다).
 const SystemUiOverlayStyle kDarkStudioOverlay = SystemUiOverlayStyle(
@@ -183,7 +184,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
           child: Center(
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-              child: Text(
+              child: AppText(
                 '카메라를 여는 중이에요…',
                 style: TextStyle(color: Colors.white70),
                 textAlign: TextAlign.center,
@@ -210,7 +211,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
             color: AppColors.primaryBright.withValues(alpha: 0.22),
             borderRadius: BorderRadius.circular(AppRadius.pill),
           ),
-          child: Text(
+          child: AppText(
             '$_total장째 찍었어요',
             style: AppTypography.caption.copyWith(
               color: AppColors.primaryBright,
@@ -231,7 +232,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
                         child: Image.file(
                           File(_justTaken!),
                           fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const Text(
+                          errorBuilder: (_, _, _) => const AppText(
                             '사진을 불러오지 못했어요',
                             style: TextStyle(color: Colors.white70),
                           ),
@@ -250,7 +251,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
           ),
           child: Column(
             children: [
-              Text(
+              AppText(
                 '글자가 흐리거나 잘렸으면 다시 찍어 주세요',
                 textAlign: TextAlign.center,
                 style: AppTypography.body.copyWith(
@@ -275,7 +276,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
                     ),
                   ),
                   icon: const Icon(Icons.photo_camera, size: 22),
-                  label: const Text('다음 장 찍기'),
+                  label: const AppText('다음 장 찍기'),
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -312,12 +313,12 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
         children: [
           const Icon(Icons.no_photography_outlined, color: Colors.white70, size: 40),
           const SizedBox(height: AppSpacing.lg),
-          Text(
+          AppText(
             '카메라 권한이 필요해요',
             style: AppTypography.title.copyWith(color: Colors.white),
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(
+          AppText(
             '등기부등본을 찍으려면 카메라 권한이 필요해요. 사진은 분석에만 쓰고, '
             '최근 분석 5건만 기기에 남아요.',
             textAlign: TextAlign.center,
@@ -350,7 +351,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
         children: [
           _iconButton(leading, onLeading, semantic: '닫기'),
           Expanded(
-            child: Text(
+            child: AppText(
               title,
               textAlign: TextAlign.center,
               style: AppTypography.bodyStrong.copyWith(color: Colors.white),
@@ -410,7 +411,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
       ),
       textStyle: AppTypography.button,
     );
-    return FilledButton(onPressed: onPressed, style: style, child: Text(label));
+    return FilledButton(onPressed: onPressed, style: style, child: AppText(label));
   }
 }
 
@@ -498,7 +499,7 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
                     children: [
                       _icon(Icons.arrow_back, () => _close(), '뒤로'),
                       Expanded(
-                        child: Text(
+                        child: AppText(
                           '${_index + 1} / ${_paths.length}장',
                           textAlign: TextAlign.center,
                           style: AppTypography.button.copyWith(
@@ -559,7 +560,7 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
               child: Image.file(
                 File(_paths[_index]),
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => const Text(
+                errorBuilder: (_, _, _) => const AppText(
                   '사진을 불러오지 못했어요',
                   style: TextStyle(color: Colors.white70),
                 ),
@@ -667,6 +668,6 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
       ),
       textStyle: AppTypography.buttonSmall,
     ),
-    child: Text(label),
+    child: AppText(label),
   );
 }

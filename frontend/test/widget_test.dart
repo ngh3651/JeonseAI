@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/main.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/repositories/content_repository.dart';
+import 'support/ko_finders.dart';
 
 void main() {
   testWidgets('더미 주입: 온보딩 → 시작 → 비회원 시작 → 홈 대시보드 진입', (tester) async {
@@ -23,19 +24,19 @@ void main() {
     await tester.pumpAndSettle();
 
     // 온보딩 첫 장
-    expect(find.text('전세 계약, 도장 찍기 전에'), findsOneWidget);
+    expect(find.koText('전세 계약, 도장 찍기 전에'), findsOneWidget);
 
     // 건너뛰기 → 시작(S-02)
-    await tester.tap(find.text('건너뛰기'));
+    await tester.tap(find.koText('건너뛰기'));
     await tester.pumpAndSettle();
-    expect(find.text('비회원으로 시작하기'), findsOneWidget);
+    expect(find.koText('비회원으로 시작하기'), findsOneWidget);
 
     // 비회원 시작 → 홈
-    await tester.tap(find.text('비회원으로 시작하기'));
+    await tester.tap(find.koText('비회원으로 시작하기'));
     await tester.pumpAndSettle();
-    expect(find.text('매물 분석 시작하기'), findsWidgets);
+    expect(find.koText('매물 분석 시작하기'), findsWidgets);
     // 더미 이력 2건 중 최신
-    expect(find.text('정자동 빌라'), findsOneWidget);
+    expect(find.koText('정자동 빌라'), findsOneWidget);
   });
 
   testWidgets('서버 불능: 홈이 더미로 폴백하지 않고 에러를 보여준다', (tester) async {
@@ -44,11 +45,11 @@ void main() {
     await tester.pumpWidget(const JeonseSafeApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('분석 이력을 불러오지 못했어요'), findsOneWidget);
-    expect(find.text('다시 시도'), findsOneWidget);
+    expect(find.koText('분석 이력을 불러오지 못했어요'), findsOneWidget);
+    expect(find.koText('다시 시도'), findsOneWidget);
     // 빈 상태 문구("아직 분석한 매물이 없어요")로 위장하지 않아야 한다
-    expect(find.text('아직 분석한 매물이 없어요'), findsNothing);
+    expect(find.koText('아직 분석한 매물이 없어요'), findsNothing);
     // 더미 데이터가 몰래 나오지 않아야 한다
-    expect(find.text('정자동 빌라'), findsNothing);
+    expect(find.koText('정자동 빌라'), findsNothing);
   });
 }

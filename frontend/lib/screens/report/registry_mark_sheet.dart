@@ -15,6 +15,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 시트 진입 시간 (시안: 260ms cubic-bezier(.22,1,.36,1))
 const Duration kSheetEnterDuration = Duration(milliseconds: 260);
@@ -92,7 +93,7 @@ class RegistryMarkSheet extends StatelessWidget {
                   _SheetBadge(number: mark.badge, color: color),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
-                    child: Text(
+                    child: AppText(
                       mark.title,
                       style: AppTypography.title.copyWith(
                         fontSize: 16.5,
@@ -103,7 +104,7 @@ class RegistryMarkSheet extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 11),
-              Text(
+              AppText(
                 mark.body,
                 style: AppTypography.body.copyWith(fontSize: 13.5, height: 1.62),
               ),
@@ -116,7 +117,7 @@ class RegistryMarkSheet extends StatelessWidget {
                     color: AppColors.cautionSoft,
                     borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
-                  child: Text(
+                  child: AppText(
                     mark.caution!,
                     style: AppTypography.body.copyWith(
                       fontSize: 13.5,
@@ -127,7 +128,7 @@ class RegistryMarkSheet extends StatelessWidget {
               ],
               const SizedBox(height: 14),
               // 출처 한 줄 — 이게 없으면 시트 문장이 "앱이 그냥 하는 말"로 읽힌다.
-              Text(
+              AppText(
                 '${mark.source ?? '등기부 원본'} · 위치 안내이며 위험도 판정이 아닙니다',
                 style: AppTypography.caption.copyWith(fontSize: 11.5),
               ),
@@ -155,7 +156,7 @@ class _SheetBadge extends StatelessWidget {
       margin: const EdgeInsets.only(top: 1),
       alignment: Alignment.center,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      child: Text(
+      child: AppText(
         '$number',
         // 사진 위 뱃지와 동작을 맞춘다(그쪽은 캔버스라 시스템 글꼴 확대가 안 걸린다)
         textScaler: TextScaler.noScaling,

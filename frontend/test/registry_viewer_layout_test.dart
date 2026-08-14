@@ -20,6 +20,7 @@ import 'package:jeonse_ai/state/registry_photo_store.dart';
 import 'package:provider/provider.dart';
 
 import 'support/registry_fixture.dart';
+import 'support/ko_finders.dart';
 
 /// 문서 영역 하한 — 이보다 좁아지면 등기부 한 쪽(폭 344dp × 종횡비 ≈ 504dp)의
 /// 8할도 못 보여 준다. 그 아래로 내려가면 캐러셀을 접는 안을 꺼내야 한다.
@@ -103,16 +104,16 @@ void main() {
     // 범례 — 색상만 다르고 형태가 같은 두 표시의 유일한 구분 단서다.
     // ⚠ 고정 문자열로 못 박지 않는다. 종류가 많으면 이름을 빼고 `대조할 곳`만 남기므로
     //   (2026-07-28), 문자열을 박으면 **범례를 줄이는 개선이 테스트에 막힌다.**
-    expect(find.textContaining('대조할 곳'), findsWidgets);
-    expect(find.textContaining('따져볼 곳'), findsWidgets);
+    expect(find.koTextContaining('대조할 곳'), findsWidgets);
+    expect(find.koTextContaining('따져볼 곳'), findsWidgets);
     // 회색 한 줄 — 리포트엔 근저당 4건인데 카드가 3장인 이유를 대는 자리
-    expect(find.textContaining('말소'), findsOneWidget);
+    expect(find.koTextContaining('말소'), findsOneWidget);
   });
 
   testWidgets('앱바 제목은 매물 별칭이다 (캡처해 보냈을 때 무슨 집인지 알 수 있게)', (tester) async {
     await pumpViewer(tester);
-    expect(find.text('샘플빌라 제101호'), findsOneWidget);
-    expect(find.text('내가 올린 사진에서 보기'), findsNothing);
+    expect(find.koText('샘플빌라 제101호'), findsOneWidget);
+    expect(find.koText('내가 올린 사진에서 보기'), findsNothing);
   });
 
   testWidgets('디버그 토글은 남아 있지 않다 (실기기 확인 후 제거)', (tester) async {

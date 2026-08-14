@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({
@@ -82,7 +83,7 @@ class AppBottomNav extends StatelessWidget {
                 size: AppSize.iconMd,
               ),
               const SizedBox(height: 2),
-              Text(
+              AppText(
                 tab.label,
                 style: AppTypography.label.copyWith(color: color),
               ),

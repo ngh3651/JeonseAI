@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
 import '../models/analysis_report.dart';
+import '../models/compare_result.dart';
 import '../services/api_client.dart';
 import '../services/registry_upload_service.dart';
 import '../state/registry_photo_store.dart';
@@ -128,5 +129,53 @@ class ApiAnalysisRepository extends AnalysisRepository {
   Future<void> deleteReport(String id) async {
     await _api.delete('/api/reports/$id'); // 403(예시)·404는 ApiException으로 화면에 전달
     notifyListeners();
+  }
+
+  /// 등기부 대조 (계약 §3.10). 사진이 없으면 **사진 없이** 부른다 —
+  /// 기준이 없는 리포트는 서버가 촬영 전에 "기준 없음"으로 답하기 때문이다.
+  @override
+  Future<CompareResult> compareRegistry(
+    String reportId,
+    List<String> imagePaths,
+  ) async {
+    final files = <http.MultipartFile>[];
+    final sentJpegPaths = <String>[];
+    for (int i = 0; i < imagePaths.length; i++) {
+      final jpeg = await _uploader.convertToJpeg(imagePaths[i], tag: 'c$i');
+      if (jpeg == null) {
+        throw const ApiException('이미지를 변환하지 못했어요. 다른 사진으로 다시 시도해 주세요');
+      }
+      sentJpegPaths.add(jpeg.path);
+      files.add(
+        await http.MultipartFile.fromPath(
+          'files',
+          jpeg.path,
+          filename: 'page_${i + 1}.jpg',
+          contentType: MediaType('image', 'jpeg'),
+        ),
+      );
+    }
+
+    final json = await _api.postMultipart(
+      '/api/reports/$reportId/compare',
+      files: files,
+      fields: const {},
+    );
+    final result = CompareResult.fromJson(json as Map<String, dynamic>);
+
+    // 대조는 **새 분석 1건을 만든다**(같은 보증금으로 다시 판정한 결과다).
+    // 그 리포트의 원본 사진을 남겨 둬야 새 리포트에서도 '원본에서 보기'가 열린다.
+    final newId = result.newReportId;
+    if (newId != null && sentJpegPaths.isNotEmpty) {
+      RegistryPhotoStore.instance.register(newId, sentJpegPaths);
+      await RegistryPhotoStore.instance.keep(newId, sentJpegPaths);
+    }
+    // 이력이 바뀌었다(새 분석 추가 또는 다른 집이라 취소) → 홈·여정 갱신
+    notifyListeners();
+    debugPrint(
+      '[대조] 리포트 $reportId — 결과 ${result.outcome.name}, '
+      '올린 사진 ${sentJpegPaths.length}장, 새 리포트 ${newId ?? '없음'}',
+    );
+    return result;
   }
 }

@@ -43,6 +43,7 @@ class EvidenceItem {
     this.sourceText,
     this.actionLabel,
     this.termGlossary = const {},
+    this.explanationSource,
   });
 
   /// 항목 식별자: jeonse_ratio | senior_debt | ownership | insurance | blacklist
@@ -74,6 +75,16 @@ class EvidenceItem {
   /// 쉬운 설명 속 용어 → 툴팁 설명 (용어가 easyExplanation 본문에 등장해야 함)
   final Map<String, String> termGlossary;
 
+  /// 이 카드의 **설명 문장**을 누가 썼는가 (계약 §2.2, 2026-08-14 D26).
+  ///
+  /// 모델이 썼으면 실제 모델 문자열(예: `solar-pro2`), 검증에 걸려 미리 준비한
+  /// 문장이 나갔으면 `준비된 문구`. **카드마다 다를 수 있다** — 설명 폴백은 필드
+  /// 단위라, 한 리포트 안에서 어떤 카드는 모델 문장이고 어떤 카드는 준비된 문구다.
+  ///
+  /// null이면(옛 서버·옛 이력) 화면이 종전 라벨 '자동 생성'을 그대로 쓴다.
+  /// ⚠ **판정 출처가 아니다.** 판정은 언제나 규칙 엔진이고, 그 출처는 [sourceText]다.
+  final String? explanationSource;
+
   /// 서버 JSON(api-contract.md §2.2 Evidence) → 모델.
   factory EvidenceItem.fromJson(Map<String, dynamic> json) => EvidenceItem(
     id: json['id'] as String,
@@ -87,6 +98,7 @@ class EvidenceItem {
     actionLabel: json['actionLabel'] as String?,
     termGlossary: (json['termGlossary'] as Map<String, dynamic>? ?? const {})
         .map((k, v) => MapEntry(k, v as String)),
+    explanationSource: json['explanationSource'] as String?,
   );
 }
 
@@ -213,6 +225,7 @@ class AnalysisReport {
     this.highlightNotice,
     this.checkedNotes = const [],
     this.registryViewedAt,
+    this.comparable = false,
     this.marketPriceSource = MarketPriceSource.unknown,
     this.marketPriceAsOf,
     this.marketPriceSampleCount,
@@ -276,6 +289,12 @@ class AnalysisReport {
   ///   믿게 만들어 아무것도 안 쓰느니만 못하다. **없으면 그 줄 자체를 그리지 않는다.**
   final String? registryViewedAt;
 
+  /// 이 분석을 **다음 등기부와 견줄 기준으로 쓸 수 있는가** (계약 §2.1, S-11 대조).
+  ///
+  /// false면 [다시 떼서 대조하기]는 사진을 받기 전에 "기준 없음" 화면으로 간다 —
+  /// 찍게 해 놓고 마지막에 못 한다고 말하지 않기 위해서다. 옛 서버·옛 이력이면 false.
+  final bool comparable;
+
   // ── 시세 출처 (api-contract.md §2.8 · 2026-08-03 추가, 전부 선택) ──────────
   // 서버가 안 보내면 unknown/null — 앱은 출처 줄을 그리지 않거나 "확인 필요"로 말한다.
 
@@ -324,6 +343,8 @@ class AnalysisReport {
     ],
     // 구버전 서버는 이 필드를 안 보낸다 → null → 앱은 그 줄을 그리지 않는다.
     registryViewedAt: json['registryViewedAt'] as String?,
+    // 구버전 서버·옛 이력이면 없음 → false(대조 기준으로 쓸 수 없음)로 본다.
+    comparable: json['comparable'] as bool? ?? false,
     // 시세 출처 (§2.8). 구버전 서버면 unknown/null — 앱은 출처 줄을 숨긴다.
     marketPriceSource: MarketPriceSource.fromWire(
       json['marketPriceSource'] as String?,

@@ -13,6 +13,7 @@ import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
 import 'risk_badge.dart';
 import 'source_label.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 표면 카드 — 테마의 CardThemeData(테두리·라운드)를 그대로 쓰는 패딩 컨테이너.
 class AppCard extends StatelessWidget {
@@ -59,6 +60,7 @@ class EvidenceCard extends StatefulWidget {
     this.explanationSpan,
     this.detailText,
     this.sourceText,
+    this.explanationSource,
     this.action,
     this.initiallyExpanded = false,
   });
@@ -87,6 +89,10 @@ class EvidenceCard extends StatefulWidget {
 
   /// 펼침 3단: 판정 출처 (예: "HUG 전세보증 기준")
   final String? sourceText;
+
+  /// 이 카드의 **설명 문장**을 누가 썼는가 (2026-08-14 D26).
+  /// null이면 [VerdictSourceLabel]이 종전 라벨('자동 생성')을 쓴다.
+  final String? explanationSource;
 
   /// 다음 행동 버튼.
   ///
@@ -137,9 +143,9 @@ class _EvidenceCardState extends State<EvidenceCard> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Text(widget.title, style: AppTypography.title),
+                AppText(widget.title, style: AppTypography.title),
                 const SizedBox(height: AppSpacing.xs),
-                Text(widget.termSubtitle, style: AppTypography.caption),
+                AppText(widget.termSubtitle, style: AppTypography.caption),
                 AnimatedCrossFade(
                   duration: const Duration(milliseconds: 180),
                   crossFadeState: _expanded
@@ -151,15 +157,20 @@ class _EvidenceCardState extends State<EvidenceCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (widget.explanationSpan != null)
-                          Text.rich(widget.explanationSpan!)
-                        else
-                          Text(
-                            widget.easyExplanation,
-                            style: AppTypography.body,
-                          ),
+                        // ── [D24 · 2026-08-14] 회색 요약 박스를 설명문 **위로** ──────
+                        //
+                        // 예전에는 설명문(4줄) → 회색 박스 순서였다. 카드를 펼치면
+                        // 문장부터 읽어야 이 집의 숫자가 나와서, "그래서 얼마인데?"에
+                        // 닿기까지 네 줄이 걸렸다. 숫자가 결론이고 설명문은 그 결론을
+                        // 풀어 주는 말이므로 순서를 뒤집는다 —
+                        // "결론 먼저 크게 → 근거는 펼쳐 보기"(IA.md §0)와 같은 방향이다.
+                        //
+                        // ⚠ 박스 스타일·패딩·타이포는 **그대로**다. 순서만 바꿨다.
+                        // ⚠ `explanationSpan`(용어 툴팁이 심긴 리치 텍스트)은 그대로
+                        //   `easyExplanation` 자리에 그려진다 — report_screen이 붙이는
+                        //   indexOf 배선은 이 위젯의 순서와 무관하다(스팬은 이미 조립된
+                        //   상태로 넘어온다). 툴팁은 그대로 산다.
                         if (widget.detailText != null) ...[
-                          const SizedBox(height: AppSpacing.md),
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(AppSpacing.md),
@@ -167,14 +178,25 @@ class _EvidenceCardState extends State<EvidenceCard> {
                               color: AppColors.background,
                               borderRadius: BorderRadius.circular(AppRadius.md),
                             ),
-                            child: Text(
+                            child: AppText(
                               widget.detailText!,
                               style: AppTypography.bodyStrong,
                             ),
                           ),
+                          const SizedBox(height: AppSpacing.md),
                         ],
+                        if (widget.explanationSpan != null)
+                          AppText.rich(widget.explanationSpan!)
+                        else
+                          AppText(
+                            widget.easyExplanation,
+                            style: AppTypography.body,
+                          ),
                         const SizedBox(height: AppSpacing.md),
-                        VerdictSourceLabel(verdictSource: widget.sourceText),
+                        VerdictSourceLabel(
+                          verdictSource: widget.sourceText,
+                          explanationSource: widget.explanationSource,
+                        ),
                         if (widget.action != null) ...[
                           const SizedBox(height: AppSpacing.md),
                           widget.action!,

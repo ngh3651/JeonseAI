@@ -11,13 +11,17 @@ from __future__ import annotations
 import logging
 import os
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from ..schemas.contract import Evidence, Highlight, MarketPriceAlternative, Report
 from ..schemas.internal import Grade, PriceProvenance, RegistryExtract, RuleVerdict
 from . import (
     artifacts,
+    cancellation,
+    compare,
     cross_check,
     document_parse,
     explanation,
@@ -114,8 +118,11 @@ def _build(
     checked_notes: list[str] | None = None,
     registry_viewed_at: str | None = None,
     price_info: "price_resolver.ResolvedPrice | None" = None,
-) -> tuple[Report, str]:
-    """조립 본체 — (Report, 설명 출처 라벨)을 돌려준다.
+) -> tuple[Report, "explanation.ExplanationResult"]:
+    """조립 본체 — (Report, 설명 생성 결과)를 돌려준다.
+
+    두 번째 값은 **로그·보고용**이다. 설명을 어느 provider·모델이 몇 초 만에 썼고
+    폴백이 섞였는지가 [분석 완료] 요약에 그대로 실린다(2026-08-14 D9).
 
     `price_info`가 오면 **그것이 시세의 정본**이다 — `market_price` 인자를 덮어쓴다.
     (자동조회 결과와 판정에 들어간 값이 어긋나는 경로를 원천 차단한다.)
@@ -140,9 +147,17 @@ def _build(
     if use_llm:
         # LLM은 설명 문장만 — 실패 시 내부에서 폴백으로 완성돼 돌아온다(리포트 항상 완성)
         explanation_result = explanation.generate(verdict, report_id=resolved_id)
-        texts, explain_source = explanation_result.texts, explanation_result.source
     else:
-        texts, explain_source = fallback_texts.build(verdict), "폴백(강제)"
+        _forced = fallback_texts.build(verdict)
+        explanation_result = explanation.ExplanationResult(
+            texts=_forced,
+            source="폴백(강제)",
+            # LLM을 아예 부르지 않은 경로다 — 모든 카드가 준비된 문구다(D26).
+            evidence_sources={
+                eid: explanation.FALLBACK_SOURCE_LABEL for eid in _forced["evidences"]
+            },
+        )
+    texts = explanation_result.texts
 
     # 용어 툴팁 자동 부착 (2026-08-05) — **최종 문장**을 훑는다.
     # LLM 문장이든 폴백 문장이든 여기를 지나므로, '용어가 본문에 등장해야 한다'는
@@ -174,6 +189,9 @@ def _build(
                 sourceText=ev.source_text,  # [판정]
                 actionLabel=t["action_label"],  # [UI]
                 termGlossary=t["term_glossary"],  # [설명]
+                # [설명 출처 · D26] 이 카드의 문장을 모델이 썼는지 준비된 문구인지.
+                # 카드마다 다를 수 있다(설명 폴백은 필드 단위다 — explanation.py 참고).
+                explanationSource=explanation_result.evidence_sources.get(ev.id),
             )
         )
 
@@ -216,7 +234,7 @@ def _build(
         checkedNotes=checked_notes or [],  # [표시 전용] 무엇을 찾아봤는지 요약
         registryViewedAt=registry_viewed_at,  # [표시 전용] 등기부 열람일시 (없으면 None)
     )
-    return report, explain_source
+    return report, explanation_result
 
 
 def _timed(fn, *args, **kwargs):
@@ -228,11 +246,28 @@ def _timed(fn, *args, **kwargs):
         return None, e, time.perf_counter() - t0
 
 
+@dataclass
+class OcrPath:
+    """OCR 경로(②③)가 한 스레드에서 만들어 오는 것 전부.
+
+    예전에는 5-튜플이었다. 2026-08-14에 **단계별 소요 시간**을 [분석 완료] 요약에
+    찍게 되면서 자리가 둘 더 늘어, 순서로 기억해야 하는 7-튜플이 되느니 이름을 붙였다.
+    ⚠ 여기 담기는 것 중 판정에 들어가는 것은 **하나도 없다** — 좌표·교차검증·로그용이다.
+    """
+
+    ocr: "ocr.OcrResult"
+    second_extract: RegistryExtract | None = None
+    second_provider: str | None = None  # 2차 구조화를 맡은 provider 이름
+    second_model: str | None = None  # 그 provider가 실제로 부른 모델명
+    error: str | None = None  # 2차 경로가 없거나 실패한 사유 (사람이 읽는 한 줄)
+    doc_check: "ocr_layout.DocumentCheck | None" = None
+    ocr_elapsed: float = 0.0  # ② Document OCR에만 쓴 초
+    structure_elapsed: float = 0.0  # ③ 2차 구조화에만 쓴 초
+
+
 def _ocr_then_second_opinion(
     images: list[tuple[str, bytes]], run_id: str | None = None
-) -> tuple[
-    ocr.OcrResult, RegistryExtract | None, str | None, str | None, "ocr_layout.DocumentCheck | None"
-]:
+) -> OcrPath:
     """OCR → (성공하면) **두 번째 추출 경로**까지 한 스레드에서 이어 돌린다.
 
     왜 이어 붙이나: 두 번째 경로의 입력이 OCR 결과라 진짜 병렬이 될 수 없다. 대신
@@ -245,27 +280,51 @@ def _ocr_then_second_opinion(
       파이프라인이다(2026-07-28 gap-checker 지적). 점검 결과는 `build_highlights`에
       그대로 넘겨 **같은 순서·중복 계산 없이** 쓴다.
 
-    반환: (OCR 결과, 두 번째 경로 추출본|None, provider 이름|None, 실패 사유|None, 묶음 점검|None)
-    ⚠ 어떤 실패도 밖으로 던지지 않는다 — 이 경로가 없어도 리포트는 그대로 완성된다.
+    반환: [OcrPath] — 어떤 실패도 밖으로 던지지 않는다.
+    이 경로가 통째로 없어도 리포트는 그대로 완성된다.
     """
+    t_ocr = time.perf_counter()
     ocr_result = ocr.run_ocr(images, run_id=run_id)
+    ocr_elapsed = time.perf_counter() - t_ocr
     if not ocr_result.pages:
-        return ocr_result, None, None, "OCR 결과 없음", None
+        return OcrPath(ocr=ocr_result, error="OCR 결과 없음", ocr_elapsed=ocr_elapsed)
 
     check = ocr_layout.check_document(ocr_result.pages)
     provider = llm.structure_provider()
     if provider is None:
-        return ocr_result, None, None, "두 번째 경로 꺼짐 또는 키 없음", check
+        return OcrPath(
+            ocr=ocr_result,
+            error="두 번째 경로 꺼짐 또는 키 없음",
+            doc_check=check,
+            ocr_elapsed=ocr_elapsed,
+        )
 
+    t_structure = time.perf_counter()
     try:
         # 정렬이 확정됐으면 **그 순서로** 텍스트를 만든다 (업로드 순서가 아니라).
         ordered, _, _ = highlight._apply_page_order(ocr_result.pages, check.page_order)
         layout_text = _layout_text_for(images, ordered, run_id)
         second = provider.structure(layout_text, timeout=llm.STRUCTURE_TIMEOUT_SECONDS)
-        return ocr_result, second, provider.name, None, check
+        return OcrPath(
+            ocr=ocr_result,
+            second_extract=second,
+            second_provider=provider.name,
+            second_model=provider.model,
+            doc_check=check,
+            ocr_elapsed=ocr_elapsed,
+            structure_elapsed=time.perf_counter() - t_structure,
+        )
     except Exception as e:  # noqa: BLE001 — 두 번째 경로는 어떤 이유로도 분석을 막지 못한다
         _log.info(f"[LLM:{provider.name}] 구조화 실패 — 교차검증 없이 진행 ({type(e).__name__}: {e})")
-        return ocr_result, None, provider.name, f"{type(e).__name__}", check
+        return OcrPath(
+            ocr=ocr_result,
+            second_provider=provider.name,
+            second_model=provider.model,
+            error=f"{type(e).__name__}",
+            doc_check=check,
+            ocr_elapsed=ocr_elapsed,
+            structure_elapsed=time.perf_counter() - t_structure,
+        )
 
 
 def _layout_text_for(
@@ -359,12 +418,12 @@ def analyze(
         ie_future = pool.submit(_timed, extraction.extract_registry, images, run_id=run_id)
         ocr_future = pool.submit(_timed, _ocr_then_second_opinion, images, run_id)
         extract, ie_error, ie_elapsed = ie_future.result()
-        ocr_bundle, ocr_error, ocr_elapsed = ocr_future.result()
+        ocr_bundle, ocr_error, ocr_path_elapsed = ocr_future.result()
 
     total = time.perf_counter() - t0
     _log.info(
-        f"[병렬] IE {ie_elapsed:.1f}초 / OCR+구조화 {ocr_elapsed:.1f}초 → 전체 {total:.1f}초"
-        f" (순차였다면 {ie_elapsed + ocr_elapsed:.1f}초)"
+        f"[병렬] IE {ie_elapsed:.1f}초 / OCR+구조화 {ocr_path_elapsed:.1f}초 → 전체 {total:.1f}초"
+        f" (순차였다면 {ie_elapsed + ocr_path_elapsed:.1f}초)"
     )
     if ie_error is not None:
         # IE 실패는 분석 실패다(지금과 동일). OCR이 성공했어도 판정할 수 없으므로 버린다.
@@ -372,8 +431,12 @@ def analyze(
         raise ie_error
     if ocr_error is not None:  # run_ocr는 예외를 삼키지만, 만약을 대비한 최종 방어선
         _log.info(f"[OCR] 예기치 못한 예외 — 좌표 없이 계속 진행 ({type(ocr_error).__name__})")
-        ocr_bundle = (ocr.OcrResult(), None, None, type(ocr_error).__name__, None)
-    ocr_result, second_extract, second_provider, second_error, doc_check = ocr_bundle
+        ocr_bundle = OcrPath(ocr=ocr.OcrResult(), error=type(ocr_error).__name__)
+    ocr_result = ocr_bundle.ocr
+    second_extract = ocr_bundle.second_extract
+    second_provider = ocr_bundle.second_provider
+    second_error = ocr_bundle.error
+    doc_check = ocr_bundle.doc_check
 
     assert extract is not None  # ie_error가 없으면 반드시 값이 있다
     # [진단] IE 응답 실태 — 개수/참·거짓만 (이름·등록번호 금지). rank_number 채움 여부 확인용.
@@ -386,6 +449,26 @@ def analyze(
         f" | 압류·가압류 {len(extract.seizures) + len(extract.provisional_seizures)}건"
         f" | 경매·신탁 {len(extract.auction_commencements) + len(extract.trust_registrations)}건"
     )
+    # ── 말소 확인분 제외 (2026-08-14 D10) ────────────────────────────────────
+    # **판정에 들어가는 사실을 여기서 한 번 바로잡는다.** OCR이 'N번○○등기말소' 행을
+    # 특정 (구역, 순위)에 결합해 확인한 항목에만 `is_canceled`를 찍는다. 규칙 엔진은
+    # 원래부터 유효 항목만 세므로 규칙은 한 줄도 바뀌지 않는다 — 사실이 바뀔 뿐이다.
+    #
+    # ⚠ **왜 여기인가.** 교차검증·하이라이트·판정이 **같은 사실**을 보게 하려면 그 셋보다
+    #   앞이어야 한다. 뒤에 두면 "표시에서는 뺐는데 계산에서는 셌다"가 그대로 남고,
+    #   교차검증은 말소로 이미 설명된 개수 차이를 불일치라고 말하게 된다.
+    # ⚠ 안전 조건(미결 말소·사진 묶음 점검·등기목적 일치)은 전부 `cancellation` 안에 있다.
+    #   하나라도 애매하면 아무것도 빼지 않고 종전대로 센다.
+    try:
+        cancel_result = cancellation.apply_confirmed_cancellations(
+            extract, ocr_result, check=doc_check
+        )
+    except Exception:  # noqa: BLE001 — 사실 보정이 분석을 깨뜨리면 안 된다(종전 계산 유지)
+        _log.error("[판정] ⚠ 말소 제외 중 예기치 못한 예외 — 종전대로 계산합니다", exc_info=True)
+        cancel_result = cancellation.CancellationResult(skipped_reason="예외")
+    if cancel_result.skipped_reason:
+        _log.info(f"[판정] 말소 제외를 적용하지 않았습니다 — {cancel_result.skipped_reason}")
+
     # 두 경로 대조 — **표시와 고지에만** 쓴다. 아래 `rule_engine`에는 `extract`(IE)만 간다.
     try:
         check = cross_check.compare(
@@ -397,7 +480,11 @@ def analyze(
 
     try:
         highlight_result = highlight.build_highlights(
-            extract, ocr_result, cross=check, check=doc_check
+            extract,
+            ocr_result,
+            cross=check,
+            check=doc_check,
+            canceled_excluded=cancel_result.count,
         )
     except Exception as e:  # noqa: BLE001 — 표시 기능이 분석을 깨뜨리면 안 된다
         _log.error(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})", exc_info=True)
@@ -422,7 +509,7 @@ def analyze(
             address=None, area_sqm=None, manual_price_won=market_price, auto=False
         )
 
-    report, explain_source = _build(
+    report, explain = _build(
         extract,
         deposit=deposit,
         market_price=market_price,
@@ -438,6 +525,22 @@ def analyze(
     # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
     # 2026-07-28 실기기 500이 정확히 이 모양이었다(리포트 완성 → 마지막 문장에서 사망).
     # 그래서 이 아래 전부를 감싼다 — 실패해도 사용자는 리포트를 받는다.
+    try:
+        # 다음에 등기부를 다시 뗐을 때 견줄 **기준**을 남긴다 (S-11 대조).
+        # 실패해도 이번 리포트는 그대로 나간다 — 대조를 못 하게 될 뿐이고,
+        # 그 사실은 `comparable=False`로 앱에 정직하게 전달된다.
+        store.put_snapshot(
+            report.id,
+            compare.build_snapshot(
+                extract,
+                report=report,
+                page_count=len(images),
+                manual_market_price=market_price,
+            ),
+        )
+        report.comparable = True
+    except Exception:  # noqa: BLE001
+        _log.error("[대조] ⚠ 기준 스냅샷을 남기지 못했습니다 — 이 리포트는 대조 기준이 될 수 없어요", exc_info=True)
     try:
         store.add(report)
     except Exception:  # noqa: BLE001 — 이력 저장 실패로 이번 분석을 잃지 않는다
@@ -459,14 +562,88 @@ def analyze(
             if report.marketPrice
             else "없음"
         )
+        _cross_note = (
+            f"일치 {len(check.agreed)}종/불일치 {len(check.disagreed)}종"
+            if check.ran
+            else f"없음({second_error})"
+        )
         _log.info(
-            f"[분석 완료] 지역: {_addr_head} | 시세: {_price_note}"
-            f" | 선순위채권 합계: {format_won(report.seniorDebtAmount)}"
-            f" | 판정: {report.grade} (게이지 {report.gaugeProgress}) | 설명: {explain_source}"
-            f" | 하이라이트: {len(report.highlights)}건"
-            f" | 교차검증: {'일치 ' + str(len(check.agreed)) + '종/불일치 ' + str(len(check.disagreed)) + '종' if check.ran else '없음(' + str(second_error) + ')'}"
-            f" | 총 {time.perf_counter() - t0:.1f}초"
+            _summary_block(
+                stages=[
+                    ("① 정보 추출(IE)", _vendor("upstage", extraction.MODEL), ie_elapsed),
+                    (
+                        "② 문서 OCR",
+                        f"{_vendor('upstage', ocr.OCR_MODEL)} · {len(ocr_result.pages)}장",
+                        ocr_bundle.ocr_elapsed,
+                    ),
+                    (
+                        "③ 2차 구조화",
+                        _vendor(ocr_bundle.second_provider, ocr_bundle.second_model)
+                        if ocr_bundle.second_provider
+                        else f"건너뜀 ({second_error})",
+                        ocr_bundle.structure_elapsed,
+                    ),
+                    ("④ 설명 생성", _vendor(explain.provider, explain.model), explain.elapsed),
+                ],
+                total=time.perf_counter() - t0,
+                facts=[
+                    ("판정", f"{report.grade} (게이지 {report.gaugeProgress})"),
+                    ("설명 출처", explain.source),
+                    ("지역", _addr_head),
+                    ("시세", _price_note),
+                    ("선순위채권 합계", format_won(report.seniorDebtAmount)),
+                    ("하이라이트", f"{len(report.highlights)}건"),
+                    ("교차검증", _cross_note),
+                ],
+            )
         )
     except Exception:  # noqa: BLE001 — 로그 한 줄 만들다 요청을 죽이는 일은 없어야 한다
         _log.error("[분석 완료] 요약 로그 생성 실패 (리포트는 정상)", exc_info=True)
     return report
+
+
+# ── [분석 완료] 요약 블록 (2026-08-14 D9) ───────────────────────────────────────
+# 이 블록은 **터미널을 그대로 캡처해 제안서에 넣기 위한 것**이다. 그래서 한 줄에
+# 몰아넣지 않고, 단계마다 "어느 회사 어느 모델이 몇 초를 썼는지"를 눈으로 세로로
+# 훑을 수 있게 세운다. 값은 전부 실행 중에 실제로 잰 것이고, 모델명은 코드 상수와
+# `.env` 덮어쓰기를 반영한 **실제 호출값**이다(추정·수기 입력 없음).
+
+#: provider 이름 → 캡처에 쓸 회사 표기. 모르는 이름은 그대로 찍는다(거짓말보다 낫다).
+_VENDOR_LABEL = {"upstage": "Upstage", "exaone": "LG EXAONE", "ax": "SKT A.X"}
+
+
+def _vendor(provider: str | None, model: str | None) -> str:
+    """`upstage` + `solar-pro2` → `Upstage solar-pro2`."""
+    if not provider or provider == "-":
+        return "-"
+    return f"{_VENDOR_LABEL.get(provider, provider)} {model or '?'}".strip()
+
+
+def _cells(text: str) -> int:
+    """터미널에서 차지하는 **칸 수**. 한글·전각 문자는 2칸이다."""
+    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+
+
+def _pad(text: str, width: int) -> str:
+    """`str.ljust`는 글자 수로 세서 한글이 섞이면 열이 어긋난다 — 칸 수로 채운다."""
+    return text + " " * max(0, width - _cells(text))
+
+
+def _summary_block(
+    *, stages: list[tuple[str, str, float]], total: float, facts: list[tuple[str, str]]
+) -> str:
+    """(단계, 모델, 초) 목록과 사실 목록을 정렬된 한 덩어리로 만든다."""
+    name_w = max((_cells(n) for n, _, _ in stages), default=0)
+    model_w = max((_cells(m) for _, m, _ in stages), default=0)
+    lines = ["[분석 완료] ─────────────────────────────────────────────────"]
+    for name, model, seconds in stages:
+        lines.append(f"  {_pad(name, name_w)}  {_pad(model, model_w)}  {seconds:>5.1f}초")
+    lines.append(f"  {' ' * name_w}  {_pad('총 소요', model_w)}  {total:>5.1f}초")
+    # ⚠ 이 한 줄이 없으면 캡처를 본 사람이 위 네 값을 더해 보고 안 맞는다고 여긴다.
+    #   ①(IE)과 ②(OCR)는 다른 스레드에서 **동시에** 돌고, ③은 ② 뒤에 이어 붙는다.
+    lines.append("  (①과 ②는 동시에 돕니다 — 총 소요는 네 값의 합이 아니라 실제 걸린 시간)")
+    lines.append("  ─────────────────────────────────────────────────────────")
+    label_w = max((_cells(k) for k, _ in facts), default=0)
+    for key, value in facts:
+        lines.append(f"  {_pad(key, label_w)}  {value}")
+    return "\n".join(lines)

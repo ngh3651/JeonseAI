@@ -17,9 +17,9 @@ from pathlib import Path
 
 from ...schemas.contract import Report
 from ...schemas.internal import Grade, RuleVerdict
-from .. import thresholds as T
-from . import explainer
-from .models import PrecedentSection, RetrievedPrecedent
+from .. import terms, thresholds as T
+from . import emphasis as emphasis_picker, explainer
+from .models import OUTCOME_TEXT, OUTCOME_UNKNOWN, PrecedentSection, RetrievedPrecedent
 from .retrieval import HybridRetriever
 
 # 태그별 결정적 질의 템플릿 — 판례 검색 전용 문장(판정 아님).
@@ -27,7 +27,17 @@ from .retrieval import HybridRetriever
 QUERY_TEMPLATES: dict[str, str] = {
     "신탁등기": "신탁등기된 부동산을 수탁자 신탁회사 동의 없이 임대차 계약한 임차인의 대항력과 보증금 반환",
     "선순위 채권": "선순위 근저당권이 설정된 주택이 경매될 때 후순위 임차인의 배당과 보증금 손실",
-    "전세가율": "매매가에 육박하는 전세보증금 깡통전세 무자본 갭투자 전세사기 보증금 편취 사기죄",
+    # ★ 판결문은 "전세가율"·"깡통전세"라는 말을 쓰지 않는다. 이 위험은 법리 쟁점이
+    #   아니라 사실관계로 나타난다 — 다가구주택에서 앞 세입자들 보증금 합계가 집값을
+    #   넘어 뒤 세입자가 배당을 못 받는 구조다. 질의를 '깡통전세' 어휘로만 쓰면
+    #   실제 판례와 의미가 멀어 유사도 하한(0.45)에 전부 막힌다
+    #   (실측 2026-08-12: 태그가 붙은 7건 중 통과 0건, 최고 0.362).
+    #   그래서 판례가 실제로 쓰는 말로 질의한다.
+    "전세가율": (
+        "다가구주택에서 선순위 임차인들의 임대차보증금 합계가 매각대금을 초과하여 "
+        "후순위 임차인이 경매 배당절차에서 보증금을 배당받지 못한 사안, "
+        "소액임차인 최우선변제, 매매가에 육박하는 전세보증금 깡통전세 갭투자"
+    ),
     "임차권등기": "임차권등기명령에 따른 임차권등기와 임차인의 대항력 우선변제권 보증금 미반환",
     "압류·가압류": "가압류 압류 등기가 있는 주택을 임차한 임차인의 대항력과 경매 시 보증금",
     "경매": "주택 경매 경락 절차에서 임차인의 배당 순위와 낙찰인에 대한 대항력",
@@ -132,6 +142,54 @@ def _verdict_summary(verdict: RuleVerdict | None, tags: list[str]) -> dict:
     return summary
 
 
+#: 카드에서 읽기 보조를 붙일 본문 필드 — 앱이 쓰는 이름 그대로 쓴다(계약 §2.3).
+#: `summary`는 이미 굵게 나가므로 강조 대상이 아니고, 용어 툴팁만 받는다.
+_BODY_FIELDS = ("summary", "result", "commonPoint", "advice")
+_EMPHASIS_FIELDS = ("result", "commonPoint", "advice")
+#: 앱 필드 이름 → LLM이 emphasis를 고를 때 쓰는 키 이름.
+#:
+#: ⚠ `advice`가 여기 들어 있는 것은 **의도적**이며, "advice는 LLM 불가침"
+#:   (decisions.md 2026-07-09) 원칙과 어긋나지 않는다. 그 원칙이 막는 것은 **문구 변경**인데,
+#:   emphasis는 문구를 담지 않는다 — 본문의 부분 문자열이 아니면 `emphasis.validate`가
+#:   폐기하므로 LLM은 advice를 **가리킬 수만 있고 고쳐 쓸 수는 없다**(구조적 보장).
+#:   출력 모델(PrecedentExplanation)에도 여전히 `advice` 필드는 존재하지 않는다.
+#: ⚠ 되돌리려면 이 표에서 `"advice"` 한 줄만 지우면 된다. 그러면 advice의 강조는
+#:   결정적 폴백(금액·비율·기간)만 남고, 실측상 큐레이션 조언에는 숫자가 거의 없어
+#:   **굵게가 사라진다** — 그 사실을 알고 지워야 한다.
+_LLM_EMPHASIS_KEY = {"commonPoint": "common_point", "result": "result", "advice": "advice"}
+
+
+def _attach_reading_aids(case: dict, exp) -> None:
+    """완성된 카드에 **읽기 보조 두 가지**를 붙인다 — 용어 툴팁(D20)·강조 구간(D23).
+
+    ⚠ **본문을 절대 바꾸지 않는다.** 두 필드 모두 "본문의 어디를 어떻게 그릴지"만
+      가리킨다. 그래서 큐레이션 문구(`advice`)에도 안전하게 붙일 수 있다
+      (문구 변경 금지 — decisions.md 2026-07-09).
+
+    ⚠ **여기가 합류점이다.** LLM 성공 경로와 폴백 경로가 위에서 이미 하나로 합쳐진 뒤라,
+      어느 경로로 왔든 화면에 나가는 최종 문장에 대해 **한 번만** 계산된다. 위쪽 분기마다
+      따로 붙였다면 폴백 카드에만 툴팁이 빠지는 식으로 갈렸을 것이다.
+    """
+    # ① 용어 툴팁 — 최종 문장에 **실제로 등장한** 검수된 용어만 (terms.load 게이트가
+    #    `verified=false`를 이미 걸러낸다). 키가 본문에 없으면 앱이 밑줄을 못 붙일 뿐이다.
+    joined = "\n".join(str(case.get(f) or "") for f in _BODY_FIELDS)
+    case["termGlossary"] = terms.attach(joined)
+
+    # ② 강조 구간 — LLM이 고른 것이 검증을 통과하면 그것, 아니면 금액·비율·기간 폴백.
+    llm_picks = getattr(exp, "emphasis", None) or {}
+    picked: dict[str, list[str]] = {}
+    for field in _EMPHASIS_FIELDS:
+        text = str(case.get(field) or "")
+        if not text:
+            continue
+        key = _LLM_EMPHASIS_KEY.get(field)
+        raw = llm_picks.get(key) if key else None
+        chosen = emphasis_picker.choose(text, raw if isinstance(raw, list) else None)
+        if chosen:
+            picked[field] = chosen
+    case["emphasis"] = picked
+
+
 class PrecedentService:
     """판례 섹션 조립기 — E-3 라우터 통합의 진입점.
 
@@ -156,8 +214,18 @@ class PrecedentService:
                 if prev is None or m.hybrid_score > prev.hybrid_score:
                     matched = sorted(set(m.doc.risk_tags) & set(tags))
                     merged[m.doc.case_id] = m.model_copy(update={"matched_tags": matched})
+        # 정렬 우선순위 (2026-08-12):
+        #   ① 매칭 태그 수 — 판정과 많이 겹칠수록 위 (피드백 A6)
+        #   ② 사람 문구 검수 여부 — **같은 관련도라면 검수된 판례를 먼저 보여준다**
+        #   ③ 하이브리드 점수
+        #
+        # ②를 ①보다 위에 두지 않는 것이 중요하다. 검수됐다는 이유만으로 덜 맞는 판례가
+        # 대표 카드가 되면, 판례를 붙이는 목적("이 매물과 닮은 사례") 자체가 무너진다.
+        # 검수 여부는 **동점일 때의 기준**이지 관련성을 이기는 기준이 아니다.
         ranked = sorted(
-            merged.values(), key=lambda m: (len(m.matched_tags), m.hybrid_score), reverse=True
+            merged.values(),
+            key=lambda m: (len(m.matched_tags), m.doc.verified, m.hybrid_score),
+            reverse=True,
         )
         return ranked[:MAX_CASES]
 
@@ -182,7 +250,7 @@ class PrecedentService:
         cases = []
         for m in matches:
             exp = explanations.get(m.doc.case_id)
-            cases.append(
+            case = (
                 {
                     # [메타 — 검색된 문서에서 복사 (LLM 불개입)]
                     "riskPattern": (m.matched_tags or m.doc.risk_tags or ["기타"])[0],
@@ -190,14 +258,41 @@ class PrecedentService:
                     "caseNo": f"{m.doc.court} {m.doc.case_no}".strip(),
                     "decided": m.doc.decided,
                     "sourceUrl": m.doc.source_url,
+                    # [검수 상태 — 표시 전용] 출처는 공식 DB로 확인됐지만 문구를 사람이
+                    #   아직 읽지 않은 판례가 섞여 있다. 숨기지 않고 화면에 밝힌다.
+                    #   (2026-08-07 검증 2단계 분리 — models.PrecedentDoc 참고)
+                    "curated": m.doc.verified,
                     # [설명 — LLM 생성 성공 시만, 실패·미호출은 결정적 폴백]
-                    "summary": exp.easy_summary if exp else explainer.fallback_summary(m),
+                    # [요약] 큐레이션이 있으면 **그것이 정본** — outcome·advice와 같은 원칙.
+                    #   사람이 원문과 대조해 확정한 문구인데 LLM이 매번 새로 쓰면
+                    #   화면에 나가는 문장이 검수한 문장과 달라져 검수 자체가 무의미해진다.
+                    #   (검수 뒤 seed_cases.json에 summary_easy로 굳힌다)
+                    "summary": (
+                        m.doc.summary_easy
+                        or (exp.easy_summary if exp else None)
+                        or explainer.fallback_summary(m)
+                    ),
                     "commonPoint": exp.common_point if exp else explainer.fallback_common_point(m),
-                    # [판정·조언 — LLM 불가침]
-                    "result": m.doc.outcome or "결과는 원문을 확인해 주세요",
+                    # [결과 — 문구는 코드가 정한다. LLM은 분류만 골랐다]
+                    #   ① 큐레이션 outcome이 있으면 그것이 정본
+                    #   ② 없으면 LLM이 고른 분류를 고정 문구로 치환 (OUTCOME_TEXT)
+                    #   ③ 분류도 없으면 낙관하지 않는 폴백 (OUTCOME_UNKNOWN)
+                    # 자유 문장을 쓰게 두면 승소 판례가 "청구 가능"으로 나와
+                    # 안심 신호로 읽힌다 — models.OutcomeKind docstring 참고.
+                    "result": (
+                        m.doc.outcome
+                        or (
+                            OUTCOME_TEXT.get(exp.outcome_kind)
+                            if exp and exp.outcome_kind
+                            else None
+                        )
+                        or OUTCOME_UNKNOWN
+                    ),
                     "advice": m.doc.advice,
                 }
             )
+            _attach_reading_aids(case, exp)
+            cases.append(case)
         return PrecedentSection(cases=cases, explanation_source=source)
 
     def match_for_verdict(self, verdict: RuleVerdict, *, explain: bool = False) -> PrecedentSection:
@@ -205,3 +300,16 @@ class PrecedentService:
 
     def match_for_report(self, report: Report, *, explain: bool = False) -> PrecedentSection:
         return self._build_section(tags_from_report(report), None, explain=explain)
+
+
+# ── 싱글턴 (2026-08-07 라우터 통합) ──────────────────────────────────────────
+# 인덱스 적재(문서·청크·BM25 코퍼스)는 요청마다 할 일이 아니다. 프로세스 수명 동안
+# 한 번만 만들고 재사용한다. 색인을 다시 만든 뒤에는 서버를 재시작해야 반영된다.
+_service: "PrecedentService | None" = None
+
+
+def get_service() -> PrecedentService:
+    global _service
+    if _service is None:
+        _service = PrecedentService()
+    return _service

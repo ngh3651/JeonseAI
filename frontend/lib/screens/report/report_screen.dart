@@ -1,7 +1,8 @@
 /// S-07 AI 안전도 리포트 — 핵심 화면 (IA.md §6).
 ///
-/// 구조: 결론 헤더(게이지 크게 + 의사결정 한 줄 + 보증금) → 지금 해야 할 일(+질문 버튼)
+/// 구조: 결론 헤더(게이지 크게 + 의사결정 한 줄 + 보증금) → 질문 바로가기
 /// → 근거 카드(최고 심각도 1개 기본 펼침, 용어 툴팁) → 다음 행동(등급별 추천 강조).
+/// (2026-08-14 D5: '지금 해야 할 일' 박스를 빼고 그 안의 질문 버튼만 남겼다.)
 /// 판례·질문 생성기·체크리스트·공유는 C-3에서 실화면 연결 (스텁 문구는 사용자 언어로).
 /// 2026-07-04 C-2 리뷰 3종(design-reviewer·persona 2인) 반영.
 library;
@@ -10,7 +11,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../design_system/components/amber_hint.dart';
+// [D4 · 2026-08-14] 시세 출처 칩을 렌더링에서 뺐다 → 이 두 import가 함께 놀게 됐다.
+// 칩을 되살릴 때 같이 풀라고 지우지 않고 주석으로 남긴다 (_conclusionHeader 참고).
+// import '../../design_system/components/amber_hint.dart';
+// import '../../models/market_price_source.dart' show marketPriceSourceLabel;
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_callout.dart';
 import '../../design_system/components/app_card.dart';
@@ -22,13 +26,34 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
-import '../../models/market_price_source.dart' show marketPriceSourceLabel;
 import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import 'registry_entry_card.dart';
+import '../../design_system/text/app_text.dart';
+
+/// 악성임대인 명단이 **아직 우리에게 없을 때** 서버가 붙이는 상태 라벨.
+/// 백엔드 `rule_engine.BLACKLIST_PENDING_LABEL`과 **글자까지 같아야 한다** —
+/// 한쪽만 바꾸면 카드가 사라진 채 고지도 안 나가는 최악의 조합이 된다.
+/// (계약에 따로 플래그를 두는 대신 이 라벨을 쓰는 것은 백엔드도 마찬가지다:
+///  `fallback_texts.py`가 같은 방식으로 이 상태를 판별한다.)
+const String kBlacklistPendingLabel = '명단 대조 아직 안 됨';
+
+/// 이 근거가 '매물의 위험'이 아니라 **'우리 데이터가 아직 없다'**를 말하고 있는가.
+///
+/// 서버는 명단 파일이 비면 이 카드를 '확인 필요'로 내보내는데, 화면에서는 다른
+/// 근거들과 나란히 서서 **이 집에 뭔가 걸린 것처럼** 읽혔다. 실제로는 이 집이 아니라
+/// 우리 쪽 준비 상태의 문제다. 그래서 근거 카드 대열에서 빼고 하단 한계 고지로 내린다.
+///
+/// ⚠ 판정에는 아무 영향이 없다. 등급은 서버가 계산하고, 서버의 worst-of 계산은
+///   이 상태의 blacklist를 **이미 제외하고** 있다(`rule_engine.evaluate`).
+///   여기서는 그려진 것을 안 그릴 뿐이다.
+/// ⚠ 명단 데이터가 채워지면 status_label이 '확인 필요'/'명단 일치 — 직접 확인 필요'
+///   또는 null(양호)로 바뀌므로, 이 조건이 저절로 거짓이 되어 **카드가 되돌아온다.**
+bool _isPendingBlacklist(EvidenceItem e) =>
+    e.id == 'blacklist' && e.statusLabel == kBlacklistPendingLabel;
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key, required this.reportId});
@@ -71,12 +96,12 @@ class _ReportScreenState extends State<ReportScreen> {
         if (report == null) {
           // 이력 손상/없음 (user-scenario.md §5) — 막다른 길 방지 CTA 포함
           return Scaffold(
-            appBar: AppBar(title: const Text('안전도 리포트')),
+            appBar: AppBar(title: const AppText('안전도 리포트')),
             body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('이 리포트를 불러올 수 없어요', style: AppTypography.body),
+                  const AppText('이 리포트를 불러올 수 없어요', style: AppTypography.body),
                   const SizedBox(height: AppSpacing.lg),
                   AppCompactButton(
                     label: '홈으로',
@@ -90,7 +115,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(report.alias),
+            title: AppText(report.alias),
             actions: [
               IconButton(
                 icon: const Icon(Icons.ios_share),
@@ -105,22 +130,22 @@ class _ReportScreenState extends State<ReportScreen> {
               if (_isStale(report)) _staleBanner(context, report),
               _conclusionHeader(report),
               const SizedBox(height: AppSpacing.xl),
-              _nextActionCard(context, report),
-              const SizedBox(height: AppSpacing.xl),
+              // [D15 · 2026-08-14] 결론 헤더와 진입 카드 사이에 있던 아웃라인 버튼
+              // '중개사 질문 모아 보기'를 뺐다. 자세한 사유는 아래 주석 참고.
               _originPhotoEntry(context, report),
-              const Text('근거 살펴보기', style: AppTypography.title),
+              const AppText('근거 살펴보기', style: AppTypography.title),
               const SizedBox(height: AppSpacing.xs),
-              Text('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
+              AppText('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
               const SizedBox(height: AppSpacing.md),
               ..._evidenceCards(context, report),
               // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
               ?_priceGapCard(report),
               const SizedBox(height: AppSpacing.xl),
-              const Text('다음 행동', style: AppTypography.title),
+              const AppText('다음 행동', style: AppTypography.title),
               const SizedBox(height: AppSpacing.md),
               ..._actionArea(context, report),
               const SizedBox(height: AppSpacing.xxl),
-              _disclaimer(),
+              _disclaimer(report),
               const SizedBox(height: AppSpacing.xxxl),
             ],
           ),
@@ -225,12 +250,12 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
-            child: Text(
+            child: AppText(
               '${formatDaysAgo(report.analyzedAt)} 결과예요 — 계약 직전엔 최신 등기부등본으로 재확인하세요',
               style: AppTypography.caption.copyWith(color: AppColors.caution),
             ),
           ),
-          TextButton(onPressed: () => _stub(context), child: const Text('재분석')),
+          TextButton(onPressed: () => _stub(context), child: const AppText('재분석')),
         ],
       ),
     );
@@ -253,7 +278,7 @@ class _ReportScreenState extends State<ReportScreen> {
           size: 190,
         ),
         const SizedBox(height: AppSpacing.md),
-        Text(
+        AppText(
           report.headline,
           style: AppTypography.headline,
           textAlign: TextAlign.center,
@@ -277,13 +302,13 @@ class _ReportScreenState extends State<ReportScreen> {
           state: _mascotForGrade(report.grade),
         ),
         const SizedBox(height: AppSpacing.md),
-        Text(
+        AppText(
           report.address,
           style: AppTypography.caption,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: AppSpacing.xs),
-        Text(
+        AppText(
           priceText,
           style: AppTypography.caption.copyWith(
             color: AppColors.textBody,
@@ -291,29 +316,37 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
           textAlign: TextAlign.center,
         ),
-        // 시세 출처 — **이 숫자가 어디서 왔는지**를 결론 옆에서 바로 말한다.
-        // S-04에서 조회가 안 됐더라도 결과 화면에서는 항상 출처가 보여야 한다.
-        const SizedBox(height: AppSpacing.xs),
-        Center(
-          child: AmberHint(
-            tone: report.marketPrice == null
-                ? AmberHintTone.amber
-                : (report.marketPriceSource.isAuto
-                      ? AmberHintTone.positive
-                      : AmberHintTone.neutral),
-            icon: report.marketPrice == null
-                ? Icons.help_outline
-                : (report.marketPriceSource.isAuto
-                      ? Icons.verified_outlined
-                      : Icons.edit_outlined),
-            text: marketPriceSourceLabel(
-              source: report.marketPriceSource,
-              asOf: report.marketPriceAsOf,
-              sampleCount: report.marketPriceSampleCount,
-              hasPrice: report.marketPrice != null,
-            ),
-          ),
-        ),
+        // ── [D4 · 2026-08-14] 시세 출처 칩을 화면에서 뺐다 ──────────────────────
+        // 실기기에서 결론 바로 아래 "자동 조회 · 공시가격 기준 (2025.1.1)"이 붙으니,
+        // 등급을 읽어야 할 자리에서 시선이 출처 문자열로 새 나갔다.
+        //
+        // ⚠ **출처 표기 자체를 버린 것이 아니다.** 서버 응답의 marketPriceSource ·
+        //   marketPriceAsOf · marketPriceSampleCount는 그대로 살아 있고
+        //   (analysis_report.dart), 모델·계약도 손대지 않았다. 여기 렌더링만 뺐다.
+        //   되돌리려면 아래 주석을 그대로 살리고 파일 상단의
+        //   `marketPriceSourceLabel` import 주석만 함께 풀면 된다.
+        //
+        // const SizedBox(height: AppSpacing.xs),
+        // Center(
+        //   child: AmberHint(
+        //     tone: report.marketPrice == null
+        //         ? AmberHintTone.amber
+        //         : (report.marketPriceSource.isAuto
+        //               ? AmberHintTone.positive
+        //               : AmberHintTone.neutral),
+        //     icon: report.marketPrice == null
+        //         ? Icons.help_outline
+        //         : (report.marketPriceSource.isAuto
+        //               ? Icons.verified_outlined
+        //               : Icons.edit_outlined),
+        //     text: marketPriceSourceLabel(
+        //       source: report.marketPriceSource,
+        //       asOf: report.marketPriceAsOf,
+        //       sampleCount: report.marketPriceSampleCount,
+        //       hasPrice: report.marketPrice != null,
+        //     ),
+        //   ),
+        // ),
       ],
     );
   }
@@ -369,72 +402,35 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Widget _nextActionCard(BuildContext context, AnalysisReport report) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(
-                Icons.flag_outlined,
-                color: AppColors.primary,
-                size: AppSize.iconMd,
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // D1: '근거 확인'보다 '그래서 뭘 해야 하나'가 사용자의 진짜 관심 —
-                    // 제목을 label(12px)에서 title(17px)로 올려 위계를 강조.
-                    Text(
-                      '지금 해야 할 일',
-                      style: AppTypography.title.copyWith(
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    // G7: 결정적 영역이라 볼드 강조 (LLM 생성 아닌 결정적 템플릿 문장)
-                    Text(
-                      report.nextAction,
-                      style: AppTypography.bodyStrong.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          // "아래 질문" 을 찾으러 헤매지 않게 바로가기 제공 (지수 리뷰 반영)
-          if (report.grade != RiskGrade.ok) ...[
-            const SizedBox(height: AppSpacing.md),
-            AppCompactButton(
-              label: '중개사 질문 모아 보기',
-              icon: Icons.quiz_outlined,
-              onPressed: () => context.push('/questions/${report.id}'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+  // ── [D15 · 2026-08-14] 상단 '중개사 질문 모아 보기' 버튼을 지웠다 ───────────
+  //
+  // D5에서 '지금 해야 할 일' 박스를 걷어내고 그 안의 버튼만 결론 헤더 밑에 남겼었다.
+  // 그때의 이유는 "질문으로 가는 길이 스크롤 없이 닿는 곳에 하나는 있어야 한다"였다.
+  //
+  // 그 이유가 D12(다음 행동 2×2 그리드)로 사라졌다. 지금은 [중개사에게 물어볼 질문]이
+  // 네 칸 중 첫 칸으로 **항상 같은 자리에** 있어, 같은 기능의 입구가 한 화면에 둘이다.
+  // 실기기에서 보니 결론(게이지·등급·주소·보증금)과 '내가 올린 사진에서 보기' 카드
+  // 사이를 초록 아웃라인 버튼이 가로질러, 결론에서 근거로 내려가는 시선이 한 번 끊겼다.
+  //
+  // ⚠ 기능을 없앤 것이 아니다. `/questions/:id` 로 가는 길은 그대로 셋이다 —
+  //   하단 2×2의 첫 칸, 근거 카드의 '중개사에게 물어볼 질문 보기' 액션(`_onEvidenceAction`),
+  //   그리고 판례 화면. 여기서는 **중복된 입구 하나**만 지웠다.
 
   /// 근거 카드 목록 — 가장 심각한 카드 1개는 기본 펼침 (서연 리뷰 반영)
+  ///
+  /// [D6 · 2026-08-14] 명단 미구축 상태의 악성임대인 카드는 이 대열에서 빠진다.
+  /// 이유는 [_isPendingBlacklist] 참고. 빠진 사실은 하단 한계 고지가 말한다.
   List<Widget> _evidenceCards(BuildContext context, AnalysisReport report) {
-    final int expandedIndex = _mostSevereIndex(report.evidences);
+    final visible = [
+      for (final e in report.evidences)
+        if (!_isPendingBlacklist(e)) e,
+    ];
+    final int expandedIndex = _mostSevereIndex(visible);
     return [
-      for (int i = 0; i < report.evidences.length; i++) ...[
+      for (int i = 0; i < visible.length; i++) ...[
         _evidenceCard(
           context,
-          report.evidences[i],
+          visible[i],
           initiallyExpanded: i == expandedIndex,
         ),
         const SizedBox(height: AppSpacing.md),
@@ -471,6 +467,7 @@ class _ReportScreenState extends State<ReportScreen> {
       explanationSpan: _explanationSpan(context, evidence),
       detailText: evidence.detailText,
       sourceText: evidence.sourceText,
+      explanationSource: evidence.explanationSource,
       initiallyExpanded: initiallyExpanded,
       action: evidence.actionLabel == null
           ? null
@@ -496,64 +493,41 @@ class _ReportScreenState extends State<ReportScreen> {
   /// "챗봇에 더 물어보기" 연결은 챗봇 실화면과 함께 C-3에서.
   InlineSpan? _explanationSpan(BuildContext context, EvidenceItem evidence) {
     if (evidence.termGlossary.isEmpty) return null;
-
-    final List<InlineSpan> children = [];
-    String rest = evidence.easyExplanation;
-    while (rest.isNotEmpty) {
-      int bestIndex = -1;
-      String? bestTerm;
-      for (final term in evidence.termGlossary.keys) {
-        final int idx = rest.indexOf(term);
-        if (idx >= 0 && (bestIndex == -1 || idx < bestIndex)) {
-          bestIndex = idx;
-          bestTerm = term;
-        }
-      }
-      if (bestTerm == null) {
-        children.add(TextSpan(text: rest));
-        break;
-      }
-      if (bestIndex > 0) {
-        children.add(TextSpan(text: rest.substring(0, bestIndex)));
-      }
-      children.add(
-        termSpan(
-          context,
-          term: bestTerm,
-          description: evidence.termGlossary[bestTerm]!,
-          onAskChatbot: () => context.push('/chatbot'),
-        ),
-      );
-      rest = rest.substring(bestIndex + bestTerm.length);
-    }
-    return TextSpan(style: AppTypography.body, children: children);
+    // 2026-08-14: 밑줄을 심는 로직을 `buildTermSpan` 한 곳으로 모았다 — 챗봇 답변도
+    // 같은 함수를 쓴다. 화면마다 따로 만들면 한 곳만 고쳐졌을 때 조용히 갈라진다.
+    return buildTermSpan(
+      context,
+      text: evidence.easyExplanation,
+      glossary: evidence.termGlossary,
+      style: AppTypography.body,
+      onAskChatbot: () => context.push('/chatbot'),
+    );
   }
 
-  /// 다음 행동 — 등급별 추천 1개 강조 + 나머지 그리드 (지수 리뷰 반영)
+  /// 다음 행동 — **네 칸 모두 같은 크기인 2×2 그리드** (2026-08-14 D12).
+  ///
+  /// 예전에는 등급에 따라 한 칸을 '추천' 뱃지 + 설명 문구가 붙은 전폭 카드로 띄우고
+  /// 나머지를 2열로 깔았다. 그래서 등급마다 배치가 달라졌고(양호면 체크리스트가 위로
+  /// 올라왔다), 같은 화면인데 시연할 때마다 다른 모양이 나왔다. 네 칸을 고정한다.
+  ///
+  ///     [중개사에게 물어볼 질문]  [판례 매칭]
+  ///     [손실 시뮬레이터]        [계약 여정]
+  ///
+  /// 라벨은 **도착 화면의 제목과 같은 말**로 맞췄다 — '질문 생성기'는 화면 제목이
+  /// '중개사 질문 생성기'였고, '체크리스트'가 도착하는 화면 제목은 '계약 여정'이다.
+  /// 이동 경로(라우트)는 그대로다.
+  ///
+  /// **높이는 두 줄 기준으로 잡는다.** 360dp 기기에서 한 칸의 글자 폭은 134dp인데
+  /// '중개사에게 물어볼 질문'은 15px 한글 11자라 약 171dp — 한 줄에 들어가지 않는다.
+  /// 폰트를 줄이지 말라는 지시에 따라 **줄바꿈을 허용하고 네 칸을 전부 그 높이로**
+  /// 맞췄다(칸마다 높이가 다르면 2×2가 아니라 계단이 된다).
   List<Widget> _actionArea(BuildContext context, AnalysisReport report) {
-    final bool recommendQuestions = report.grade != RiskGrade.ok;
-
-    final recommended = recommendQuestions
-        ? (
-            icon: Icons.quiz_outlined,
-            label: '질문 생성기',
-            caption: '위험 요소별로 중개사에게 물어볼 질문을 만들어 드려요',
-            onTap: () => context.push('/questions/${report.id}'),
-          )
-        : (
-            icon: Icons.fact_check_outlined,
-            label: '계약 여정 체크리스트',
-            caption: '계약 전부터 보증금 반환까지 단계별 할 일을 확인하세요',
-            onTap: () => context.push('/checklist'),
-          );
-
-    final others = [
-      if (!recommendQuestions)
-        (
-          icon: Icons.quiz_outlined,
-          label: '질문 생성기',
-          onTap: () => context.push('/questions/${report.id}'),
-        ),
+    final actions = [
+      (
+        icon: Icons.quiz_outlined,
+        label: '중개사에게 물어볼 질문',
+        onTap: () => context.push('/questions/${report.id}'),
+      ),
       (
         icon: Icons.gavel_outlined,
         label: '판례 매칭', // A1: 화면 제목(판례 매칭)과 라벨 통일
@@ -564,84 +538,44 @@ class _ReportScreenState extends State<ReportScreen> {
         label: '손실 시뮬레이터',
         onTap: () => context.push('/simulator/${report.id}'),
       ),
-      if (recommendQuestions)
-        (
-          icon: Icons.fact_check_outlined,
-          label: '체크리스트',
-          onTap: () => context.push('/checklist'),
-        ),
+      (
+        icon: Icons.fact_check_outlined,
+        label: '계약 여정',
+        onTap: () => context.push('/checklist'),
+      ),
     ];
 
     return [
-      // 추천 행동 — 전폭 강조 카드
-      AppCard(
-        onTap: recommended.onTap,
-        child: Row(
-          children: [
-            Icon(
-              recommended.icon,
-              color: AppColors.primary,
-              size: AppSize.iconMd,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(recommended.label, style: AppTypography.bodyStrong),
-                      const SizedBox(width: AppSpacing.sm),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.sm,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primarySoft,
-                          borderRadius: BorderRadius.circular(AppRadius.pill),
-                        ),
-                        child: Text(
-                          '추천',
-                          style: AppTypography.label.copyWith(
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(recommended.caption, style: AppTypography.caption),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: AppColors.textMuted),
-          ],
-        ),
-      ),
-      const SizedBox(height: AppSpacing.md),
       GridView.count(
         crossAxisCount: 2,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: AppSpacing.md,
         crossAxisSpacing: AppSpacing.md,
-        childAspectRatio: 2.4,
+        // 360dp에서 칸 154 x 123dp. 두 줄 라벨의 내용 높이(패딩 24 + 아이콘 26 +
+        // 간격 8 + 두 줄 47 ≈ 105dp)보다 넉넉하고, 320dp 기기에서도 넘치지 않는다.
+        childAspectRatio: 1.25,
         children: [
-          for (final action in others)
+          for (final action in actions)
             AppCard(
               onTap: action.onTap,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: Row(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.md,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     action.icon,
                     color: AppColors.primary,
-                    size: AppSize.iconMd,
+                    size: AppSize.iconLg,
                   ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Text(action.label, style: AppTypography.bodyStrong),
+                  const SizedBox(height: AppSpacing.sm),
+                  AppText(
+                    action.label,
+                    style: AppTypography.bodyStrong,
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
@@ -654,18 +588,38 @@ class _ReportScreenState extends State<ReportScreen> {
   /// D4: 전역 면책 안내 — 리포트 최하단 상시 노출(캡처 공유 시 자연 포함).
   /// AA 통과 색(textMuted)·가독 가능한 크기 유지 — 면책의 보호 목적을 지키기 위해
   /// 일부러 최소 크기로 줄이지 않는다.
-  Widget _disclaimer() {
+  ///
+  /// [D6 · 2026-08-14] 명단 미구축이면 그 사실을 여기 한 줄로 얹는다. 근거 카드에서
+  /// 뺐다고 **침묵하면 안 된다** — 안 본 것을 안 봤다고 말하는 것이 이 앱의 원칙이고,
+  /// 침묵은 "명단까지 확인했다"는 오해를 남긴다. 대신 색은 면책보다 진하게 둔다
+  /// (textBody) — 회색으로 묻히면 고지의 목적을 잃는다.
+  Widget _disclaimer(AnalysisReport report) {
+    final bool blacklistPending = report.evidences.any(_isPendingBlacklist);
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
-      child: Text(
-        '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
-        '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
-        '확인과 전문가 상담을 통해 이루어져야 합니다.',
-        style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (blacklistPending) ...[
+            AppText(
+              '※ 악성임대인 공개 명단은 아직 저희가 데이터를 확보하지 못해 '
+              '이번 분석에서는 판단하지 않았어요. 명단에 없다는 뜻이 아닙니다 — '
+              'HUG 안심전세포털에서 집주인 이름을 직접 확인해 주세요.',
+              style: AppTypography.caption.copyWith(color: AppColors.textBody),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+          AppText(
+            '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
+            '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
+            '확인과 전문가 상담을 통해 이루어져야 합니다.',
+            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+          ),
+        ],
       ),
     );
   }
@@ -673,6 +627,6 @@ class _ReportScreenState extends State<ReportScreen> {
   void _stub(BuildContext context) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('곧 제공되는 기능이에요')));
+      ..showSnackBar(const SnackBar(content: AppText('곧 제공되는 기능이에요')));
   }
 }

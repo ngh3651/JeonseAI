@@ -7,6 +7,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 import '../models/analysis_report.dart';
+import '../models/compare_result.dart';
 import '../models/risk_grade.dart';
 import '../utils/money_format.dart';
 
@@ -23,6 +24,13 @@ abstract class AnalysisRepository extends ChangeNotifier {
 
   /// 이력 삭제.
   Future<void> deleteReport(String id);
+
+  /// 등기부 대조 — 기준 리포트의 서류와 **이번에 뗀 서류**를 맞춰본다 (계약 §3.10).
+  ///
+  /// [imagePaths]가 비어 있어도 부를 수 있다. 기준이 없는 리포트(옛 이력)면 서버가
+  /// 사진을 받기 전에 "기준 없음"으로 답하기 때문이다 — 찍게 해 놓고 마지막에 못
+  /// 한다고 말하지 않기 위한 흐름이다(S-11).
+  Future<CompareResult> compareRegistry(String reportId, List<String> imagePaths);
 }
 
 /// 더미 구현 — 위험 vs 확인 필요 2세트 (plan.md C-2: 시나리오 B 대비 컷의 원형).
@@ -94,6 +102,9 @@ class DummyAnalysisRepository extends AnalysisRepository {
       alias: resolvedAlias,
       address: address,
       analyzedAt: analyzedAt,
+      // 등기부를 뗀 날 ≠ 분석한 날. 실측 샘플(열람 7/9 · 분석 7/27)처럼 며칠 벌어져 있어야
+      // "며칠 지난 등기부인가"를 다루는 화면(계약 여정)이 더미에서도 제대로 그려진다.
+      registryViewedAt: formatDate(analyzedAt.subtract(const Duration(days: 8))),
       grade: RiskGrade.danger,
       headline: '보증금을 지키기 어려운 신호가 보여요',
       // 상담처 전화번호는 Phase F에서 공식 홈페이지로 확인 후 병기
@@ -174,6 +185,11 @@ class DummyAnalysisRepository extends AnalysisRepository {
     alias: '정자동 빌라',
     address: '경기 성남시 분당구 정자동 456-7',
     analyzedAt: DateTime.now().subtract(const Duration(hours: 1)),
+    // 오늘 분석했지만 등기부는 27일 전에 뗀 서류다 — 계약 여정이 "27일 지난 등기부"로
+    // 말하게 되는 자리(실측 샘플의 간격을 그대로 옮긴 예시값).
+    registryViewedAt: formatDate(
+      DateTime.now().subtract(const Duration(days: 27)),
+    ),
     grade: RiskGrade.caution,
     headline: '몇 가지를 확인한 뒤 결정해도 늦지 않아요',
     nextAction: '보류하고, 아래 질문을 중개사에게 확인한 뒤 결정하세요',
@@ -276,5 +292,31 @@ class DummyAnalysisRepository extends AnalysisRepository {
   Future<void> deleteReport(String id) async {
     _history.removeWhere((r) => r.id == id);
     notifyListeners();
+  }
+
+  /// 더미 이력에는 **대조 기준 스냅샷이 없다**(서버가 분석하며 남기는 것이다).
+  /// 그래서 위젯 테스트에서도 실제와 같은 "기준 없음" 화면이 나온다 —
+  /// 실기기에서 옛 이력을 눌렀을 때와 같은 갈래다.
+  @override
+  Future<CompareResult> compareRegistry(
+    String reportId,
+    List<String> imagePaths,
+  ) async {
+    final report = await getReport(reportId);
+    return CompareResult(
+      outcome: CompareOutcome.noBaseline,
+      headline: '이 분석은 비교 기준으로 쓸 수 없어요',
+      subline:
+          '이 등기부는 비교에 필요한 정보가 남아 있지 않아요. 지금 한 번 떼어 기준을 '
+          '만들어 두면, 다음에 뗄 때부터 달라진 점을 알려드릴 수 있어요.',
+      baseline: CompareDoc(
+        reportId: reportId,
+        alias: report?.alias,
+        address: report?.address,
+        viewedAt: report?.registryViewedAt,
+        grade: report?.grade,
+      ),
+      current: const CompareDoc(),
+    );
   }
 }

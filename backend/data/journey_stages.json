@@ -1,0 +1,166 @@
+{
+  "_안내": "계약 여정 9단계. 편집 방법은 이 폴더의 README.md 참고. kind/compare/askDates/dateKey는 화면 동작을 정하는 칸이라 뜻을 모르면 그대로 두고 title·subtitle·items만 고치세요.",
+  "_칸_설명": {
+    "kind": "analysis = 분석 기록이 있으면 자동으로 끝난 단계 · action = 지금 할 일 · later = 1~2년 뒤 일(흐리게)",
+    "compare": "true면 그 단계에 [다시 떼서 대조하기] 버튼이 붙습니다 — 등기부를 다시 떼야 하는 시점에만 true",
+    "askDates": "true면 그 단계에서 계약 일정을 넣으라고 권합니다 (계약서에 날짜가 적히는 시점)",
+    "agency": "어디서 하는 일인지 알려주는 칩. 없으면 null",
+    "dateKey": "사용자가 넣은 날짜 중 무엇을 이 단계에 붙일지. downPayment(가계약금) · contract(계약서) · balance(잔금) · moveIn(이사) · moveInNext(이사 다음 날, 자동 계산). 없으면 null"
+  },
+  "stages": [
+    {
+      "title": "집 둘러보고 등기부 분석하기",
+      "subtitle": "이미 끝난 단계예요",
+      "kind": "analysis",
+      "compare": false,
+      "askDates": false,
+      "agency": null,
+      "dateKey": null,
+      "items": []
+    },
+    {
+      "title": "가계약금 보내기 전",
+      "subtitle": "적은 돈이라도 보내면 되돌리기 어려워요",
+      "kind": "action",
+      "compare": true,
+      "askDates": false,
+      "agency": null,
+      "dateKey": "downPayment",
+      "items": [
+        {
+          "text": "등기부를 다시 떼서 달라진 게 없는지 보기",
+          "why": "등기부는 뗀 날짜 기준으로만 유효해요"
+        },
+        {
+          "text": "돌려받을 수 있는 조건을 문구로 남기기",
+          "why": "조건 없이 보내면 돌려받기 어려워요"
+        }
+      ]
+    },
+    {
+      "title": "계약서 쓰는 날",
+      "subtitle": "주소·특약을 등기부와 맞춰보기",
+      "kind": "action",
+      "compare": true,
+      "askDates": true,
+      "agency": null,
+      "dateKey": "contract",
+      "items": [
+        {
+          "text": "등기부를 다시 떼서 달라진 게 없는지 보기",
+          "why": "도장 찍는 날 기준으로 다시 봐야 해요"
+        },
+        {
+          "text": "계약서 주소가 등기부와 같은지 확인하기",
+          "why": "주소가 다르면 엉뚱한 집에 계약하는 셈이 돼요"
+        },
+        {
+          "text": "근저당 말소 등 필요한 특약 넣기",
+          "why": "구두 약속은 지켜지지 않을 수 있어요"
+        }
+      ]
+    },
+    {
+      "title": "잔금 보내는 날",
+      "subtitle": "가장 큰 돈이 나가는 날",
+      "kind": "action",
+      "compare": true,
+      "askDates": false,
+      "agency": null,
+      "dateKey": "balance",
+      "items": [
+        {
+          "text": "등기부를 다시 떼서 달라진 게 없는지 보기",
+          "why": "잔금 직전에 근저당을 새로 설정하는 방식이 많아요"
+        },
+        {
+          "text": "돈 받는 계좌 주인이 집주인과 같은지 확인하기",
+          "why": "다른 사람 계좌로 보내면 돈을 되찾기 어려워요"
+        }
+      ]
+    },
+    {
+      "title": "이사 당일",
+      "subtitle": "주민센터에서 두 가지",
+      "kind": "action",
+      "compare": false,
+      "askDates": false,
+      "agency": "주민센터에서",
+      "dateKey": "moveIn",
+      "items": [
+        {
+          "text": "전입신고하기",
+          "why": "전입신고를 해야 대항력이 생겨요"
+        },
+        {
+          "text": "계약서에 확정일자 받기",
+          "why": "확정일자가 있어야 돌려받을 순위가 생겨요"
+        }
+      ]
+    },
+    {
+      "title": "입주 다음 날",
+      "subtitle": "대항력이 이날 0시에 생겨요",
+      "kind": "action",
+      "compare": true,
+      "askDates": false,
+      "agency": null,
+      "dateKey": "moveInNext",
+      "items": [
+        {
+          "text": "등기부를 다시 떼서 새 빚이 없는지 보기",
+          "why": "전입신고한 날과 대항력이 생기는 다음 날 0시 사이의 하루 틈에 근저당이 생기면 내 보증금보다 앞서요"
+        }
+      ]
+    },
+    {
+      "title": "보증보험 가입",
+      "subtitle": "보증기관에 신청해요",
+      "kind": "action",
+      "compare": false,
+      "askDates": false,
+      "agency": "HUG · HF · SGI",
+      "dateKey": null,
+      "items": [
+        {
+          "text": "전세보증금 반환보증 신청하기",
+          "why": "집주인이 못 돌려줘도 보증기관이 대신 돌려줘요"
+        },
+        {
+          "text": "가입 요건과 신청 기한을 기관에서 확인하기",
+          "why": "기한 확인 필요 — 기관마다 조건이 달라요"
+        }
+      ]
+    },
+    {
+      "title": "만기 전",
+      "subtitle": "1~2년 뒤 일 · 기한 확인 필요",
+      "kind": "later",
+      "compare": false,
+      "askDates": false,
+      "agency": null,
+      "dateKey": null,
+      "items": [
+        {
+          "text": "갱신·퇴거 의사 알리기",
+          "why": "기한 확인 필요"
+        }
+      ]
+    },
+    {
+      "title": "보증금 반환",
+      "subtitle": "1~2년 뒤 일",
+      "kind": "later",
+      "compare": false,
+      "askDates": false,
+      "agency": null,
+      "dateKey": null,
+      "items": [
+        {
+          "text": "보증금을 돌려받은 뒤 전출 신고하기",
+          "why": "받기 전에 이사하면 대항력을 잃을 수 있어요"
+        }
+      ]
+    }
+  ]
+}

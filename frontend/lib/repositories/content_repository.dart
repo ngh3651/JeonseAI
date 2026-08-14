@@ -20,8 +20,11 @@ abstract class ContentRepository {
   /// 챗봇 추천 용어 칩.
   Future<List<GlossaryTerm>> glossaryTerms();
 
-  /// 용어 질문에 대한 답 (용어를 못 찾으면 null → 범위 밖 처리).
-  Future<GlossaryTerm?> lookupTerm(String query);
+  /// 챗봇 질문 하나 → 답 하나 (계약 §3.9).
+  ///
+  /// **거절도 답으로 돌아온다**(`outOfScope=true`) — 예전처럼 null을 받아 앱이 문구를
+  /// 지어내지 않는다. 판정 요구 차단·범위 밖 판별·LLM 생성은 전부 서버 쪽 일이다.
+  Future<GlossaryAnswer> askGlossary(String query);
 
   /// 계약 여정 단계.
   Future<List<JourneyStage>> journeyStages();
@@ -162,97 +165,143 @@ class DummyContentRepository implements ContentRepository {
     ),
   ];
 
+  /// 서버 규칙(L1~L4)의 **아주 얇은 흉내** — 위젯 테스트가 서버 없이 두 갈래
+  /// (사전 답 / 거절)를 그릴 수 있을 만큼만이다. 실제 판별은 전부 서버가 한다.
   @override
-  Future<GlossaryTerm?> lookupTerm(String query) async {
+  Future<GlossaryAnswer> askGlossary(String query) async {
     final q = query.trim();
     for (final t in await glossaryTerms()) {
-      if (q.contains(t.term)) return t;
+      if (q.contains(t.term)) {
+        return GlossaryAnswer(
+          answer: t.description,
+          source: '검수된 용어 사전',
+          term: t.term,
+        );
+      }
     }
-    return null;
+    return GlossaryAnswer.fallback;
   }
 
+  /// 계약 여정 9단계 — **정본은 서버의 `backend/data/journey_stages.json`이다.**
+  /// 여기 값은 위젯 테스트가 서버 없이 같은 모양의 화면을 그릴 수 있게 둔 사본이라,
+  /// 문구가 바뀌면 데이터 파일 쪽을 먼저 고치고 이쪽을 맞춘다.
   @override
   Future<List<JourneyStage>> journeyStages() async => const [
     JourneyStage(
-      title: '계약 전',
-      subtitle: '등기부등본 분석과 안전도 확인',
+      title: '집 둘러보고 등기부 분석하기',
+      subtitle: '이미 끝난 단계예요',
+      kind: JourneyStageKind.analysis,
+      items: [],
+    ),
+    JourneyStage(
+      title: '가계약금 보내기 전',
+      subtitle: '적은 돈이라도 보내면 되돌리기 어려워요',
+      compare: true,
+      dateKey: JourneyDateKey.downPayment,
       items: [
         JourneyItem(
-          text: '등기부등본을 떼어 안전도 리포트로 분석하기',
-          why: '계약서에 도장을 찍기 전에 위험을 미리 확인해야 해요',
+          text: '등기부를 다시 떼서 달라진 게 없는지 보기',
+          why: '등기부는 뗀 날짜 기준으로만 유효해요',
         ),
         JourneyItem(
-          text: '중개사에게 물어볼 질문 준비하기',
-          why: '현장에서 무엇을 확인해야 할지 미리 알고 가면 놓치지 않아요',
+          text: '돌려받을 수 있는 조건을 문구로 남기기',
+          why: '조건 없이 보내면 돌려받기 어려워요',
         ),
       ],
     ),
     JourneyStage(
-      title: '계약 체결',
-      subtitle: '계약서 검토와 특약',
+      title: '계약서 쓰는 날',
+      subtitle: '주소·특약을 등기부와 맞춰보기',
+      compare: true,
+      askDates: true,
+      dateKey: JourneyDateKey.contract,
       items: [
         JourneyItem(
-          text: '계약서 주소가 등기부등본과 같은지 확인하기',
-          why: '주소가 다르면 엉뚱한 집에 계약하는 셈이 될 수 있어요',
+          text: '등기부를 다시 떼서 달라진 게 없는지 보기',
+          why: '도장 찍는 날 기준으로 다시 봐야 해요',
+        ),
+        JourneyItem(
+          text: '계약서 주소가 등기부와 같은지 확인하기',
+          why: '주소가 다르면 엉뚱한 집에 계약하는 셈이 돼요',
         ),
         JourneyItem(
           text: '근저당 말소 등 필요한 특약 넣기',
-          why: '구두 약속은 지켜지지 않을 수 있어 서면으로 남겨야 해요',
+          why: '구두 약속은 지켜지지 않을 수 있어요',
         ),
       ],
     ),
     JourneyStage(
-      title: '잔금일',
-      subtitle: '나머지 보증금을 보내는 날',
+      title: '잔금 보내는 날',
+      subtitle: '가장 큰 돈이 나가는 날',
+      compare: true,
+      dateKey: JourneyDateKey.balance,
       items: [
         JourneyItem(
-          text: '잔금 보내기 직전에 등기부등본 다시 확인하기',
-          why: '계약 후 잔금일 사이에 새 빚이 잡혔을 수 있어요',
+          text: '등기부를 다시 떼서 달라진 게 없는지 보기',
+          why: '잔금 직전에 근저당을 새로 설정하는 방식이 많아요',
+        ),
+        JourneyItem(
+          text: '돈 받는 계좌 주인이 집주인과 같은지 확인하기',
+          why: '다른 사람 계좌로 보내면 돈을 되찾기 어려워요',
         ),
       ],
     ),
     JourneyStage(
-      title: '입주하고 나서 꼭 할 일',
-      // B2: 끝에 '단계'가 어색하게 줄바꿈되던 문구를 자연스러운 표현으로
-      subtitle: '전입신고·확정일자 — 보증금을 지키는 가장 중요한 일',
+      title: '이사 당일',
+      subtitle: '주민센터에서 두 가지',
+      agency: '주민센터에서',
+      dateKey: JourneyDateKey.moveIn,
       items: [
-        JourneyItem(
-          text: '이사 당일 바로 전입신고하기',
-          why: '전입신고를 해야 대항력이 생겨 보증금을 지킬 수 있어요',
-        ),
+        JourneyItem(text: '전입신고하기', why: '전입신고를 해야 대항력이 생겨요'),
         JourneyItem(
           text: '계약서에 확정일자 받기',
-          why: '확정일자가 있어야 경매 시 보증금을 돌려받을 순위가 생겨요',
+          why: '확정일자가 있어야 돌려받을 순위가 생겨요',
+        ),
+      ],
+    ),
+    JourneyStage(
+      title: '입주 다음 날',
+      subtitle: '대항력이 이날 0시에 생겨요',
+      compare: true,
+      dateKey: JourneyDateKey.moveInNext,
+      items: [
+        JourneyItem(
+          text: '등기부를 다시 떼서 새 빚이 없는지 보기',
+          why:
+              '전입신고한 날과 대항력이 생기는 다음 날 0시 사이의 하루 틈에 '
+              '근저당이 생기면 내 보증금보다 앞서요',
         ),
       ],
     ),
     JourneyStage(
       title: '보증보험 가입',
-      subtitle: '보증금을 대신 돌려받는 안전장치',
+      subtitle: '보증기관에 신청해요',
+      agency: 'HUG · HF · SGI',
       items: [
         JourneyItem(
-          text: '전세보증금 반환보증에 가입하기',
-          why: '집주인이 보증금을 못 돌려줘도 보증기관이 대신 돌려줘요',
+          text: '전세보증금 반환보증 신청하기',
+          why: '집주인이 못 돌려줘도 보증기관이 대신 돌려줘요',
+        ),
+        JourneyItem(
+          text: '가입 요건과 신청 기한을 기관에서 확인하기',
+          why: '기한 확인 필요 — 기관마다 조건이 달라요',
         ),
       ],
     ),
     JourneyStage(
       title: '만기 전',
-      subtitle: '계약 종료 준비',
-      items: [
-        JourneyItem(
-          text: '만기 6주 전까지 갱신·퇴거 의사 알리기',
-          why: '기한을 놓치면 원치 않게 계약이 자동 연장될 수 있어요',
-        ),
-      ],
+      subtitle: '1~2년 뒤 일 · 기한 확인 필요',
+      kind: JourneyStageKind.later,
+      items: [JourneyItem(text: '갱신·퇴거 의사 알리기', why: '기한 확인 필요')],
     ),
     JourneyStage(
       title: '보증금 반환',
-      subtitle: '보증금을 돌려받고 마무리',
+      subtitle: '1~2년 뒤 일',
+      kind: JourneyStageKind.later,
       items: [
         JourneyItem(
           text: '보증금을 돌려받은 뒤 전출 신고하기',
-          why: '보증금을 받기 전에 이사하면 대항력을 잃을 수 있어요',
+          why: '받기 전에 이사하면 대항력을 잃을 수 있어요',
         ),
       ],
     ),

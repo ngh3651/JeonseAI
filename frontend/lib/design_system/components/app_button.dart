@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class AppPrimaryButton extends StatelessWidget {
   const AppPrimaryButton({
@@ -37,13 +38,13 @@ class AppPrimaryButton extends StatelessWidget {
               color: Colors.white,
             ),
           )
-        : Text(label);
+        : AppText(label);
 
     if (icon != null && !loading) {
       return FilledButton.icon(
         onPressed: onPressed,
         icon: Icon(icon),
-        label: Text(label),
+        label: AppText(label),
       );
     }
     return FilledButton(onPressed: loading ? null : onPressed, child: child);
@@ -83,10 +84,10 @@ class AppTonalButton extends StatelessWidget {
         onPressed: onPressed,
         style: style,
         icon: Icon(icon),
-        label: Text(label),
+        label: AppText(label),
       );
     }
-    return FilledButton(onPressed: onPressed, style: style, child: Text(label));
+    return FilledButton(onPressed: onPressed, style: style, child: AppText(label));
   }
 }
 
@@ -136,22 +137,22 @@ class AppCompactButton extends StatelessWidget {
               onPressed: onPressed,
               style: style,
               icon: Icon(icon, size: AppSize.iconSm),
-              label: Text(label),
+              label: AppText(label),
             )
-          : FilledButton(onPressed: onPressed, style: style, child: Text(label));
+          : FilledButton(onPressed: onPressed, style: style, child: AppText(label));
     }
     if (icon != null) {
       return OutlinedButton.icon(
         onPressed: onPressed,
         style: style,
         icon: Icon(icon, size: AppSize.iconSm),
-        label: Text(label),
+        label: AppText(label),
       );
     }
     return OutlinedButton(
       onPressed: onPressed,
       style: style,
-      child: Text(label),
+      child: AppText(label),
     );
   }
 }
@@ -174,9 +175,9 @@ class AppSecondaryButton extends StatelessWidget {
       return OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon),
-        label: Text(label),
+        label: AppText(label),
       );
     }
-    return OutlinedButton(onPressed: onPressed, child: Text(label));
+    return OutlinedButton(onPressed: onPressed, child: AppText(label));
   }
 }

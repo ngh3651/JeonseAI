@@ -202,7 +202,8 @@ def test_no_market_price_caps_jeonse_ratio():
 def test_blacklist_states():
     data = load_fixture("clean_house")
     extract = RegistryExtract.from_raw(data["registry"])
-    # ① 명단 미구축 → '명단 대조 아직 안 됨'(확인 필요) — 카드는 표시하되 종합 계산 임시 제외
+    # ① 명단 미구축 → '명단 대조 아직 안 됨'(확인 필요) — 종합 계산 임시 제외
+    #    (앱은 2026-08-14부터 이 상태의 카드를 하단 한계 고지로 내린다 — 아래 트립와이어 참고)
     v = rule_engine.evaluate(extract, deposit=1, market_price=None, blacklist_entries=[])
     pending = evidence(v, "blacklist")
     assert pending.grade is Grade.CAUTION
@@ -228,8 +229,25 @@ def test_blacklist_pending_excluded_from_overall_but_shown():
         market_price=data["inputs"]["market_price"],
         blacklist_entries=[],  # 명단 미구축 상태
     )
-    assert evidence(v, "blacklist").grade is Grade.CAUTION  # 카드는 그대로 표시
+    assert evidence(v, "blacklist").grade is Grade.CAUTION  # 판정은 그대로 나간다
     assert v.grade is Grade.GOOD  # 그래도 종합은 양호 (임시 제외)
+
+
+def test_blacklist_pending_label_is_the_apps_hiding_key():
+    """이 문자열은 **앱의 화면 분기 키**다 — 값을 바꾸려면 앱도 같이 바꿔야 한다.
+
+    2026-08-14(D6)부터 앱은 명단 미구축 상태의 blacklist 근거를 **근거 카드에서 빼고**
+    리포트 하단 한계 고지 한 줄로 내린다. 그 판별을
+    `frontend/lib/screens/report/report_screen.dart`의 `kBlacklistPendingLabel`이
+    이 상수와 **같은 글자**로 하고 있다.
+
+    여기만 바꾸면 앱은 카드를 그대로 그리고 고지도 안 내보내는 최악의 조합이 된다
+    (사용자는 "명단까지 확인했다"고 읽는다). 이 테스트는 그때 실패해서 알려 준다.
+
+    ⚠ 등급 계산과는 무관하다. `evaluate`는 이 상태의 blacklist를 이미 worst-of
+      풀에서 빼고 있고(위 테스트), 앱이 카드를 숨겨도 등급은 서버 값 그대로다.
+    """
+    assert rule_engine.BLACKLIST_PENDING_LABEL == "명단 대조 아직 안 됨"
 
 
 def test_ratio_boundary_compared_on_raw_value_not_rounded():

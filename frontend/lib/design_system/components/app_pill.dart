@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class AppPill extends StatelessWidget {
   const AppPill({
@@ -41,7 +42,7 @@ class AppPill extends StatelessWidget {
             Icon(icon, size: AppSize.iconXs, color: color),
             const SizedBox(width: AppSpacing.xs),
           ],
-          Text(label, style: AppTypography.label.copyWith(color: color)),
+          AppText(label, style: AppTypography.label.copyWith(color: color)),
         ],
       ),
     );

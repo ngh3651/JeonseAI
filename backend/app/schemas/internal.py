@@ -145,6 +145,9 @@ def _dict_items(raw: dict, key: str, missing: list[str]) -> list[dict]:
 class RegistryExtract(BaseModel):
     """Information Extract 결과의 정형화본 (registry_schema.py 최상위 필드와 1:1)."""
 
+    # 부동산고유번호 — 대조(compare)에서 "같은 집인가"를 가리는 확정 근거.
+    # ⚠ 판정에는 쓰지 않는다. 못 읽으면 None이고, 그때 대조는 주소로 견준다.
+    unique_number: Optional[str] = None
     address: Optional[str] = None
     exclusive_area_sqm: Optional[float] = None
     current_owners: list[Owner] = Field(default_factory=list)
@@ -186,11 +189,16 @@ class RegistryExtract(BaseModel):
         if not (isinstance(address, str) and address.strip()):
             address = None
 
+        unique_number = raw.get("unique_number")
+        if not (isinstance(unique_number, str) and unique_number.strip()):
+            unique_number = None
+
         area = raw.get("exclusive_area_sqm")
         if not isinstance(area, (int, float)) or isinstance(area, bool):
             area = None
 
         return cls(
+            unique_number=unique_number,
             address=address,
             exclusive_area_sqm=area,
             current_owners=[Owner(**x) for x in _dict_items(raw, "current_owners", missing)],

@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import '../../models/risk_grade.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class SafetyGauge extends StatelessWidget {
   const SafetyGauge({
@@ -55,7 +56,7 @@ class SafetyGauge extends StatelessWidget {
               // 아치 안쪽 여백에 맞춰 답답함 해소. 단어 하나짜리(양호·위험)는 그대로 1줄.
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: size * 0.62),
-                child: Text(
+                child: AppText(
                   grade.label,
                   textAlign: TextAlign.center,
                   // 하한 19px bold — 작은 게이지에서도 large-text 대비 기준(≥18.7px bold) 유지
@@ -68,7 +69,7 @@ class SafetyGauge extends StatelessWidget {
               ),
               if (caption != null) ...[
                 const SizedBox(height: 4),
-                Text(caption!, style: AppTypography.caption),
+                AppText(caption!, style: AppTypography.caption),
               ],
             ],
           ),

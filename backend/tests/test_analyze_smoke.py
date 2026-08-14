@@ -361,3 +361,51 @@ def test_저장된_실제_원응답으로_analyze가_200을_준다(client, no_ne
     # 실제 등기부라 하이라이트가 0건일 수는 있다(전부 말소된 경우) — 그때는 **반드시**
     # 이유를 말해야 한다. 침묵이 신뢰를 깎는다는 것이 페르소나 2인의 공통 지적이었다.
     assert report["highlights"] or report["checkedNotes"], "표시도 설명도 없이 침묵한다"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ③ 판례 엔드포인트 — 밖이 끊겨도 화면을 깨뜨리지 않는다 (2026-08-14 D7)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_판례_매칭이_터져도_500이_아니라_빈_목록이_나온다(client, monkeypatch):
+    """촬영 중 크레딧이 끊겨도 심사위원에게 보일 것은 에러 화면이 아니어야 한다.
+
+    판례 경로는 임베딩 호출 → 벡터 검색 → Solar 설명으로 이어져 밖에서 끊길 자리가
+    많다. 끊기면 지금까지는 500이 나가 리포트에서 넘어온 화면이 통째로 에러로 덮였다.
+    빈 목록이면 앱은 "이 매물의 위험과 딱 맞는 판례가 아직 없어요. 위험이 없다는
+    뜻은 아니니…"를 띄운다(case_match_screen.dart) — 그쪽이 훨씬 정직한 화면이다.
+    """
+    from app.routers import reports as reports_router
+    from app.services import store
+
+    report_id = next(iter(store.EXAMPLE_IDS))
+    # 앞선 테스트가 남긴 캐시를 비운다 — 캐시가 있으면 아래 예외 경로에 닿지도 못한다.
+    store._cases_cache.pop(report_id, None)
+
+    def boom():
+        raise RuntimeError("임베딩 크레딧 소진 (테스트에서 일부러 냄)")
+
+    monkeypatch.setattr(reports_router.precedent_service, "get_service", boom)
+
+    resp = client.get(f"/api/reports/{report_id}/cases")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == []
+
+
+def test_실패한_판례_결과는_캐시되지_않는다(client, monkeypatch):
+    """캐시하면 원인이 사라진 뒤에도 이 리포트만 영원히 '판례 없음'으로 굳는다."""
+    from app.routers import reports as reports_router
+    from app.services import store
+
+    report_id = next(iter(store.EXAMPLE_IDS))
+    store._cases_cache.pop(report_id, None)
+
+    def boom():
+        raise RuntimeError("일시적 실패")
+
+    monkeypatch.setattr(reports_router.precedent_service, "get_service", boom)
+    assert client.get(f"/api/reports/{report_id}/cases").json() == []
+
+    assert store.get_cases(report_id) is None, "실패 결과가 캐시에 남았다 — 복구가 막힌다"

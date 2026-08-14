@@ -25,6 +25,7 @@ import '../../models/analysis_report.dart';
 import '../../models/market_price_source.dart';
 import '../../utils/money_format.dart';
 import 'capture_loop_route.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 재진입(재분석 등)에서 넘겨받는 미리 채울 값.
 ///
@@ -197,7 +198,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message, style: AppTypography.body.copyWith(color: Colors.white)),
+          content: AppText(message, style: AppTypography.body.copyWith(color: Colors.white)),
           backgroundColor: AppColors.primaryDeep,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(milliseconds: 2600),
@@ -250,9 +251,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
-              Text(title, style: AppTypography.title),
+              AppText(title, style: AppTypography.title),
               const SizedBox(height: AppSpacing.sm),
-              Text(body, style: AppTypography.body),
+              AppText(body, style: AppTypography.body),
               const SizedBox(height: AppSpacing.xl),
               SizedBox(
                 width: double.infinity,
@@ -262,7 +263,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                     Navigator.of(sheetContext).pop();
                     onCta();
                   },
-                  child: Text(cta),
+                  child: AppText(cta),
                 ),
               ),
             ],
@@ -346,7 +347,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           foregroundColor: empty ? Colors.white : AppColors.textStrong,
           elevation: 0,
           scrolledUnderElevation: 0,
-          title: Text('등기부등본 촬영', style: AppTypography.bodyStrong.copyWith(
+          title: AppText('등기부등본 촬영', style: AppTypography.bodyStrong.copyWith(
             color: empty ? Colors.white : AppColors.textStrong,
           )),
           centerTitle: true,
@@ -401,23 +402,29 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(child: Center(child: _paperStack())),
-                Text(
+                AppText(
                   '등기부등본을\n한 장씩 찍어 주세요',
                   style: AppTypography.headline.copyWith(color: Colors.white),
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Text.rich(
+                AppText.rich(
                   TextSpan(
                     style: AppTypography.body.copyWith(
                       color: Colors.white.withValues(alpha: 0.72),
                     ),
                     children: [
-                      const TextSpan(text: '보통 3~5장이에요. 한 번 시작하면 '),
+                      // ⚠ 굵은 글씨는 **촬영 루프의 실제 버튼 라벨과 글자까지 같아야 한다.**
+                      //   예전에는 여기가 '찍고 계속'이었는데 그런 버튼은 화면에 없다
+                      //   (capture_loop_route.dart의 주 버튼은 '다음 장 찍기'다).
+                      //   안내가 가리키는 버튼을 찾지 못하면 안내가 아니라 방해가 된다.
+                      // '보통 3~5장이에요'는 뺐다(2026-08-14) — 장수는 등기부마다 다른데
+                      // 숫자를 먼저 던지면 "3장이면 되는구나"로 읽혀 뒷장을 안 찍는다.
+                      // 이 자리에서 알려야 할 것은 **어떻게 이어 찍는가** 하나뿐이다.
                       TextSpan(
-                        text: '찍고 계속',
+                        text: '다음 장 찍기',
                         style: AppTypography.bodyStrong.copyWith(color: Colors.white),
                       ),
-                      const TextSpan(text: '을 눌러 이어서 찍을 수 있어요.'),
+                      const TextSpan(text: '를 눌러 이어서 찍을 수 있어요.'),
                     ],
                   ),
                 ),
@@ -435,7 +442,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                       textStyle: AppTypography.button,
                     ),
                     icon: const Icon(Icons.photo_camera, size: AppSize.iconMd),
-                    label: const Text('촬영 시작'),
+                    label: const AppText('촬영 시작'),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
@@ -455,7 +462,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                       textStyle: AppTypography.button,
                     ),
                     icon: const Icon(Icons.photo_library, size: 22),
-                    label: const Text('갤러리에서 고르기'),
+                    label: const AppText('갤러리에서 고르기'),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -537,7 +544,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           constraints: const BoxConstraints(minHeight: 40),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-          child: Text(
+          child: AppText(
             label,
             style: AppTypography.caption.copyWith(
               color: Colors.white.withValues(alpha: strong ? 0.82 : 0.6),
@@ -627,9 +634,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         children: [
           Row(
             children: [
-              Text('예정 전세보증금', style: AppTypography.bodyStrong),
+              AppText('예정 전세보증금', style: AppTypography.bodyStrong),
               const SizedBox(width: 6),
-              Text(
+              AppText(
                 '필수',
                 style: AppTypography.label.copyWith(
                   color: AppColors.primary,
@@ -641,16 +648,20 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           const SizedBox(height: AppSpacing.sm),
           // ② 28px 한글 표기 — 이 화면에서 **가장 큰 숫자**여야 한다.
           //    (예전 구현은 이걸 13px 캡션으로 내려놨던 것이 가장 큰 문제였다.)
-          Text(
+          AppText(
             won != null ? formatWon(won) : '얼마를 맡기시나요?',
             style: AppTypography.numberLarge.copyWith(
               color: won != null ? AppColors.textStrong : AppColors.textMuted,
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
+          // ⚠ 힌트를 비워 둔다. 예시 숫자('12,000')를 넣었더니 실기기에서 **이미 입력된
+          //   값**으로 읽혔다 — 흐린 글씨는 "빈 칸"이 아니라 "적혀 있는 값"으로 보인다.
+          //   보증금은 판정의 핵심 입력이라, 안 넣은 것을 넣은 줄 알게 하면 안 된다.
+          //   칸이 무엇인지는 위의 '예정 전세보증금'과 '얼마를 맡기시나요?'가 말한다.
           _moneyField(
             controller: _depositCtrl,
-            hint: '12,000',
+            hint: '',
             active: won != null,
             onChanged: (_) => setState(() {}),
           ),
@@ -675,7 +686,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               children: [
                 _moneyField(
                   controller: _priceCtrl,
-                  hint: '20,000',
+                  hint: '',  // 예시값 금지 — 위 보증금 칸과 같은 이유
                   active: _manwonToWon(_priceCtrl.text) != null,
                   onChanged: (_) => setState(() {
                     // 사용자가 손대는 순간 '직접 입력'이 된다 — 자동 조회값을 고쳤는데
@@ -708,7 +719,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 controller: _aliasCtrl,
                 onChanged: (_) => setState(() {}),
                 style: AppTypography.title,
-                decoration: _fieldDecoration(hint: '역삼동 오피스텔', active: false),
+                // 예시값 금지 — '역삼동 오피스텔'이 입력된 별칭으로 읽혔다.
+                // 안 적으면 어떻게 되는지는 접힘 줄의 '주소로 자동'이 이미 말한다.
+                decoration: _fieldDecoration(hint: '', active: false),
               ),
             ),
           ),
@@ -726,15 +739,30 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   ///
   /// ⚠ **타이밍**: 첫 분석에서는 아직 주소를 모른다(주소는 OCR 이후에 나온다).
   ///   그래서 여기서 자동 조회를 시도하지 않고, **앞으로 일어날 일**만 알린다.
-  ///   "모든 집에서 되지는 않는다"를 반드시 남긴다 — 실측상 빌라·희귀 평형은
-  ///   조회가 안 되는 경우가 많고, 못 하는 것을 못 한다고 말하는 것이 우리 원칙이다.
+  ///
+  /// 2026-08-14: 예전에는 이 줄에 "모든 집에서 되지는 않아요 — 안 되면 알려드릴게요"를
+  ///   붙여 뒀다. 못 하는 것을 못 한다고 말하는 원칙은 그대로지만, **그 말을 할 자리가
+  ///   여기가 아니다** — 조회는 아직 시도조차 하지 않았고, 실패는 리포트에서
+  ///   '시세를 못 구했어요'로 이미 분명하게 말한다. 여기서는 두 줄로 넘쳐 접힘 줄을
+  ///   밀어내는 대가만 치르고 있었다.
   Widget _priceSourceHint() {
     final bool hasValue = _manwonToWon(_priceCtrl.text) != null;
 
     if (!hasValue) {
+      // **한 줄에 들어가야 한다.** 두 줄짜리 안내는 접힘 줄을 밀어내 입력 칸보다
+      // 커 보이고, 실기기에서 실제로 그렇게 보였다. 폰트를 줄이는 대신(12px는 이미
+      // 최소다) 문장을 줄였다.
+      //
+      // 폭 계산 (360dp 기준): 360 − 화면패딩 40 − 카드패딩 36 − 힌트패딩 16
+      //   − 아이콘·간격 17 = **글자에 쓸 수 있는 폭 251dp**.
+      //   Pretendard 12px 한글은 글자당 약 12dp라 한글 19자(≈241dp)가 상한이다.
+      // "안 되면 알려드릴게요"는 지웠다 — 못 구하면 리포트가 '시세를 못 구했어요'로
+      //   이미 말한다(report_screen.dart의 결론 헤더). 같은 말을 두 번 하지 않는다.
       return const AmberHint(
-        text: '비워두시면 공공데이터(국토부 실거래가·공시가격)로 찾아볼게요. '
-            '모든 집에서 되지는 않아요 — 안 되면 알려드릴게요.',
+        text: '비우면 국토부 실거래가·공시가격으로 찾아요',
+        // 이 칸을 비우면 **무엇으로** 찾아오는지가 핵심이다 — 출처를 굵게 세운다.
+        // (굵기는 줄 수를 바꾸지 않는다 — AmberHint.emphasis 주석 참고)
+        emphasis: '실거래가·공시가격',
         icon: Icons.auto_awesome,
       );
     }
@@ -775,11 +803,11 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               children: [
                 Icon(icon, size: AppSize.iconSm, color: AppColors.textMuted),
                 const SizedBox(width: AppSpacing.md),
-                Text(label, style: AppTypography.bodyStrong),
-                Text(' · 선택', style: AppTypography.caption),
+                AppText(label, style: AppTypography.bodyStrong),
+                AppText(' · 선택', style: AppTypography.caption),
                 const Spacer(),
                 Flexible(
-                  child: Text(
+                  child: AppText(
                     summary,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.right,
@@ -916,7 +944,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                   textStyle: AppTypography.button,
                 ),
                 icon: const Icon(Icons.search, size: AppSize.iconMd),
-                label: const Text('분석하기'),
+                label: const AppText('분석하기'),
               ),
             ),
           ],
@@ -935,7 +963,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           color: done ? AppColors.ok : AppColors.textMuted,
         ),
         const SizedBox(width: 5),
-        Text(
+        AppText(
           label,
           style: AppTypography.caption.copyWith(
             color: done ? AppColors.ok : AppColors.textMuted,

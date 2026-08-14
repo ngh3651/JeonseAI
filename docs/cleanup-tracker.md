@@ -8,7 +8,7 @@
 
 | 대상 | 무엇 | 삭제·교체 시점 | 상태 |
 |---|---|---|---|
-| `backend/app/dummy_data.py` | 앱 더미를 그대로 옮긴 서버 더미 응답(리포트·판례·질문·용어·여정) | **Phase E**: 실제 추출(Information Extract)·규칙 엔진·LLM·큐레이션으로 교체되면 삭제/축소 | ⏳ |
+| `backend/app/dummy_data.py` | 앱 더미를 그대로 옮긴 서버 더미 응답(리포트·판례·질문·용어). **여정 단계는 2026-08-14에 `data/journey_stages.json`으로 이관 완료** | **Phase E**: 실제 추출(Information Extract)·규칙 엔진·LLM·큐레이션으로 교체되면 삭제/축소 | ⏳ |
 | `backend/app/dependencies.py`의 `DEV_MODE_AUTH`(개발모드 인증) | 토큰 검사 없이 항상 통과하는 임시 인증 | **실인증 도입 시**(Supabase 등): `get_current_user`의 실검증 블록으로 교체, 개발모드 스위치 제거 | ⏳ |
 | `backend/app/main.py`의 `POST /api/upload` | 앱↔서버 통신 파이프 검증용 레거시 엔드포인트 | **D-3/E**: `POST /api/analyze`가 분석 흐름을 대체하면 삭제 검토(검증 자산이라 필요 시까지 보존) | ⏳ |
 | `frontend/lib/repositories/`의 `DummyAnalysisRepository`·`DummyContentRepository` | 로컬 더미 리포지토리 구현 | **D-3 완료**: 프로덕션 주입은 Api*로 교체됨. 현재 **위젯 테스트 전용**(main.dart 오버라이드로만 주입) — Phase E 정리 시 test/ 하위로 이동 또는 삭제 | ⏳ |
@@ -23,6 +23,7 @@
 | `frontend/lib/repositories/price_source.dart` | 시세 입력 소스 격리 설계 스캐폴드(`PriceSource`/`ManualPriceSource`, [2026-07-03] 결정). 현재 런타임 미배선(주석 참조만) — 죽은 코드지만 의도된 확장점 | **E-4/국토부 실거래가 API 도입 시**: `MarketPriceApiSource`로 배선하거나, 도입 안 하면 명시적 제거 결정 | ⏳ |
 | `backend/data/cases.json` (구 판례 양식) | E-3 이전의 수기 큐레이션 판례 파일(샘플 2건) — `data/precedents/`(RAG 신 방식)로 대체 예정 | **E-3**: 판례 화면이 RAG 매칭으로 전환되면 삭제(참조하는 dummy_data와 함께) | ⏳ |
 | `backend/scripts/demo_precedent.py` | 판례 RAG E2E 검증 CLI(계약 무변경 개발 도구, 2026-07-22 야간 작업) | **E-3**: 라우터 통합 후 개발 도구로 유지할지 삭제할지 결정 (run_rules.py와 동일 취급) | ⏳ |
+| `backend/tools/chat_ab.py` · `backend/data/chat_eval.json` | 용어 챗봇 모델 비교 하네스와 고정 질문 10개 (2026-08-14 S-12). 제안서용 실측표를 만드는 **개발 도구** — 서비스 코드가 아니다(앱·서버가 import하지 않는다) | **제안서 제출 후**: 도구로 유지할지 삭제할지 결정 (run_rules.py·demo_precedent.py와 동일 취급). `out/chat_ab_*.md`는 재생성 가능한 산출물 | ⏳ |
 | 법제처 API `OC=test` 폴백 (`collect_precedents.py`) | 정식 인증값 없이 개발용으로 동작하는 임시 경로 | **정식 OC 발급 시**: `.env`에 `LAW_API_OC` 추가 — 코드 무변경, 폴백 경고만 안 뜨게 됨. 대량 수집 전 필수 | ⏳ |
 | `backend/data/precedents/seed_cases.json`의 `curated_by: "야간 자율 작업(웹 검증) — 정민재 검수 대기"` 7건 | 개발자 웹 검증 시드 — 정민재 실큐레이션 도착 전 임시 콘텐츠(사건번호·출처는 실제) | **E-3**: 정민재 검수·보강 후 curated_by 갱신, 문구(요약·조언) 팀 검수 | ⏳ |
 | `backend/scripts/test_ocr_coords.py` | OCR 하이라이트 **사전 검증** CLI(Document OCR 좌표가 쓸 만한지 판정용, 2026-07-27). 검증 실패 시 기능과 함께 폐기 | **매칭 로직을 `services/`로 승격한 뒤 삭제.** 검증 실패로 기능을 폐기하면 그 시점에 즉시 삭제 | ⏳ |
@@ -157,4 +158,5 @@
 | `backend/scripts/measure_price_gap.py` | 괴리·배수 실측 CLI (2026-08-03). **아직 한 번도 실행하지 못했다**(데이터 없음) | **측정이 끝나 decisions.md에 임계값이 확정되면** 개발 도구로 유지할지 결정. 재측정 가치가 있으면 남긴다 | ⏳ |
 | `backend/tests/fixtures/price/*.csv` | 합성 픽스처 2종. **실제 파일 구조가 아니라 우리 가정**을 흉내 낸 것 | **실제 파일을 본 뒤 구조가 다르면 픽스처를 실제 구조에 맞춰 고친다.** 그때까지는 이 한계를 test 파일 상단 주석이 크게 고지한다 | ⏳ |
 | `design_handoff_s04_capture_studio/` (레포 루트) | 2026-08-03 S-04 촬영 스튜디오 디자인 핸드오프 번들 — README(사양서)·`Option-B.dc.html`(동작 프로토타입)·`support.js`·마스코트 사본 1장. `.gitignore` 처리(커밋 안 됨). **등기부 실사진은 들어 있지 않다**(목업은 회색 종이 플레이스홀더) | **구현이 실기기에서 확인되면 로컬 폴더 삭제.** 색·간격을 다시 대조할 일이 남아 있으면 그때까지 보존 | ⏳ |
+| `design_handoff_contract_journey/` (레포 루트) | 2026-08-14 S-11 계약 여정 디자인 핸드오프 번들 — README(사양서)·`계약여정 프로토타입.dc.html`·`support.js`·폰트·마스코트 사본. **등기부 실사진은 들어 있지 않다**(전부 예시 데이터) | **구현이 실기기에서 확인되면 로컬 폴더 삭제.** 색·간격을 다시 대조할 일이 남아 있으면 그때까지 보존 | ⏳ |
 | `frontend` 뷰어의 `kUnmarkedNoteMarkers` 문자열 매칭 | 서버 문구를 부분 문자열로 골라 화면에 그리는 임시 방식. **서버가 문구를 바꾸면 조용히 사라진다**(2026-07-28에 실제로 고지 3종이 탈락하고 있었다) | **`checkedNotes`에 분류 태그를 넣는 계약 변경이 승인되면** 이 목록을 통째로 삭제 (`docs/api-contract.md` §9.7에 부채로 명시) | ⏳ |

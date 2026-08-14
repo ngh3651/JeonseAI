@@ -20,6 +20,7 @@ import '../../services/api_client.dart';
 import '../../state/app_session.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
+import '../../design_system/text/app_text.dart';
 
 class MyScreen extends StatefulWidget {
   const MyScreen({super.key});
@@ -45,16 +46,16 @@ class _MyScreenState extends State<MyScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('이 리포트를 삭제할까요?'),
-        content: const Text('삭제하면 되돌릴 수 없어요'),
+        title: const AppText('이 리포트를 삭제할까요?'),
+        content: const AppText('삭제하면 되돌릴 수 없어요'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
+            child: const AppText('취소'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('삭제'),
+            child: const AppText('삭제'),
           ),
         ],
       ),
@@ -67,14 +68,14 @@ class _MyScreenState extends State<MyScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(e.message)));
+          ..showSnackBar(SnackBar(content: AppText(e.message)));
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(content: Text('삭제하지 못했어요. 다시 시도해 주세요')),
+            const SnackBar(content: AppText('삭제하지 못했어요. 다시 시도해 주세요')),
           );
       }
     }
@@ -86,13 +87,13 @@ class _MyScreenState extends State<MyScreen> {
     final session = context.watch<AppSession>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('마이'), automaticallyImplyLeading: false),
+      appBar: AppBar(title: const AppText('마이'), automaticallyImplyLeading: false),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
           _profile(session),
           const SizedBox(height: AppSpacing.xxl),
-          Text('분석 이력', style: AppTypography.title),
+          AppText('분석 이력', style: AppTypography.title),
           const SizedBox(height: AppSpacing.md),
           _historyList(),
           const SizedBox(height: AppSpacing.xxl),
@@ -121,12 +122,12 @@ class _MyScreenState extends State<MyScreen> {
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('비회원으로 이용 중', style: AppTypography.bodyStrong),
+                      const AppText('비회원으로 이용 중', style: AppTypography.bodyStrong),
                       const SizedBox(height: AppSpacing.xs),
-                      Text('로그인하면 분석 이력이 저장돼요', style: AppTypography.caption),
+                      AppText('로그인하면 분석 이력이 저장돼요', style: AppTypography.caption),
                     ],
                   )
-                : Text('${session.greetingName}님', style: AppTypography.title),
+                : AppText('${session.greetingName}님', style: AppTypography.title),
           ),
           if (session.isGuest)
             AppCompactButton(
@@ -154,9 +155,9 @@ class _MyScreenState extends State<MyScreen> {
             padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Column(
               children: [
-                const Text('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
+                const AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
                 const SizedBox(height: AppSpacing.xs),
-                Text('서버 연결을 확인해 주세요', style: AppTypography.caption),
+                AppText('서버 연결을 확인해 주세요', style: AppTypography.caption),
                 const SizedBox(height: AppSpacing.lg),
                 AppCompactButton(
                   label: '다시 시도',
@@ -173,7 +174,7 @@ class _MyScreenState extends State<MyScreen> {
             padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Column(
               children: [
-                Text('아직 분석한 매물이 없어요', style: AppTypography.bodyStrong),
+                AppText('아직 분석한 매물이 없어요', style: AppTypography.bodyStrong),
                 const SizedBox(height: AppSpacing.md),
                 AppCompactButton(
                   label: '매물 분석 시작하기',
@@ -204,19 +205,19 @@ class _MyScreenState extends State<MyScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                AppText(
                   report.alias,
                   style: AppTypography.bodyStrong,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: AppSpacing.xs),
-                Text(
+                AppText(
                   '${formatDate(report.analyzedAt)} · 보증금 ${formatWon(report.deposit)}',
                   style: AppTypography.caption,
                 ),
                 const SizedBox(height: 2),
-                Text(
+                AppText(
                   report.topRiskSummary,
                   style: AppTypography.caption,
                   maxLines: 1,

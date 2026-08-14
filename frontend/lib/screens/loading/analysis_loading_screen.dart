@@ -20,6 +20,7 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
+import '../../design_system/text/app_text.dart';
 
 class AnalysisLoadingScreen extends StatefulWidget {
   const AnalysisLoadingScreen({super.key, required this.request});
@@ -152,16 +153,16 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('분석을 중단할까요?'),
-        content: const Text('처음부터 다시 해야 해요'),
+        title: const AppText('분석을 중단할까요?'),
+        content: const AppText('처음부터 다시 해야 해요'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('계속하기'),
+            child: const AppText('계속하기'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('중단'),
+            child: const AppText('중단'),
           ),
         ],
       ),
@@ -193,13 +194,13 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
           children: [
             const Center(child: MascotSafe(size: 96, state: MascotState.error)),
             const SizedBox(height: AppSpacing.xl),
-            const Text(
+            const AppText(
               '분석을 진행하지 못했어요',
               style: AppTypography.title,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.sm),
-            Text(
+            AppText(
               message,
               style: AppTypography.caption,
               textAlign: TextAlign.center,
@@ -250,13 +251,13 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                         child: MascotSafe(size: 96, state: MascotState.loading),
                       ),
                       const SizedBox(height: AppSpacing.xl),
-                      Text(
+                      AppText(
                         _stages[_stage],
                         style: AppTypography.title,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: AppSpacing.sm),
-                      Text(
+                      AppText(
                         '보통 1~2분 걸려요',
                         style: AppTypography.caption,
                         textAlign: TextAlign.center,
@@ -266,7 +267,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                         const SizedBox(height: AppSpacing.xs),
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 300),
-                          child: Text(
+                          child: AppText(
                             _waitingMents[_mentIndex],
                             key: ValueKey(_mentIndex),
                             style: AppTypography.caption.copyWith(
@@ -299,7 +300,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                                 size: AppSize.iconSm,
                               ),
                               const SizedBox(width: AppSpacing.sm),
-                              Text(item, style: AppTypography.body),
+                              AppText(item, style: AppTypography.body),
                             ],
                           ),
                         ),

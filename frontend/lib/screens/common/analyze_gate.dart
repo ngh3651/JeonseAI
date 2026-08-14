@@ -13,6 +13,7 @@ import '../../design_system/components/app_button.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../state/app_session.dart';
+import '../../design_system/text/app_text.dart';
 
 /// 분석 시작 — 회원이면 바로 S-04, 비회원이면 로그인 유도.
 void startAnalysis(BuildContext context) {
@@ -38,9 +39,9 @@ void showLoginSheet(BuildContext context, {required String next}) {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('분석하려면 로그인이 필요해요', style: AppTypography.headline),
+          const AppText('분석하려면 로그인이 필요해요', style: AppTypography.headline),
           const SizedBox(height: AppSpacing.sm),
-          Text('결과도 안전하게 보관해 드려요', style: AppTypography.caption),
+          AppText('결과도 안전하게 보관해 드려요', style: AppTypography.caption),
           const SizedBox(height: AppSpacing.xl),
           AppPrimaryButton(
             label: '로그인',
@@ -62,7 +63,7 @@ void showLoginSheet(BuildContext context, {required String next}) {
           const SizedBox(height: AppSpacing.sm),
           TextButton(
             onPressed: () => Navigator.of(sheetContext).pop(),
-            child: const Text('나중에'),
+            child: const AppText('나중에'),
           ),
         ],
       ),

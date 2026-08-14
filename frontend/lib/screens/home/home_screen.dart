@@ -18,8 +18,13 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../state/app_session.dart';
+import '../../state/journey_schedule_store.dart';
+import '../../utils/korean_date.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
+import '../journey/balance_due_banner.dart';
+import '../journey/journey_actions.dart';
+import '../../design_system/text/app_text.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -46,6 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _greeting(context),
                 const SizedBox(height: AppSpacing.xxl),
+                // 잔금일이 내일인 집이 있으면 **인사 바로 아래**에 경고가 온다.
+                // 홈에 들어온 사람이 그 하루를 모르고 나가는 일이 없게 (S-11).
+                ..._balanceDueBanners(context, history),
                 AppPrimaryButton(
                   // F12: 버튼 안 원형(돋보기) 아이콘 제거 — 라벨만
                   label: '매물 분석 시작하기',
@@ -59,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? null
                       : TextButton(
                           onPressed: () => context.go('/my'),
-                          child: const Text('전체 보기'),
+                          child: const AppText('전체 보기'),
                         ),
                 ),
                 if (snapshot.connectionState == ConnectionState.waiting)
@@ -89,6 +97,37 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// 잔금일이 **내일**인 매물의 배너. 일정은 기기에만 있으므로 여기서 직접 견준다.
+  ///
+  /// 여정 탭의 배너와 **같은 위젯**을 쓴다 — 두 곳이 따로 그려지면 한쪽만 고쳐졌을 때
+  /// 홈과 여정이 다른 말을 하게 된다.
+  List<Widget> _balanceDueBanners(
+    BuildContext context,
+    List<AnalysisReport> history,
+  ) {
+    final store = context.watch<JourneyScheduleStore>();
+    final banners = <Widget>[];
+    final seen = <String>{};
+
+    for (final report in history) {
+      final key = journeyPropertyKey(report.address);
+      if (!seen.add(key)) continue; // 같은 집의 옛 분석은 건너뛴다(최신 1건만)
+      final schedule = store.scheduleFor(key);
+      if (!schedule.isBalanceTomorrow) continue;
+      banners.add(
+        BalanceDueBanner(
+          title:
+              '${report.alias} · 잔금일이 내일이에요 · '
+              '${formatMonthDay(schedule.balance!)}',
+          note: '잔금 직전 확인이 이 앱에서 가장 중요한 단계예요',
+          onCompare: () => startRegistryCompare(context, report),
+        ),
+      );
+      banners.add(const SizedBox(height: AppSpacing.lg));
+    }
+    return banners;
+  }
+
   /// 이력 로드 실패 — 인라인 에러 + [다시 시도] (user-scenario §5)
   Widget _loadError(BuildContext context) {
     return AppCard(
@@ -101,9 +140,9 @@ class _HomeScreenState extends State<HomeScreen> {
             size: AppSize.iconMd,
           ),
           const SizedBox(height: AppSpacing.md),
-          const Text('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
+          const AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
           const SizedBox(height: AppSpacing.xs),
-          Text(
+          AppText(
             '서버 연결을 확인해 주세요',
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),
@@ -132,9 +171,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(hello, style: AppTypography.headline),
+              AppText(hello, style: AppTypography.headline),
               const SizedBox(height: AppSpacing.xs),
-              Text(
+              AppText(
                 '오늘도 안전한 전세 계약을 도와드릴게요',
                 style: AppTypography.caption.copyWith(
                   color: AppColors.textMuted,
@@ -147,7 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (session.isGuest)
           TextButton(
             onPressed: () => context.push('/login?mode=login'),
-            child: const Text('로그인'),
+            child: const AppText('로그인'),
           ),
       ],
     );
@@ -163,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: AppTypography.title),
+          AppText(title, style: AppTypography.title),
           ?trailing,
         ],
       ),
@@ -180,16 +219,16 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(report.alias, style: AppTypography.title),
+                AppText(report.alias, style: AppTypography.title),
                 const SizedBox(height: AppSpacing.xs),
-                Text(
+                AppText(
                   '${formatDate(report.analyzedAt)} 분석 · 보증금 ${formatWon(report.deposit)}',
                   style: AppTypography.caption,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(
+                AppText(
                   report.topRiskSummary,
                   style: AppTypography.caption,
                   maxLines: 1,
@@ -217,9 +256,9 @@ class _HomeScreenState extends State<HomeScreen> {
           // 겹쳐 오독되어(페르소나 2인·design-reviewer) 순한 tip(전구) 톤으로.
           const MascotSafe(size: 64, state: MascotState.tip),
           const SizedBox(height: AppSpacing.lg),
-          const Text('아직 분석한 매물이 없어요', style: AppTypography.title),
+          const AppText('아직 분석한 매물이 없어요', style: AppTypography.title),
           const SizedBox(height: AppSpacing.xs),
-          Text(
+          AppText(
             '등기부등본 사진만 있으면 바로 시작할 수 있어요',
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
             textAlign: TextAlign.center,
@@ -281,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(icon, color: AppColors.primary, size: AppSize.iconMd),
             const SizedBox(height: AppSpacing.sm),
-            Text(
+            AppText(
               label,
               style: AppTypography.label.copyWith(color: AppColors.textBody),
             ),

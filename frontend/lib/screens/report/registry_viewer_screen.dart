@@ -53,6 +53,7 @@ import 'registry_entry_card.dart' show previewMarkOf;
 import 'registry_mark_carousel.dart';
 import 'registry_mark_sheet.dart';
 import 'registry_mark_stripe.dart';
+import '../../design_system/text/app_text.dart';
 
 // ── 마킹 규격 (오버레이 전용) ───────────────────────────────────────────────
 /// 번호 뱃지 지름(논리 픽셀). 색만으로 정보를 전달하지 않기 위해 번호를 붙인다.
@@ -162,6 +163,7 @@ const List<String> kUnmarkedNoteMarkers = [
   '한 가지 방법으로만', // 두 번째 확인을 못 했다는 고지
   '자동으로 맞췄', // 사진 순서를 서버가 고쳤다는 고지
   '말할 수 없어요', // 못 본 쪽이 있어 '없다'고 단정할 수 없다는 고지
+  '계산에서 제외했', // 말소로 확인해 위험 계산에서 뺐다는 고지 (2026-08-14 D10)
 ];
 
 /// 목록 맨 끝 회색 한 줄 — "리포트엔 있는데 사진에는 표시하지 못한 것". 없으면 null.
@@ -632,7 +634,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
             if (legend.isNotEmpty) const SizedBox(height: 2),
             // 개수가 안 맞는 이유를 대는 줄 — 회색 한 줄로 조용히, 그러나 반드시.
             // 두 줄을 넘기면 하단이 잠식되므로 자르되, 같은 내용이 리포트에도 있다.
-            Text(
+            AppText(
               unmarked,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -681,20 +683,20 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
           color: AppColors.caution,
         ),
         const SizedBox(width: AppSpacing.sm),
-        Expanded(child: Text(notice, style: AppTypography.caption)),
+        Expanded(child: AppText(notice, style: AppTypography.caption)),
       ],
     ),
   );
 
   Scaffold _emptyScaffold() => Scaffold(
-    appBar: AppBar(title: const Text('내가 올린 사진에서 보기')),
+    appBar: AppBar(title: const AppText('내가 올린 사진에서 보기')),
     body: Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            const AppText(
               '이 분석에 쓴 사진이 남아 있지 않아요.\n등기부 사진은 안전을 위해 저장하지 않아요.',
               textAlign: TextAlign.center,
               style: AppTypography.body,
@@ -739,7 +741,7 @@ class _ViewerAppBar extends StatelessWidget implements PreferredSizeWidget {
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
       titleSpacing: 0,
-      title: Text(
+      title: AppText(
         title,
         style: AppTypography.bodyStrong,
         overflow: TextOverflow.ellipsis,
@@ -958,7 +960,7 @@ class _RegistryPageState extends State<_RegistryPage> {
   Widget _brokenPhoto() => Center(
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Text(
+      child: AppText(
         '${widget.pageIndex + 1}쪽 사진을 불러오지 못했어요.\n'
         '분석 결과와 판정은 리포트에서 그대로 확인할 수 있어요.',
         textAlign: TextAlign.center,
@@ -1209,7 +1211,7 @@ class RegistryPositionRail extends StatelessWidget {
                           left: layout.pageCenterFraction(i) * width - 8,
                           top: 0,
                           width: 16,
-                          child: Text(
+                          child: AppText(
                             '${i + 1}',
                             textAlign: TextAlign.center,
                             // 10sp라 시스템 확대를 그대로 받으면 쪽번호끼리 겹친다.
@@ -1355,7 +1357,7 @@ class BadgeCircle extends StatelessWidget {
       height: diameter,
       alignment: Alignment.center,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      child: Text(
+      child: AppText(
         '$number',
         // 사진 위 뱃지와 동작을 맞춘다(그쪽은 캔버스라 시스템 글꼴 확대가 안 걸린다)
         textScaler: TextScaler.noScaling,
@@ -1395,7 +1397,7 @@ class _LegendRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.xs),
-              Text(e.label, style: AppTypography.caption),
+              AppText(e.label, style: AppTypography.caption),
             ],
           ),
       ],

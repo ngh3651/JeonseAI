@@ -9,7 +9,9 @@
 결합은 RRF(Reciprocal Rank Fusion) — BM25 점수의 스케일 문제 없이 순위만으로 융합.
 
 노출 게이트 (보수적 — 미달이면 결과에서 제외, 폴백 문구로):
-- `doc.verified == True` (출처 검증 안 된 판례는 절대 노출 금지)
+- `doc.source_verified == True` (출처가 공식 DB로 확인된 판례만 — 지어낸 판례 차단)
+  ※ `doc.verified`(사람 문구 검수)는 게이트가 아니다. 미검수 판례도 나가되
+    화면에 "문구 검수 전"임을 밝힌다 (2026-08-07 결정 — models.py 참고).
 - 판정 태그와 교집합 ≥ 1 (판정과 무관한 판례 노출 금지)
 - 벡터 유사도 ≥ 하한선 (의미적으로 먼 판례 노출 금지)
 """
@@ -197,8 +199,8 @@ class HybridRetriever:
             kw_score = (kw_rank.get(cid, (None, 0.0))[1] / kw_max) if kw_max > 0 else 0.0
             matched = sorted(set(doc.risk_tags) & set(risk_tags or []))
             if apply_gate:
-                if not doc.verified:
-                    continue  # 출처 미검증 판례는 노출 금지
+                if not doc.source_verified:
+                    continue  # 출처 미확인 판례는 노출 금지 (사건번호·링크가 실재해야 한다)
                 if risk_tags and not matched:
                     continue  # 판정과 무관한 판례 노출 금지
                 if vec_score < floor:

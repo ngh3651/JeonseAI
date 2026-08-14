@@ -219,6 +219,44 @@ def unsupported_numbers(text: str, allowed: set[float]) -> list[str]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+#: 용어 챗봇 답변 길이 상한. 넘으면 **자르지 않고 버린다** — 잘린 문장은 뜻이 바뀐다.
+CHAT_MAX_LEN = 200
+
+#: 아라비아 숫자 하나라도 있으면 걸린다. 한글 수사('한두 가지')는 통과한다.
+_DIGIT_RE = re.compile(r"\d")
+
+
+def check_chat(text: str) -> str | None:
+    """**용어 챗봇 답변** 전용 검증. 통과면 None, 아니면 사유 문자열.
+
+    리포트 설명(`check`)과 규칙이 다른 이유는 하나다 — **챗봇에는 재료가 없다.**
+    설명 생성은 판정 JSON을 받아서 "재료에 있는 수만 허용"이라는 화이트리스트를 만들 수
+    있지만, 챗봇의 입력은 사용자 문장 하나뿐이라 그 목록을 만들 방법이 없다.
+    그래서 화이트리스트 대신 **숫자 전면 금지**로 받는다:
+
+      LLM이 "전세가율 80%가 기준이에요"를 지어내면 그 값은 우리 판정 계층
+      (`thresholds.py`)과 충돌한다. 사용자는 챗봇 말을 기준으로 계약을 판단하는데,
+      리포트가 다른 숫자를 보여주면 **어느 쪽도 믿을 수 없게 된다.**
+
+    금지 표현·등급 단어 검사는 리포트와 **같은 패턴**을 그대로 쓴다(위 `_BANNED_PATTERNS`).
+    두 화면이 다른 그물을 쓰면 한쪽만 고쳐졌을 때 조용히 갈라진다.
+    """
+    if not text or not text.strip():
+        return "빈 문자열"
+    if len(text) > CHAT_MAX_LEN:
+        return f"길이 초과({len(text)}자 > {CHAT_MAX_LEN}자)"
+    hit = banned_hit(text)
+    if hit:
+        return f"금지 표현({hit})"
+    hit = grade_word_hit(text)
+    if hit:
+        return f"등급 단어({hit})"
+    m = _DIGIT_RE.search(text)
+    if m:
+        return f"숫자 사용('{m.group(0)}') — 챗봇에는 대조할 재료가 없어 숫자를 쓸 수 없다"
+    return None
+
+
 def check(text: str, *, max_len: int, allowed: set[float]) -> str | None:
     """이 문자열을 화면에 써도 되나. **통과면 None, 아니면 사유 문자열.**
 

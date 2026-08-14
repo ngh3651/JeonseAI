@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .chunking import chunk_document
 from .embedding import EmbeddingBackend, get_backend
@@ -33,7 +34,17 @@ _AUTO_TAG_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("경매", ("경매", "경락", "낙찰", "배당")),
     ("선순위 채권", ("근저당", "저당권", "채권최고액", "우선변제권")),
     # "편취" 단독은 전세 무관 일반 사기 판례까지 태깅해 제외 (rule-auditor 재감사 2026-07-22)
-    ("전세가율", ("전세사기", "깡통", "갭투자")),
+    #
+    # ★ 판결문은 "전세가율"(법제처 전체 1건)·"깡통전세"(0건)라는 말을 쓰지 않는다.
+    #   이 위험은 법리 쟁점이 아니라 **사실관계**로 나타난다 — 다가구주택에서 앞 세입자들
+    #   보증금 합계가 집값을 넘어 뒤 세입자가 배당을 못 받는 구조다.
+    #   그래서 그 구조를 가리키는 말로 찾는다. '소액임차인 최우선변제'는 보증금을
+    #   다 못 받는 상황에서만 쟁점이 되므로, 낱말 자체가 손실 사례를 가리킨다.
+    #   (실측 2026-08-12: 세 낱말만으로는 색인 48건 중 전세가율 판례가 0건이었다)
+    (
+        "전세가율",
+        ("전세사기", "깡통", "갭투자", "소액임차인", "최우선변제", "선순위 임차인"),
+    ),
     ("대항력", ("대항력", "전입신고", "확정일자")),
     ("보증보험", ("보증보험", "주택도시보증공사", "보증금반환보증")),
 )
@@ -48,8 +59,57 @@ def _case_no_parts(raw_case_no: str) -> list[str]:
     return [_norm_case_no(p) for p in (raw_case_no or "").split(",") if p.strip()]
 
 
+# 판결문 원문을 제공하는 출처만 "출처 확인됨"으로 인정한다 (2026-08-12).
+#   처음엔 `bool(source_url)`로 뒀는데, 그러면 **뉴스 기사 링크도 통과**한다.
+#   실제로 '건축왕' 전세사기 판례가 slownews.kr 링크로 노출 가능 상태였다.
+#   출처 확인의 뜻은 "URL이 있다"가 아니라 "사용자가 판결문 원문을 볼 수 있다"이다.
+OFFICIAL_SOURCE_HOSTS = (
+    "law.go.kr",      # 법제처 국가법령정보 (정부 공식)
+    "casenote.kr",    # 판결문 전문 DB
+    "scourt.go.kr",   # 대법원 종합법률정보
+)
+
+
+def is_official_source(url: str | None) -> bool:
+    """판결문 원문을 볼 수 있는 출처인가. 뉴스·해설 사이트는 인정하지 않는다."""
+    if not url:
+        return False
+    host = urlparse(url).netloc.lower()
+    return any(host == h or host.endswith("." + h) for h in OFFICIAL_SOURCE_HOSTS)
+
+
 def auto_tags(text: str) -> list[str]:
     return [tag for tag, keywords in _AUTO_TAG_RULES if any(k in text for k in keywords)]
+
+
+# 전세사기와 밀접하지 않으면 아예 넣지 않는다 (2026-08-12 팀 결정).
+#   자동 태깅은 낱말만 본다. 그래서 **유치권 판례가 "압류" 한 단어로** 압류·가압류
+#   태그를 달고 들어왔다(2021다253710). 사용자는 "내 임대차 얘기"인 줄 알고 열었다가
+#   임대차가 한 번도 안 나오는 판결문을 본다 — 판례를 붙이는 이유 자체가 무너진다.
+#
+#   1차 게이트는 낱말이 있는지만 봤는데, 그러면 **법조문 인용구**가 통과한다.
+#   유치권 판례(2021다253710)가 민사집행법 제91조를 인용하며 "전세권 및 등기된
+#   임차권"이라고 쓴 것만으로 통과했다 — 정작 임차인은 그 사건에 등장하지 않는다.
+#
+#   그래서 기준을 "낱말이 있는가"에서 **"임차인이 당사자로 등장하는가"**로 바꾼다.
+#   임차권·전세권은 법조문에 흔히 나오는 **권리 이름**이지만,
+#   임차인·임대인·세입자는 **사람**이라 그 사건의 당사자일 때만 나온다.
+_LEASE_PARTY = (
+    "임차인", "임대인", "세입자", "임차의뢰인",
+    "임차보증금", "임대차보증금", "전세금", "임차주택",
+)
+
+# 판시사항이 일반 법리(채무인수·사해행위 등)라 당사자가 안 나오는 경우가 있다.
+#   그때는 사건명으로 구제한다 — '임대차보증금반환' 사건의 판시사항이 채무인수
+#   법리인 경우가 실제로 있었다(2009다73905).
+_LEASE_TITLE = ("임대차", "임차", "보증금", "전세")
+
+
+def is_lease_related(holding: str, title: str | None = None) -> bool:
+    """임차인이 당사자인 사건인가. 아니면 색인에 넣지 않는다."""
+    if any(k in (holding or "") for k in _LEASE_PARTY):
+        return True
+    return any(k in (title or "") for k in _LEASE_TITLE)
 
 
 def load_raw_docs(raw_dir: Path | None = None) -> list[dict]:
@@ -59,6 +119,27 @@ def load_raw_docs(raw_dir: Path | None = None) -> list[dict]:
         for p in sorted(raw_dir.glob("prec-*.json")):
             docs.append(json.loads(p.read_text(encoding="utf-8")))
     return docs
+
+
+def load_excluded_cases(path: Path | None = None) -> dict[str, str]:
+    """사람이 '쓰지 않기로' 정한 판례 — {사건번호: 사유}.
+
+    raw 파일을 지우지 않고 여기 기록하는 이유: 지우면 다음 수집 때 같은 판례가
+    다시 들어오고, 왜 뺐는지도 사라진다. 판단을 데이터로 남긴다.
+    """
+    path = path or (_PRECEDENT_DATA_DIR / "excluded_cases.json")
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        print(f"  [경고] excluded_cases.json 파싱 실패 — 제외 목록 무시: {e}")
+        return {}
+    return {
+        _norm_case_no(k): v
+        for k, v in (data.get("excluded") or {}).items()
+        if not k.startswith("_")
+    }
 
 
 def load_seed_cases(path: Path | None = None) -> list[dict]:
@@ -85,6 +166,7 @@ def build_documents(
     """raw + 큐레이션 조인 → PrecedentDoc 목록. (임베딩 없음 — 순수 변환)"""
     raw_docs = load_raw_docs() if raw_docs is None else raw_docs
     seed_cases = load_seed_cases() if seed_cases is None else seed_cases
+    excluded = load_excluded_cases()
 
     raw_by_part: dict[str, dict] = {}
     for rd in raw_docs:
@@ -101,7 +183,12 @@ def build_documents(
         holding = ""
         full_text = None
         title = None
-        source_url = (seed.get("source_urls") or [None])[0] or seed.get("source_url", "")
+        # 큐레이션은 출처를 여러 개 적어둘 수 있다(뉴스 기사 + 판결문 DB 등).
+        #   **판결문 원문을 볼 수 있는 것을 우선** 고른다 — 첫 번째를 그냥 쓰면
+        #   뉴스 링크가 대표 출처가 되어 "판례를 확인할 수 있다"가 거짓이 된다.
+        #   (실제로 83다카116이 목록에 법제처 URL을 갖고도 bigcase.ai로 나가고 있었다)
+        _urls = [u for u in (seed.get("source_urls") or []) if u] or [seed.get("source_url", "")]
+        source_url = next((u for u in _urls if is_official_source(u)), _urls[0])
         if raw:
             used_raw_ids.add(raw["prec_id"])
             holding = raw.get("holding_summary") or raw.get("holding_points") or ""
@@ -126,6 +213,11 @@ def build_documents(
                 advice=seed.get("advice"),
                 source_url=source_url,
                 full_text=full_text,
+                # 큐레이션 시드는 출처 링크가 있으면 출처 확인된 것으로 본다.
+                #   (seed_cases.json에 source_verified를 따로 적어 두면 그 값이 우선)
+                source_verified=bool(
+                    seed.get("source_verified", is_official_source(source_url))
+                ),
                 verified=bool(seed.get("verified", False)),
                 curated_by=seed.get("curated_by"),
                 collected_at=seed.get("date"),
@@ -139,7 +231,18 @@ def build_documents(
         holding = rd.get("holding_summary") or rd.get("holding_points") or ""
         if not holding:
             continue
+        # 사람이 검수해 뺀 판례 (excluded_cases.json — 사유가 함께 적혀 있다)
+        if any(part in excluded for part in _case_no_parts(rd.get("case_no", ""))):
+            continue
+        # 전세사기와 밀접하지 않으면 넣지 않는다 (큐레이션 시드는 사람이 고른 것이라 통과)
+        if not is_lease_related(holding, rd.get("case_name")):
+            continue
         tag_basis = " ".join([rd.get("case_name", ""), rd.get("holding_points", ""), holding])
+        tags = auto_tags(tag_basis)
+        # 위험 태그가 하나도 없으면 검색 필터(retrieval의 태그 교집합 게이트)를 영영
+        # 통과하지 못한다. 임베딩·저장 비용만 들고 사용자에게는 절대 닿지 않는 문서다.
+        if not tags:
+            continue
         docs.append(
             PrecedentDoc(
                 case_id=f"prec-{rd['prec_id']}",
@@ -147,13 +250,15 @@ def build_documents(
                 court=rd.get("court") or "법원 미상",
                 decided=_fmt_decided(rd.get("decided")),
                 title=rd.get("case_name"),
-                risk_tags=auto_tags(tag_basis),
+                risk_tags=tags,
                 holding=holding,
                 source_url=rd.get("source_url", ""),
                 full_text=rd.get("full_text") or None,
-                # 출처(법제처 공식 원문)는 확실하나 **사람 검수 전** — 노출 게이트가 차단한다.
-                # 큐레이션(seed_cases.json) 검수 후 승격하는 워크플로 (rule-auditor 2026-07-22:
-                # verified는 "공식 DB + 사람 검증" AND 조건으로 운용).
+                # 출처는 법제처 공식 원문이고 source_url이 실재한다 → 노출 허용.
+                #   (2026-08-07: 원래 AND 조건 하나로 묶여 있어 148건이 통째로 막혔다.
+                #    두 축을 분리해, 출처는 자동 확인하고 문구 검수는 따로 표시한다.)
+                source_verified=is_official_source(rd.get("source_url")),
+                # 문구는 아직 사람이 읽지 않았다 — 카드에 "검수 전" 표시가 붙는다.
                 verified=False,
                 curated_by=None,
                 collected_at=rd.get("_collected_at"),

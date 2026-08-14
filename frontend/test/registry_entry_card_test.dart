@@ -12,6 +12,7 @@ import 'package:jeonse_ai/models/registry_mark_kind.dart';
 import 'package:jeonse_ai/screens/report/registry_entry_card.dart';
 
 import 'support/registry_fixture.dart';
+import 'support/ko_finders.dart';
 
 void main() {
   final report = buildFixtureReport();
@@ -167,8 +168,8 @@ void main() {
 
     testWidgets('사진이 없으면 스트립 없이 하단 행만 남는다', (tester) async {
       await pumpCard(tester);
-      expect(find.text('내가 올린 사진에서 보기'), findsOneWidget);
-      expect(find.text('집주인 이름 1곳과 빚 3건을 사진 위에 표시했어요'), findsOneWidget);
+      expect(find.koText('내가 올린 사진에서 보기'), findsOneWidget);
+      expect(find.koText('집주인 이름 1곳과 빚 3건을 사진 위에 표시했어요'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -183,7 +184,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('내가 올린 사진에서 보기'), findsOneWidget);
+      expect(find.koText('내가 올린 사진에서 보기'), findsOneWidget);
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -204,8 +205,8 @@ void main() {
           ),
         ),
       );
-      expect(find.text('※ 2026.07.09 기준 등기부등본'), findsOneWidget);
-      expect(find.textContaining('07.27'), findsNothing);
+      expect(find.koText('※ 2026.07.09 기준 등기부등본'), findsOneWidget);
+      expect(find.koTextContaining('07.27'), findsNothing);
     });
 
     testWidgets('잠긴 상태(사진 소실)에서도 카드가 남고 이유를 말한다', (tester) async {
@@ -222,8 +223,8 @@ void main() {
           ),
         ),
       );
-      expect(find.text('내가 올린 사진에서 보기'), findsOneWidget);
-      expect(find.textContaining('저장하지 않아요'), findsOneWidget);
+      expect(find.koText('내가 올린 사진에서 보기'), findsOneWidget);
+      expect(find.koTextContaining('저장하지 않아요'), findsOneWidget);
       // 열 수 없으니 chevron은 없다
       expect(find.byIcon(Icons.chevron_right), findsNothing);
     });

@@ -17,7 +17,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .base import EXPLAIN_TEMPERATURE, STRUCTURE_TEMPERATURE, LlmError, LlmProvider, LlmResponse
+from .base import (
+    CHAT_TEMPERATURE,
+    EXPLAIN_TEMPERATURE,
+    STRUCTURE_TEMPERATURE,
+    LlmError,
+    LlmProvider,
+    LlmResponse,
+)
 from .prompts import render_layout_text
 from .providers import PROVIDER_CLASSES, AxProvider, ExaoneProvider, UpstageSolarProvider
 
@@ -35,6 +42,7 @@ _OFF_VALUES = {"off", "none", "disabled", "no", "false", "0"}
 STRUCTURE_TIMEOUT_SECONDS = 45.0
 
 __all__ = [
+    "CHAT_TEMPERATURE",
     "EXPLAIN_TEMPERATURE",
     "STRUCTURE_TEMPERATURE",
     "AxProvider",
@@ -46,6 +54,7 @@ __all__ = [
     "UpstageSolarProvider",
     "all_providers",
     "available_providers",
+    "chat_provider",
     "get_provider",
     "render_layout_text",
     "structure_provider",
@@ -88,6 +97,25 @@ def structure_provider() -> LlmProvider | None:
 def explain_provider() -> LlmProvider:
     """작업 ②(설명 문장)를 맡을 provider — `LLM_EXPLAIN_PROVIDER`."""
     return _from_env("LLM_EXPLAIN_PROVIDER")
+
+
+def chat_provider() -> LlmProvider:
+    """작업 ③(용어 챗봇)을 맡을 provider — `LLM_CHAT_PROVIDER`.
+
+    없으면 `LLM_EXPLAIN_PROVIDER`를 **상속**한다. 둘 다 없으면 기본값(upstage).
+    상속시키는 이유: 설명 모델을 바꾸는 사람은 대개 챗봇도 같은 모델로 보고 있고,
+    두 변수를 따로 관리하게 하면 한쪽만 바뀐 채로 시연에 들어간다.
+
+    ⚠ 이 계층도 **판정을 만들지 않는다.** 챗봇 출력 스키마에는 등급·점수 필드가 없고,
+      판정 요구는 LLM에 닿기 전에 `services/chat.py`의 규칙이 막는다.
+    """
+    load_dotenv(dotenv_path=_BACKEND_ROOT / ".env")
+    raw = (
+        os.environ.get("LLM_CHAT_PROVIDER", "")
+        or os.environ.get("LLM_EXPLAIN_PROVIDER", "")
+        or DEFAULT_PROVIDER
+    )
+    return get_provider(raw)
 
 
 def all_providers() -> list[LlmProvider]:

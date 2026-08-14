@@ -16,6 +16,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/content_models.dart';
 import '../../repositories/content_repository.dart';
+import '../../design_system/text/app_text.dart';
 
 class QuestionGeneratorScreen extends StatefulWidget {
   const QuestionGeneratorScreen({super.key, required this.reportId});
@@ -44,7 +45,7 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('중개사 질문 생성기')),
+      appBar: AppBar(title: const AppText('중개사 질문 생성기')),
       body: FutureBuilder<List<QuestionGroup>>(
         future: _future,
         builder: (context, snapshot) {
@@ -56,7 +57,7 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  const AppText(
                     '질문을 불러오지 못했어요\n서버 연결을 확인해 주세요',
                     style: AppTypography.body,
                     textAlign: TextAlign.center,
@@ -82,9 +83,9 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.screenPadding),
             children: [
-              Text('이 매물, 이럴 땐 꼭 물어보세요', style: AppTypography.title),
+              AppText('이 매물, 이럴 땐 꼭 물어보세요', style: AppTypography.title),
               const SizedBox(height: AppSpacing.xs),
-              Text('현장에서 그대로 보여주면 돼요', style: AppTypography.caption),
+              AppText('현장에서 그대로 보여주면 돼요', style: AppTypography.caption),
               const SizedBox(height: AppSpacing.lg),
               for (final g in groups) ...[
                 _group(context, g),
@@ -109,7 +110,7 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          AppText(
             g.riskLabel,
             style: AppTypography.label.copyWith(color: AppColors.primary),
           ),
@@ -131,7 +132,7 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Text('“${q.question}”', style: AppTypography.bodyStrong),
+              child: AppText('“${q.question}”', style: AppTypography.bodyStrong),
             ),
             IconButton(
               icon: const Icon(Icons.copy, size: AppSize.iconSm),
@@ -141,7 +142,7 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
-        Text(q.why, style: AppTypography.caption),
+        AppText(q.why, style: AppTypography.caption),
         const SizedBox(height: AppSpacing.md),
         _answerGuide(
           '이런 답이면 안심',
@@ -185,9 +186,9 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: AppTypography.label.copyWith(color: color)),
+                AppText(label, style: AppTypography.label.copyWith(color: color)),
                 const SizedBox(height: 2),
-                Text(text, style: AppTypography.body),
+                AppText(text, style: AppTypography.body),
               ],
             ),
           ),
@@ -216,5 +217,5 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
 
   void _toast(BuildContext context, String m) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(m)));
+    ..showSnackBar(SnackBar(content: AppText(m)));
 }

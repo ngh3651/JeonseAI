@@ -12,15 +12,20 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from .. import dummy_data
-from ..schemas.contract import GlossaryTerm, JourneyStage
+from ..schemas.contract import GlossaryAnswer, GlossaryTerm, JourneyStage
+from ..services import chat, journey
 
 router = APIRouter(prefix="/api", tags=["content"])
 
 
 @router.get("/journey-stages", response_model=list[JourneyStage])
 async def journey_stages() -> list[JourneyStage]:
-    """계약 여정 단계(정적, 모든 사용자 동일). 체크 상태는 앱 로컬 저장이라 응답에 없음."""
-    return dummy_data.journey_stages()
+    """계약 여정 단계(정적, 모든 사용자 동일).
+
+    날짜·진행 상태는 응답에 없다 — **일정은 기기에만 저장**하고(S-11), 어디까지 왔는지는
+    앱이 그 날짜로 계산한다. 서버는 "무엇을 언제 해야 하는가"라는 단계 정의만 준다.
+    """
+    return journey.load_stages()
 
 
 @router.get("/glossary", response_model=list[GlossaryTerm])
@@ -29,10 +34,31 @@ async def glossary() -> list[GlossaryTerm]:
     return dummy_data.glossary_terms()
 
 
-@router.get("/glossary/lookup", response_model=GlossaryTerm)
-async def glossary_lookup(q: str) -> GlossaryTerm:
-    """입력에서 용어를 찾아 설명 반환. 못 찾으면 404(범위 밖) → 앱이 거절 문구 표시(가드레일)."""
-    term = dummy_data.lookup_term(q)
-    if term is None:
-        raise HTTPException(status_code=404, detail="용어를 찾을 수 없어요")
-    return term
+@router.get("/glossary/lookup", response_model=GlossaryAnswer)
+def glossary_lookup(q: str) -> GlossaryAnswer:
+    """질문 하나 → 답 하나 (계약 §3.9 · 2026-08-14 S-12).
+
+    **항상 200이다.** 예전에는 사전에 없으면 404였고 앱이 거절 문구를 하드코딩했다.
+    이제 거절도 서버가 문장으로 준다(`outOfScope=true`) — 그래야 문구를 서버가 정하고,
+    LLM 답과 거절을 한 경로에서 다룰 수 있다.
+
+    답이 어디서 오는지는 `source`에 그대로 적힌다:
+      · `"검수된 용어 사전"` — data/terms.json 문장 그대로 (LLM 호출 0회)
+      · 실제 모델 문자열      — Solar가 쓴 문장 (검증 통과분만)
+      · `"준비된 문구"`       — 판정 요구 차단·범위 밖·LLM 실패
+
+    ⚠ 동기(def) 핸들러다 — LLM 호출이 수 초 걸릴 수 있어 스레드풀에서 돌게 한다.
+    ⚠ 404 분기는 **일부러 남겨 둔다**(아래 방어선). 질문이 비어 있는 것은 클라이언트
+      오류이고, 옛 앱이 404를 '범위 밖'으로 다루던 동작과도 어긋나지 않는다.
+    """
+    if not (q or "").strip():
+        raise HTTPException(status_code=404, detail="질문이 비어 있어요")
+    reply = chat.answer(q)
+    return GlossaryAnswer(
+        answer=reply.answer,
+        outOfScope=reply.out_of_scope,
+        source=reply.source,
+        termGlossary=reply.term_glossary,
+        term=reply.term,
+        description=reply.answer,  # 옛 앱 호환 거울 필드
+    )

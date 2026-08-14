@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
+import '../../design_system/text/app_text.dart';
 
 class PhotoTray extends StatelessWidget {
   const PhotoTray({
@@ -152,7 +153,7 @@ class PhotoTray extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: Text(
+                  child: AppText(
                     '${i + 1}',
                     style: AppTypography.label.copyWith(
                       color: Colors.white,
@@ -216,7 +217,7 @@ class PhotoTray extends StatelessWidget {
                 color: AppColors.primary,
               ),
               const SizedBox(height: AppSpacing.xs),
-              Text(
+              AppText(
                 '이어서\n찍기',
                 textAlign: TextAlign.center,
                 style: AppTypography.label.copyWith(

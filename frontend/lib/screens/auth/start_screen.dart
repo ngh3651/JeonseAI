@@ -16,6 +16,7 @@ import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../state/app_session.dart';
+import '../../design_system/text/app_text.dart';
 
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
@@ -31,9 +32,9 @@ class StartScreen extends StatelessWidget {
               const Spacer(),
               const MascotSafe(size: 120, state: MascotState.home),
               const SizedBox(height: AppSpacing.xl),
-              const Text('전세AI프', style: AppTypography.conclusion),
+              const AppText('전세AI프', style: AppTypography.conclusion),
               const SizedBox(height: AppSpacing.sm),
-              Text(
+              AppText(
                 'AI가 지켜주는 안전한 전세 계약',
                 style: AppTypography.body,
                 textAlign: TextAlign.center,
@@ -54,7 +55,7 @@ class StartScreen extends StatelessWidget {
                   context.read<AppSession>().continueAsGuest();
                   context.go('/home');
                 },
-                child: const Text('비회원으로 시작하기'),
+                child: const AppText('비회원으로 시작하기'),
               ),
               const SizedBox(height: AppSpacing.lg),
             ],

@@ -26,7 +26,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
@@ -110,6 +110,33 @@ class ExplanationPayload(BaseModel):
 class ExplanationResult:
     texts: dict  # fallback_texts.build()와 동일 형태 — report_builder가 그대로 소비
     source: str  # "AI 생성" | "폴백" | "AI 생성(일부 폴백)"
+    # ── 아래 셋은 **로그·보고용**이다 (2026-08-14 D9). 리포트 내용에 영향이 없다.
+    #    "어느 모델이 몇 초 만에 이 문장을 썼는가"를 [분석 완료] 요약에 찍기 위한 것 —
+    #    제안서에 터미널을 그대로 캡처해 넣으므로 화면 밖에서도 모델명이 남아야 한다.
+    provider: str = "-"  # llm provider 이름 (upstage | exaone | ax)
+    model: str = "-"  # 실제 호출한 모델명 (.env로 덮였으면 덮인 값)
+    elapsed: float = 0.0  # 설명 생성에 쓴 초. 부르지 않았으면 0
+    # ── 근거 카드별 설명 출처 (2026-08-14 D26) ────────────────────────────
+    # `{근거 id: 실제 모델명 | FALLBACK_SOURCE_LABEL}`.
+    #
+    # 왜 카드마다 따로 두는가: 이 파일의 폴백은 **필드 단위**다. 한 응답 안에서
+    # 어떤 카드는 LLM 문장이 통과하고 어떤 카드는 검증에 걸려 준비된 문구로 남는다
+    # (`source="AI 생성(일부 폴백)"`가 바로 그 상태다). 전체 라벨 하나로는 그 차이를
+    # 화면에서 말할 수 없어, 준비된 문구를 쓴 카드에까지 모델명이 붙게 된다.
+    evidence_sources: dict[str, str] = field(default_factory=dict)
+
+
+#: LLM 문장을 못 써서 **미리 준비해 둔 문구**가 나간 카드의 출처 라벨 (2026-08-14 D26).
+#:
+#: 앱이 이 문자열을 칩에 그대로 그린다(`설명 · 준비된 문구`). 여기를 바꾸면 화면 문구가
+#: 바뀐다. "AI 생성"이라고 쓰지 않는 이유는 2026-07-09 결정 그대로다 — 폴백 문장에
+#: 모델명을 붙이면 그건 거짓말이다.
+FALLBACK_SOURCE_LABEL = "준비된 문구"
+
+
+def _all_fallback_sources(base: dict) -> dict[str, str]:
+    """호출조차 못 했거나 응답 전체가 버려졌을 때 — 모든 카드가 준비된 문구다."""
+    return {eid: FALLBACK_SOURCE_LABEL for eid in base.get("evidences", {})}
 
 
 def _load_api_key() -> str:
@@ -252,7 +279,9 @@ def generate(verdict: RuleVerdict, *, report_id: str = "-") -> ExplanationResult
             f" ({type(e).__name__}: {str(e)[:120]})",
             exc_info=True,
         )
-        return ExplanationResult(texts=base, source="폴백")
+        return ExplanationResult(
+            texts=base, source="폴백", evidence_sources=_all_fallback_sources(base)
+        )
 
 
 def _generate_with_llm(
@@ -263,7 +292,13 @@ def _generate_with_llm(
     api_key = _load_api_key()  # 목 호출 호환용 인자 (실제 키는 provider가 직접 읽는다)
     if not provider.available:
         _log.info(f"[설명:{provider.name}] 호출 생략 → 폴백 문구 사용 (원인: API 키 없음)")
-        return ExplanationResult(texts=base, source="폴백")
+        return ExplanationResult(
+            texts=base,
+            source="폴백",
+            provider=provider.name,
+            model=provider.model,
+            evidence_sources=_all_fallback_sources(base),
+        )
 
     # 이 dict가 **재료의 정본**이다 — LLM에 보내는 것과 숫자 화이트리스트의 기준이
     # 같은 객체여야 한다(둘이 어긋나면 정상 문장이 폴백된다).
@@ -312,11 +347,19 @@ def _generate_with_llm(
             break
 
     if payload is None:
+        failed_elapsed = time.perf_counter() - t0
         _log.info(
             f"[설명:{provider.name}] 검증 실패/타임아웃 → 폴백 문구 사용"
-            f" (원인: {last_error}, {time.perf_counter() - t0:.1f}초)"
+            f" (원인: {last_error}, {failed_elapsed:.1f}초)"
         )
-        return ExplanationResult(texts=base, source="폴백")
+        return ExplanationResult(
+            texts=base,
+            source="폴백",
+            provider=provider.name,
+            model=provider.model,
+            elapsed=failed_elapsed,
+            evidence_sources=_all_fallback_sources(base),
+        )
 
     # ── 병합: LLM은 설명 슬롯만 채운다. 판정 필드는 여기 없다(report_builder가 verdict에서 복사).
     # next_action·top_risk_summary는 결정적 템플릿 유지 (decisions.md 2026-07-07 + 하네스 조치) ──
@@ -343,19 +386,26 @@ def _generate_with_llm(
         reasons.append(f"headline={head_reason}")
 
     by_id = {e.id: e.easy_explanation for e in payload.evidences}
+    # [D26 · 2026-08-14] 카드마다 "이 문장을 누가 썼는가"를 여기서 기록한다.
+    # 이 루프가 **필드 단위 폴백이 실제로 갈리는 유일한 지점**이라, 다른 곳에서 추측하지
+    # 않고 갈리는 자리에서 바로 남긴다.
+    evidence_sources: dict[str, str] = {}
     for eid in texts["evidences"]:
         candidate = by_id.get(eid)
         if candidate is None:
             dropped += 1
             reasons.append(f"{eid}=응답 누락")
+            evidence_sources[eid] = FALLBACK_SOURCE_LABEL
             continue
         reason = _field_reason("easy_explanation", candidate, allowed)
         if reason is None:
             texts["evidences"][eid]["easy_explanation"] = candidate.strip()
             applied += 1
+            evidence_sources[eid] = provider.model
         else:
             dropped += 1  # 해당 카드만 폴백 유지
             reasons.append(f"{eid}={reason}")
+            evidence_sources[eid] = FALLBACK_SOURCE_LABEL
 
     elapsed = time.perf_counter() - t0
     if dropped == 0:
@@ -387,4 +437,11 @@ def _generate_with_llm(
         primary_source=source,
         max_len=_MAX_LEN,
     )
-    return ExplanationResult(texts=texts, source=source)
+    return ExplanationResult(
+        texts=texts,
+        source=source,
+        provider=provider.name,
+        model=provider.model,
+        elapsed=elapsed,
+        evidence_sources=evidence_sources,
+    )

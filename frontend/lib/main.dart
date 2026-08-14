@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'app/router.dart';
@@ -18,6 +19,7 @@ import 'repositories/api_analysis_repository.dart';
 import 'repositories/api_content_repository.dart';
 import 'repositories/content_repository.dart';
 import 'state/app_session.dart';
+import 'state/journey_schedule_store.dart';
 import 'state/registry_photo_store.dart';
 
 Future<void> main() async {
@@ -27,6 +29,9 @@ Future<void> main() async {
   // 지난 세션에 보관해 둔 등기부 사진 목록을 메모리로 올린다.
   // (devKeepRegistryPhotos가 false면 아무 일도 하지 않는다 → 예전 메모리 전용 동작)
   await RegistryPhotoStore.instance.restore();
+  // 계약 일정(잔금일 등)은 **이 기기에만** 있다 — 여정 화면과 홈 D-1 배너가 곧바로
+  // 그릴 수 있게 먼저 올린다(첫 프레임에 배너가 깜빡이며 나타나지 않도록).
+  await JourneyScheduleStore.instance.restore();
   runApp(const JeonseSafeApp());
 }
 
@@ -55,12 +60,24 @@ class JeonseSafeApp extends StatelessWidget {
         Provider<ContentRepository>(
           create: (_) => contentRepository ?? ApiContentRepository(),
         ),
+        // 계약 일정 — 기기 로컬 저장. 여정 화면과 홈 배너가 같은 값을 본다.
+        ChangeNotifierProvider<JourneyScheduleStore>.value(
+          value: JourneyScheduleStore.instance,
+        ),
       ],
       child: MaterialApp.router(
         title: '전세AI프',
         theme: buildAppTheme(),
         routerConfig: appRouter,
         debugShowCheckedModeBanner: false,
+        // 달력·기본 위젯 문구를 한국어로 (날짜 선택이 'CANCEL/OK'로 뜨지 않게)
+        locale: const Locale('ko', 'KR'),
+        supportedLocales: const [Locale('ko', 'KR')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
       ),
     );
   }

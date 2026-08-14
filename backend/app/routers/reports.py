@@ -13,17 +13,22 @@ E-2: 질문은 data/questions.json 템플릿 실연동 완료. 판례만 아직 
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from .. import dummy_data
 from ..dependencies import get_current_user
-from ..schemas.contract import CaseMatch, QuestionGroup, Report
-from ..services import patterns, questions, report_builder, store
+from ..schemas.contract import CaseMatch, CompareResult, QuestionGroup, Report
+from ..services import compare, patterns, questions, report_builder, store
+from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
 router = APIRouter(prefix="/api", tags=["reports"])
+
+# 서버 콘솔 로거 — services 쪽과 같은 이름을 쓴다(main.py가 핸들러를 붙인다).
+_log = logging.getLogger("jeonseai")
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 파일당 10MB (기존 /api/upload와 동일 상한)
 
@@ -64,6 +69,73 @@ def analyze(
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
+@router.post("/reports/{report_id}/compare", response_model=CompareResult)
+def compare_registry(
+    report_id: str,
+    files: list[UploadFile] = File(default=[], description="이번에 뗀 등기부 사진(여러 장)"),
+    user: dict = Depends(get_current_user),  # 인증 필요 (개발 모드=항상 통과)
+) -> CompareResult:
+    """기준 리포트의 등기부와 **이번에 뗀 등기부**를 맞춰본다 (계약 여정 S-11).
+
+    흐름: 새 사진을 그대로 분석 파이프라인에 태워(같은 보증금·같은 별칭) 새 리포트를
+    만들고, 그 추출 스냅샷을 기준 스냅샷과 견준다. 등급 변화를 말할 수 있는 이유가
+    이것이다 — **두 등급 모두 규칙 엔진이 낸 것**이고, 대조는 둘을 나란히 놓을 뿐이다.
+
+    **사진 없이도 부를 수 있다.** 기준 스냅샷이 없으면(이 기능 이전 이력·예시 리포트)
+    사진을 받기 전에 '기준 없음'으로 답한다 — 찍게 해 놓고 마지막에 못 한다고 말하지
+    않기 위해서다. 기준이 있는데 사진이 없으면 400.
+    """
+    base_report = store.get(report_id)
+    if base_report is None:
+        raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
+
+    baseline = store.get_snapshot(report_id)
+    if baseline is None:
+        _log.info(f"[대조] 기준 없음 — 리포트 {report_id}에 스냅샷이 없습니다(사진 요청 안 함)")
+        return compare.no_baseline_result(base_report)
+
+    images: list[tuple[str, bytes]] = []
+    for f in files:
+        data = f.file.read()
+        if not data:
+            continue
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="사진 용량이 너무 커요. 10MB 이하 사진으로 다시 시도해 주세요",
+            )
+        images.append((f.filename or "page.jpg", data))
+    if not images:
+        raise HTTPException(status_code=400, detail="다시 뗀 등기부 사진을 1장 이상 올려 주세요")
+
+    try:
+        # ⚠ 보증금·시세는 **기준 분석과 같은 값**을 쓴다. 다른 값으로 계산하면 등급 차이가
+        #   '서류가 달라져서'인지 '입력이 달라져서'인지 알 수 없어진다.
+        current_report = report_builder.analyze(
+            images,
+            deposit=baseline.deposit,
+            market_price=baseline.manual_market_price,
+            alias=base_report.alias,
+        )
+    except ExtractionError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+    current = store.get_snapshot(current_report.id)
+    if current is None:  # 스냅샷 저장이 실패한 경우 — 견줄 재료가 없다
+        raise HTTPException(
+            status_code=503,
+            detail="이번 서류를 기준과 견주지 못했어요. 잠시 후 다시 시도해 주세요",
+        )
+
+    result = compare.compare(baseline, current)
+    if result.result == "different_property":
+        # 다른 집 서류로 만들어진 리포트다. **기준 매물의 보증금으로 계산된 등급**이라
+        # 그 집의 판정으로 쓸 수 없고, 이력에 남기면 홈 카드가 틀린 등급을 보여준다.
+        store.remove(current_report.id)
+        _log.info(f"[대조] 다른 집이라 이번 분석({current_report.id})을 이력에서 지웠습니다")
+    return result
+
+
 @router.get("/reports", response_model=list[Report])
 async def list_reports() -> list[Report]:
     """분석 이력 목록(최신순). 비회원도 예시 리포트를 본다."""
@@ -97,9 +169,37 @@ async def report_cases(report_id: str) -> list[CaseMatch]:
     report = store.get(report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
-    # 서버가 리포트의 근거에서 위험 패턴을 파생해 매칭 (계약 §2.2 note)
-    # 판례 응답은 아직 더미 — E-3에서 data/cases.json 큐레이션 매칭으로 교체
-    return dummy_data.matched_cases(patterns.derive_from_report(report))
+    # E-3 실연동 (2026-08-07): 규칙이 태그를 파생 → 하이브리드 검색 → LLM은 문장만.
+    #   판례가 없으면 빈 목록이 나간다 (지어내지 않는다 — PrecedentSection.fallback_text).
+    #
+    # 결과를 리포트 단위로 캐시한다. 캐시가 없으면 화면에 들어올 때마다 검색 +
+    #   판례 수만큼 Solar 호출이 다시 돌아 매번 수 초를 기다리게 된다.
+    cached = store.get_cases(report_id)
+    if cached is not None:
+        return cached
+
+    # ⚠ 이 경로 전체를 감싼다 (2026-08-14 D7). 판례 매칭은 임베딩 호출 → 벡터 검색 →
+    #   Solar 설명 생성으로 이어지는데, 그 어느 단계든 밖에서 끊길 수 있다(크레딧 소진,
+    #   인덱스 미적재, 네트워크). 지금까지는 그때 500이 나가 화면이 **에러**로 덮였다.
+    #
+    #   판례가 없는 것은 이미 정상 상태다 — 앱은 빈 목록을 받으면 "딱 맞는 판례가 아직
+    #   없어요. 위험이 없다는 뜻은 아니니…"를 띄운다(case_match_screen.dart). 촬영 중
+    #   크레딧이 끊겨도 심사위원에게 보일 것은 에러 화면이 아니라 그 문구여야 한다.
+    #
+    #   ⚠ 실패한 결과는 **캐시하지 않는다.** 캐시하면 원인이 사라진 뒤에도 이 리포트는
+    #     영원히 판례 없음으로 굳는다. 다시 들어오면 다시 시도하게 둔다.
+    try:
+        section = precedent_service.get_service().match_for_report(report, explain=True)
+        cases = [CaseMatch.model_validate(c) for c in section.cases]
+    except Exception:  # noqa: BLE001 — 판례가 리포트 화면을 깨뜨리지 못하게 하는 방어선
+        _log.error(
+            "[판례] ⚠ 매칭 실패 — 빈 목록으로 응답합니다"
+            f" (리포트 {report_id}). 앱에는 '딱 맞는 판례가 아직 없어요'가 뜹니다",
+            exc_info=True,
+        )
+        return []
+    store.put_cases(report_id, cases)
+    return cases
 
 
 @router.get("/reports/{report_id}/questions", response_model=list[QuestionGroup])

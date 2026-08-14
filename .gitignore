@@ -9,6 +9,21 @@ venv/
 .env
 *.env
 
+# .env 사본·백업 계열 (2026-08-14)
+# 위 두 줄은 `.env`와 `foo.env`만 잡고, **`.env.bak` · `.env.bak2` · `.env.old` 같은
+# 사본은 놓친다.** 키를 바꾸기 전에 원본을 옆에 복사해 두는 것이 흔한 습관이라,
+# 그렇게 만들어진 파일에는 살아 있는 API 키가 그대로 들어 있다.
+# ⚠ `.env.*` 로 뭉뚱그리지 않는다 — 그러면 **추적 중인 `backend/.env.example`** 까지
+#   대상이 되어, 팀원이 받아야 할 설정 견본이 조용히 사라진다.
+*.env.bak*
+.env.bak*
+*.env.backup*
+.env.backup*
+*.env.old
+.env.old
+*.env.save
+.env.save
+
 # Flutter / Dart
 build/
 .dart_tool/
@@ -54,7 +69,23 @@ design_handoff_registry_viewer/
 # README·HTML 시안·support.js·마스코트 사본. 구현이 끝나면 삭제 (cleanup-tracker 등록)
 design_handoff_s04_capture_studio/
 
+# S-11 계약 여정 디자인 핸드오프 번들 (2026-08-14 — 로컬 참조용)
+# README·HTML 프로토타입·support.js·폰트·마스코트 사본. 구현이 끝나면 삭제 (cleanup-tracker 등록)
+design_handoff_contract_journey/
+
 # LLM 그림자 로그 (2026-08-05) — 모델 원문이 쌓인다. 개인정보는 마스킹되지만
 # 분량이 크고 재생성 가능한 산출물이라 커밋하지 않는다. 읽는 법:
 #   backend/.venv/Scripts/python.exe backend/scripts/shadow_report.py
 backend/logs/
+
+# 서버 실행 로그 (로컬 실행 산출물)
+backend/server.err.log
+backend/server.out.log
+
+# 판례 수집 파이프라인의 로컬 산출물 (2026-08-07 이관 전 작업분).
+# 검수 결과는 backend/data/precedents/raw/*.json 에 `_relevance_reason`으로 보존돼 있다.
+# 이 폴더들은 재생성 가능하거나(청크·벡터DB) 용량이 커서 커밋하지 않는다.
+data/tagged/
+data/chunks.json
+data/chroma/
+data/review_3cases.md

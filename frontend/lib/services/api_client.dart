@@ -39,14 +39,19 @@ class ApiClient {
       Uri.parse('$baseUrl$path').replace(queryParameters: query);
 
   /// GET → 디코딩된 JSON(dynamic). 404는 [onNotFound]가 있으면 그 값을 반환.
+  ///
+  /// [timeout]을 주면 그만큼 기다린다 — LLM 생성을 타는 요청(용어 챗봇)은 기본 15초로는
+  /// **정상 응답도 끊긴다.** 끊긴 요청은 화면에서 '연결 실패'로 보이므로, 서버가 스스로
+  /// 폴백할 시간을 주는 편이 낫다.
   Future<dynamic> getJson(
     String path, {
     Map<String, String>? query,
     dynamic Function()? onNotFound,
+    Duration? timeout,
   }) async {
     final http.Response res;
     try {
-      res = await _client.get(_uri(path, query)).timeout(_timeout);
+      res = await _client.get(_uri(path, query)).timeout(timeout ?? _timeout);
     } on ApiException {
       rethrow;
     } catch (_) {

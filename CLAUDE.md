@@ -59,7 +59,7 @@
 # 서버 — backend/.env 에 UPSTAGE_API_KEY (견본: backend/.env.example)
 cd backend && python -m venv .venv && source .venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt && uvicorn app.main:app --reload      # API 문서: http://127.0.0.1:8000/docs
-python -m pytest -q        # 키 없이 돈다 (2026-10-22: 784 통과 · 6 건너뜀)
+python -m pytest -q        # 키 없이 돈다 (2026-10-22: 801 통과 · 6 건너뜀)
 python scripts/check_keys.py   # 키가 아직 맞는지 (키 값은 안 보인다) — 배포 전에
 
 # 앱 — 지금은 USB 실기기 + adb reverse 필요 (배포 작업으로 바뀔 예정: docs/NOW.md P0)

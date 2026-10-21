@@ -1491,3 +1491,19 @@
 - **봉인**: `backend/tests/test_chat.py` 47건(L1 12케이스·L3 통과5/차단5·검증 4종·
   `CHATBOT_LLM=off` 동작 동일성·엔드포인트 200/404), `frontend/test/glossary_chips_test.dart`
   7건(칩 순서·[더 보기]·출처 라벨·거절 톤·밑줄). **LLM은 전부 목이라 실호출 0회.**
+
+
+### [2026-10-21] 문서 교통정리 — **정답은 코드 하나, 현재 상태는 `NOW.md` 한 장**
+
+- **처음 의도**: 단계마다 계획·세션 기록·측정 보고서를 문서로 남겨, 사람과 Claude가 맥락을 이어받게 한다.
+- **바꾼 이유**: 8/14까지 `docs/`에 46개 항목이 쌓였고, 같은 기능을 서로 다르게 말하는 문서가 많았다.
+  예) `plan.md`는 시세 자동조회를 "데이터 대기", 계약 여정을 "정적 체크리스트"로 적었지만 코드는 둘 다 구현돼 있다.
+  본선 제안서 초안을 만들 때 Claude가 삭제된 계획·옛 상태를 사실처럼 섞었다. 문서가 많을수록 틀릴 곳이 늘었다.
+- **최종 결정**:
+  - 정답 순서 = **코드 → `docs/NOW.md` → `decisions.md`·`competition-facts.md`**. 문서와 코드가 다르면 코드를 믿고 문서를 고친다.
+  - 남기는 문서: README · CLAUDE · NOW · decisions · competition-facts · api-contract · personas.
+    나머지는 보관 브랜치 **`archive-2026-10-21`**에 그대로 보관한다(지우지 않음 — `git show archive-2026-10-21:docs/<파일>`).
+    `evaluation-criteria.md`는 `competition-facts.md` §1로 합쳤다.
+  - 새 `.md`는 `scripts/check_docs.py`가 CI에서 막는다. 측정 결과·세션 기록은 PR 설명에 쓴다.
+  - 작업 방식: Claude가 채팅에서 레포를 직접 고치고 PR로 올린다(프롬프트 복붙 폐지). 작업이 끝날 때마다 `NOW.md`를 고친다.
+  - CI 신설: PR마다 문서 검사 + 서버 테스트(키 없이 681 통과·6 건너뜀, 2026-10-21 실측) + 앱 테스트.

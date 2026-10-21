@@ -152,7 +152,12 @@ def _openai_style_check(
     except requests.RequestException:
         return Result(name, NETWORK, "모델 목록 주소에 연결하지 못함")
     if resp.status_code not in (404, 405):
-        return Result(name, classify_http(resp.status_code), f"GET /models → HTTP {resp.status_code}")
+        # ⚠ 모델 목록은 무료라 "키가 맞는지"만 알려 준다 — 남은 크레딧은 콘솔에서 봐야 한다(2026-10-22 리뷰)
+        return Result(
+            name,
+            classify_http(resp.status_code),
+            f"GET /models → HTTP {resp.status_code} · 크레딧 잔액은 확인하지 않음",
+        )
 
     try:
         resp = http_post(

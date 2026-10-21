@@ -249,7 +249,8 @@ def answer(query: str) -> ChatReply:
     # ── L1. 판정 요구 차단 (LLM 호출 0회) ──────────────────────────────────
     hit = verdict_request_hit(q)
     if hit:
-        _log.info(f"[챗봇] L1 차단({hit}) — LLM 호출 안 함 | 질문 {q[:40]!r}")
+        # ⚠ 질문 원문은 로그에 남기지 않는다(2026-10-21) — 이름·주소를 적어 묻는 사람이 있다.
+        _log.info(f"[챗봇] L1 차단({hit}) — LLM 호출 안 함 | 질문 {len(q)}자")
         return _refuse(source=FALLBACK_SOURCE, layer=f"L1-{hit}")
 
     # ── L2. 사전 직격 (검수된 문장 그대로, LLM 호출 0회) ───────────────────
@@ -266,7 +267,7 @@ def answer(query: str) -> ChatReply:
 
     # ── L3. 도메인 게이트 (LLM 호출 0회) ───────────────────────────────────
     if not in_domain(q):
-        _log.info(f"[챗봇] L3 범위 밖 — LLM 호출 안 함 | 질문 {q[:40]!r}")
+        _log.info(f"[챗봇] L3 범위 밖 — LLM 호출 안 함 | 질문 {len(q)}자")
         return _refuse(source=FALLBACK_SOURCE, layer="L3-범위밖")
 
     # ── L4. Solar 설명 생성 ────────────────────────────────────────────────

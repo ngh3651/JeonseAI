@@ -27,7 +27,7 @@ from ..schemas.internal import (
     worst,
 )
 from . import price_normalize, thresholds as T
-from .formatting import format_won, mask_name, round_half_up
+from .formatting import format_won, mask_name, mask_person_name, round_half_up
 
 # 판정 출처 문구([판정] sourceText — 계약 §2.2). 리포트 화면 칩에 그대로 노출되므로
 # 사용자 언어로 짧게 유지한다 ("검증 중"·"수동 대조" 같은 내부 프로세스 용어 금지 —
@@ -335,7 +335,8 @@ def _judge_senior_debt(
             },
             # 근저당 한 건 한 건의 얼굴. `RegistryEntry`가 extra="allow"라 IE 원본 필드가
             # 객체에 살아 있는데(감사 §A-4-⑴) 지금까지 설명까지 오지 못했다.
-            # ⚠ 채무자는 개인 이름일 수 있어 마스킹한다. 근저당권자는 은행 등 법인이라 그대로 둔다.
+            # ⚠ 채무자는 개인 이름일 수 있어 마스킹한다. 근저당권자는 기관명이면 그대로,
+            #   개인으로 보이면 마스킹한다(2026-10-21 — 개인 사채가 있다).
             "mortgages": [_mortgage_fact(m) for m in active_mortgages],
         },
     )
@@ -355,7 +356,8 @@ def _mortgage_fact(m: MoneyEntry) -> dict:
     if raw.get("receipt_date"):
         out["receipt_date"] = str(raw["receipt_date"])
     if raw.get("mortgagee"):
-        out["mortgagee"] = str(raw["mortgagee"])  # 은행 등 법인명 — 공개 정보
+        # 은행 등 기관명은 공개 정보라 그대로, 개인으로 보이면 `홍○○` (2026-10-21)
+        out["mortgagee"] = mask_person_name(str(raw["mortgagee"]))
     if raw.get("debtor"):
         out["debtor"] = mask_name(str(raw["debtor"]))  # 개인 이름 가능 → 마스킹
     if m.amount is not None:
@@ -463,7 +465,9 @@ def _judge_blacklist(extract: RegistryExtract, entries: list[dict]) -> EvidenceV
         )
 
     listed = {e.get("name", "").strip() for e in entries if e.get("name")}
-    matched = sorted(set(owner_names) & listed)
+    # ⚠ 맞춰보기는 실명으로 하되, 리포트(저장됨)·설명 재료에는 **가린 이름만** 남긴다
+    #   (2026-10-21 개인정보). 사용자는 자기 사진에서 전체 이름을 볼 수 있다.
+    matched = sorted({mask_name(n) for n in set(owner_names) & listed})
     if matched:
         # 동명이인 가능성 때문에 '위험' 단정 대신 강한 '확인 필요' + 직접 확인 유도
         return EvidenceVerdict(

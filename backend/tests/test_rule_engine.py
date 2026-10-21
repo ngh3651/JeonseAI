@@ -214,7 +214,8 @@ def test_blacklist_states():
     )
     matched = evidence(v, "blacklist")
     assert matched.grade is Grade.CAUTION
-    assert matched.facts["matched"] == ["홍소유"]
+    assert matched.facts["matched"] == ["홍○○"]  # 저장·설명에는 가린 이름만 (2026-10-21)
+    assert "홍소유" not in (matched.detail_text or "")
     assert v.grade is Grade.CAUTION  # 일치 상태는 종합에 반영된다
 
 

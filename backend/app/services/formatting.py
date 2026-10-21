@@ -48,6 +48,34 @@ def mask_name(name: str) -> str:
     return name[0] + "○" * (len(name) - 1)
 
 
+#: 이름에 이 말이 들어 있으면 **기관**(은행·금고·회사 등)으로 본다 — 공개된 이름이라 가리지 않는다.
+#: ⚠ 목록에 없는 기관은 사람처럼 가려진다. 그쪽이 안전하다(가려서 생기는 손해는 설명이
+#:   조금 덜 구체적인 것뿐이고, 안 가려서 생기는 손해는 남의 실명이 밖으로 나가는 것이다).
+INSTITUTION_MARKERS = (
+    "은행", "금고", "캐피탈", "보험", "주식회사", "(주)", "㈜", "회사", "조합", "공사", "공단",
+    "카드", "저축", "신협", "농협", "수협", "새마을", "대부", "투자", "증권", "신탁", "재단",
+    "법인", "중앙회", "기금",
+)
+
+
+def looks_like_institution(name: str) -> bool:
+    """근저당권자 등 이름이 기관명처럼 보이는가 (공백 무시)."""
+    compact = "".join((name or "").split())
+    return any(marker in compact for marker in INSTITUTION_MARKERS)
+
+
+def mask_person_name(name: str) -> str:
+    """개인으로 보이면 `mask_name`, 기관명이면 그대로 (2026-10-21 — 근저당권자가 개인일 때).
+
+    등기부의 근저당권자는 대부분 은행이지만 **개인 사채업자·지인인 경우도 있다.**
+    그 이름을 그대로 LLM 설명 재료로 보내지 않는다.
+    """
+    name = (name or "").strip()
+    if looks_like_institution(name):
+        return name
+    return mask_name(name)
+
+
 def round_half_up(x: float) -> int:
     """Dart double.round()(0.5는 올림) 동작에 맞춘 반올림 — 앱 표시와 일치."""
     return floor(x + 0.5)

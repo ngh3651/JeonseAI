@@ -982,7 +982,9 @@ def build_highlights(
                 kind="owner",
                 page=page_index,
                 box=norm,
-                title=f"집주인 이름 · {name}",
+                # ⚠ 응답·기록 DB에 실명을 남기지 않는다(2026-10-21). 전체 이름은
+                #   사용자의 사진 위 그 자리에 그대로 보인다 — 칠한 곳이 바로 그 이름이다.
+                title=f"집주인 이름 · {mask_name(name)}",
                 body=_OWNER_BODY_CORP if is_corp else _OWNER_BODY,
                 caution=shared_note,
                 source=_OWNER_SOURCE,

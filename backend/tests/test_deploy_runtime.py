@@ -100,7 +100,7 @@ def test_시세_DB와_판례_인덱스가_있으면_참이다(client, tmp_path, 
     assert client.get("/").json()["priceDb"] is False, "둘 중 하나만 있으면 준비 안 됨"
 
     (price / "tax_base.sqlite").write_bytes(b"x")
-    (index / "docs.jsonl").write_text("", encoding="utf-8")
+    (index / "meta.json").write_text("{}", encoding="utf-8")  # 적재가 맨 마지막에 쓰는 파일
     body = client.get("/").json()
     assert body["priceDb"] is True and body["precedentIndex"] is True
 
@@ -142,7 +142,7 @@ def test_판례_인덱스를_볼륨_위치에_만들_수_있다(tmp_path, monkey
     monkeypatch.setenv("PRECEDENT_VECTOR_STORE", "json")
     meta = ingest(backend=get_backend("hash"), verbose=False)
     assert meta["doc_count"] > 0
-    assert (tmp_path / "pidx" / "docs.jsonl").is_file()
+    assert (tmp_path / "pidx" / "docs.jsonl").is_file() and (tmp_path / "pidx" / "meta.json").is_file()
 
 
 def test_임베딩_모델_설정은_import_뒤에_바꿔도_먹는다(monkeypatch):
@@ -187,6 +187,10 @@ def runtime_env(tmp_path, monkeypatch):
 
 
 class _FakeResp(io.BytesIO):
+    def __init__(self, data: bytes, headers: dict | None = None):
+        super().__init__(data)
+        self.headers = headers or {}
+
     def __enter__(self):
         return self
 
@@ -269,7 +273,7 @@ def test_판례_인덱스는_스위치와_키가_있을_때만_만든다(runtime
     def fake_ingest():
         built.append(1)
         (runtime_env / "precedents-index").mkdir(parents=True, exist_ok=True)
-        (runtime_env / "precedents-index" / "docs.jsonl").write_text("", encoding="utf-8")
+        (runtime_env / "precedents-index" / "meta.json").write_text("{}", encoding="utf-8")
         return {"doc_count": 3}
 
     monkeypatch.setenv("UPSTAGE_API_KEY", "up_x")
@@ -326,3 +330,206 @@ def test_도커파일과_railway_설정이_약속대로다():
     assert railway["build"]["builder"] == "DOCKERFILE"
     assert railway["deploy"]["healthcheckPath"] == "/"
     assert railway["deploy"]["restartPolicyType"] in {"ON_FAILURE", "ALWAYS"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑤ 2026-10-22 리뷰 반영 — 끊긴 다운로드 · 뒤쪽 준비 · 기록 DB 상태 · 문서 끄기
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _big_sqlite(tmp_path: Path) -> bytes:
+    """쪽이 여러 개인 SQLite — 잘라 내면 '머리말은 멀쩡한데 짧은' 파일이 된다."""
+    path = tmp_path / "big.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE t (x TEXT)")
+    conn.executemany("INSERT INTO t VALUES (?)", [("가" * 500,) for _ in range(200)])
+    conn.commit()
+    conn.close()
+    data = path.read_bytes()
+    assert len(data) > 8 * 4096
+    return data
+
+
+def test_끊긴_SQLite는_완성본으로_받아들이지_않는다(runtime_env, tmp_path, monkeypatch, capsys):
+    """리뷰 지적: 머리말만 보고 끊긴 .sqlite를 완성본으로 믿었다."""
+    prep = _load_prepare_runtime()
+    monkeypatch.setattr(prep.time, "sleep", lambda s: None)
+    data = _big_sqlite(tmp_path)
+    monkeypatch.setenv("PRICE_DB_URLS", "https://example.invalid/official_price.sqlite?sig=SECRET")
+
+    prep.prepare_price_db(opener=lambda url, timeout: _FakeResp(data[: len(data) // 2]))
+    assert not (runtime_env / "price" / "official_price.sqlite").exists()
+    assert not list((runtime_env / "price").glob("*.part"))
+    out = capsys.readouterr().out
+    assert "IncompleteDownload" in out and "SECRET" not in out and "example.invalid" not in out
+
+
+def test_Content_Length보다_적게_받으면_다시_받는다(runtime_env, tmp_path, monkeypatch):
+    prep = _load_prepare_runtime()
+    monkeypatch.setattr(prep.time, "sleep", lambda s: None)
+    data = _big_sqlite(tmp_path)
+    monkeypatch.setenv("PRICE_DB_URLS", "https://example.invalid/tax_base.sqlite")
+    attempts = []
+
+    def opener(url, timeout):
+        attempts.append(1)
+        if len(attempts) == 1:  # 첫 시도: 서버는 전체 크기를 말했는데 연결이 중간에 끊겼다
+            return _FakeResp(data[:4096], {"Content-Length": str(len(data))})
+        return _FakeResp(data, {"Content-Length": str(len(data))})
+
+    prep.prepare_price_db(opener=opener)
+    assert len(attempts) == 2
+    assert (runtime_env / "price" / "tax_base.sqlite").read_bytes() == data
+
+
+def test_SQLite_크기_검사(tmp_path):
+    prep = _load_prepare_runtime()
+    data = _big_sqlite(tmp_path)
+    whole = tmp_path / "whole.sqlite"
+    whole.write_bytes(data)
+    prep.check_sqlite_complete(whole)  # 통과
+    cut = tmp_path / "cut.sqlite"
+    cut.write_bytes(data[:-4096])
+    with pytest.raises(prep.IncompleteDownload):
+        prep.check_sqlite_complete(cut)
+
+
+def test_판례_인덱스_완성_표시는_마지막에_쓰는_meta_json이다(runtime_env, monkeypatch):
+    """docs.jsonl만 있고 meta.json이 없으면 적재가 중간에 끊긴 것이다 → 다시 만든다."""
+    prep = _load_prepare_runtime()
+    index = runtime_env / "precedents-index"
+    index.mkdir(parents=True)
+    (index / "docs.jsonl").write_text("{}", encoding="utf-8")
+    assert prep.precedent_index_ready(index) is False
+    built = []
+    monkeypatch.setenv("BUILD_PRECEDENT_INDEX", "1")
+    monkeypatch.setenv("UPSTAGE_API_KEY", "up_x")
+    prep.prepare_precedent_index(ingest_fn=lambda: built.append(1) or {"doc_count": 1})
+    assert built == [1]
+
+
+def test_준비는_한_번에_하나만_돈다(runtime_env, capsys):
+    prep = _load_prepare_runtime()
+    runtime_env.mkdir(parents=True, exist_ok=True)
+    (runtime_env / prep.LOCK_NAME).write_text("12345", encoding="utf-8")  # 다른 준비가 돌고 있다
+    assert prep.run() == 0
+    assert "이미 돌고 있음" in capsys.readouterr().out
+
+
+def test_오래된_잠금은_넘겨받는다(runtime_env, monkeypatch):
+    import os
+
+    prep = _load_prepare_runtime()
+    runtime_env.mkdir(parents=True, exist_ok=True)
+    lock = runtime_env / prep.LOCK_NAME
+    lock.write_text("1", encoding="utf-8")
+    old = lock.stat().st_mtime - prep.STALE_LOCK_SECONDS - 10
+    os.utime(lock, (old, old))
+    ran = []
+    monkeypatch.setattr(prep, "prepare_price_db", lambda: ran.append("price"))
+    monkeypatch.setattr(prep, "prepare_precedent_index", lambda: ran.append("index"))
+    assert prep.run() == 0
+    assert ran == ["price", "index"] and not lock.exists()
+
+
+def test_서버가_먼저_뜨고_준비는_뒤에서_돈다(runtime_env, monkeypatch):
+    """준비가 오래 걸려도(수백 MB) 헬스체크는 바로 200이어야 한다."""
+    import threading
+
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    gate = threading.Event()
+    started = threading.Event()
+    prep = _load_prepare_runtime()
+
+    def slow_run():
+        started.set()
+        gate.wait(5)
+        return 0
+
+    monkeypatch.setattr(prep, "run", slow_run)
+    monkeypatch.setattr(main, "_load_prepare_runtime", lambda: prep)
+    monkeypatch.setenv("PREPARE_RUNTIME_ON_START", "1")
+    try:
+        with TestClient(main.app) as c:  # with 블록 = 서버 시작(lifespan)
+            assert started.wait(5), "준비 스레드가 시작되지 않았다"
+            assert c.get("/").status_code == 200  # 준비가 끝나지 않았어도 응답한다
+            again = prep.start_background()  # 두 번째 시작 요청은 같은 스레드를 돌려준다
+            assert again is prep._thread
+    finally:
+        gate.set()
+
+
+def test_로컬_기본값에서는_시작_준비를_돌리지_않는다(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    monkeypatch.delenv("PREPARE_RUNTIME_ON_START", raising=False)
+    called = []
+    monkeypatch.setattr(main, "_load_prepare_runtime", lambda: called.append(1))
+    with TestClient(main.app) as c:
+        assert c.get("/").status_code == 200
+    assert called == []
+
+
+def test_헬스체크는_기록_DB에_쓸_수_있는지_알려준다(client, tmp_path, monkeypatch):
+    from app.services import store
+
+    assert client.get("/").json()["historyDb"] is True
+
+    blocked = tmp_path / "not-a-dir"
+    blocked.write_text("파일이라 폴더로 못 쓴다", encoding="utf-8")
+    monkeypatch.setenv("DATA_DIR", str(blocked / "sub"))
+    store.reset()
+    body = client.get("/").json()
+    assert body["historyDb"] is False and body["status"] == "ok"
+
+
+def test_기록_DB가_없어도_목록은_예시_리포트를_돌려준다(client, tmp_path, monkeypatch):
+    from app.services import store
+
+    blocked = tmp_path / "not-a-dir"
+    blocked.write_text("x", encoding="utf-8")
+    monkeypatch.setenv("DATA_DIR", str(blocked / "sub"))
+    store.reset()
+    resp = client.get("/api/reports")
+    assert resp.status_code == 200, resp.text
+    assert [r["id"] for r in resp.json()] == ["dummy-example"]
+
+
+def test_깨진_기록_한_줄이_목록_전체를_깨뜨리지_않는다(client):
+    from app.services import store
+
+    good = store.get("dummy-example", device_id="legacy-device").model_copy(update={"id": "good-1"})
+    store.add(good, device_id="legacy-device")
+    store._db().execute(
+        "INSERT INTO reports (device_id, id, created_at, report_json) VALUES (?, ?, ?, ?)",
+        ("legacy-device", "broken-1", "2099-01-01T00:00:00+00:00", '{"id": "broken-1"}'),
+    )
+    resp = client.get("/api/reports")
+    assert resp.status_code == 200
+    assert [r["id"] for r in resp.json()] == ["good-1", "dummy-example"]
+    assert client.get("/api/reports/broken-1").status_code == 404
+
+
+def test_DISABLE_DOCS면_API_문서가_꺼진다(monkeypatch):
+    """`/docs`·`/openapi.json`은 앱을 만들 때 정해진다 → 환경변수를 켜고 모듈을 다시 읽어 확인한다."""
+    import importlib
+
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    monkeypatch.setenv("DISABLE_DOCS", "1")
+    try:
+        reloaded = importlib.reload(main)
+        c = TestClient(reloaded.app)
+        assert c.get("/docs").status_code == 404
+        assert c.get("/openapi.json").status_code == 404
+        assert c.get("/").status_code == 200
+    finally:
+        monkeypatch.delenv("DISABLE_DOCS")
+        importlib.reload(main)

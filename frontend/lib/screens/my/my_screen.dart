@@ -271,9 +271,11 @@ class PrivacySettingsCard extends StatelessWidget {
               value: settings.hideNamesInPhotos,
               onChanged: settings.setHideNamesInPhotos,
               title: const AppText('사진 속 이름 가리기', style: AppTypography.bodyStrong),
+              // 약속을 넘지 않는다 — 앱이 위치를 아는 칸(집주인 이름)만 덮는다. 사진의 다른 글자
+              // (채무자·이전 소유자 이름 등)는 그대로 보이므로 "이름이 전부 가려진다"고 쓰지 않는다.
               subtitle: AppText(
-                '등기부 사진의 집주인 이름 칸을 상자로 덮어요. '
-                '다른 사람에게 화면을 보여 줄 때 켜 두세요.',
+                '다른 사람에게 화면을 보여 줄 때 켜 두세요. '
+                '등기부 사진에서 집주인 이름 칸을 상자로 덮어요(사진의 다른 글자는 그대로예요).',
                 style: AppTypography.caption,
               ),
               contentPadding: EdgeInsets.zero,

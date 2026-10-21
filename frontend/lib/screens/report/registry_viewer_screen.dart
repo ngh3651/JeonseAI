@@ -572,6 +572,9 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
                       for (final m in marks)
                         if (m.page == i) m,
                     ],
+                    // '사진 속 이름 가리기'가 덮을 이 쪽의 실명·주민번호 자리 (서버 §9.8)
+                    privacyBoxes: data.report?.privacyBoxesOn(i) ?? const [],
+                    namesUnlocated: data.report?.namesUnlocatedOn(i) ?? true,
                     selected: _selected,
                     draw: _draw,
                     // 사진 위 표시를 직접 누르면 카드와 같은 대접을 한다 —
@@ -816,6 +819,8 @@ class _RegistryPage extends StatefulWidget {
     required this.draw,
     required this.onTapHighlight,
     required this.onZoomChanged,
+    this.privacyBoxes = const [],
+    this.namesUnlocated = false,
   });
 
   final String path;
@@ -825,6 +830,12 @@ class _RegistryPage extends StatefulWidget {
   final Size intrinsic;
 
   final List<RegistryHighlight> highlights;
+
+  /// 이 쪽의 실명·주민번호 자리 (api-contract §9.8) — 가리기가 켜졌을 때만 덮는다.
+  final List<HighlightBox> privacyBoxes;
+
+  /// 이 쪽은 이름 자리를 모른다(옛 기록·OCR 실패) — 가리기가 켜지면 쪽 전체를 덮는다.
+  final bool namesUnlocated;
 
   /// 선택된 표시 id. Listenable로 받는 이유: 스크롤 연동으로 매 프레임 바뀔 수 있는데
   /// 그때마다 이 위젯을 다시 만들면 사진이 재디코딩되고 확대가 풀린다.
@@ -932,8 +943,18 @@ class _RegistryPageState extends State<_RegistryPage> {
                       drawProgress: widget.draw.value,
                       scale: _transform.value.getMaxScaleOnAxis(),
                       hideNames: PrivacySettings.instance.hideNamesInPhotos,
+                      privacyBoxes: widget.privacyBoxes,
+                      coverWholePage: widget.namesUnlocated,
                     ),
                   ),
+                  // 쪽을 통째로 덮었으면 **왜** 덮었는지 말한다 — 검은 쪽만 보이면 "사진이 깨졌다"로 읽힌다.
+                  if (widget.namesUnlocated)
+                    ListenableBuilder(
+                      listenable: PrivacySettings.instance,
+                      builder: (_, _) => PrivacySettings.instance.hideNamesInPhotos
+                          ? const WholePageCoverLabel()
+                          : const SizedBox.shrink(),
+                    ),
                 ],
               ),
             ),
@@ -974,6 +995,29 @@ class _RegistryPageState extends State<_RegistryPage> {
 
 }
 
+/// 쪽 전체를 덮었을 때 그 위에 얹는 한 줄 — 이름 자리를 몰라 통째로 가렸다는 것과 푸는 법.
+class WholePageCoverLabel extends StatelessWidget {
+  const WholePageCoverLabel({super.key});
+
+  static const String message =
+      '이 쪽은 이름이 어디 있는지 찾지 못해 통째로 가렸어요.\n'
+      '마이 → 개인정보에서 \'사진 속 이름 가리기\'를 끄면 보여요.';
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: AppText(
+          message,
+          textAlign: TextAlign.center,
+          style: AppTypography.caption.copyWith(color: Colors.white),
+        ),
+      ),
+    ),
+  );
+}
+
 /// 사진 위에 그리는 표시 레이어 — 위젯 테스트에서 단독으로 띄울 수 있게 분리했다.
 class RegistryHighlightOverlay extends StatelessWidget {
   const RegistryHighlightOverlay({
@@ -983,6 +1027,8 @@ class RegistryHighlightOverlay extends StatelessWidget {
     this.drawProgress = 1.0,
     this.scale = 1.0,
     this.hideNames = false,
+    this.privacyBoxes = const [],
+    this.coverWholePage = false,
   });
 
   final List<RegistryHighlight> highlights;
@@ -997,8 +1043,14 @@ class RegistryHighlightOverlay extends StatelessWidget {
   final double scale;
 
   /// '사진 속 이름 가리기'(마이 화면 스위치). 켜져 있으면 이름 칸([MarkKind.carriesPersonalName])을
-  /// 형광펜 대신 불투명한 상자로 덮는다.
+  /// 형광펜 대신 불투명한 상자로 덮고, [privacyBoxes]도 전부 덮는다.
   final bool hideNames;
+
+  /// 서버가 보낸 이 쪽의 실명·주민번호 자리 (api-contract §9.8).
+  final List<HighlightBox> privacyBoxes;
+
+  /// 이 쪽은 이름 자리를 모른다 — [hideNames]면 쪽 전체를 덮는다.
+  final bool coverWholePage;
 
   @override
   Widget build(BuildContext context) {
@@ -1009,6 +1061,8 @@ class RegistryHighlightOverlay extends StatelessWidget {
         drawProgress: drawProgress,
         scale: scale,
         hideNames: hideNames,
+        privacyBoxes: privacyBoxes,
+        coverWholePage: coverWholePage,
       ),
       // 좌표가 없으면 아무것도 그리지 않는다 — 에러 문구 없이 사진만 보인다.
       child: const SizedBox.expand(),
@@ -1023,6 +1077,8 @@ class HighlightPainter extends CustomPainter {
     this.drawProgress = 1.0,
     this.scale = 1.0,
     this.hideNames = false,
+    this.privacyBoxes = const [],
+    this.coverWholePage = false,
   });
 
   final List<RegistryHighlight> highlights;
@@ -1032,6 +1088,12 @@ class HighlightPainter extends CustomPainter {
 
   /// '사진 속 이름 가리기' — 켜져 있으면 이름 칸은 형광펜 대신 불투명 상자다.
   final bool hideNames;
+
+  /// 서버가 보낸 실명·주민번호 자리 (api-contract §9.8) — [hideNames]일 때만 덮는다.
+  final List<HighlightBox> privacyBoxes;
+
+  /// 이름 자리를 모르는 쪽 — [hideNames]면 쪽 전체를 덮는다.
+  final bool coverWholePage;
 
   /// 이 표시를 형광펜이 아니라 가림 상자로 그리는가.
   bool redacts(RegistryHighlight h) =>
@@ -1063,6 +1125,16 @@ class HighlightPainter extends CustomPainter {
     // 형광펜처럼 왼→오로 그으면 그 450ms 동안 이름 오른쪽이 그대로 보인다.
     for (final h in hidden) {
       paintNameRedaction(canvas, highlightRect(h.box, size));
+    }
+    // 서버가 찾은 나머지 이름·주민번호 자리 (채무자·이전 소유자·전세권자 등 — §9.8).
+    // 형광펜 위에 덮는다 — 빚 줄 형광펜이 채무자 칸까지 번져 있어도 이름은 지워져야 한다.
+    if (hideNames) {
+      for (final b in privacyBoxes) {
+        paintNameRedaction(canvas, highlightRect(b, size));
+      }
+      if (coverWholePage) {
+        canvas.drawRect(Offset.zero & size, Paint()..color = AppColors.markRedaction);
+      }
     }
     // 뱃지는 형광펜을 전부 그린 뒤에 — 아니면 뒤 항목의 형광펜이 뱃지를 덮는다.
     if (selected != null) {
@@ -1162,7 +1234,9 @@ class HighlightPainter extends CustomPainter {
       old.selectedId != selectedId ||
       old.drawProgress != drawProgress ||
       old.scale != scale ||
-      old.hideNames != hideNames;
+      old.hideNames != hideNames ||
+      old.privacyBoxes != privacyBoxes ||
+      old.coverWholePage != coverWholePage;
 }
 
 // ══════════════════════════════════════════════════════════════════════════

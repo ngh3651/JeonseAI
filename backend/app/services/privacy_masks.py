@@ -273,14 +273,12 @@ def _role_masks(line: Line, med_h: float) -> list[Box]:
                 out.append(_sub_box(w, len(role), len(text)))
             continue
         prev = w
-        found = 0
         for nxt in line.words[i + 1 : i + 3]:  # 이름은 길어야 두 낱말
             if nxt.x0 - prev.x1 > max_gap:
                 break
             if not _maybe_name(nxt.text.strip()):
                 break
             out.append(nxt.box)
-            found += 1
             if _hangul_count(nxt.text) >= 3:
                 break
             prev = nxt

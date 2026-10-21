@@ -194,6 +194,9 @@ class _ReportScreenState extends State<ReportScreen> {
                   for (final m in marks)
                     if (m.page == preview.page) m,
                 ],
+                // 서버가 찾은 나머지 실명·주민번호 자리(채무자 줄 등 — §9.8)까지 덮는다.
+                privacyBoxes: report.privacyBoxesOn(preview.page),
+                namesUnlocated: report.namesUnlocatedOn(preview.page),
               ),
       ),
     );

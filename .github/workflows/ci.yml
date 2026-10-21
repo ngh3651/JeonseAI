@@ -52,3 +52,69 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
+
+  # 결선 부스용 APK — PR마다, 그리고 main에 합쳐질 때마다 만든다 (2026-10-22, 앱 1단계).
+  # 받는 법: Actions → 최신 실행 → 아래 Artifacts의 `jeonseai-apk` → 압축을 풀면 app-release.apk.
+  # 서버 주소는 저장소 변수 API_BASE_URL, 앱 키는 비밀값 APP_KEY에서 넣는다(없으면 기본값으로 빌드).
+  # 서명 비밀값 4개가 다 있으면 그 키로, 하나라도 없으면 디버그 키로 서명한다(설치·시연은 둘 다 된다).
+  # ⚠ 다른 저장소에서 온(fork) PR에는 비밀값이 주어지지 않는다 → 그때는 디버그 키 + 기본 주소로 빌드된다.
+  apk:
+    name: APK 빌드
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      APP_KEY: ${{ secrets.APP_KEY }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: 서명 키 준비 (비밀값이 다 있을 때만)
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] \
+             && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+            {
+              echo "storeFile=upload-keystore.jks"
+              echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+              echo "keyAlias=$ANDROID_KEY_ALIAS"
+              echo "keyPassword=$ANDROID_KEY_PASSWORD"
+            } > android/key.properties
+            echo "릴리스 키로 서명합니다."
+          else
+            echo "서명 비밀값이 없어 디버그 키로 서명합니다(설치·시연은 됩니다)."
+          fi
+      - name: 빌드 설정 확인 (값은 안 보인다)
+        run: |
+          if [ -n "$API_BASE_URL" ]; then echo "서버 주소: $API_BASE_URL"; else echo "서버 주소 변수(API_BASE_URL)가 없어 기본값 http://127.0.0.1:8000 으로 빌드합니다 — USB + adb reverse가 필요한 APK입니다."; fi
+          if [ -n "$APP_KEY" ]; then echo "앱 키: 있음"; else echo "앱 키: 없음(X-App-Key를 보내지 않는 APK)"; fi
+      # = flutter build apk --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} --dart-define=APP_KEY=${{ secrets.APP_KEY }}
+      # 값은 위 env로 받아 따옴표로 넘긴다 — 값에 특수문자가 있어도 명령이 깨지지 않게.
+      # 비어 있으면 앱이 기본값(주소 http://127.0.0.1:8000 · 앱 키 없음)으로 되돌린다(config.dart).
+      - name: APK 빌드 (release)
+        run: >-
+          flutter build apk --release
+          --dart-define="API_BASE_URL=$API_BASE_URL"
+          --dart-define="APP_KEY=$APP_KEY"
+      - name: 서명 키 지우기
+        if: always()
+        run: rm -f android/key.properties android/app/upload-keystore.jks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jeonseai-apk
+          path: frontend/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30

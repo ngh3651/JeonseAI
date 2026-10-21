@@ -412,7 +412,7 @@ def analyze(
     t0 = time.perf_counter()
     # 이 분석 1회를 가리키는 이름. IE·OCR 원응답이 **같은 폴더**에 나란히 남아,
     # 나중에 "어느 IE 응답이 어느 OCR 응답과 짝인지"를 파일만 보고 알 수 있다.
-    # 개발 모드가 아니면 아무것도 저장되지 않는다(`artifacts.SAVE_RAW`).
+    # `SAVE_RAW_RESPONSES=1`이 아니면 아무것도 저장되지 않는다(`artifacts.save_enabled`).
     run_id = artifacts.new_run_id()
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="analyze") as pool:
         ie_future = pool.submit(_timed, extraction.extract_registry, images, run_id=run_id)

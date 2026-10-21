@@ -39,7 +39,7 @@ def analyze(
     deposit: int = Form(..., description="예정 보증금(원)"),
     marketPrice: Optional[int] = Form(default=None, description="매매 시세(원, 선택)"),
     alias: Optional[str] = Form(default=None, description="매물 별칭(선택)"),
-    user: dict = Depends(get_current_user),  # 인증 필요 (개발 모드=항상 통과)
+    device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
 ) -> Report:
     """등기부 사진 + 입력값으로 분석해 리포트를 만든다 (E-1c 실배선).
 
@@ -73,7 +73,7 @@ def analyze(
 def compare_registry(
     report_id: str,
     files: list[UploadFile] = File(default=[], description="이번에 뗀 등기부 사진(여러 장)"),
-    user: dict = Depends(get_current_user),  # 인증 필요 (개발 모드=항상 통과)
+    device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
 ) -> CompareResult:
     """기준 리포트의 등기부와 **이번에 뗀 등기부**를 맞춰본다 (계약 여정 S-11).
 
@@ -153,7 +153,7 @@ async def get_report(report_id: str) -> Report:
 @router.delete("/reports/{report_id}", status_code=204)
 async def delete_report(
     report_id: str,
-    user: dict = Depends(get_current_user),  # 인증 필요 (개발 모드=항상 통과)
+    device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
 ) -> None:
     # 예시 리포트는 조회만 허용, 삭제 대상 아님 (계약 §3.4)
     if report_id in store.EXAMPLE_IDS:

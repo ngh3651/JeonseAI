@@ -8,7 +8,8 @@
 **같은 규율을 서버에도 적용한다.**
 
 무엇이 보장되나:
-1. **운영 모드에서는 애초에 저장하지 않는다** — `DEV_MODE_AUTH` 하나에 묶여 있다.
+1. **기본은 저장하지 않는다** — 환경변수 `SAVE_RAW_RESPONSES=1`일 때만 저장한다
+   (2026-10-21: 예전에는 인증 우회 스위치 `DEV_MODE_AUTH`에 묶여 있었다 — decisions.md).
 2. 저장하더라도 **최근 `MAX_KEPT_RUNS`회분만** 남고 오래된 회차는 자동으로 지워진다.
 3. 분석 1회 = 폴더 1개다. 회차 단위로 지우므로 "IE는 남았는데 OCR만 지워진" 상태가 없다.
 
@@ -27,7 +28,7 @@ import shutil
 import time
 from pathlib import Path
 
-from ..dependencies import DEV_MODE_AUTH
+from .. import settings
 
 _log = logging.getLogger("jeonseai")
 
@@ -39,9 +40,15 @@ RUNS_DIR = OUT_DIR / "runs"
 #: 두 곳의 보관 정책이 다르면 "앱에는 있는데 서버에는 없는" 상태를 설명하기 어렵다.
 MAX_KEPT_RUNS = 5
 
-#: 운영 전환(`DEV_MODE_AUTH=False`) 시 **저장 자체가 일어나지 않는다.**
-#: 스위치가 하나여야 "어디선가 아직 저장하고 있었다"가 생기지 않는다.
-SAVE_RAW = DEV_MODE_AUTH
+
+
+def save_enabled() -> bool:
+    """원응답 저장 스위치 — **부를 때마다** `SAVE_RAW_RESPONSES`를 읽는다(기본 꺼짐).
+
+    IE·OCR·DP·실거래가 저장이 전부 이 함수 하나를 본다. 스위치가 하나여야
+    "어디선가 아직 저장하고 있었다"가 생기지 않는다.
+    """
+    return settings.save_raw_responses()
 
 
 def new_run_id() -> str:
@@ -51,7 +58,7 @@ def new_run_id() -> str:
 
 def run_dir(run_id: str | None) -> Path | None:
     """저장할 회차 폴더. 저장이 꺼져 있으면 **None**(호출부는 조용히 건너뛴다)."""
-    if not SAVE_RAW:
+    if not save_enabled():
         return None
     path = RUNS_DIR / (run_id or "adhoc")
     try:

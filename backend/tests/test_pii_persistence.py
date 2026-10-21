@@ -78,24 +78,33 @@ def _files_under(root: Path) -> list[Path]:
     return [p for p in root.rglob("*") if p.is_file()] if root.exists() else []
 
 
+@pytest.mark.parametrize("second_path", ["off", "upstage"])
 def test_분석해도_기록_DB_로그_저장_JSON에_실명이_없다(
-    client, no_network, server_logs, tmp_path, monkeypatch
+    client, no_network, server_logs, tmp_path, monkeypatch, second_path
 ):
+    """`second_path="upstage"`면 OCR → LLM 구조화 → 교차검증 경로의 로그까지 함께 본다."""
     from app.services import artifacts, store
 
     data_dir = tmp_path / "data"
     monkeypatch.setenv("DATA_DIR", str(data_dir))
     monkeypatch.delenv("SAVE_RAW_RESPONSES", raising=False)  # 클라우드 기본값 = 꺼짐
+    monkeypatch.setenv("LLM_STRUCTURE_PROVIDER", second_path)
     store.reset()
 
     page = gap_gu_page(0)
-    no_network(_registry_with_private_lender(), [raw_ocr_json(page)])
+    # 두 번째 경로(LLM 구조화)의 목 응답 — 구조화 스키마는 순위번호가 **문자열**이다
+    structure = _registry_with_private_lender()
+    for m in structure["mortgages"]:
+        m["rank_number"] = str(m["rank_number"])
+    no_network(_registry_with_private_lender(), [raw_ocr_json(page)], structure=structure)
     files = [("files", ("page_1.jpg", blank_image(PAGE_W, PAGE_H), "image/jpeg"))]
     resp = client.post(
         "/api/analyze", files=files, data={"deposit": "120000000"}, headers=DEVICE
     )
     assert resp.status_code == 200, resp.text
     report = resp.json()
+    if second_path != "off":
+        assert any("[교차검증:" in line for line in server_logs), "교차검증 경로가 돌지 않았다"
     # 집주인 하이라이트가 실제로 만들어졌는지부터 — 0건이면 이 테스트는 아무것도 확인하지 못한다
     owner_titles = [h["title"] for h in report["highlights"] if h["kind"] == "owner"]
     assert owner_titles, "집주인 하이라이트가 없다 — 합성 등기부와 IE 목이 어긋났다"

@@ -13,7 +13,7 @@ AI ROOKIE 본선 프로젝트.
 ![Upstage](https://img.shields.io/badge/Upstage-Document_OCR-6A5ACD)
 ![Upstage](https://img.shields.io/badge/Upstage-Solar_Pro_2-6A5ACD)
 ![Chroma](https://img.shields.io/badge/Chroma-precedent_RAG-FF6F61)
-![pytest](https://img.shields.io/badge/pytest-783_passing-brightgreen?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-784_passing-brightgreen?logo=pytest&logoColor=white)
 ![flutter test](https://img.shields.io/badge/flutter_test-187_passing-brightgreen?logo=flutter&logoColor=white)
 
 </div>
@@ -139,7 +139,7 @@ provider는 `.env`로 바꿀 수 있지만 **판례 경로만은 예외로 `sola
 
 | 항목 | 값 |
 |---|---|
-| 백엔드 테스트 | **783** 통과 · 6 건너뜀 (`pytest -q`, 키 없이) |
+| 백엔드 테스트 | **784** 통과 · 6 건너뜀 (`pytest -q`, 키 없이) |
 | 앱 테스트 | **187** (`flutter test`) · `flutter analyze` 무결 |
 | 판례 | 수집 원문 **161**건 → 인덱스 **40**건(청크 612) → 큐레이션 **11**건(사람 검수 완료 **4** · 검수 대기 **7**) · 명시 제외 **4**건 |
 | 검수된 용어 | **27** / 35 (`verified=true`만 앱으로 나감) |

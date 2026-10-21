@@ -104,9 +104,14 @@ jobs:
           else
             echo "서명 비밀값이 없어 디버그 키로 서명합니다(설치·시연은 됩니다)."
           fi
+      # ⚠ 이 저장소는 공개라 실행 로그도 공개다 — 주소·키 값은 찍지 않고 '있다/없다'와 https 여부만 남긴다.
       - name: 빌드 설정 확인 (값은 안 보인다)
         run: |
-          if [ -n "$API_BASE_URL" ]; then echo "서버 주소: $API_BASE_URL"; else echo "서버 주소 변수(API_BASE_URL)가 없어 기본값 http://127.0.0.1:8000 으로 빌드합니다 — USB + adb reverse가 필요한 APK입니다."; fi
+          case "$API_BASE_URL" in
+            "") echo "서버 주소: 변수(API_BASE_URL) 없음 → 기본값 http://127.0.0.1:8000 으로 빌드 — USB + adb reverse가 필요한 APK입니다." ;;
+            https://*) echo "서버 주소: 있음 (https)" ;;
+            *) echo "서버 주소: 있음 (https 아님 — 평문 통신을 허용한 APK가 됩니다)" ;;
+          esac
           if [ -n "$APP_KEY" ]; then echo "앱 키: 있음"; else echo "앱 키: 없음(X-App-Key를 보내지 않는 APK)"; fi
       # = flutter build apk --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} --dart-define=APP_KEY=${{ secrets.APP_KEY }}
       # 값은 위 env로 받아 따옴표로 넘긴다 — 값에 특수문자가 있어도 명령이 깨지지 않게.

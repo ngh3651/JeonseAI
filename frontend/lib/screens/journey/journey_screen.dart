@@ -30,6 +30,7 @@ import '../../models/analysis_report.dart';
 import '../../models/content_models.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
+import '../../services/api_client.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
 import '../common/analyze_gate.dart';
@@ -91,6 +92,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
   bool _loading = true;
   bool _failed = false;
 
+  /// 실패 원인 — 앱 인증·기기 정보 문제면 "서버 연결을 확인해 주세요" 대신 그 사실을 말한다.
+  Object? _loadError;
+
   /// 기본은 **전부 펼침**(시안). 접은 단계만 기억한다.
   final Set<int> _collapsed = {};
 
@@ -130,6 +134,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
     setState(() {
       _loading = true;
       _failed = false;
+      _loadError = null;
     });
     try {
       final content = context.read<ContentRepository>();
@@ -144,11 +149,12 @@ class _JourneyScreenState extends State<JourneyScreen> {
         _reports = results[1] as List<AnalysisReport>;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _failed = true;
+        _loadError = e;
       });
     }
   }
@@ -277,8 +283,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
           children: [
             const MascotSafe(size: 72, state: MascotState.error),
             const SizedBox(height: AppSpacing.lg),
-            const AppText(
-              '여정을 불러오지 못했어요\n서버 연결을 확인해 주세요',
+            AppText(
+              '여정을 불러오지 못했어요\n'
+              '${apiErrorHint(_loadError, fallback: '서버 연결을 확인해 주세요')}',
               style: AppTypography.body,
               textAlign: TextAlign.center,
             ),

@@ -1,12 +1,49 @@
 /// 앱 전역 설정.
 ///
 /// 이 프로젝트는 안드로이드 실기기 전용입니다. (웹/에뮬레이터 기준 아님)
-/// USB로 연결된 상태에서 `adb reverse tcp:8000 tcp:8000` 을 실행하면
-/// 폰의 127.0.0.1:8000 요청이 USB 터널을 통해 PC의 127.0.0.1:8000 으로 전달됩니다.
-/// Wi-Fi 경로를 타지 않으므로 PC/폰이 서로 다른 네트워크에 있어도 동작합니다.
 ///
-/// !! adb reverse는 USB 재연결/PC 재부팅 시마다 다시 실행해야 합니다.
-const String baseUrl = 'http://127.0.0.1:8000'; // 실기기용 (adb reverse 사용)
+/// ── 서버 주소·앱 키는 **빌드할 때** 넣는다 (2026-10-22, 앱 1단계) ──────────────
+/// 코드에 주소를 박아 두면 배포 주소가 바뀔 때마다 코드를 고쳐야 하고, 키를 커밋하게 된다.
+/// 그래서 `--dart-define`으로 받는다:
+/// ```
+/// flutter build apk --release \
+///   --dart-define=API_BASE_URL=https://<Railway 주소> \
+///   --dart-define=APP_KEY=<서버의 APP_KEY와 같은 값>
+/// ```
+/// - 아무것도 안 넣으면(그냥 `flutter run`) 예전과 같다: `http://127.0.0.1:8000`.
+///   USB로 연결한 뒤 `adb reverse tcp:8000 tcp:8000` 을 실행하면 폰의 127.0.0.1:8000 요청이
+///   USB 터널을 통해 PC의 서버로 간다. (USB 재연결/PC 재부팅 시마다 다시 실행)
+/// - CI(`.github/workflows/ci.yml`의 'APK 빌드')는 저장소 변수 `API_BASE_URL`과
+///   비밀값 `APP_KEY`를 넣어 APK를 만든다.
+library;
+
+/// 빌드 때 받은 서버 주소. 안 넣었으면 기본값(로컬 + adb reverse).
+const String _definedBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://127.0.0.1:8000',
+);
+
+/// 서버 주소.
+///
+/// ⚠ `--dart-define=API_BASE_URL=` 처럼 **빈 값**이 들어오면 `defaultValue`가 쓰이지 않고
+///   빈 문자열이 된다(CI에서 저장소 변수가 아직 없을 때 실제로 이렇게 된다).
+///   빈 주소로는 어떤 요청도 못 보내므로 기본값으로 되돌린다.
+const String baseUrl = _definedBaseUrl == ''
+    ? 'http://127.0.0.1:8000'
+    : _definedBaseUrl;
+
+/// 요청 주소를 조립할 때 쓰는 서버 주소 — 끝의 `/`를 뗀다.
+///
+/// 변수에 `https://x.up.railway.app/` 처럼 끝에 `/`를 붙여 넣어도 `…app//api/…`가 되지 않게.
+String get apiBaseUrl =>
+    baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+
+/// 앱 키 — 서버에 `APP_KEY`가 설정돼 있으면 모든 `/api/*` 요청에 `X-App-Key`로 실어야 한다
+/// (없거나 틀리면 401 — api-contract §1.1-1). 비어 있으면 헤더를 보내지 않는다.
+///
+/// ⚠ 앱에 들어가는 값이라 완벽한 비밀은 아니다(APK를 풀면 보인다). 주소만 알고 두드리는
+///   사람을 막는 **정문**이다. 화면·로그에 절대 찍지 않는다.
+const String appKey = String.fromEnvironment('APP_KEY');
 
 /// 개발용 자동 로그인 (팀 테스트 편의).
 ///
@@ -28,5 +65,7 @@ const bool devAutoLogin = true;
 ///
 /// ⚠ 등기부 사진에는 소유자 실명·주소가 들어 있다. 그래서 켜 두더라도 최근
 /// [RegistryPhotoStore.keepRecentReports]건만 남기고 오래된 것은 지운다.
+/// 사진은 **서버에 저장하지 않는다** — 화면 문구는 `RegistryPhotoStore.retentionNotice` 한 곳에서
+/// 이 값에 맞춰 만든다(문구와 동작이 어긋나지 않게).
 /// 실 배포 시 제거 — docs/cleanup-tracker.md 등록.
 const bool devKeepRegistryPhotos = true;

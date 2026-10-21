@@ -17,6 +17,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../services/api_client.dart';
 import '../../state/app_session.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
@@ -77,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   )
                 else if (snapshot.hasError)
                   // 서버 연결 실패 — 빈 상태로 위장하지 않는다 (D-3: 더미 폴백 금지)
-                  _loadError(context)
+                  _loadError(context, snapshot.error)
                 else if (history.isEmpty)
                   _emptyHistory(context)
                 else
@@ -129,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// 이력 로드 실패 — 인라인 에러 + [다시 시도] (user-scenario §5)
-  Widget _loadError(BuildContext context) {
+  Widget _loadError(BuildContext context, Object? error) {
     return AppCard(
       padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
@@ -143,7 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
           const AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
           const SizedBox(height: AppSpacing.xs),
           AppText(
-            '서버 연결을 확인해 주세요',
+            apiErrorHint(error, fallback: '서버 연결을 확인해 주세요'),
+            textAlign: TextAlign.center,
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),
           const SizedBox(height: AppSpacing.lg),

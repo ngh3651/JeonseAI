@@ -65,6 +65,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   bool _failed = false; // 서버 연결·분석 실패 (user-scenario §4 S-06 네트워크 오류)
   String? _errorMessage; // 서버가 보낸 한국어 detail (요약본 거부·크레딧 소진 등)
   int? _errorStatus; // 상태코드별 복구 동선 분기 (400계열=사진 다시 / 402·429=재시도 없음)
+  bool _needsAppUpdate = false; // 기기 정보(400)·앱 인증(401) — 재시도·사진 교체로 안 풀린다
 
   @override
   void initState() {
@@ -119,6 +120,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
         _failed = true;
         _errorMessage = e.message;
         _errorStatus = e.statusCode;
+        _needsAppUpdate = e.needsAppUpdate;
       });
       return;
     } catch (_) {
@@ -129,6 +131,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
         _failed = true;
         _errorMessage = null;
         _errorStatus = null;
+        _needsAppUpdate = false;
       });
       return;
     }
@@ -178,8 +181,12 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   /// (user-scenario §4 S-06: 요약본/추출 실패=사진 다시 고르기, 402·429=재시도 미노출)
   Widget _failedBody() {
     final status = _errorStatus;
+    // 기기 정보(400)·앱 인증(401)은 사진을 바꿔도, 다시 눌러도 풀리지 않는다 — 최신 앱 설치가 답이다.
+    // 그래서 아래 두 버튼을 모두 감춘다(헛걸음만 시키고 크레딧과 무관하게 같은 실패만 반복된다).
+    final needsAppUpdate = _needsAppUpdate || status == 401;
     // 400계열(요약본·형식·용량)은 같은 사진으로 재시도해도 반드시 실패 + 크레딧만 소모
-    final isInputProblem = status == 400 || status == 413 || status == 415;
+    final isInputProblem =
+        !needsAppUpdate && (status == 400 || status == 413 || status == 415);
     // 크레딧 소진·호출 한도는 재시도 버튼을 주지 않는다 (무한 재시도 루프 방지)
     final isQuotaProblem = status == 402 || status == 429;
     final message =
@@ -212,7 +219,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                 icon: Icons.photo_library_outlined,
                 onPressed: () => context.pop(), // S-04 복귀 (사진·입력값 유지)
               )
-            else if (!isQuotaProblem)
+            else if (!isQuotaProblem && !needsAppUpdate)
               AppPrimaryButton(
                 label: '다시 시도',
                 icon: Icons.refresh,

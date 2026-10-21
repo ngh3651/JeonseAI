@@ -1,0 +1,26 @@
+# 서버 이미지에 넣지 않는 것 (Dockerfile 참고)
+.git
+.github
+.claude
+frontend/
+docs/
+design_handoff_*
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+
+# 시크릿·로컬 산출물 — 이미지에 절대 들어가면 안 된다
+**/.env
+**/*.env
+**/.env.bak*
+backend/.venv/
+backend/out/
+backend/logs/
+backend/test_samples/
+backend/tests/
+backend/data/price/raw/
+backend/data/price/*.sqlite
+backend/data/price/*.sqlite-journal
+backend/data/precedents/index/
+backend/data/runtime/
+backend/data/llm_bench/

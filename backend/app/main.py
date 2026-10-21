@@ -91,8 +91,31 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10MB
 
 @app.get("/")
 def health_check():
-    """헬스체크: 서버가 살아있는지 확인합니다."""
-    return {"status": "ok"}
+    """헬스체크: 서버가 살아있는지 + 준비 상태(참/거짓)만 알려 줍니다.
+
+    2026-10-21: 배포 뒤 "왜 시세가 안 나오지?"를 서버 로그 없이 알 수 있게 준비 상태를 붙였다.
+    ⚠ **값은 절대 내보내지 않는다** — 키는 "설정돼 있는가"만, 경로·건수도 내보내지 않는다.
+    ⚠ 키가 **유효한지**는 보지 않는다(외부 호출 0회 — 플랫폼이 몇 초마다 부를 수 있다).
+      유효성은 `python scripts/check_keys.py`로 사람이 확인한다.
+    """
+    from . import settings
+    from .services import official_price
+    from .services.precedent.store import current_index_dir
+
+    body: dict = {
+        "status": "ok",
+        # 시세 DB는 **둘 다** 있어야 참이다(공시가격 + 오피스텔 기준시가) — 반쪽이면 준비 안 됨.
+        "priceDb": all(
+            official_price.db_path(key).is_file() for key in official_price.DB_FILENAMES
+        ),
+        "precedentIndex": (current_index_dir() / "docs.jsonl").is_file(),
+        "upstageKey": bool(settings.env_str("UPSTAGE_API_KEY")),
+        "molitKey": bool(settings.env_str("MOLIT_API_KEY")),
+    }
+    commit = settings.env_str("RAILWAY_GIT_COMMIT_SHA")
+    if commit:
+        body["version"] = commit[:7]
+    return body
 
 
 @app.post("/api/upload")

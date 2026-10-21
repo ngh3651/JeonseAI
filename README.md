@@ -151,8 +151,6 @@ provider는 `.env`로 바꿀 수 있지만 **판례 경로만은 예외로 `sola
 
 ## 아키텍처
 
-다이어그램과 계층별 상세는 **[docs/architecture.md](docs/architecture.md)** 에 있습니다.
-
 앱은 계약(`docs/api-contract.md`)만 알고 서버 내부를 모른다 — 화면은 Repository 인터페이스에만
 의존하고, 더미 구현과 API 구현을 갈아 끼우는 방식으로 개발했다. 서버는 라우터 → 서비스 계층으로
 나뉘며, 위험 판정(`rule_engine.py`)과 문장 생성(`explanation.py`·`precedent/`·`chat.py`)이
@@ -164,7 +162,7 @@ provider는 `.env`로 바꿀 수 있지만 **판례 경로만은 예외로 `sola
 
 ## 실행 방법
 
-팀원용 상세 절차(Upstage 키 발급 포함)는 **[docs/team-setup.md](docs/team-setup.md)** 를 보세요.
+키 이름 견본은 `backend/.env.example`에 있습니다 (실제 키는 `backend/.env`, 커밋 금지).
 
 ```bash
 # 1) 백엔드 — backend/.env 에 UPSTAGE_API_KEY 를 먼저 넣습니다
@@ -186,24 +184,20 @@ flutter run
 
 ## 문서 체계
 
+**정답은 코드다.** 문서는 아래가 전부이고, 지금 상태는 `docs/NOW.md` 한 장에 있다.
+
 | 문서 | 역할 |
 |---|---|
-| [CLAUDE.md](CLAUDE.md) | 프로젝트 안내·불변 원칙·개발 방법론 (AI 협업 세션이 가장 먼저 읽는 문서) |
-| [docs/architecture.md](docs/architecture.md) | 시스템 아키텍처 다이어그램 (Mermaid) |
-| [docs/api-contract.md](docs/api-contract.md) | 앱↔서버 JSON 계약 — 더미↔실기능 교체의 기준점 |
-| [docs/decisions.md](docs/decisions.md) | 아키텍처 결정 로그 (append-only, 의도→근거→결정 흐름으로 기록) |
-| [docs/plan.md](docs/plan.md) | Phase A~F 로드맵·진행 현황 |
-| [docs/IA.md](docs/IA.md) · [docs/user-scenario.md](docs/user-scenario.md) | 화면 트리·네비게이션 / 화면→버튼→액션 시나리오 |
+| [docs/NOW.md](docs/NOW.md) | **지금 상태 · 결선 계획** (작업할 때마다 갱신) |
+| [CLAUDE.md](CLAUDE.md) | 불변 원칙 · 작업 방식 (AI 협업 세션이 가장 먼저 읽는 문서) |
+| [docs/decisions.md](docs/decisions.md) | 결정 로그 (append-only, 의도→근거→결정 흐름) |
+| [docs/competition-facts.md](docs/competition-facts.md) | 대회 · 팀 · 결선 사실 (코드 밖 사실의 단일 출처) |
+| [docs/api-contract.md](docs/api-contract.md) | 앱↔서버 JSON 계약 |
 | [docs/personas.md](docs/personas.md) | 페르소나 2인 정의 (리뷰 에이전트와 동기화) |
-| [docs/registry-schema.md](docs/registry-schema.md) | 등기부 추출 스키마 설명 |
-| [docs/precedent-rag.md](docs/precedent-rag.md) | 판례 RAG 파이프라인 인수인계 문서 |
-| [docs/team-setup.md](docs/team-setup.md) | pull 받아 실제 분석까지 돌리는 법 (키 발급·실행 순서) |
-| [docs/cleanup-tracker.md](docs/cleanup-tracker.md) | 임시·더미·스캐폴딩 정리 대상 목록 (living) |
-| [docs/evaluation-criteria.md](docs/evaluation-criteria.md) | 대회 공식 배점표 |
-| [docs/feedback-log.md](docs/feedback-log.md) · [docs/feedback/](docs/feedback/) | 팀·페르소나 피드백 원본과 처리 이력 |
-| [docs/claude-chat/](docs/claude-chat/) | 채팅에서 확정된 결정·자료(인터뷰 정리본 등) 유입 인박스 |
-| [docs/draft/](docs/draft/) | 브레인스토밍 초안 (확정 사양 아님) |
 | [.claude/rules/](.claude/rules/) | `risk-scoring`(출처 없는 수치 금지) · `api-design` 규칙 |
+
+옛 문서(Phase 계획 · 세션 기록 · 측정 보고서 · 피드백 원본 등)는 태그 `archive-2026-10-21`에 그대로 보관돼 있다
+(`git show archive-2026-10-21:docs/<파일>`). 새 문서는 만들지 않는다 — `scripts/check_docs.py`가 CI에서 검사한다.
 
 ---
 

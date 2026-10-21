@@ -226,8 +226,18 @@ def test_앱_키_비교는_상수_시간_비교를_쓴다():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ④ 속도 제한 — 기기 × IP, 최근 1시간
+# ④ 속도 제한 — 최근 1시간, 세 겹(기기×IP · IP · 서버 전체)
 # ══════════════════════════════════════════════════════════════════════════════
+
+
+def _req(ip: str = "10.0.0.1"):
+    from starlette.requests import Request
+
+    return Request({"type": "http", "headers": [], "client": (ip, 1234)})
+
+
+def _photo():
+    return [("files", ("page_1.jpg", blank_image(PAGE_W, PAGE_H), "image/jpeg"))]
 
 
 def test_분석은_한_시간_상한을_넘으면_429다(client, no_network, monkeypatch):
@@ -240,7 +250,7 @@ def test_분석은_한_시간_상한을_넘으면_429다(client, no_network, mon
     assert third.status_code == 429
     assert "시도" in third.json()["detail"]  # 한국어 안내
 
-    # 다른 기기는 따로 센다
+    # 다른 기기는 기기 칸을 따로 센다
     assert _analyze(client, PHONE_B).status_code == 200
 
 
@@ -250,7 +260,50 @@ def test_대조도_같은_상한에_들어간다(client, no_network, monkeypatch
     no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))])
     rid = _analyze(client, PHONE_A).json()["id"]
 
-    assert client.post(f"/api/reports/{rid}/compare", headers=PHONE_A).status_code == 429
+    resp = client.post(f"/api/reports/{rid}/compare", files=_photo(), headers=PHONE_A)
+    assert resp.status_code == 429
+
+
+def test_기기_id를_바꿔도_IP_상한에_걸린다(client, no_network, monkeypatch):
+    """리뷰 지적: 무작위 `X-Device-Id` 100개를 같은 IP에서 보내면 전부 통과했다."""
+    import uuid
+
+    monkeypatch.setenv("RATE_LIMIT_IP_PER_HOUR", "5")
+    calls = no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))] * 5)
+    codes = [
+        _analyze(client, {"X-Device-Id": str(uuid.uuid4())}).status_code for _ in range(100)
+    ]
+    assert codes.count(200) == 5 and codes.count(429) == 95
+    # 거절된 95건은 외부 API를 부르지 않았다 (IE 1 + OCR 1 + 설명 1… 이 5회분만)
+    assert sum(1 for u in calls if "information-extraction" in u) == 5
+
+
+def test_서버_전체_상한은_주소까지_바꿔도_걸린다(monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_GLOBAL_PER_HOUR", "3")
+    for i in range(3):
+        dependencies.limit_analyze(_req(f"198.51.100.{i}"), f"phone-glob-000{i}")
+    with pytest.raises(HTTPException) as e:
+        dependencies.limit_analyze(_req("198.51.100.99"), "phone-glob-0099")
+    assert e.value.status_code == 429
+
+
+def test_입력_검사에서_거절된_요청은_세지_않는다(client, no_network, monkeypatch):
+    """사진 없음(400)·장수 초과(400)·없는 리포트(404)·기준 없음 대조는 분석 기회를 깎지 않는다."""
+    monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "1")
+    no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))])
+
+    empty = [("files", ("page_1.jpg", b"", "image/jpeg"))]
+    for _ in range(3):
+        assert client.post(
+            "/api/analyze", files=empty, data={"deposit": "1"}, headers=PHONE_A
+        ).status_code == 400
+        assert client.post("/api/reports/없는-리포트/compare", headers=PHONE_A).status_code == 404
+        assert client.post("/api/reports/dummy-example/compare", headers=PHONE_A).json()[
+            "result"
+        ] == "no_baseline"
+    # 위에서 하나도 세지 않았으므로 진짜 분석 1회는 통과한다
+    assert _analyze(client, PHONE_A).status_code == 200
+    assert _analyze(client, PHONE_A).status_code == 429
 
 
 def test_조회는_상한에_걸리지_않는다(client, monkeypatch):
@@ -261,29 +314,57 @@ def test_조회는_상한에_걸리지_않는다(client, monkeypatch):
 
 def test_한_시간이_지나면_다시_된다(monkeypatch):
     """이동 창 — 오래된 기록은 빠진다. 시계를 직접 움직여 확인한다."""
-    from starlette.requests import Request
-
     monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "1")
     now = [1000.0]
     monkeypatch.setattr(dependencies.time, "monotonic", lambda: now[0])
-    request = Request({"type": "http", "headers": [], "client": ("10.0.0.1", 1234)})
 
-    dependencies.limit_analyze(request, "phone-cccc-0003")
+    dependencies.limit_analyze(_req(), "phone-cccc-0003")
     with pytest.raises(HTTPException) as e:
-        dependencies.limit_analyze(request, "phone-cccc-0003")
+        dependencies.limit_analyze(_req(), "phone-cccc-0003")
     assert e.value.status_code == 429
 
     now[0] += 3601
-    dependencies.limit_analyze(request, "phone-cccc-0003")  # 다시 통과
+    dependencies.limit_analyze(_req(), "phone-cccc-0003")  # 다시 통과
 
 
-def test_상한을_0으로_두면_제한하지_않는다(monkeypatch):
-    from starlette.requests import Request
+def test_상한을_0으로_두면_그_겹은_끈다(monkeypatch):
+    for name in ("RATE_LIMIT_ANALYZE_PER_HOUR", "RATE_LIMIT_IP_PER_HOUR", "RATE_LIMIT_GLOBAL_PER_HOUR"):
+        monkeypatch.setenv(name, "0")
+    for _ in range(500):
+        dependencies.limit_analyze(_req(), "phone-dddd-0004")
 
-    monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "0")
-    request = Request({"type": "http", "headers": [], "client": ("10.0.0.1", 1234)})
-    for _ in range(50):
-        dependencies.limit_analyze(request, "phone-dddd-0004")
+
+def test_오래된_칸은_치우고_칸_수에_상한이_있다(monkeypatch):
+    """무작위 기기 id·주소로 메모리를 끝없이 늘리지 못한다."""
+    monkeypatch.setenv("RATE_LIMIT_IP_PER_HOUR", "0")
+    monkeypatch.setenv("RATE_LIMIT_GLOBAL_PER_HOUR", "0")
+    monkeypatch.setattr(dependencies, "_MAX_BUCKETS", 50)
+    now = [1000.0]
+    monkeypatch.setattr(dependencies.time, "monotonic", lambda: now[0])
+
+    for i in range(40):
+        dependencies.limit_analyze(_req(f"203.0.113.{i}"), f"phone-old-{i:04d}")
+    now[0] += 3601  # 한 시간이 지나 전부 조용해졌다
+    for i in range(30):
+        dependencies.limit_analyze(_req(f"192.0.2.{i}"), f"phone-new-{i:04d}")
+    keys = set(dependencies._hits)
+    assert not any(k[0].startswith("phone-old") for k in keys), "1시간 지난 칸이 남았다"
+    assert len(keys) <= 50
+
+    for i in range(200):  # 한꺼번에 몰려도 상한을 넘지 않는다
+        dependencies.limit_analyze(_req(f"10.1.{i // 250}.{i % 250}"), f"phone-burst-{i:04d}")
+    assert len(dependencies._hits) <= 50 + 1
+
+
+def test_사진이_20장을_넘으면_OCR_전에_400이다(client, no_network):
+    calls = no_network(registry_raw(), [])
+    files = [
+        ("files", (f"page_{i}.jpg", blank_image(PAGE_W, PAGE_H), "image/jpeg")) for i in range(21)
+    ]
+    resp = client.post("/api/analyze", files=files, data={"deposit": "1"}, headers=PHONE_A)
+    assert resp.status_code == 400
+    assert "20장" in resp.json()["detail"]
+    assert calls == [], "장수 초과인데 외부 API를 불렀다"
 
 
 def test_프록시_뒤에서는_원래_주소로_센다():

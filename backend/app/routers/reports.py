@@ -21,9 +21,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
-from .. import dummy_data
+from .. import dummy_data, settings
 from ..dependencies import get_current_user, limit_analyze
 from ..schemas.contract import CaseMatch, CompareResult, QuestionGroup, Report
 from ..services import compare, patterns, questions, report_builder, store
@@ -38,20 +38,18 @@ _log = logging.getLogger("jeonseai")
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 파일당 10MB (기존 /api/upload와 동일 상한)
 
 
-@router.post("/analyze", response_model=Report, dependencies=[Depends(limit_analyze)])
-def analyze(
-    files: list[UploadFile] = File(..., description="등기부 페이지 이미지(여러 장)"),
-    deposit: int = Form(..., description="예정 보증금(원)"),
-    marketPrice: Optional[int] = Form(default=None, description="매매 시세(원, 선택)"),
-    alias: Optional[str] = Form(default=None, description="매물 별칭(선택)"),
-    device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
-) -> Report:
-    """등기부 사진 + 입력값으로 분석해 리포트를 만든다 (E-1c 실배선).
+def _read_images(files: list[UploadFile], *, empty_detail: str) -> list[tuple[str, bytes]]:
+    """올라온 사진을 읽는다. 장수·용량·빈 요청을 **외부 API를 부르기 전에** 거른다.
 
-    업로드 → Information Extract(여러 장은 PDF 병합 1회 호출) → 규칙 엔진 판정
-    → 설명 문구(폴백, E-2에서 LLM 교체) → 이력 저장. Upstage 호출이 수십 초
-    걸릴 수 있어 동기(def) 핸들러로 두어 스레드풀에서 실행되게 한다.
+    ⚠ 장수는 **내용을 읽기 전에** 센다(2026-10-22) — 사진 수백 장을 보내 OCR(장당 호출) 크레딧을
+      태우는 것을 막는다. 앱은 10장까지 보내므로 상한(`settings.MAX_PHOTOS_PER_REQUEST`=20)은 넉넉하다.
     """
+    limit = settings.MAX_PHOTOS_PER_REQUEST
+    if len(files) > limit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"사진이 너무 많아요. 한 번에 {limit}장까지 올릴 수 있어요",
+        )
     images: list[tuple[str, bytes]] = []
     for f in files:
         data = f.file.read()
@@ -64,7 +62,28 @@ def analyze(
             )
         images.append((f.filename or "page.jpg", data))
     if not images:
-        raise HTTPException(status_code=400, detail="등기부 사진을 1장 이상 올려 주세요")
+        raise HTTPException(status_code=400, detail=empty_detail)
+    return images
+
+
+@router.post("/analyze", response_model=Report)
+def analyze(
+    request: Request,
+    files: list[UploadFile] = File(..., description="등기부 페이지 이미지(여러 장)"),
+    deposit: int = Form(..., description="예정 보증금(원)"),
+    marketPrice: Optional[int] = Form(default=None, description="매매 시세(원, 선택)"),
+    alias: Optional[str] = Form(default=None, description="매물 별칭(선택)"),
+    device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
+) -> Report:
+    """등기부 사진 + 입력값으로 분석해 리포트를 만든다 (E-1c 실배선).
+
+    업로드 → Information Extract(여러 장은 PDF 병합 1회 호출) → 규칙 엔진 판정
+    → 설명 문구(폴백, E-2에서 LLM 교체) → 이력 저장. Upstage 호출이 수십 초
+    걸릴 수 있어 동기(def) 핸들러로 두어 스레드풀에서 실행되게 한다.
+    """
+    images = _read_images(files, empty_detail="등기부 사진을 1장 이상 올려 주세요")
+    # 입력 검사를 모두 통과한 뒤에만 센다 — 형식이 틀린 요청은 분석 기회를 깎지 않는다
+    limit_analyze(request, device_id)
 
     try:
         return report_builder.analyze(
@@ -74,12 +93,9 @@ def analyze(
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
-@router.post(
-    "/reports/{report_id}/compare",
-    response_model=CompareResult,
-    dependencies=[Depends(limit_analyze)],  # 다시 분석하므로 같은 상한을 쓴다
-)
+@router.post("/reports/{report_id}/compare", response_model=CompareResult)
 def compare_registry(
+    request: Request,
     report_id: str,
     files: list[UploadFile] = File(default=[], description="이번에 뗀 등기부 사진(여러 장)"),
     device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
@@ -103,19 +119,9 @@ def compare_registry(
         _log.info(f"[대조] 기준 없음 — 리포트 {report_id}에 스냅샷이 없습니다(사진 요청 안 함)")
         return compare.no_baseline_result(base_report)
 
-    images: list[tuple[str, bytes]] = []
-    for f in files:
-        data = f.file.read()
-        if not data:
-            continue
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail="사진 용량이 너무 커요. 10MB 이하 사진으로 다시 시도해 주세요",
-            )
-        images.append((f.filename or "page.jpg", data))
-    if not images:
-        raise HTTPException(status_code=400, detail="다시 뗀 등기부 사진을 1장 이상 올려 주세요")
+    images = _read_images(files, empty_detail="다시 뗀 등기부 사진을 1장 이상 올려 주세요")
+    # 다시 분석하므로 분석과 같은 상한을 쓴다 — 검사를 통과한 뒤, 외부 호출 직전에 센다
+    limit_analyze(request, device_id)
 
     try:
         # ⚠ 보증금·시세는 **기준 분석과 같은 값**을 쓴다. 다른 값으로 계산하면 등급 차이가

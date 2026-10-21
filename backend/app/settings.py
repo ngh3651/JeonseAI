@@ -84,8 +84,27 @@ def app_key() -> str:
 
 
 def rate_limit_analyze_per_hour() -> int:
-    """기기·IP별 분석(analyze + compare) 상한(최근 1시간). 0 이하면 제한하지 않는다."""
+    """기기 id × IP별 분석(analyze + compare) 상한(최근 1시간). 0 이하면 이 겹은 끈다."""
     return env_int("RATE_LIMIT_ANALYZE_PER_HOUR", 30)
+
+
+def rate_limit_ip_per_hour() -> int:
+    """IP 하나의 분석 상한(최근 1시간) — 기기 id를 바꿔 가며 보내도 같은 주소면 함께 센다."""
+    return env_int("RATE_LIMIT_IP_PER_HOUR", 60)
+
+
+def rate_limit_global_per_hour() -> int:
+    """서버 전체 분석 상한(최근 1시간) — 주소까지 바꿔도 남는 **크레딧 상한**."""
+    return env_int("RATE_LIMIT_GLOBAL_PER_HOUR", 300)
+
+
+def docs_disabled() -> bool:
+    """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
+    return env_flag("DISABLE_DOCS")
+
+
+#: 분석·대조 1회에 올릴 수 있는 사진 장수 상한. 앱은 10장까지 보내므로 넉넉하다.
+MAX_PHOTOS_PER_REQUEST = 20
 
 
 # ── 데이터 위치 (클라우드에서는 영구 볼륨 `/data` 아래로) ───────────────────────

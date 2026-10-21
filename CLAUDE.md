@@ -2,7 +2,7 @@
 
 > Claude가 매 세션 가장 먼저 읽는 안내서. **짧게 유지한다.**
 > **지금 상태·할 일 = [`docs/NOW.md`](docs/NOW.md) 하나만 본다.**
-> (2026-10-21 문서 교통정리 — 옛 문서는 태그 `archive-2026-10-21`에 그대로 있다: `git show archive-2026-10-21:docs/<파일>`)
+> (2026-10-21 문서 교통정리 — 옛 문서는 보관 브랜치 `archive-2026-10-21`에 그대로 있다: `git show archive-2026-10-21:docs/<파일>`)
 
 ## 0. 무엇을 믿나 (헷갈리면 이 순서)
 
@@ -67,5 +67,5 @@ flutter test
 - 시세 DB(`backend/data/price/*.sqlite`)와 판례 인덱스(`backend/data/precedents/index/`)는 git에 없다(용량·재생성 가능).
   시세: `python scripts/build_price_db.py --source official_price <원본>` / 판례: `python scripts/ingest_precedents.py`.
 - 검사: `python3 scripts/check_docs.py`(문서 양산 금지). CI = `.github/workflows/ci.yml` (PR마다 서버·앱 테스트).
-- 코드 주석에 나오는 옛 문서 경로(`docs/ocr-highlight-findings.md` 등)는 보관 태그에서 연다:
+- 코드 주석에 나오는 옛 문서 경로(`docs/ocr-highlight-findings.md` 등)는 보관 브랜치에서 연다:
   `git show archive-2026-10-21:docs/<파일>`.

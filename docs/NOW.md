@@ -13,7 +13,7 @@
 | 영역 | 지금 코드 | 결선에서 문제 | 근거 |
 |---|---|---|---|
 | 분석 | 사진 → Upstage IE·OCR·Solar 병렬 → 규칙 엔진 판정 → Solar 설명. 실측 21~31초 | — | `backend/app/services/report_builder.py` |
-| 같은 사진 재현성 | 같은 사진 5회 → IE 결과 거의 같음(가압류 `cause` 글자만 흔들림, 7/28 실측) | 결과가 매번 다른 원인은 **사진이 매번 달라서**다 | 보관 태그 `ie-reproducibility-2026-07-28*.md` |
+| 같은 사진 재현성 | 같은 사진 5회 → IE 결과 거의 같음(가압류 `cause` 글자만 흔들림, 7/28 실측) | 결과가 매번 다른 원인은 **사진이 매번 달라서**다 | 보관 브랜치 `ie-reproducibility-2026-07-28*.md` |
 | 촬영 | 시스템 카메라(`image_picker`), 미리보기·가이드 없음, 흐림·밝기 검사 없음, 안내 문장 1줄 | 흔들린 사진이 그대로 분석됨. **종이 촬영본은 한 번도 검증 안 함**(전부 화면 캡처로만 시험) | `frontend/lib/screens/search/capture_loop_route.dart` |
 | 서버 주소 | `http://127.0.0.1:8000` 고정 → USB + `adb reverse` 필수 | 현장에서 선 꽂고 명령을 쳐야 함 | `frontend/lib/app/config.dart` |
 | 앱 서명 | 릴리스도 **디버그 키** | 배포용 APK 없음 | `frontend/android/app/build.gradle.kts` |
@@ -79,5 +79,5 @@ iOS · 월세·반전세 · 계약서 교차검증(보류 확정) · 소액임�
 
 ## 9. 옛 문서
 
-8/14 이전 문서 40여 개는 태그 **`archive-2026-10-21`**에 그대로 있다: `git show archive-2026-10-21:docs/<파일>`.
+8/14 이전 문서 40여 개는 보관 브랜치 **`archive-2026-10-21`**에 그대로 있다: `git show archive-2026-10-21:docs/<파일>`.
 옛 문서는 **역사 기록**이지 지금의 정답이 아니다.

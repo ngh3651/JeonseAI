@@ -196,7 +196,7 @@ flutter run
 | [docs/personas.md](docs/personas.md) | 페르소나 2인 정의 (리뷰 에이전트와 동기화) |
 | [.claude/rules/](.claude/rules/) | `risk-scoring`(출처 없는 수치 금지) · `api-design` 규칙 |
 
-옛 문서(Phase 계획 · 세션 기록 · 측정 보고서 · 피드백 원본 등)는 태그 `archive-2026-10-21`에 그대로 보관돼 있다
+옛 문서(Phase 계획 · 세션 기록 · 측정 보고서 · 피드백 원본 등)는 보관 브랜치 `archive-2026-10-21`에 그대로 보관돼 있다
 (`git show archive-2026-10-21:docs/<파일>`). 새 문서는 만들지 않는다 — `scripts/check_docs.py`가 CI에서 검사한다.
 
 ---

@@ -1502,7 +1502,7 @@
 - **최종 결정**:
   - 정답 순서 = **코드 → `docs/NOW.md` → `decisions.md`·`competition-facts.md`**. 문서와 코드가 다르면 코드를 믿고 문서를 고친다.
   - 남기는 문서: README · CLAUDE · NOW · decisions · competition-facts · api-contract · personas.
-    나머지는 태그 **`archive-2026-10-21`**에 그대로 보관한다(지우지 않음 — `git show archive-2026-10-21:docs/<파일>`).
+    나머지는 보관 브랜치 **`archive-2026-10-21`**에 그대로 보관한다(지우지 않음 — `git show archive-2026-10-21:docs/<파일>`).
     `evaluation-criteria.md`는 `competition-facts.md` §1로 합쳤다.
   - 새 `.md`는 `scripts/check_docs.py`가 CI에서 막는다. 측정 결과·세션 기록은 PR 설명에 쓴다.
   - 작업 방식: Claude가 채팅에서 레포를 직접 고치고 PR로 올린다(프롬프트 복붙 폐지). 작업이 끝날 때마다 `NOW.md`를 고친다.

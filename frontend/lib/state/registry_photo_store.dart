@@ -46,6 +46,18 @@ class RegistryPhotoStore {
   /// 무한정 쌓이면 기기 용량도 문제지만, 실명이 담긴 사진이 계속 남는 것이 더 문제다.
   static const int keepRecentReports = 5;
 
+  /// 사진을 **어디에 얼마나** 남기는지 — 화면 문구는 전부 이 한 줄에서 가져온다 (2026-10-22).
+  ///
+  /// 예전에는 화면마다 따로 적어 서로 모순됐다. 리포트 카드·뷰어는 "등기부 사진은 안전을 위해
+  /// 저장하지 않아요", 권한 안내는 "최근 분석 5건만 기기에 남아요". 실제 동작은 둘 다 아니고 둘 다다:
+  /// ⑴ **서버는 사진을 저장하지 않는다**(분석에만 쓰고 버린다 — api-contract·서버 테스트),
+  /// ⑵ **이 폰은** [devKeepRegistryPhotos]가 켜져 있으면 최근 [keepRecentReports]건의 사진을 남긴다.
+  /// 스위치·건수가 바뀌면 문구도 저절로 따라간다 — 문구와 동작이 다시 갈라지지 않게.
+  static const String retentionNotice = devKeepRegistryPhotos
+      ? '사진은 분석에만 쓰고 서버에는 저장하지 않아요. '
+            '이 휴대폰에만 최근 분석 $keepRecentReports건의 사진이 남아요.'
+      : '사진은 분석에만 쓰고 서버에는 저장하지 않아요. 이 휴대폰에도 남기지 않아요.';
+
   static const String _prefsKey = 'registry_photos_v1';
   static const String _folderName = 'registry_photos';
   static const String _reportFile = 'report.json';

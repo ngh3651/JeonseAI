@@ -127,6 +127,10 @@ abstract final class AppColors {
   static const Color markSolidRisk = Color(0xFFB54708);
   static const Color markSolidVerify = primary;
 
+  /// '사진 속 이름 가리기' 상자 — **완전 불투명**(알파 FF). 형광펜과 정반대로 글자가 절대 비치면 안 된다.
+  /// 앱의 가장 진한 글자색([textStrong])과 같은 잉크라 사진 위에서 "먹으로 지운 칸"으로 읽힌다.
+  static const Color markRedaction = textStrong;
+
   /// 위치 레일의 표시 점 — 8dp 트랙 위 12dp 원이라 글자가 아닌 그래픽 기준(3:1)
   static const Color markDotRisk = Color(0xFFF79441);
   static const Color markDotVerify = Color(0xFF2DA46E);

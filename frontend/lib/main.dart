@@ -19,7 +19,9 @@ import 'repositories/api_analysis_repository.dart';
 import 'repositories/api_content_repository.dart';
 import 'repositories/content_repository.dart';
 import 'state/app_session.dart';
+import 'services/device_id.dart';
 import 'state/journey_schedule_store.dart';
+import 'state/privacy_settings.dart';
 import 'state/registry_photo_store.dart';
 
 Future<void> main() async {
@@ -32,6 +34,10 @@ Future<void> main() async {
   // 계약 일정(잔금일 등)은 **이 기기에만** 있다 — 여정 화면과 홈 D-1 배너가 곧바로
   // 그릴 수 있게 먼저 올린다(첫 프레임에 배너가 깜빡이며 나타나지 않도록).
   await JourneyScheduleStore.instance.restore();
+  // '사진 속 이름 가리기'를 첫 화면부터 저장된 값으로 그린다(켜 둔 채 껐다 켰는데 이름이 한 번 비치면 안 된다).
+  await PrivacySettings.instance.restore();
+  // 기기 id를 미리 만들어 둔다 — 첫 서버 요청이 저장소를 기다리지 않게. 실패해도 요청 때 다시 만든다.
+  await DeviceId.instance.get();
   runApp(const JeonseSafeApp());
 }
 

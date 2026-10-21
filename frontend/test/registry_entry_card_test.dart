@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/registry_mark_kind.dart';
 import 'package:jeonse_ai/screens/report/registry_entry_card.dart';
+import 'package:jeonse_ai/state/registry_photo_store.dart';
 
 import 'support/registry_fixture.dart';
 import 'support/ko_finders.dart';
@@ -210,13 +211,15 @@ void main() {
     });
 
     testWidgets('잠긴 상태(사진 소실)에서도 카드가 남고 이유를 말한다', (tester) async {
+      // 문구는 앱 전체가 쓰는 한 문장이다(2026-10-22) — 예전의 "안전을 위해 저장하지 않아요"는
+      // 폰에 최근 5건을 남기는 실제 동작과 모순이었다.
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
             body: SizedBox(
               width: 320,
               child: RegistryEntryCard(
-                subtitle: '등기부 사진은 안전을 위해 저장하지 않아요. 다시 보려면 새로 분석해 주세요.',
+                subtitle: '${RegistryPhotoStore.retentionNotice} 다시 보려면 새로 분석해 주세요.',
                 onTap: null,
               ),
             ),
@@ -224,7 +227,7 @@ void main() {
         ),
       );
       expect(find.koText('내가 올린 사진에서 보기'), findsOneWidget);
-      expect(find.koTextContaining('저장하지 않아요'), findsOneWidget);
+      expect(find.koTextContaining('서버에는 저장하지 않아요'), findsOneWidget);
       // 열 수 없으니 chevron은 없다
       expect(find.byIcon(Icons.chevron_right), findsNothing);
     });

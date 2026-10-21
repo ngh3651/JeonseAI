@@ -34,6 +34,7 @@ from . import (
     ocr_layout,
     price_lookup,
     price_resolver,
+    privacy_masks,
     rule_engine,
     store,
     terms,
@@ -494,6 +495,16 @@ def analyze(
         _log.error(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})", exc_info=True)
         highlight_result = highlight.HighlightResult([])
 
+    # 사진 속 실명·주민번호 **자리** (2026-10-22, P0-2b) — 표시 전용. 판정과 하이라이트를 건드리지 않는다.
+    # 실패하면 `privacyMasksReady=False`로 나가고, 앱은 가리기가 켜져 있으면 사진을 통째로 덮는다.
+    try:
+        mask_result = privacy_masks.build_privacy_masks(
+            ocr_result, extract, page_count=len(images)
+        )
+    except Exception:  # noqa: BLE001
+        _log.error("[가리기] ⚠ 가림 상자를 만들지 못함 — 앱이 사진을 통째로 덮습니다", exc_info=True)
+        mask_result = None
+
     # ── 시세 자동조회 ────────────────────────────────────────────────────────
     # 주소는 **OCR/IE 이후에야** 알 수 있으므로 여기가 가장 이른 시점이다.
     # ⚠ 어떤 실패도 리포트를 막지 못한다. `price_lookup.collect`는 스스로 예외를
@@ -525,6 +536,9 @@ def analyze(
         registry_viewed_at=highlight_result.viewed_at,
         price_info=price_info,
     )
+    if mask_result is not None:
+        report.privacyMasks = mask_result.masks
+        report.privacyMasksReady = True
     # ── 여기서부터 리포트는 **이미 완성됐다.** 아래는 기록·정리·로그뿐이다 ──────────
     # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
     # 2026-07-28 실기기 500이 정확히 이 모양이었다(리포트 완성 → 마지막 문장에서 사망).
@@ -599,6 +613,7 @@ def analyze(
                     ("시세", _price_note),
                     ("선순위채권 합계", format_won(report.seniorDebtAmount)),
                     ("하이라이트", f"{len(report.highlights)}건"),
+                    ("가림 상자", f"{len(report.privacyMasks)}개" if report.privacyMasksReady else "없음(실패)"),
                     ("교차검증", _cross_note),
                 ],
             )

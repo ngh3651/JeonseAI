@@ -105,6 +105,8 @@ def test_Upstage_모델_목록이_200이면_정상이고_채팅은_안_부른다
     )
     assert result.status == "정상"
     assert calls == [ck.UPSTAGE_MODELS_URL]
+    # 모델 목록은 무료라 키만 확인한다 — 잔액은 모른다는 것을 밝힌다(2026-10-22 리뷰)
+    assert "크레딧 잔액은 확인하지 않음" in result.note
 
 
 @pytest.mark.parametrize("status,expected", [(401, "키가 틀림"), (402, "크레딧·한도 문제")])

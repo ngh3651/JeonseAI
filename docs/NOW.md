@@ -18,16 +18,16 @@
 | 촬영 | 시스템 카메라(`image_picker`), 미리보기·가이드 없음, 흐림·밝기 검사 없음, 안내 문장 1줄 | 흔들린 사진이 그대로 분석됨. **종이 촬영본은 한 번도 검증 안 함**(전부 화면 캡처로만 시험) | `frontend/lib/screens/search/capture_loop_route.dart` |
 | 서버 주소 | ✅ **빌드 때** 넣는다: `--dart-define=API_BASE_URL=https://…`(안 넣으면 `http://127.0.0.1:8000` + `adb reverse`). 앱 키도 `--dart-define=APP_KEY=…`(있을 때만 `X-App-Key`). CI 'APK 빌드'가 저장소 변수 `API_BASE_URL`·비밀값 `APP_KEY`로 release APK를 만든다 | 변수 `API_BASE_URL`이 아직 없다(Railway 주소가 나와야 넣는다) → 지금 CI APK는 USB용 기본 주소 | `frontend/lib/app/config.dart`, `.github/workflows/ci.yml` |
 | 앱 서명 | ✅ `android/key.properties`가 있으면 릴리스 키, 없으면 **디버그 키로 되돌아감**(CI·다른 PC도 빌드됨). CI는 비밀값 4개(`ANDROID_KEYSTORE_BASE64`·`ANDROID_KEYSTORE_PASSWORD`·`ANDROID_KEY_ALIAS`·`ANDROID_KEY_PASSWORD`)가 다 있을 때만 그 키. 평문(http) 통신은 개발 빌드·http 주소 APK에서만 | 서명 키를 아직 안 정함 → 지금 APK는 디버그 키. 디버그↔릴리스 키 APK는 서로 덮어 설치가 안 된다(지우고 다시 → 기록이 끊김) | `frontend/android/app/build.gradle.kts` |
-| 분석 기록 | ✅ **기기별**(`X-Device-Id`) + **SQLite 영구 저장**(`${DATA_DIR}/app.db`, 리포트·대조 기준). 다른 기기 기록은 404. 판례 카드 캐시만 메모리(재시작 뒤 다시 만듦). ✅ 앱(PR #4)이 처음 실행 때 UUID를 한 번 만들어(`device_id_v1`) **모든 요청**에 싣는다 | 옛 APK(8/14 코드)는 여전히 공용 `legacy-device`를 쓴다 → 새 APK로 바꿔 설치. 앱을 지우면 새 id(예전 기록과 끊김) | `backend/app/services/store.py`, `dependencies.py`, `frontend/lib/services/device_id.dart` |
+| 분석 기록 | ✅ **기기별**(`X-Device-Id`) + **SQLite 영구 저장**(`${DATA_DIR}/app.db`, 리포트·대조 기준). 다른 기기 기록은 404. 판례 카드 캐시만 메모리(재시작 뒤 다시 만듦). 기록 DB를 못 열어도 목록은 예시 리포트를 돌려줌. ✅ 앱(PR #4)이 처음 실행 때 UUID를 한 번 만들어(`device_id_v1`) **모든 요청**에 싣는다 | 옛 APK(8/14 코드)는 여전히 공용 `legacy-device`를 쓴다 → 새 APK로 바꿔 설치. 앱을 지우면 새 id(예전 기록과 끊김) | `backend/app/services/store.py`, `dependencies.py`, `frontend/lib/services/device_id.dart` |
 | 배포 설정 | ✅ 저장소 맨 위 `Dockerfile`·`railway.json`, `0.0.0.0:$PORT`, 시작 준비 `prepare_runtime.py`(시세 DB 내려받기·판례 인덱스). `DEV_MODE_AUTH` 없앰 → 원응답 저장은 `SAVE_RAW_RESPONSES`(기본 꺼짐) | Railway에 아직 안 올림(사람이 클릭 — 아래 배포 방법). 시세 DB 파일을 올릴 곳(`PRICE_DB_URLS`) 미정 | `Dockerfile`, `backend/scripts/prepare_runtime.py` |
-| 보안 | ✅ `APP_KEY` 설정 시 `/api/*`는 `X-App-Key` 필요(401). 분석·대조는 최근 1시간 **세 겹** 상한(429) — 기기×IP 30회 · IP 60회 · 서버 전체 300회(`RATE_LIMIT_*_PER_HOUR`, PR #3 e8365a4). 1회 사진 20장 초과는 400. ✅ 앱은 빌드 때 넣은 `APP_KEY`를 `X-App-Key`로 보내고, 401·400(기기 정보)·429를 "최신 앱을 설치해 주세요 / 잠시 후 다시"로 보여 준다 | Railway `APP_KEY`와 GitHub 비밀값 `APP_KEY`가 **같은 값**이어야 한다 — 서버에 먼저 켜면 키 없는 APK가 401로 막힌다 | `backend/app/main.py`, `frontend/lib/services/api_client.dart` |
+| 보안 | ✅ `APP_KEY` 설정 시 `/api/*`는 `X-App-Key` 필요(401). 분석·대조는 최근 1시간 **세 겹** 상한(429) — 기기×IP 30회 · IP 60회 · 서버 전체 300회(`RATE_LIMIT_*_PER_HOUR`, PR #3 e8365a4). 1회 사진 20장 초과는 400. `DISABLE_DOCS=1`이면 API 문서 끔 · 접근 로그 끔(챗봇 질문이 로그에 안 남게). ✅ 앱은 빌드 때 넣은 `APP_KEY`를 `X-App-Key`로 보내고, 401·400(기기 정보)·429를 "최신 앱을 설치해 주세요 / 잠시 후 다시"로 보여 준다 | Railway `APP_KEY`와 GitHub 비밀값 `APP_KEY`가 **같은 값**이어야 한다 — 서버에 먼저 켜면 키 없는 APK가 401로 막힌다 | `backend/app/main.py`, `frontend/lib/services/api_client.dart` |
 | 개인정보 | 서버 ✅: 원응답 저장 기본 꺼짐, 하이라이트 제목·명단 일치 문장은 `홍○○`, 개인 근저당권자도 가려서 Solar에 보냄, 챗봇 로그에 질문 원문 없음 — DB·로그·저장 JSON 실명 0건 자동 테스트(`test_pii_persistence.py`). 원본 사진은 서버에 저장 안 함. 앱 ✅(PR #4): 마이 → '개인정보' → **'사진 속 이름 가리기'**(기본 꺼짐) — 켜면 뷰어·리포트 미리보기의 집주인 이름 칸을 불투명 상자로 덮는다(빚·압류 형광펜은 그대로). 사진 문구는 앱 전체가 한 문장: "사진은 분석에만 쓰고 서버에는 저장하지 않아요. 이 휴대폰에만 최근 분석 5건의 사진이 남아요." | ⚠ 스위치는 **앱이 위치를 아는 칸(집주인 이름)만** 덮는다 — 사진의 다른 이름(을구 채무자 = 대개 집주인, 이전 소유자, 전세권자·채권자)과 주민번호 앞자리는 그대로 보인다(리포트 미리보기는 빚 줄을 확대하므로 바로 아래 채무자 줄이 비칠 수 있다). 전부 가리려면 서버가 그 칸들의 위치를 보내야 한다(서버 작업). 분석 **전** 촬영 화면·사진 썸네일도 위치를 몰라 가리지 못한다(부스에서는 찍는 장면만 미러링 화면에서 피한다). 기록 목록·공유 화면 이름 마스킹도 아직(공유 버튼은 준비 중 안내뿐). 스위치를 끄면(기본) 집주인 이름도 보인다 — 부스에서는 켠다 | `registry_viewer_screen.dart`, `privacy_settings.dart`, `registry_photo_store.dart`, `highlight.py` |
 | 계약 여정 | 9단계, 날짜 4종(폰에만 저장), 다시 찍어 대조 → 바뀜/그대로/일부/기준 없음/다른 집 | **알림 없음**(앱을 열 때 배너만). 일정 시트 문구가 알림을 약속함 | `journey_screen.dart`, `journey_stages.json` |
 | 로그인 | 가짜(아무 값이나 통과), 자동 로그인 "영호" | 비즈니스 껍데기 없음 | `config.dart` `devAutoLogin` |
 | 결제 | 없음 | 수익 모델이 화면에 없음 | — |
 | 웹 버전 | 없음 (`web/` 폴더 없음). 만들려면 사진 처리 8~10개 파일 수정, 1~3일 | 아이폰 심사위원은 체험 불가 | — |
 | 시세 | 실거래가 → 공시가격×1.40 → 기준시가 3단 조회, DB 1,807만 행(로컬 전용) | 배포 서버로 DB 파일을 옮겨야 함 | `price_resolver.py`, `.gitignore` |
-| 테스트 | 서버 **784 통과·6 건너뜀**(키 없이, 2026-10-22) / 앱 **220건**(2026-10-22, PR #4 — 187 + 헤더·기기 id·에러 문구 18 + 이름 가리기·사진 문구 15) | — | `.github/workflows/ci.yml` (문서·서버·앱·**APK 빌드** 4개 작업) |
+| 테스트 | 서버 **801 통과·6 건너뜀**(키 없이, 2026-10-22) / 앱 **220건**(2026-10-22, PR #4 — 187 + 헤더·기기 id·에러 문구 18 + 이름 가리기·사진 문구 15) | — | `.github/workflows/ci.yml` (문서·서버·앱·**APK 빌드** 4개 작업) |
 
 ## 3. 결선 사실
 
@@ -69,6 +69,7 @@
 | 4 | 변동 감지 시연 | **라이브로 보여주지 않는다** — 등기는 자주 바뀌지 않는다. 실제로 바뀐 이력이 있는 등기부를 찾으면 그 기록으로 재현해 **발표 자료**에 넣는다 |
 | 5 | 요금제 가격·문구 | ⏳ 열림 — 팀이 10/25까지 확정 (그 전엔 화면에 "예시" 표기) |
 | 6 | LG EXAONE 서비스 사용 여부 | ⏳ 열림 — 10/22까지 규혁·팀대표 결정. 1차 결선 보고서(10/23 제출)에 들어갈 내용이라 그 전에 정해야 한다. 지금 코드는 서비스 경로에서 EXAONE을 안 부름(기본 provider = upstage, SHADOW_LLM 기본 off) |
+| 7 | 기록 보관 기간 | ⏳ 열림 — 기록 보관 기간(예: 30~90일 뒤 자동 삭제) 결정 필요. 기록에는 **주소**가 남고, 주소만 있으면 등기부를 떼어 소유자를 알 수 있다(이름 해시는 되찾는 속도를 늦출 뿐). 지금 코드는 자동 삭제가 없다 |
 
 ## 6-1. Railway 배포 방법 (서버)
 
@@ -81,12 +82,18 @@
    - `DATA_DIR=/data` · `PRICE_DB_DIR=/data/price` · `PRECEDENT_INDEX_DIR=/data/precedents-index`
    - `PRICE_DB_URLS` — 시세 DB 파일 주소(쉼표로 구분, `official_price.sqlite(.gz)`·`tax_base.sqlite(.gz)`)
    - `BUILD_PRECEDENT_INDEX=1` — 판례 인덱스가 없을 때 한 번 만든다(⚠ 임베딩 크레딧 1회)
-   - `REQUIRE_DEVICE_ID=0` — 새 앱이 나올 때까지 0
+   - `REQUIRE_DEVICE_ID=0` — 새 앱이 나올 때까지 0. ⚠ 그동안 헤더 없는 옛 앱은 **전부 `legacy-device` 칸 하나**를 함께 쓴다 →
+     새 앱(`X-Device-Id`를 보내는 앱)이 나오면 **바로 1로**
+   - `DISABLE_DOCS=1` — 공개 주소에서 API 문서(`/docs`·`/openapi.json`)를 끈다
+   - 속도 제한(선택, 기본값이 있다): `RATE_LIMIT_ANALYZE_PER_HOUR=30`(기기×IP) · `RATE_LIMIT_IP_PER_HOUR=60` ·
+     `RATE_LIMIT_GLOBAL_PER_HOUR=300`. ⚠ **결선 날**에는 부스 폰들이 같은 와이파이(같은 IP)를 쓰므로 IP·전체 상한을 올려 둔다
    - `RAILWAY_RUN_UID=0` — 볼륨에 쓰기 위해 필요(Railway 볼륨은 root 소유로 붙는다)
    - `SAVE_RAW_RESPONSES`는 **넣지 않는다**(실명 원응답 저장 — 로컬 디버깅 전용)
 3. **Add Volume** → Mount path **`/data`**.
 4. **Settings → Networking → Generate Domain** → 나온 주소로 `https://<주소>/` 를 열어 `"status":"ok"`와
-   `priceDb`·`precedentIndex`·`upstageKey`·`molitKey`가 `true`인지 본다.
+   `historyDb`·`priceDb`·`precedentIndex`·`upstageKey`·`molitKey`가 `true`인지 본다.
+   - 서버는 바로 뜨고, 시세 DB 내려받기·판례 인덱스 만들기는 **뒤에서** 돈다 → 처음 몇 분은 `priceDb`·`precedentIndex`가
+     `false`일 수 있다(새로고침하면 바뀐다). `historyDb`가 `false`면 `RAILWAY_RUN_UID=0`을 확인한다.
 - 헬스체크 경로는 `railway.json`이 `/`로 정한다. (Railway가 이 파일을 2026-12-01부터 안 읽는다고 공지 — 그때는 Settings에서 `/` 직접 입력)
 
 ## 6-2. APK 받는 법 (앱)

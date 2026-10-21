@@ -153,6 +153,18 @@ def name_salt() -> bytes:
     return _db().name_salt
 
 
+def writable() -> bool:
+    """기록 DB에 지금 **쓸 수 있는가** — 헬스체크(`historyDb`)용. 예외를 밖으로 내지 않는다.
+
+    볼륨이 root 소유로 붙어 못 쓰는 경우(Railway `RAILWAY_RUN_UID=0` 누락)를 바로 보이게 한다.
+    """
+    try:
+        _db().execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('health_probe', ?)", (_now_iso(),))
+        return True
+    except Exception:  # noqa: BLE001 — 헬스체크는 참/거짓만 말한다
+        return False
+
+
 # ── 예시 리포트 (저장하지 않음, 모든 기기 공용) ─────────────────────────────────
 
 _examples: list[Report] | None = None
@@ -174,14 +186,35 @@ def _example(report_id: str) -> Report | None:
 # ── 리포트 ───────────────────────────────────────────────────────────────────
 
 
+def _parse_reports(rows: list[tuple]) -> list[Report]:
+    """저장된 JSON → Report. **읽지 못하는 행은 건너뛰고 로그만 남긴다** (2026-10-22 리뷰).
+
+    리포트 모양이 바뀐 뒤 옛 행 하나가 검증에 걸리면, 예전에는 목록 전체가 500으로 죽었다.
+    """
+    out: list[Report] = []
+    for row in rows:
+        try:
+            out.append(Report.model_validate_json(row[0]))
+        except Exception as e:  # noqa: BLE001 — 행 하나가 목록 전체를 깨뜨리지 않게
+            _log.error(f"[이력] ⚠ 저장된 리포트 1건을 읽지 못해 건너뜀 ({type(e).__name__})")
+    return out
+
+
 def list_reports(*, device_id: str) -> list[Report]:
-    """이 기기의 이력(최신순) + 맨 끝에 예시 리포트."""
-    rows = _db().execute(
-        "SELECT report_json FROM reports WHERE device_id = ? ORDER BY created_at DESC, rowid DESC",
-        (device_id,),
-    )
-    mine = [Report.model_validate_json(r[0]) for r in rows]
-    return mine + list(_example_reports())
+    """이 기기의 이력(최신순) + 맨 끝에 예시 리포트.
+
+    ⚠ 기록 DB를 열 수 없어도(볼륨 권한·디스크 문제) **예시 리포트는 나간다** — 홈 화면이 에러로
+      덮이지 않게(2026-10-22 리뷰). 원인은 로그와 헬스체크 `historyDb=false`로 보인다.
+    """
+    try:
+        rows = _db().execute(
+            "SELECT report_json FROM reports WHERE device_id = ? ORDER BY created_at DESC, rowid DESC",
+            (device_id,),
+        )
+    except Exception as e:  # noqa: BLE001
+        _log.error(f"[이력] ⚠ 기록 DB를 읽지 못해 예시 리포트만 보냅니다 ({type(e).__name__})")
+        rows = []
+    return _parse_reports(rows) + list(_example_reports())
 
 
 def get(report_id: str, *, device_id: str) -> Report | None:
@@ -193,7 +226,8 @@ def get(report_id: str, *, device_id: str) -> Report | None:
         "SELECT report_json FROM reports WHERE device_id = ? AND id = ?",
         (device_id, report_id),
     )
-    return Report.model_validate_json(rows[0][0]) if rows else None
+    found = _parse_reports(rows)
+    return found[0] if found else None
 
 
 def add(report: Report, *, device_id: str) -> None:
@@ -239,7 +273,13 @@ def get_snapshot(report_id: str, *, device_id: str) -> RegistrySnapshot | None:
         "SELECT snapshot_json FROM snapshots WHERE device_id = ? AND report_id = ?",
         (device_id, report_id),
     )
-    return snapshot_from_json(rows[0][0]) if rows else None
+    if not rows:
+        return None
+    try:
+        return snapshot_from_json(rows[0][0])
+    except Exception as e:  # noqa: BLE001 — 읽지 못하는 기준 = 기준 없음(대조 화면이 그렇게 안내한다)
+        _log.error(f"[대조] ⚠ 저장된 기준 스냅샷을 읽지 못함 — 기준 없음으로 처리 ({type(e).__name__})")
+        return None
 
 
 # ── 판례 카드 캐시 (E-3 라우터 통합, 2026-08-07 · 2026-10-21 기기별) ─────────────

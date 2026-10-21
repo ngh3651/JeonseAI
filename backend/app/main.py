@@ -5,13 +5,17 @@
 지금은 앱↔서버 통신 파이프 검증이 목적입니다.
 """
 
+import importlib.util
 import logging
 import time
+from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from . import settings
 from .dependencies import app_key_ok
 from .routers import content, reports
 
@@ -25,7 +29,40 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
-app = FastAPI(title="전세AI프 API", description="전세 위험 분석 백엔드")
+def _load_prepare_runtime():
+    """`backend/scripts/prepare_runtime.py`를 모듈로 읽는다(스크립트로도, 서버 안에서도 쓴다)."""
+    path = Path(__file__).resolve().parents[1] / "scripts" / "prepare_runtime.py"
+    spec = importlib.util.spec_from_file_location("prepare_runtime", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """서버가 **먼저** 뜨고, 시작 준비(시세 DB 내려받기·판례 인덱스)는 뒤쪽 스레드에서 돈다 (2026-10-22).
+
+    `PREPARE_RUNTIME_ON_START=1`일 때만(Dockerfile이 켠다) — 로컬 개발·테스트에서는 아무것도 받지 않는다.
+    진행 상황은 `GET /`의 준비 상태로 보인다. 준비가 실패해도 서버는 그대로 돈다.
+    """
+    if settings.env_flag("PREPARE_RUNTIME_ON_START"):
+        try:
+            _load_prepare_runtime().start_background()
+        except Exception as e:  # noqa: BLE001 — 준비가 서버 시작을 막지 않는다
+            logger.info(f"[준비] ⚠ 시작 준비를 띄우지 못함 — 서버는 그대로 시작 ({type(e).__name__})")
+    yield
+
+
+# `DISABLE_DOCS=1`이면 API 문서(/docs·/openapi.json)를 끈다 — 공개 배포에서 API 지도를 숨긴다(2026-10-22).
+_DOCS_OFF = settings.docs_disabled()
+app = FastAPI(
+    title="전세AI프 API",
+    description="전세 위험 분석 백엔드",
+    lifespan=_lifespan,
+    docs_url=None if _DOCS_OFF else "/docs",
+    redoc_url=None if _DOCS_OFF else "/redoc",
+    openapi_url=None if _DOCS_OFF else "/openapi.json",
+)
 
 _LOG_SKIP_PATHS = {"/docs", "/openapi.json", "/favicon.ico"}
 
@@ -98,17 +135,19 @@ def health_check():
     ⚠ 키가 **유효한지**는 보지 않는다(외부 호출 0회 — 플랫폼이 몇 초마다 부를 수 있다).
       유효성은 `python scripts/check_keys.py`로 사람이 확인한다.
     """
-    from . import settings
-    from .services import official_price
+    from .services import official_price, store
     from .services.precedent.store import current_index_dir
 
     body: dict = {
         "status": "ok",
+        # 기록 DB에 실제로 쓸 수 있는가 — 볼륨 권한(RAILWAY_RUN_UID=0) 문제를 여기서 바로 본다
+        "historyDb": store.writable(),
         # 시세 DB는 **둘 다** 있어야 참이다(공시가격 + 오피스텔 기준시가) — 반쪽이면 준비 안 됨.
         "priceDb": all(
             official_price.db_path(key).is_file() for key in official_price.DB_FILENAMES
         ),
-        "precedentIndex": (current_index_dir() / "docs.jsonl").is_file(),
+        # 적재가 **맨 마지막에** 쓰는 meta.json으로 본다 — 중간에 끊긴 인덱스를 준비됐다고 하지 않는다
+        "precedentIndex": (current_index_dir() / "meta.json").is_file(),
         "upstageKey": bool(settings.env_str("UPSTAGE_API_KEY")),
         "molitKey": bool(settings.env_str("MOLIT_API_KEY")),
     }

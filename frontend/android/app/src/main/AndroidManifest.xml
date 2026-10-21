@@ -8,7 +8,7 @@
         android:label="전세AI프"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true"><!-- 개발 단계: http(비-HTTPS) 통신 허용. 운영 배포 시 HTTPS로 전환 필요 -->
+        android:usesCleartextTraffic="${usesCleartextTraffic}"><!-- http(비-HTTPS) 통신 허용 여부 — app/build.gradle.kts가 정한다: 개발 빌드는 허용(adb reverse로 http://127.0.0.1:8000), 릴리스는 서버 주소(API_BASE_URL)가 http일 때만 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

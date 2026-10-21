@@ -30,6 +30,12 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 
+# 앱 릴리스 서명 키 (2026-10-22) — 절대 커밋 금지. CI는 GitHub 비밀값에서 빌드 때마다 만든다.
+# (frontend/android/.gitignore에도 있지만, 키 파일을 저장소 어디에 두든 막히게 맨 위에도 둔다)
+frontend/android/key.properties
+*.jks
+*.keystore
+
 # OS
 .DS_Store
 Thumbs.db

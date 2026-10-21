@@ -34,4 +34,6 @@ USER app
 EXPOSE 8000
 
 # 준비(폴더·시세 DB 내려받기·판례 인덱스) → 서버. 준비 단계는 실패해도 서버 시작을 막지 않는다.
-CMD ["sh", "-c", "python scripts/prepare_runtime.py; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# ⚠ --no-access-log: uvicorn 접근 로그는 주소 전체를 찍는다 → 챗봇 질문(GET /api/glossary/lookup?q=…)이
+#   로그에 남는다. 앱 자체의 [요청] 로그(경로·상태·시간만)는 그대로 남는다.
+CMD ["sh", "-c", "python scripts/prepare_runtime.py; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log"]

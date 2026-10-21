@@ -309,7 +309,9 @@ def test_도커파일과_railway_설정이_약속대로다():
     assert "FROM python:3.12-slim" in dockerfile
     assert "PYTHONUNBUFFERED=1" in dockerfile
     assert "USER app" in dockerfile  # root가 아닌 사용자
-    assert "prepare_runtime.py" in dockerfile and "--reload" not in dockerfile
+    assert "--reload" not in dockerfile
+    # 접근 로그는 주소 전체(챗봇 질문 ?q=…)를 찍는다 → 끈다 (2026-10-22 리뷰)
+    assert "--no-access-log" in dockerfile
     assert "--host 0.0.0.0" in dockerfile and "${PORT:-8000}" in dockerfile
 
     ignore = (_REPO / ".dockerignore").read_text(encoding="utf-8").split()

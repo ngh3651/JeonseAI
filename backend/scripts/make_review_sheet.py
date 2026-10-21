@@ -36,7 +36,8 @@ from app.services.precedent import explainer  # noqa: E402
 from app.services.precedent.models import RISK_TAGS  # noqa: E402
 from app.services.precedent.service import PrecedentService  # noqa: E402
 
-OUT = Path(__file__).resolve().parents[2] / "docs" / "precedent-review-sheet.md"
+# 2026-10-21: docs/에 새 문서를 만들지 않는다 → git 제외 폴더 backend/out/ 에 쓴다
+OUT = Path(__file__).resolve().parents[1] / "out" / "precedent-review-sheet.md"
 
 # 원문은 길다. 검수자가 읽을 만큼만 싣고, 판단이 애매하면 링크로 가게 한다.
 _HOLDING_CHARS = 700
@@ -132,6 +133,7 @@ def main() -> None:
             "",
         ]
 
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text("\n".join(lines), encoding="utf-8")
     print(f"\n생성 완료 → {OUT}")
     print(f"  검수 대상 {len(todo)}건 / 이미 검수됨 {len(done)}건")

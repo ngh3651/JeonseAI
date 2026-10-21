@@ -22,6 +22,6 @@ adb reverse tcp:8000 tcp:8000   # 실기기 USB 연결 후, 서버 통신이 필
 flutter run
 ```
 
-- 화면은 **Repository 인터페이스에만 의존**합니다. 현재는 `DummyRepository`로 더미 데이터를
-  쓰고, Phase D~E에서 `ApiRepository`로 구현만 교체합니다.
+- 화면은 **Repository 인터페이스에만 의존**합니다. 실제 앱은 `Api*Repository`(서버 호출)를 쓰고
+  (`lib/main.dart`), `Dummy*Repository`는 테스트에서만 씁니다.
 - 디자인은 **디자인 시스템 토큰·컴포넌트만 재사용**합니다 (개별 화면에 색·크기 하드코딩 금지).

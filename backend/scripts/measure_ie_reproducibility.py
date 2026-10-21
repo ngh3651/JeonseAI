@@ -40,7 +40,8 @@ from app.services.extraction import (  # noqa: E402
     call_information_extract,
 )
 
-DOC_ROOT = _BACKEND_ROOT.parent / "docs"
+# 2026-10-21: docs/에 새 문서를 만들지 않는다 → 기본 출력은 git 제외 폴더 backend/out/
+DOC_ROOT = _BACKEND_ROOT / "out"
 LIST_KEYS = RegistryExtract.LIST_KEYS
 SCALAR_KEYS = ("address", "document_title", "exclusive_area_sqm")
 
@@ -282,7 +283,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--out",
-        default=str(DOC_ROOT / "ie-reproducibility-2026-07-28.md"),
+        default=str(DOC_ROOT / "ie-reproducibility.md"),
         help="보고서 저장 경로",
     )
     args = parser.parse_args()

@@ -51,7 +51,8 @@ from app.services.ocr_layout import OcrPage, group_lines, parse_words  # noqa: E
 
 OUT_DIR = _BACKEND_ROOT / "out"
 RAW_DIR = OUT_DIR / "llm_compare"
-DOC_PATH = _BACKEND_ROOT.parent / "docs" / "llm-comparison-2026-07-28.md"
+# 2026-10-21: docs/에 새 문서를 만들지 않는다 → 기본 출력은 git 제외 폴더 backend/out/
+DOC_PATH = OUT_DIR / "llm-comparison.md"
 FIXTURES = _BACKEND_ROOT / "tests" / "fixtures" / "registry"
 
 COMPARED_FIELDS = (

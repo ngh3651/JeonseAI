@@ -81,3 +81,32 @@ iOS · 월세·반전세 · 계약서 교차검증(보류 확정) · 소액임�
 
 8/14 이전 문서 40여 개는 보관 브랜치 **`archive-2026-10-21`**에 그대로 있다: `git show archive-2026-10-21:docs/<파일>`.
 옛 문서는 **역사 기록**이지 지금의 정답이 아니다.
+
+## 10. 알려진 한계 (화면이 실제보다 더 말하는 곳)
+
+- **판례 검수**: `seed_cases.json` 11건 중 `verified:true` 10건이지만, 사람이 검수한 것은 **4건**(정민재 2026-08-12)뿐이고
+  **7건은 "야간 자율 작업(웹 검증) — 정민재 검수 대기"**다. 앱은 이 7건도 검수된 판례처럼 보여준다 → **결선 전 정민재 검수 필요.**
+- **손실 시뮬레이터**: 계산이 **예시(자리표시)**다(`loss_simulator_screen.dart`, 낙찰가율 0.7은 "UI 배치용"). 낙찰가율 출처를 확보하기 전까지 예시 계산이다.
+- **로딩 화면**: 진행 단계 문장은 **시간에 맞춘 연출**(700ms 타이머)이고, 서버의 실제 진행과 연결돼 있지 않다.
+- **악성임대인 카드**: `blacklist.json`에 샘플 1줄뿐이라 카드는 **늘 "명단 대조 아직 안 됨"**이다.
+
+## 11. 정리 대상 (임시·더미 — 때가 되면 지운다)
+
+옛 정리 트래커(`archive-2026-10-21:docs/cleanup-tracker.md`)에서 아직 열린 것만 옮겼다.
+
+- `backend/app/dummy_data.py` — 예시 리포트·용어 칩을 아직 여기서 만든다(`store.py`가 예시 시드로 쓴다)
+- `backend/app/main.py`의 `POST /api/upload` — 레거시 통신 검증용. 지금 앱은 부르지 않는다
+- `backend/app/main.py`의 `app.router.routes.extend(...)` — fastapi/starlette 버그 우회. 버전 정리 때 `include_router`로
+- `backend/data/cases.json` — 쓰지 않는 옛 판례 파일(판례 화면은 `precedents/`)
+- `backend/data/`의 `is_sample: true` 항목 — `blacklist.json` 샘플 1건(가짜 이름)
+- `frontend/lib/app/config.dart`의 `devAutoLogin`(가짜 자동 로그인) · `devKeepRegistryPhotos`(폰에 등기부 사진 보관 — 실명 남음)
+- `frontend/lib/repositories/`의 `Dummy*Repository` — 테스트 전용. test/로 옮기거나 지운다
+- `frontend/lib/repositories/price_source.dart` — 배선 안 된 확장점(배선하거나 지운다)
+- `frontend/lib/design_system/gallery/` (`/gallery`) — 개발용 카탈로그. 유지할지 결정
+- 법제처 `OC=test` 폴백(`collect_precedents.py`) — 정식 `LAW_API_OC` 발급 시 경고만 사라짐
+- 개발 도구 스크립트: `run_rules.py` · `test_extract.py` · `demo_precedent.py` · `test_ocr_coords.py` · `probe_document_parse.py` ·
+  `backend/tools/chat_ab.py`(+`data/chat_eval.json`) — 유지할지 결정
+- `compare_llm_backends.py` — `compare_llm.py`와 중복. 판례 역할을 옮긴 뒤 삭제
+- `backend/app/services/document_parse.py` — `LAYOUT_SOURCE=document_parse`일 때만 동작. 안 쓰기로 정하면 삭제
+- 원응답 저장 코드(`artifacts.py` · IE/OCR `_save_raw_*`) — 이제 `SAVE_RAW_RESPONSES=1`일 때만 저장. 진단이 끝나면 삭제
+- `backend/out/` · 로컬 `design_handoff_*/` 폴더 — 실명 샘플 포함(커밋 안 됨). 로컬에서 지운다

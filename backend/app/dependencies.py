@@ -13,10 +13,14 @@
 
 from __future__ import annotations
 
+import hmac
 import re
+import threading
+import time
+from collections import deque
 from typing import Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 
 from . import settings
 
@@ -46,3 +50,69 @@ def get_current_user(
     if raw == settings.LEGACY_DEVICE_ID or not _DEVICE_ID_RE.fullmatch(raw):
         raise HTTPException(status_code=400, detail="기기 정보 형식이 올바르지 않아요")
     return raw
+
+
+# ── 앱 키 (크레딧 보호의 정문) ─────────────────────────────────────────────────
+# 검사 자체는 `main.py`의 미들웨어가 한다 — `/api/*` 전부에 빠짐없이 걸기 위해서다
+# (라우터마다 의존성을 붙이면 새 엔드포인트에서 빠뜨린다).
+
+
+def app_key_ok(sent: Optional[str]) -> bool:
+    """`APP_KEY`가 비어 있으면 검사하지 않는다. 있으면 같은 값인지 **상수 시간**으로 비교한다."""
+    expected = settings.app_key()
+    if not expected:
+        return True
+    return hmac.compare_digest((sent or "").encode("utf-8"), expected.encode("utf-8"))
+
+
+# ── 속도 제한 (기기 × IP, 최근 1시간) ──────────────────────────────────────────
+# 외부 라이브러리 없이 메모리에 둔다. 서버가 재시작되면 초기화된다 — 크레딧을 지키는
+# **과속 방지턱**이지 보안 장치가 아니다(정문은 APP_KEY).
+
+_WINDOW_SECONDS = 3600.0
+_hits: dict[tuple[str, str], deque[float]] = {}
+_hits_lock = threading.Lock()
+
+
+def client_ip(request: Request) -> str:
+    """요청을 보낸 주소. 플랫폼 프록시(Railway 등) 뒤에서는 원래 주소가 `X-Forwarded-For`로 온다.
+
+    ⚠ 헤더는 클라이언트가 지어낼 수 있다. 그래서 IP 하나만으로 제한하지 않고 **기기 id와 묶는다** —
+      둘 다 바꿔 가며 우회하려면 APP_KEY부터 알아야 한다.
+    """
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if forwarded:
+        return forwarded
+    return request.client.host if request.client else "unknown"
+
+
+def reset_rate_limit() -> None:
+    """테스트용 — 쌓인 호출 기록을 비운다."""
+    with _hits_lock:
+        _hits.clear()
+
+
+def limit_analyze(request: Request, device_id: str = Depends(get_current_user)) -> None:
+    """분석·대조(Upstage 크레딧을 쓰는 두 API)에 거는 상한. 넘으면 429.
+
+    상한 = `RATE_LIMIT_ANALYZE_PER_HOUR`(기본 30, 0 이하 = 제한 없음), 최근 1시간 이동 창.
+    """
+    limit = settings.rate_limit_analyze_per_hour()
+    if limit <= 0:
+        return
+    key = (device_id, client_ip(request))
+    now = time.monotonic()
+    with _hits_lock:
+        bucket = _hits.setdefault(key, deque())
+        while bucket and now - bucket[0] >= _WINDOW_SECONDS:
+            bucket.popleft()
+        if len(bucket) >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail="분석을 너무 자주 했어요. 한 시간쯤 뒤에 다시 시도해 주세요",
+            )
+        bucket.append(now)
+        # 빈 칸이 끝없이 쌓이지 않게 가끔 비운다
+        if len(_hits) > 10_000:
+            for k in [k for k, v in _hits.items() if not v]:
+                _hits.pop(k, None)

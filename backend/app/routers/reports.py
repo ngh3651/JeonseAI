@@ -24,7 +24,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from .. import dummy_data
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, limit_analyze
 from ..schemas.contract import CaseMatch, CompareResult, QuestionGroup, Report
 from ..services import compare, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
@@ -38,7 +38,7 @@ _log = logging.getLogger("jeonseai")
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 파일당 10MB (기존 /api/upload와 동일 상한)
 
 
-@router.post("/analyze", response_model=Report)
+@router.post("/analyze", response_model=Report, dependencies=[Depends(limit_analyze)])
 def analyze(
     files: list[UploadFile] = File(..., description="등기부 페이지 이미지(여러 장)"),
     deposit: int = Form(..., description="예정 보증금(원)"),
@@ -74,7 +74,11 @@ def analyze(
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
-@router.post("/reports/{report_id}/compare", response_model=CompareResult)
+@router.post(
+    "/reports/{report_id}/compare",
+    response_model=CompareResult,
+    dependencies=[Depends(limit_analyze)],  # 다시 분석하므로 같은 상한을 쓴다
+)
 def compare_registry(
     report_id: str,
     files: list[UploadFile] = File(default=[], description="이번에 뗀 등기부 사진(여러 장)"),

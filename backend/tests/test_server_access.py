@@ -179,3 +179,121 @@ def test_스냅샷은_JSON으로_오가도_똑같다():
     )
     back = store.snapshot_from_json(store.snapshot_to_json(snap))
     assert back == snap
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ③ 앱 키 (APP_KEY) — 크레딧 보호의 정문
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_앱_키가_없으면_검사하지_않는다(client, monkeypatch):
+    monkeypatch.delenv("APP_KEY", raising=False)
+    assert client.get("/api/reports").status_code == 200
+
+
+def test_앱_키가_있으면_api는_같은_키를_요구한다(client, monkeypatch):
+    monkeypatch.setenv("APP_KEY", "booth-key-2026")
+
+    no_key = client.get("/api/reports")
+    assert no_key.status_code == 401
+    assert "detail" in no_key.json() and "앱" in no_key.json()["detail"]  # 한국어 JSON
+    assert client.get("/api/reports", headers={"X-App-Key": "wrong"}).status_code == 401
+    assert client.get("/api/glossary").status_code == 401  # 콘텐츠 API도 같은 문
+    assert (
+        client.get("/api/reports", headers={"X-App-Key": "booth-key-2026"}).status_code == 200
+    )
+
+
+def test_앱_키가_있어도_헬스체크와_문서는_열려_있다(client, monkeypatch):
+    monkeypatch.setenv("APP_KEY", "booth-key-2026")
+    assert client.get("/").status_code == 200
+    assert client.get("/docs").status_code == 200
+    assert client.get("/openapi.json").status_code == 200
+
+
+def test_앱_키가_틀리면_분석이_시작되지도_않는다(client, no_network, monkeypatch):
+    """401은 업로드를 읽기 전에 나가야 한다 — 크레딧을 1원도 쓰지 않는다."""
+    monkeypatch.setenv("APP_KEY", "booth-key-2026")
+    calls = no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))])
+    assert _analyze(client, PHONE_A).status_code == 401
+    assert calls == [], "앱 키가 틀렸는데 외부 API를 불렀다"
+
+
+def test_앱_키_비교는_상수_시간_비교를_쓴다():
+    import inspect
+
+    assert "hmac.compare_digest" in inspect.getsource(dependencies.app_key_ok)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ④ 속도 제한 — 기기 × IP, 최근 1시간
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_분석은_한_시간_상한을_넘으면_429다(client, no_network, monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "2")
+    no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))] * 3)
+
+    assert _analyze(client, PHONE_A).status_code == 200
+    assert _analyze(client, PHONE_A).status_code == 200
+    third = _analyze(client, PHONE_A)
+    assert third.status_code == 429
+    assert "시도" in third.json()["detail"]  # 한국어 안내
+
+    # 다른 기기는 따로 센다
+    assert _analyze(client, PHONE_B).status_code == 200
+
+
+def test_대조도_같은_상한에_들어간다(client, no_network, monkeypatch):
+    """대조는 새 사진을 다시 분석한다 — 크레딧을 쓰는 길이라 같은 상한을 쓴다."""
+    monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "1")
+    no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))])
+    rid = _analyze(client, PHONE_A).json()["id"]
+
+    assert client.post(f"/api/reports/{rid}/compare", headers=PHONE_A).status_code == 429
+
+
+def test_조회는_상한에_걸리지_않는다(client, monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "1")
+    for _ in range(5):
+        assert client.get("/api/reports", headers=PHONE_A).status_code == 200
+
+
+def test_한_시간이_지나면_다시_된다(monkeypatch):
+    """이동 창 — 오래된 기록은 빠진다. 시계를 직접 움직여 확인한다."""
+    from starlette.requests import Request
+
+    monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "1")
+    now = [1000.0]
+    monkeypatch.setattr(dependencies.time, "monotonic", lambda: now[0])
+    request = Request({"type": "http", "headers": [], "client": ("10.0.0.1", 1234)})
+
+    dependencies.limit_analyze(request, "phone-cccc-0003")
+    with pytest.raises(HTTPException) as e:
+        dependencies.limit_analyze(request, "phone-cccc-0003")
+    assert e.value.status_code == 429
+
+    now[0] += 3601
+    dependencies.limit_analyze(request, "phone-cccc-0003")  # 다시 통과
+
+
+def test_상한을_0으로_두면_제한하지_않는다(monkeypatch):
+    from starlette.requests import Request
+
+    monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "0")
+    request = Request({"type": "http", "headers": [], "client": ("10.0.0.1", 1234)})
+    for _ in range(50):
+        dependencies.limit_analyze(request, "phone-dddd-0004")
+
+
+def test_프록시_뒤에서는_원래_주소로_센다():
+    from starlette.requests import Request
+
+    request = Request(
+        {
+            "type": "http",
+            "headers": [(b"x-forwarded-for", b"203.0.113.7, 10.0.0.2")],
+            "client": ("10.0.0.2", 1234),
+        }
+    )
+    assert dependencies.client_ip(request) == "203.0.113.7"

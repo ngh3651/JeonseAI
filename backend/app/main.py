@@ -10,7 +10,9 @@ import time
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from .dependencies import app_key_ok
 from .routers import content, reports
 
 # ── 서버 콘솔 로그 (한국어, 사람이 읽는 용도) ──────────────────────────────────
@@ -26,6 +28,29 @@ if not logger.handlers:
 app = FastAPI(title="전세AI프 API", description="전세 위험 분석 백엔드")
 
 _LOG_SKIP_PATHS = {"/docs", "/openapi.json", "/favicon.ico"}
+
+
+# ⚠ 미들웨어 순서: **나중에 등록한 것이 바깥**이다. 앱 키 검사를 먼저 등록해 안쪽에 두면
+#   아래 요청 로그가 401도 한 줄로 남기고, CORS가 401 응답에도 헤더를 붙인다.
+@app.middleware("http")
+async def require_app_key(request: Request, call_next):
+    """`APP_KEY`가 설정돼 있으면 `/api/*` 요청은 같은 값의 `X-App-Key`가 있어야 한다 (2026-10-21).
+
+    배포 주소가 알려지면 누구나 분석을 돌려 **Upstage 크레딧**을 쓸 수 있다. 이 키가 정문이다.
+    헬스체크(`GET /`)와 API 문서(`/docs`)는 열어 둔다 — 플랫폼 헬스체크와 사람 확인용이다.
+    브라우저 사전 요청(OPTIONS)은 헤더를 싣지 못하므로 통과시킨다(CORS가 답한다).
+    """
+    path = request.url.path
+    if (
+        (path == "/api" or path.startswith("/api/"))
+        and request.method != "OPTIONS"
+        and not app_key_ok(request.headers.get("x-app-key"))
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "앱 인증 정보가 맞지 않아요. 앱을 최신 버전으로 업데이트해 주세요"},
+        )
+    return await call_next(request)
 
 
 @app.middleware("http")

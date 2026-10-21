@@ -372,8 +372,12 @@ def analyze(
     deposit: int,
     market_price: int | None,
     alias: str | None,
+    device_id: str,
 ) -> Report:
     """업로드 이미지 → (IE ∥ OCR→구조화) → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)
+
+    `device_id`: 이 분석을 요청한 기기(`dependencies.get_current_user`). 리포트·대조 기준이
+    이 기기의 기록으로 저장된다 — 다른 기기에서는 보이지 않는다(2026-10-21).
 
     **세 경로가 있고, 판정에 들어가는 것은 하나뿐이다** (2026-07-28):
 
@@ -536,13 +540,15 @@ def analyze(
                 report=report,
                 page_count=len(images),
                 manual_market_price=market_price,
+                name_salt=store.name_salt(),
             ),
+            device_id=device_id,
         )
         report.comparable = True
     except Exception:  # noqa: BLE001
         _log.error("[대조] ⚠ 기준 스냅샷을 남기지 못했습니다 — 이 리포트는 대조 기준이 될 수 없어요", exc_info=True)
     try:
-        store.add(report)
+        store.add(report, device_id=device_id)
     except Exception:  # noqa: BLE001 — 이력 저장 실패로 이번 분석을 잃지 않는다
         _log.error("[이력] ⚠ 저장 실패 — 이번 리포트는 응답으로만 나갑니다", exc_info=True)
     try:

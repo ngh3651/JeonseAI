@@ -47,6 +47,10 @@ backend/out/
 # 판례 RAG 벡터 인덱스 (재생성 산출물 — scripts/ingest_precedents.py로 재구축)
 backend/data/precedents/index/
 
+# 분석 기록 DB (2026-10-21 — 리포트·대조 기준, 기기별). 사용자 기록이라 절대 커밋 금지.
+# 위치는 DATA_DIR 환경변수로 바꾼다(클라우드: 영구 볼륨 /data).
+backend/data/runtime/
+
 # 공시가격·기준시가 원본 CSV/ZIP과 변환된 SQLite (2026-08-03)
 # 원본은 수 GB, SQLite도 수백 MB — git에 넣지 않는다. 정부 사이트에서 다시 받고
 # scripts/build_price_db.py 로 재생성한다(README '데이터 파일 도착 후 할 일' 참고).

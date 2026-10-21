@@ -104,4 +104,6 @@ def test_예시_등기부는_문서_신뢰도_게이트를_통과한다():
 def test_예시는_삭제할_수_없는_id다():
     """계약 §3.4 — 예시 리포트는 조회만 허용(삭제 시도 403)."""
     assert store.EXAMPLE_IDS == dummy_data.EXAMPLE_IDS
-    assert store.get("dummy-example") is not None
+    # 예시는 **어느 기기에서나** 보인다
+    assert store.get("dummy-example", device_id="legacy-device") is not None
+    assert store.get("dummy-example", device_id="other-device-0001") is not None

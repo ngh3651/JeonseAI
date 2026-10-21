@@ -18,3 +18,29 @@ os.environ["UPSTAGE_API_KEY"] = ""
 # 키를 비우면 `market_price._load_api_key`가 즉시 MarketPriceError를 내고,
 # `price_lookup`이 그것을 '조회 불가' 안내로 바꾼다 — 리포트는 그대로 완성된다.
 os.environ["MOLIT_API_KEY"] = ""
+
+# 서버 문(2026-10-21): 개발자 `.env`의 값이 테스트 결과를 바꾸지 않게 비운다.
+# (load_dotenv는 이미 있는 환경변수를 덮지 않으므로, 빈 값이 그대로 유지된다)
+os.environ["APP_KEY"] = ""
+os.environ["REQUIRE_DEVICE_ID"] = ""
+os.environ["SAVE_RAW_RESPONSES"] = ""
+os.environ["RATE_LIMIT_ANALYZE_PER_HOUR"] = ""
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolated_runtime(tmp_path_factory, monkeypatch):
+    """테스트마다 **빈 기록 DB**를 쓴다 — 진짜 `backend/data/runtime/app.db`를 건드리지 않는다.
+
+    속도 제한 기록도 비운다(앞 테스트의 분석 횟수가 뒤 테스트를 429로 막지 않게).
+    """
+    from app import dependencies
+    from app.services import store
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path_factory.mktemp("runtime")))
+    store.reset()
+    if hasattr(dependencies, "reset_rate_limit"):
+        dependencies.reset_rate_limit()
+    yield
+    store.reset()

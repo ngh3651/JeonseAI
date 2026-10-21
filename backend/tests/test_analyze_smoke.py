@@ -29,6 +29,7 @@ import pytest
 import requests
 from PIL import Image
 
+from app import settings
 from app.schemas.internal import Grade
 from app.services import artifacts, extraction, ocr as ocr_service
 from app.services.llm.prompts import EXPLAIN_SYSTEM_PROMPT
@@ -295,7 +296,9 @@ def test_이력_저장이_터져도_리포트는_응답으로_나간다(client, 
     """리포트가 완성된 **뒤**의 실패로 리포트를 잃지 않는다."""
     from app.services import store
 
-    monkeypatch.setattr(store, "add", lambda report: (_ for _ in ()).throw(OSError("디스크")))
+    monkeypatch.setattr(
+        store, "add", lambda report, **kw: (_ for _ in ()).throw(OSError("디스크"))
+    )
 
     no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))])
     resp = post_analyze(client, [blank_image(PAGE_W, PAGE_H)])
@@ -381,7 +384,7 @@ def test_판례_매칭이_터져도_500이_아니라_빈_목록이_나온다(cli
 
     report_id = next(iter(store.EXAMPLE_IDS))
     # 앞선 테스트가 남긴 캐시를 비운다 — 캐시가 있으면 아래 예외 경로에 닿지도 못한다.
-    store._cases_cache.pop(report_id, None)
+    store.clear_cases(report_id, device_id=settings.LEGACY_DEVICE_ID)
 
     def boom():
         raise RuntimeError("임베딩 크레딧 소진 (테스트에서 일부러 냄)")
@@ -400,7 +403,7 @@ def test_실패한_판례_결과는_캐시되지_않는다(client, monkeypatch):
     from app.services import store
 
     report_id = next(iter(store.EXAMPLE_IDS))
-    store._cases_cache.pop(report_id, None)
+    store.clear_cases(report_id, device_id=settings.LEGACY_DEVICE_ID)
 
     def boom():
         raise RuntimeError("일시적 실패")
@@ -408,4 +411,6 @@ def test_실패한_판례_결과는_캐시되지_않는다(client, monkeypatch):
     monkeypatch.setattr(reports_router.precedent_service, "get_service", boom)
     assert client.get(f"/api/reports/{report_id}/cases").json() == []
 
-    assert store.get_cases(report_id) is None, "실패 결과가 캐시에 남았다 — 복구가 막힌다"
+    assert store.get_cases(report_id, device_id=settings.LEGACY_DEVICE_ID) is None, (
+        "실패 결과가 캐시에 남았다 — 복구가 막힌다"
+    )

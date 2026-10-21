@@ -175,9 +175,11 @@ def delete_report(
 
 
 @router.get("/reports/{report_id}/cases", response_model=list[CaseMatch])
-async def report_cases(
+def report_cases(
     report_id: str, device_id: str = Depends(get_current_user)
 ) -> list[CaseMatch]:
+    # 동기(def) 핸들러다 (2026-10-21) — 기록 DB 조회와 판례 검색·Solar 호출(수 초)이 모두
+    # 막히는 호출이라, async로 두면 그동안 **서버 전체**(다른 사람 요청)가 멈춘다. 스레드풀에서 돌게 한다.
     report = store.get(report_id, device_id=device_id)
     if report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")

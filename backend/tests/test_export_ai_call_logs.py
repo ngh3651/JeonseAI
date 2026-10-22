@@ -152,5 +152,5 @@ def test_파일_객체를_기록해도_실제_업로드는_비지_않는다():
 
     stream = io.BytesIO(b"\x89PNG" + b"0" * 500)
     content, _ = ail.describe_request({"files": {"document": ("1.png", stream, "image/png")}, "data": {"model": "ocr"}})
-    assert "505바이트" in content["files"][0]["내용"]
+    assert "504바이트" in content["files"][0]["내용"]
     assert stream.read() == b"\x89PNG" + b"0" * 500  # 되감겨 있어 실제 호출이 같은 내용을 보낸다

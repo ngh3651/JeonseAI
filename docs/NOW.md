@@ -1,6 +1,6 @@
 # NOW — 지금 상태와 할 일
 
-> **마지막 확인: 2026-10-22** · 서버 1단계 `feat/p0-backend-deploy`(PR #3) + 앱 1단계 `feat/p0-app-deploy`(PR #4 — PR #3 다음에 머지) 반영
+> **마지막 확인: 2026-10-22** · 서버 1단계 `feat/p0-backend-deploy`(PR #3) + 앱 1단계 `feat/p0-app-deploy`(PR #4 — PR #3 다음에 머지) + 촬영·개인정보 `feat/p1-capture-privacy`(PR #5) 반영
 > · 계약 지킴이 알림·지금 할 일·요금제·테스트 결제 = `feat/p1-journey-business`(PR #5 다음에 머지)
 > **이 파일이 현재 상태의 유일한 정본이다.** 작업이 끝날 때마다 고친다. 코드와 다르면 코드가 맞다.
 
@@ -18,7 +18,7 @@
 |---|---|---|---|
 | 분석 | 사진 → Upstage IE·OCR·Solar 병렬 → 규칙 엔진 판정 → Solar 설명. 실측 21~31초 | — | `backend/app/services/report_builder.py` |
 | 같은 사진 재현성 | 같은 사진 5회 → IE 결과 거의 같음(가압류 `cause` 글자만 흔들림, 7/28 실측) | 결과가 매번 다른 원인은 **사진이 매번 달라서**다 | 보관 브랜치 `ie-reproducibility-2026-07-28*.md` |
-| 촬영 | 시스템 카메라(`image_picker`), 미리보기·가이드 없음. ✅ **서버 촬영 검사**(P1-1, 2026-10-22): IE·OCR **전에** 장마다 흐림·어두움·빛 번짐·글자 없음·해상도(Pillow+numpy, AI 아님, 장당 0.15~0.4초) — 심하면 **분석 전 거절**(400, 크레딧 0원, "2쪽이 흐려요 — 다시 찍어 주세요 (이유)"), 가벼우면 분석하고 리포트에 `captureCheck`. OCR 뒤 쪽 번호(N/M) 안 보이면 '잘림 의심'. 비상 스위치 `CAPTURE_CHECK=warn/off`. ✅ 앱: 거절되면 촬영 화면으로 돌아가 **몇 쪽이 왜** + **그 장만 다시 찍어 바꾸기**(나머지 장 그대로) → 다시 보내기. 리포트에도 '확인 필요' 장 안내 + [다시 찍어 새로 분석]. ✅ **같은 사진 = 같은 결과**: 같은 기기·같은 사진 묶음(순서 포함)·같은 보증금·시세면 24시간 동안 같은 리포트를 크레딧 없이(`ANALYSIS_CACHE_HOURS`) | 기준값은 **합성 사진으로만** 정했다 — **종이 촬영본은 아직 한 번도 검증 안 함**(아래 할 일의 측정 도구로 잰다). 기울기·원근 보정 없음 | `backend/app/services/capture_check.py`, `analysis_cache.py`, `frontend/lib/screens/search/capture_issue_panel.dart` |
+| 촬영 | 시스템 카메라(`image_picker`), 미리보기·가이드 없음. ✅ **서버 촬영 검사**(P1-1, 2026-10-22): IE·OCR **전에** 장마다 흐림·어두움·빛 번짐·글자 없음·해상도(Pillow+numpy, AI 아님, 장당 0.15~0.4초) — 심하면 **분석 전 거절**(400, 크레딧 0원, "2쪽이 흐려요 — 다시 찍어 주세요 (이유)"), 가벼우면 분석하고 리포트에 `captureCheck`. OCR 뒤 쪽 번호(N/M) 안 보이면 '잘림 의심'. 비상 스위치 `CAPTURE_CHECK=warn/off`. ✅ 앱: 거절되면 촬영 화면으로 돌아가 **몇 쪽이 왜** + **그 장만 다시 찍어 바꾸기**(나머지 장 그대로) → 다시 보내기. 리포트에도 '확인 필요' 장 안내 + [다시 찍어 새로 분석]. ✅ **같은 사진 = 같은 결과**: 같은 기기·같은 사진 묶음(순서 포함)·같은 보증금·시세면 24시간 동안 같은 리포트를 크레딧 없이(`ANALYSIS_CACHE_HOURS`) — 새로 배포하면(커밋이 바뀌면) 저절로 빗나감 | 기준값은 **합성 사진으로만** 정했다 — **종이 촬영본은 아직 한 번도 검증 안 함**(아래 할 일의 측정 도구로 잰다). 기울기·원근 보정 없음 | `backend/app/services/capture_check.py`, `analysis_cache.py`, `frontend/lib/screens/search/capture_issue_panel.dart` |
 | 서버 주소 | ✅ **빌드 때** 넣는다: `--dart-define=API_BASE_URL=https://…`(안 넣으면 `http://127.0.0.1:8000` + `adb reverse`). 앱 키도 `--dart-define=APP_KEY=…`(있을 때만 `X-App-Key`). CI 'APK 빌드'가 저장소 변수 `API_BASE_URL`·비밀값 `APP_KEY`로 release APK를 만든다 | 변수 `API_BASE_URL`이 아직 없다(Railway 주소가 나와야 넣는다) → 지금 CI APK는 USB용 기본 주소 | `frontend/lib/app/config.dart`, `.github/workflows/ci.yml` |
 | 앱 서명 | ✅ `android/key.properties`가 있으면 릴리스 키, 없으면 **디버그 키로 되돌아감**(CI·다른 PC도 빌드됨). CI는 비밀값 4개(`ANDROID_KEYSTORE_BASE64`·`ANDROID_KEYSTORE_PASSWORD`·`ANDROID_KEY_ALIAS`·`ANDROID_KEY_PASSWORD`)가 다 있을 때만 그 키. 평문(http) 통신은 개발 빌드·http 주소 APK에서만 | 서명 키를 아직 안 정함 → 지금 APK는 디버그 키. 디버그↔릴리스 키 APK는 서로 덮어 설치가 안 된다(지우고 다시 → 기록이 끊김) | `frontend/android/app/build.gradle.kts` |
 | 분석 기록 | ✅ **기기별**(`X-Device-Id`) + **SQLite 영구 저장**(`${DATA_DIR}/app.db`, 리포트·대조 기준). 다른 기기 기록은 404. 판례 카드 캐시만 메모리(재시작 뒤 다시 만듦). 기록 DB를 못 열어도 목록은 예시 리포트를 돌려줌. ✅ 앱(PR #4)이 처음 실행 때 UUID를 한 번 만들어(`device_id_v1`) **모든 요청**에 싣는다 | 옛 APK(8/14 코드)는 여전히 공용 `legacy-device`를 쓴다 → 새 APK로 바꿔 설치. 앱을 지우면 새 id(예전 기록과 끊김) | `backend/app/services/store.py`, `dependencies.py`, `frontend/lib/services/device_id.dart` |
@@ -30,7 +30,7 @@
 | 결제 | ✅ (2026-10-22) 요금제 화면(마이·여정 맨 아래) — 무료 · 계약 지킴이 패스 · 기관용(문의), 가격은 `pricing.json`의 **예시**. 토스 공식 결제위젯 SDK로 **테스트 결제** → 서버가 요금제 가격으로 금액 검사 후 승인(테스트 키만, `live_` 거부) → 패스(기기별) → 영수증 "테스트 결제 — 실제 청구 없음". 패스가 있으면 알림 배너·다시 대조·폰 알림에 "지킴이 패스" **표시만** | 가격 미확정(6절 #5). 패스는 기기에 붙어 앱을 지우면 안 보인다 — 카카오 로그인 뒤 계정으로(주인 키는 서버 `get_pass_owner`·앱 `passOwnerKey` 한 곳) | `payments.py`, `pricing.json`, `checkout_screen.dart` |
 | 웹 버전 | 없음 (`web/` 폴더 없음). 만들려면 사진 처리 8~10개 파일 수정, 1~3일 | 아이폰 심사위원은 체험 불가 | — |
 | 시세 | 실거래가 → 공시가격×1.40 → 기준시가 3단 조회, DB 1,807만 행(로컬 전용) | 배포 서버로 DB 파일을 옮겨야 함 | `price_resolver.py`, `.gitignore` |
-| 테스트 | 서버 **911 통과·7 건너뜀**(키 없이, 2026-10-22 — PR #5 + 결제 23) / 앱 **309건**(2026-10-22 — PR #4 220 + PR #5 + 알림·지금 할 일·요금제·결제) | — | `.github/workflows/ci.yml` (문서·서버·앱·**APK 빌드** 4개 작업) |
+| 테스트 | 서버 **916 통과·7 건너뜀**(키 없이, 2026-10-22 — PR #5의 893 + 요금제·결제 23. 건너뜀 7 = 실명 원본 파일이 있어야 도는 것) / 앱 **309건**(2026-10-22 — PR #5의 246 + 알림·지금 할 일·요금제·결제 63) | — | `.github/workflows/ci.yml` (문서·서버·앱·**APK 빌드** 4개 작업) |
 
 ## 3. 결선 사실
 

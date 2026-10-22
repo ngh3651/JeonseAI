@@ -64,6 +64,15 @@ PAPER_GLARE = 235
 #: 사진 전체가 거의 한 색이다 — 글자가 아예 없다(벽·천장·빈 종이·렌즈 가림).
 CONTRAST_BLANK = 4
 
+#: **다크 모드 화면 캡처**(검은 바탕에 흰 글자 — 폰을 다크 모드로 두고 등기부 화면을 캡처)는 밝기를 뒤집어 잰다.
+#: 그대로 재면 검은 바탕이 '종이'로 잡혀 '너무 어두움', 글자가 적은 쪽은 '글자 없음'으로 **멀쩡한 캡처를 거절**한다
+#: (2026-10-22 PR 검토 실측: 글자 여섯 줄 쪽 대비 0 → 거절). 가려내는 법 — 가운데 밝기(중앙값)가 어둡고(< 100),
+#: 가장 밝은 끝(글자)까지는 멀고(≥ 100) 가장 어두운 끝까지보다 3배 넘게 멀다.
+#: 정상 노출 종이(가운데 150~250)와 어두운 데서 찍은 종이(글자가 종이보다 **어두워** 밝은 끝이 가깝다)는 해당 없다.
+#: 흐림 값은 뒤집어도 같다(밝기 차의 크기만 본다).
+DARK_MODE_SPAN = 100
+_DARK_MODE_TAIL_RATIO = 3
+
 #: 부분 빛 번짐 — 글자 영역 안에서 **하얗게 타 버린**(평균 248 이상) 32px 칸의 비율. 일부만 날아간 것이라
 #: **알리기만** 한다(거절 안 함). 종이가 원래 회색 기운일 때(글자 영역 안 빈칸의 가운데 밝기 < 235 —
 #: 카메라 사진)만 잰다. 화면 캡처나 이미 하얗게 찍힌 종이(250)는 하얀 칸이 반사가 아니라 종이다.
@@ -142,6 +151,7 @@ class PageMetrics:
     contrast: float  # 0~255
     content_ratio: float  # 글자가 있는 타일 비율 0~1
     glare_ratio: float = 0.0  # 하얗게 타 버린 칸의 비율 0~1 (카메라 사진일 때만 잰다)
+    inverted: bool = False  # 다크 모드 화면(어두운 바탕·밝은 글자)이라 밝기를 뒤집어 쟀다
 
 
 def _load_gray(data: bytes) -> tuple[np.ndarray, int, int] | None:
@@ -201,18 +211,34 @@ def _glare_ratio(g: np.ndarray, content: np.ndarray, rows: int, cols: int) -> fl
     return float((area >= _GLARE_TILE_MEAN).mean())
 
 
+def _light_text_on_dark(g: np.ndarray) -> bool:
+    """어두운 바탕에 밝은 글자인가 — 다크 모드 화면 캡처 (`DARK_MODE_SPAN` 설명)."""
+    darkest, middle, brightest = (
+        float(v) for v in np.percentile(g, [_INK_PERCENTILE, 50, 100 - _INK_PERCENTILE])
+    )
+    bright_tail = brightest - middle
+    return (
+        middle < PAPER_DARK_MILD
+        and bright_tail >= DARK_MODE_SPAN
+        and bright_tail > _DARK_MODE_TAIL_RATIO * (middle - darkest)
+    )
+
+
 def measure(data: bytes) -> PageMetrics | None:
     """사진 한 장을 잰다. 사진으로 읽히지 않으면 None (검사하지 않고 넘어간다)."""
     loaded = _load_gray(data)
     if loaded is None:
         return None
     g, width, height = loaded
+    inverted = _light_text_on_dark(g)
+    if inverted:
+        g = 255.0 - g  # 다크 모드 화면 — 뒤집으면 흰 바탕에 검은 글자와 같다
     ink, paper, top = (float(v) for v in np.percentile(g, [_INK_PERCENTILE, 95, 99.5]))
     contrast = paper - ink
 
     rows, cols = g.shape[0] // _TILE, g.shape[1] // _TILE
     if rows == 0 or cols == 0:
-        return PageMetrics(width, height, 0.0, paper, contrast, 0.0)
+        return PageMetrics(width, height, 0.0, paper, contrast, 0.0, inverted=inverted)
 
     # 글자가 있는 타일 고르기 — 대비를 0~1로 늘인 뒤 표준편차로 본다(어두운 사진에서도 같은 기준).
     norm = np.clip((g - ink) / max(top - ink, 1.0), 0.0, 1.0)
@@ -220,7 +246,7 @@ def measure(data: bytes) -> PageMetrics | None:
     content = crop.std(axis=(1, 3)) > _TILE_STD_CONTENT
     content_ratio = float(content.mean())
     if not content.any():
-        return PageMetrics(width, height, 0.0, paper, contrast, content_ratio)
+        return PageMetrics(width, height, 0.0, paper, contrast, content_ratio, inverted=inverted)
     glare_ratio = _glare_ratio(g, content, rows, cols)
 
     # 흐림 — blur effect (Crété-Roffet 외, 2007): 한 번 더 흐리게 했을 때 글자 테두리의 밝기 변화가
@@ -236,7 +262,7 @@ def measure(data: bytes) -> PageMetrics | None:
         s_img = float(_tile_sums(np.pad(d_img, pad), rows, cols)[content].sum())
         s_lost = float(_tile_sums(np.pad(lost, pad), rows, cols)[content].sum())
         blurs.append((s_img - s_lost) / s_img if s_img > 0 else 1.0)
-    return PageMetrics(width, height, max(blurs), paper, contrast, content_ratio, glare_ratio)
+    return PageMetrics(width, height, max(blurs), paper, contrast, content_ratio, glare_ratio, inverted)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -309,6 +335,7 @@ def precheck(images: list[tuple[str, bytes]]) -> CaptureCheck | None:
             _log.info(
                 f"[촬영검사] {index + 1}쪽 {m.width}x{m.height} 흐림 {m.blur:.2f} · 종이 {m.paper:.0f}"
                 f" · 대비 {m.contrast:.0f} · 글자칸 {m.content_ratio:.0%}"
+                f"{' · 다크 모드(뒤집어 잼)' if m.inverted else ''}"
                 f" → {', '.join(issues) if issues else '문제 없음'}{' (심함)' if severe else ''}"
             )
             if issues:

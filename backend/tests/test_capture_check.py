@@ -17,7 +17,7 @@ import io
 
 import numpy as np
 import pytest
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 from app.schemas.contract import CaptureCheck, CapturePageIssue
 from app.services import capture_check as cc
@@ -102,6 +102,9 @@ def base() -> Image.Image:
         ("카메라 — 조금 어두운 방", lambda: camera(registry_page(), paper=150, ink=40)),
         ("글자가 세 줄뿐인 마지막 쪽", lambda: registry_page(lines=3)),
         ("글자가 세 줄뿐인 마지막 쪽(카메라)", lambda: camera(registry_page(lines=3))),
+        # 2026-10-22 PR 검토: 폰 다크 모드로 띄운 등기부 캡처(검은 바탕·흰 글자) — 뒤집어 재기 전에는 거절됐다
+        ("다크 모드 화면 캡처", lambda: ImageOps.invert(registry_page(1080, 2340, 17))),
+        ("다크 모드 — 글자 여섯 줄뿐인 쪽", lambda: ImageOps.invert(registry_page(1080, 2340, 17, lines=6))),
     ],
 )
 def test_선명한_사진은_문제가_없다(name, make):
@@ -172,6 +175,19 @@ def test_흰_종이를_어두운_책상에_놓고_찍어도_반사로_오해하�
 def test_새하얀_사진은_글자_없음으로_거절():
     issues, severe = check_one(Image.new("L", (880, 1200), 255))
     assert issues == ["no_text"] and severe is True
+
+
+def test_다크_모드_화면만_뒤집어_재고_어두운_데서_찍은_종이는_그대로_잰다():
+    """뒤집기는 '어두운 바탕에 밝은 글자'에만 — 어두운 종이 사진(글자가 종이보다 어둡다)을 살려 주면 안 된다."""
+    dark_mode = cc.measure(jpeg(ImageOps.invert(registry_page(1080, 2340, 17))))
+    assert dark_mode is not None and dark_mode.inverted is True
+    dim_paper = cc.measure(jpeg(camera(registry_page(), paper=50, ink=15, noise=5)))
+    assert dim_paper is not None and dim_paper.inverted is False
+    issues, severe = cc.assess(dim_paper)
+    assert "too_dark" in issues and severe is True
+    lens_covered = cc.measure(jpeg(Image.new("L", (1920, 2560), 3)))
+    assert lens_covered is not None and lens_covered.inverted is False
+    assert cc.assess(lens_covered) == (["no_text"], True)
 
 
 @pytest.mark.parametrize("width,severe", [(600, False), (360, True)])

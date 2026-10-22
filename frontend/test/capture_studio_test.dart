@@ -162,6 +162,42 @@ void main() {
     expect(button.onPressed, isNull);
   });
 
+  // ── 크게 보기의 [이 장 다시 찍기] (지수 리뷰 #1, 2026-10-23) ───────────────
+
+  testWidgets('크게 보기의 [이 장 다시 찍기]는 그 장을 그 자리에서 바꾼다 (맨 뒤에 붙지 않는다)', (tester) async {
+    final String retake =
+        (File('${_tmp.path}/retake_viewer.png')..writeAsBytesSync(_onePixelPng)).path;
+    await tester.pumpWidget(
+      wrap(
+        PropertySearchScreen(
+          captureOne: () async => retake,
+          pickMany: () async => List.of(_fakePhotos),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.koText('갤러리에서 고르기'));
+    await tester.pumpAndSettle();
+
+    // 2번째 장을 크게 본다
+    tester.widget<PhotoTray>(find.byType(PhotoTray)).onTapPhoto(1);
+    await tester.pumpAndSettle();
+    expect(find.koText('2 / 3장'), findsOneWidget);
+    // '앞으로/뒤로'는 '이전 장 보기'로 읽혔다 — 무엇을 옮기는지 말한다
+    expect(find.koText('순서 앞으로'), findsOneWidget);
+    expect(find.koText('순서 뒤로'), findsOneWidget);
+
+    await tester.tap(find.koText('이 장 다시 찍기'));
+    await tester.pumpAndSettle();
+    // 그 장을 바꾸는 촬영 루프(한 장만)가 열린다
+    expect(find.koText('2쪽을 새로 찍었어요'), findsOneWidget);
+    await tester.tap(find.koText('이 사진으로 바꾸기'));
+    await tester.pumpAndSettle();
+
+    final tray = tester.widget<PhotoTray>(find.byType(PhotoTray));
+    expect(tray.paths, [_fakePhotos[0], retake, _fakePhotos[2]], reason: '장수는 그대로 3장');
+  });
+
   // ── ② 보증금 표기 ────────────────────────────────────────────────────────
 
   testWidgets('보증금은 28px 한글 표기 · 입력은 세 자리 쉼표 · 접미사는 작고 흐리게', (tester) async {
@@ -259,7 +295,9 @@ void main() {
         greaterThanOrEqualTo(AppSize.minTouchTarget),
       );
     }
-    for (final String label in ['등기부등본이 없어요', '주소로 찾기']) {
+    // '주소로 찾기'는 "준비 중" 입구라 뺐다(2026-10-23) — 남은 링크만 잰다
+    expect(find.koText('주소로 찾기'), findsNothing);
+    for (final String label in ['등기부등본이 없어요']) {
       final Size size = tester.getSize(
         find.ancestor(of: find.koText(label), matching: find.byType(Container)).first,
       );

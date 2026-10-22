@@ -113,7 +113,7 @@ class PhotoTray extends StatelessWidget {
                     border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
                     boxShadow: const [
                       BoxShadow(
-                        color: Color(0x38101814), // rgba(16,24,20,.22)
+                        color: AppColors.thumbShadow, // rgba(16,24,20,.22)
                         blurRadius: 6,
                         offset: Offset(0, 1),
                       ),
@@ -152,7 +152,7 @@ class PhotoTray extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Color(0x47101814),
+                        color: AppColors.viewerShadowBadge, // 같은 값의 토큰 (0 1 4, .28)
                         blurRadius: 4,
                         offset: Offset(0, 1),
                       ),
@@ -195,15 +195,18 @@ class PhotoTray extends StatelessWidget {
                   ),
                 ),
               // 확대 칩 — "탭하면 커진다"를 형태로 알린다.
+              // 아래쪽에 문제 띠가 있으면 칩이 띠의 글자를 가린다(D7) → 그 장만 칩을 오른쪽 위로 올린다.
               Positioned(
+                key: ValueKey('photo-tray-zoom-$i'),
                 right: 4,
-                bottom: 4,
+                top: issueLabels[i] != null ? 4 : null,
+                bottom: issueLabels[i] != null ? null : 4,
                 child: Container(
                   width: 22,
                   height: 22,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: const Color(0x8C0B1A16), // rgba(11,26,22,.55)
+                    color: AppColors.thumbChipScrim, // rgba(11,26,22,.55)
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Icon(

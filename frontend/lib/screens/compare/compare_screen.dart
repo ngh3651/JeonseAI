@@ -26,6 +26,7 @@ import '../../services/api_client.dart';
 import '../../utils/korean_date.dart';
 import '../common/analyze_gate.dart';
 import '../journey/journey_actions.dart';
+import '../loading/analysis_loading_screen.dart' show LoadingStepLine, kAnalysisTypicalWait;
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
 import 'compare_result_view.dart';
@@ -41,19 +42,27 @@ class CompareRequest {
   final List<String> imagePaths;
 }
 
+/// '빠진 쪽만 더 찍기'의 사진 시트 제목 — 통째로 다시 찍는 게 아니라는 것을 시트에서도 말한다.
+const String kAddMissingSheetTitle = '빠진 쪽만 찍어 주세요 — 먼저 찍은 장과 합쳐 다시 맞춰봐요';
+
 class CompareScreen extends StatefulWidget {
   const CompareScreen({
     super.key,
     required this.reportId,
     this.request,
     this.captureOne = defaultCaptureOne,
+    this.pickMany = defaultPickMany,
   });
 
   final String reportId;
   final CompareRequest? request;
 
-  /// 카메라 주입 지점 — 사진 품질로 거절됐을 때 '그 장만 다시 찍기'에서 쓴다(테스트는 가짜 함수).
+  /// 카메라 주입 지점 — 사진 품질로 거절됐을 때 '그 장만 다시 찍기', 일부만 맞춰봤을 때
+  /// '빠진 쪽만 더 찍기'에서 쓴다(테스트는 가짜 함수).
   final CaptureOne captureOne;
+
+  /// 앨범 주입 지점 — '빠진 쪽만 더 찍기'·'사진 다시 고르기'의 [앨범에서 고르기].
+  final PickMany pickMany;
 
   @override
   State<CompareScreen> createState() => _CompareScreenState();
@@ -79,8 +88,9 @@ class _CompareScreenState extends State<CompareScreen> {
   int _shownSteps = 0;
   Timer? _stepTimer;
 
-  /// 이번에 올린 사진. 결과 화면에서 [빠진 쪽 찍어서 올리기]를 누르면 여기만 갈아 끼우고
-  /// 같은 화면에서 다시 돈다 — 라우트를 쌓지 않아야 뒤로가기가 여정으로 곧장 간다.
+  /// 이번에 올린 사진. 결과 화면에서 [빠진 쪽만 더 찍기]를 누르면 새 장을 **뒤에 덧붙이고**,
+  /// [사진 다시 고르기](다른 집일 때)를 누르면 통째로 갈아 끼운다. 어느 쪽이든 같은 화면에서
+  /// 다시 돈다 — 라우트를 쌓지 않아야 뒤로가기가 여정으로 곧장 간다.
   late List<String> _imagePaths = widget.request?.imagePaths ?? const [];
 
   @override
@@ -177,12 +187,49 @@ class _CompareScreenState extends State<CompareScreen> {
     if (severeLeft.isEmpty) await _run();
   }
 
-  /// 사진을 다시 골라 **같은 화면에서** 다시 대조한다 (빠진 쪽 올리기 · 사진 다시 고르기).
+  /// **다른 집**일 때만 — 사진을 통째로 다시 골라 같은 화면에서 다시 대조한다.
   Future<void> _recapture() async {
-    final paths = await pickRegistryPhotos(context);
+    final paths = await pickRegistryPhotos(
+      context,
+      captureOne: widget.captureOne,
+      pickMany: widget.pickMany,
+    );
     if (paths.isEmpty || !mounted) return;
     setState(() {
       _imagePaths = paths;
+      _result = null;
+    });
+    await _run();
+  }
+
+  /// **일부만 맞춰봤을 때**(partial) — 빠진 쪽만 새로 찍어 **먼저 찍은 장 뒤에 덧붙이고** 다시 대조한다.
+  ///
+  /// 대조 API는 한 번에 받은 사진만 본다(서버는 이전 요청의 사진을 갖고 있지 않다 — 원본 사진을 저장하지 않으므로).
+  /// 그래서 앱이 먼저 찍은 사진 + 새 사진을 **합쳐** 보낸다. 순서는 서버가 쪽 번호(N/M)를 읽어 다시 맞춘다
+  /// (highlight.py '사진 순서 자동 정렬'). 쪽 번호를 못 읽으면 서버가 "순서대로 다시 올려 주세요"라고 말한다.
+  Future<void> _addMissingPages() async {
+    final int kept = _imagePaths.length;
+    if (kept >= kCompareMaxPhotos) {
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: AppText('사진은 최대 $kCompareMaxPhotos장까지 올릴 수 있어요'),
+          ),
+        );
+      return;
+    }
+    final added = await pickRegistryPhotos(
+      context,
+      title: kAddMissingSheetTitle,
+      subtitle: '먼저 찍은 $kept장은 그대로 두고, 새로 찍은 장만 뒤에 붙여요',
+      alreadyTaken: kept,
+      captureOne: widget.captureOne,
+      pickMany: widget.pickMany,
+    );
+    if (added.isEmpty || !mounted) return;
+    setState(() {
+      _imagePaths = [..._imagePaths, ...added].take(kCompareMaxPhotos).toList();
       _result = null;
     });
     await _run();
@@ -200,11 +247,13 @@ class _CompareScreenState extends State<CompareScreen> {
     });
   }
 
+  // ⚠ 진행형으로만 쓴다(2026-10-23 D1) — 타이머 연출이라 서버보다 먼저 '…했어요 ✓'를 띄우면 사진이 거절될 때
+  //   ✓가 다 찬 뒤 "대조하지 않았어요"가 나온다(가짜 완료). 내부어 '규칙'도 뺐다.
   List<String> get _steps => [
-    '사진 ${_imagePaths.length}장 올렸어요',
-    '등기부를 읽었어요 — 소유자·빚·압류 항목',
-    '안전도를 규칙으로 다시 계산했어요',
-    '기준 서류와 달라진 항목을 맞춰보는 중',
+    '사진 ${_imagePaths.length}장을 올리는 중이에요',
+    '등기부를 읽는 중이에요',
+    '안전도를 다시 계산하는 중이에요',
+    '기준 서류와 달라진 항목을 맞춰보는 중이에요',
   ];
 
   @override
@@ -213,7 +262,11 @@ class _CompareScreenState extends State<CompareScreen> {
     return Scaffold(
       appBar: AppBar(
         // 진행 중에는 제목을 두지 않는다(시안 5는 앱바 없는 전면 화면이다)
-        title: AppText(_running ? '' : _appBarTitle(result)),
+        title: AppText(
+          _running ? '' : _appBarTitle(result),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         automaticallyImplyLeading: !_running,
       ),
       body: SafeArea(
@@ -223,8 +276,10 @@ class _CompareScreenState extends State<CompareScreen> {
             ? CompareResultView(
                 result: result,
                 baselineReportId: widget.reportId,
+                keptPhotoCount: _imagePaths.length,
                 onRetry: _run,
                 onRecapture: _recapture,
+                onAddMissing: _addMissingPages,
                 onQuestions: () => context.push(
                   '/questions/${result.newReportId ?? widget.reportId}',
                 ),
@@ -237,10 +292,13 @@ class _CompareScreenState extends State<CompareScreen> {
     );
   }
 
+  /// 앱바 — "{별칭} · 대조 결과" (서연 리뷰 #2: 캡처해 보내면 어느 집인지 알 수 있게). 별칭이 없으면 예전 제목.
   String _appBarTitle(CompareResult? result) {
     if (result == null) return '등기부 대조';
+    final String alias = (result.baseline.alias ?? '').trim();
     return switch (result.outcome) {
-      CompareOutcome.changed || CompareOutcome.partial => '등기부 대조 결과',
+      CompareOutcome.changed || CompareOutcome.partial =>
+        alias.isEmpty ? '등기부 대조 결과' : '$alias · 대조 결과',
       _ => '등기부 대조',
     };
   }
@@ -250,9 +308,10 @@ class _CompareScreenState extends State<CompareScreen> {
   Widget _loadingBody() {
     final baseline = widget.request?.report;
     final viewed = parseRegistryViewedAt(baseline?.registryViewedAt);
+    // 실측 21~31초(NOW.md 2절) — 분석 로딩과 같은 말(kAnalysisTypicalWait)
     final String docLine = viewed == null
-        ? '지금 뗀 서류와 맞춰보는 중 · 보통 1~2분 걸려요'
-        : '${formatMonthDay(viewed)}자 ↔ 오늘 뗀 서류 · 보통 1~2분 걸려요';
+        ? '지금 뗀 서류와 맞춰보는 중 · $kAnalysisTypicalWait'
+        : '${formatMonthDay(viewed)}자 ↔ 오늘 뗀 서류 · $kAnalysisTypicalWait';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -308,41 +367,17 @@ class _CompareScreenState extends State<CompareScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 체크(완료) 표시 없이 — 지난 줄은 흐린 점, 지금(맨 아래) 줄만 작은 스피너(D1)
                 for (int i = 0; i < _steps.length; i++)
                   if (i < _shownSteps) ...[
                     if (i > 0) const SizedBox(height: AppSpacing.md),
-                    _stepLine(_steps[i], spinning: i == _steps.length - 1),
+                    LoadingStepLine(text: _steps[i], active: i == _shownSteps - 1),
                   ],
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _stepLine(String text, {required bool spinning}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (spinning)
-          const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.textMuted,
-            ),
-          )
-        else
-          const Icon(
-            Icons.check_circle,
-            size: 18,
-            color: AppColors.primary,
-          ),
-        const SizedBox(width: 10),
-        Expanded(child: AppText(text, style: AppTypography.body)),
-      ],
     );
   }
 
@@ -362,6 +397,7 @@ class _CompareScreenState extends State<CompareScreen> {
           title: waiting ? '사진을 다시 찍어야 대조할 수 있어요' : '남은 장도 바꿀 수 있어요',
           message: _captureMessage(check),
           onRetake: _retakePage,
+          retakeParticle: waiting ? '만' : '도',
         ),
         const SizedBox(height: AppSpacing.sm),
         // 실패를 '이상 없음'으로 읽지 않게 못 박는다(일반 실패 화면과 같은 고지).
@@ -381,7 +417,8 @@ class _CompareScreenState extends State<CompareScreen> {
 
   /// 거절 안내 한 줄. 아직 아무 장도 안 바꿨으면 서버 문구 그대로, 바꾼 장이 있으면 **지금 남은 것**을 말한다.
   String _captureMessage(CaptureCheck check) {
-    const String tail = '대조는 하지 않았어요(크레딧이 들지 않았어요). 문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.';
+    // '크레딧' 같은 내부 말은 빼고 지금 상태와 할 일만(지수 리뷰 #4)
+    const String tail = '아직 대조하지 않았어요. 문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.';
     if (_replacedPages.isEmpty) return '${_errorMessage ?? ''}\n$tail';
     final done = (_replacedPages.toList()..sort()).map((i) => '${i + 1}쪽').join(', ');
     final left = [

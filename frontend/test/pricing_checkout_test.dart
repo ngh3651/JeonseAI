@@ -35,7 +35,7 @@ import 'support/ko_finders.dart';
 import 'support/registry_fixture.dart' show kPhoneHeight, kPhoneWidth;
 
 const _pricing = Pricing(
-  label: '예시 (팀 확정 전)',
+  label: '예시 가격(확정 전)',
   plans: [
     PricingPlan(
       id: 'free',
@@ -215,15 +215,15 @@ void main() {
     testWidgets('세 가지 요금제 + 가격은 예시 + 결제는 테스트 결제', (tester) async {
       await pumpPricing(tester, _FakePayments());
 
-      expect(find.koText('가격은 예시예요 · 예시 (팀 확정 전)'), findsOneWidget);
-      expect(find.koTextContaining('테스트 결제 — 실제 청구 없음'), findsOneWidget);
+      // 맨 위 첫 줄 = 지금은 무료로 다 된다(돈을 내야 안전한 것처럼 읽히지 않게)
+      expect(find.koText(kPricingFreeNowLine), findsOneWidget);
+      expect(find.koText('가격은 아직 정하지 않은 예시예요 · 결제는 테스트 결제(실제 청구 없음)'), findsOneWidget);
       expect(find.koText('무료'), findsOneWidget);
       expect(find.koText('계약 지킴이 패스'), findsOneWidget);
-      // 가격이 있는 요금제(무료·패스)마다 '예시' 표시
-      expect(
-        find.koText('예시 가격 · 예시 (팀 확정 전)', skipOffstage: false),
-        findsNWidgets(2),
-      );
+      // '예시'는 한 번씩만 — 돈을 받는 패스에만 짧은 꼬리표, 0원에는 없다. 내부 말('팀 확정 전'·'결선 시연 기간')은 없다
+      expect(find.koText('예시 가격', skipOffstage: false), findsOneWidget);
+      expect(find.koTextContaining('팀 확정 전', skipOffstage: false), findsNothing);
+      expect(find.koTextContaining('결선 시연 기간', skipOffstage: false), findsNothing);
       expect(find.koText('기관용', skipOffstage: false), findsOneWidget);
       expect(find.koText('문의', skipOffstage: false), findsOneWidget);
     });
@@ -270,7 +270,9 @@ void main() {
 
       // 결제 전: 테스트 결제 표시 + 예시 가격 + 결제 수단 자리
       expect(find.koText(kTestPaymentNotice), findsOneWidget);
-      expect(find.koText('예시 가격 · 예시 (팀 확정 전)'), findsOneWidget);
+      // 진짜 카드를 넣으라는 말로 읽히지 않게(지수 #9)
+      expect(find.koText(kTestPaymentPracticeLine), findsOneWidget);
+      expect(find.koText('예시 가격(확정 전)'), findsOneWidget);
       expect(find.text('결제 수단 자리 (가짜)'), findsOneWidget);
       expect(gateway.rendered, [9900]); // 서버가 준 요금제 가격
       expect(created, ['device_owner_for_test']); // 주인 키(한 곳)로 결제위젯을 만든다
@@ -294,6 +296,7 @@ void main() {
       expect(find.koText(kTestPaymentNotice), findsOneWidget);
       expect(find.koText('9,900원 (예시 가격)'), findsOneWidget);
       expect(find.koText('없음 (테스트 결제)'), findsOneWidget);
+      expect(find.koText(kPassIncludesLine, skipOffstage: false), findsOneWidget);
       expect(PassStore.instance.active, isTrue);
 
       await tester.tap(find.koText('계약 여정으로 가기'));
@@ -437,7 +440,7 @@ void main() {
       final pricing = Pricing.fromJson(
         jsonDecode(file.readAsStringSync()) as Map<String, dynamic>,
       );
-      expect(pricing.label, '예시 (팀 확정 전)');
+      expect(pricing.label, '예시 가격(확정 전)');
       expect(pricing.testMode, isTrue); // 파일에 없으면 테스트로 본다
       expect(pricing.plans.map((p) => p.id), ['free', 'guardian_pass', 'institution']);
       final pass = pricing.plan(kGuardianPassPlanId)!;

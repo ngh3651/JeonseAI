@@ -206,7 +206,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.koText('2쪽을 새로 찍었어요'), findsOneWidget);
-      expect(find.koText('글자 테두리가 번져 있어요.'), findsOneWidget);
+      // 서버가 말한 문제는 **아까 사진**의 것이다 — 새 사진도 문제인 줄 알지 않게(지수 리뷰 #3)
+      expect(find.koText('아까 사진: 글자 테두리가 번져 있어요.'), findsOneWidget);
+      expect(find.koText('글자 테두리가 번져 있어요.'), findsNothing);
+      expect(find.koText('이번 사진 글자가 또렷하면 [이 사진으로 바꾸기]를 눌러 주세요'), findsOneWidget);
       expect(find.koText('이 사진으로 바꾸기'), findsOneWidget);
       expect(find.koText('다음 장 찍기'), findsNothing);
 
@@ -308,12 +311,25 @@ void main() {
       expect(find.byType(CaptureIssuePanel), findsOneWidget);
       expect(find.koText('사진을 다시 찍어야 분석할 수 있어요'), findsOneWidget);
       expect(find.koTextContaining(_rejectMessage), findsOneWidget);
-      expect(find.koTextContaining('크레딧이 들지 않았어요'), findsOneWidget);
+      expect(find.koTextContaining('아직 분석하지 않았어요'), findsOneWidget);
+      expect(find.koTextContaining('크레딧'), findsNothing, reason: '내부 말은 화면에 쓰지 않는다');
       expect(find.koText('2쪽 · 흐림'), findsOneWidget);
-      expect(find.koText('2쪽 이 장만 다시 찍기'), findsOneWidget);
+      expect(find.koText('2쪽만 다시 찍기'), findsOneWidget);
       // 트레이의 2번째 장에 표시
       expect(find.byKey(const ValueKey('photo-tray-issue-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('photo-tray-issue-0')), findsNothing);
+      // D7: 문제 띠가 있는 장은 확대 칩을 위로 올린다(띠 글자를 가리지 않게)
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('photo-tray-zoom-1'))).dy,
+        lessThan(tester.getTopLeft(find.byKey(const ValueKey('photo-tray-issue-1'))).dy),
+      );
+      // D6: 다시 찍을 장이 남았으면 아래 체크가 앰버 '다시 찍을 장 n장'이고 [분석하기]가 눌리지 않는다
+      expect(find.koText('다시 찍을 장 1장'), findsOneWidget);
+      expect(find.koText('사진 3장'), findsNothing);
+      final FilledButton analyze = tester.widget(
+        find.ancestor(of: find.koText('분석하기'), matching: find.byWidgetPredicate((w) => w is FilledButton)).first,
+      );
+      expect(analyze.onPressed, isNull);
       expect(repo.requests.single.imagePaths, original);
     });
 
@@ -323,14 +339,16 @@ void main() {
         _report(),
       ]);
 
-      await tester.tap(find.koText('2쪽 이 장만 다시 찍기'));
+      await tester.tap(find.koText('2쪽만 다시 찍기'));
       await tester.pumpAndSettle();
       expect(find.koText('2쪽을 새로 찍었어요'), findsOneWidget);
       await tester.tap(find.koText('이 사진으로 바꾸기'));
       await tester.pumpAndSettle();
 
-      // 바꾼 뒤: 트레이 표시가 사라지고, 다시 보내라는 안내
+      // 바꾼 뒤: 트레이 표시가 사라지고, 다시 보내라는 안내 — 아래 체크도 다시 '사진 3장'
       expect(find.byKey(const ValueKey('photo-tray-issue-1')), findsNothing);
+      expect(find.koText('다시 찍을 장 1장'), findsNothing);
+      expect(find.koText('사진 3장'), findsOneWidget);
       expect(find.koText('바꿔 찍었어요 — 아래 [분석하기]로 다시 보내 주세요'), findsOneWidget);
       final tray = tester.widget<PhotoTray>(find.byType(PhotoTray));
       expect(tray.paths, [original[0], retakes[1], original[2]]);
@@ -398,10 +416,10 @@ void main() {
 
       expect(find.koText('사진을 다시 찍어야 대조할 수 있어요'), findsOneWidget);
       expect(find.koText('2쪽 · 흐림'), findsOneWidget);
-      expect(find.koTextContaining('크레딧이 들지 않았어요'), findsOneWidget);
+      expect(find.koTextContaining('아직 대조하지 않았어요'), findsOneWidget);
       expect(find.koText('대조를 끝내지 못했어요'), findsNothing, reason: '일반 실패 화면이 아니다');
 
-      await tester.tap(find.koText('2쪽 이 장만 다시 찍기'));
+      await tester.tap(find.koText('2쪽만 다시 찍기'));
       await tester.pumpAndSettle();
       await tester.tap(find.koText('이 사진으로 바꾸기'));
       await tester.pump(const Duration(seconds: 3));
@@ -455,7 +473,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.koTextContaining(twoBadMessage), findsOneWidget);
 
-      await tester.tap(find.koText('2쪽 이 장만 다시 찍기'));
+      await tester.tap(find.koText('2쪽만 다시 찍기'));
       await tester.pumpAndSettle();
       await tester.tap(find.koText('이 사진으로 바꾸기'));
       await tester.pumpAndSettle();
@@ -463,9 +481,9 @@ void main() {
       expect(repo.sent, hasLength(1), reason: '아직 심한 장이 남아 있어 다시 보내지 않는다');
       expect(find.koTextContaining(twoBadMessage), findsNothing, reason: '이미 바꾼 2쪽을 또 찍으라고 하지 않는다');
       expect(find.koTextContaining('바꾼 장: 2쪽 · 아직 다시 찍을 장: 3쪽'), findsOneWidget);
-      expect(find.koText('2쪽 이 장만 다시 찍기'), findsNothing);
+      expect(find.koText('2쪽만 다시 찍기'), findsNothing);
 
-      await tester.tap(find.koText('3쪽 이 장만 다시 찍기'));
+      await tester.tap(find.koText('3쪽만 다시 찍기'));
       await tester.pumpAndSettle();
       await tester.tap(find.koText('이 사진으로 바꾸기'));
       await tester.pump(const Duration(seconds: 3));
@@ -478,7 +496,119 @@ void main() {
     });
   });
 
-  group('리포트 — 가벼운 문제(확인 필요)', () {
+  group('대조 — 일부만 맞춰봤으면 빠진 쪽만 더 찍어 덧붙인다 (P0-1)', () {
+    const partial = CompareResult(
+      outcome: CompareOutcome.partial,
+      headline: '일부는 대조하지 못했어요',
+      baseline: CompareDoc(reportId: 'base', alias: '샘플빌라'),
+      current: CompareDoc(pageCount: 3),
+      rows: [
+        CompareRow(
+          kind: CompareRowKind.unknown,
+          tone: CompareTone.caution,
+          marker: '?',
+          title: '빚 · 대조하지 못했어요',
+          action: CompareAction.recapture,
+          actionLabel: '빠진 쪽 찍어서 올리기',
+        ),
+      ],
+    );
+    const done = CompareResult(
+      outcome: CompareOutcome.changed,
+      headline: '달라진 점이 없어요',
+      baseline: CompareDoc(reportId: 'base'),
+      current: CompareDoc(),
+    );
+
+    Future<_CompareRepository> pumpCompare(
+      WidgetTester tester,
+      List<Object> script, {
+      required List<String> gallery,
+    }) async {
+      tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final repo = _CompareRepository(script);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AnalysisRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: buildAppTheme(),
+            home: CompareScreen(
+              reportId: 'base',
+              request: CompareRequest(report: _report(id: 'base'), imagePaths: List.of(original)),
+              captureOne: () async => retakes[0],
+              pickMany: () async => List.of(gallery),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    Future<void> tapAddMissing(WidgetTester tester) async {
+      final button = find.koText('빠진 쪽만 더 찍기 (먼저 찍은 3장은 그대로)');
+      await tester.scrollUntilVisible(button, 200, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('앨범에서 고른 새 장을 먼저 찍은 3장 **뒤에** 붙여 다시 보낸다', (tester) async {
+      final repo = await pumpCompare(tester, [partial, done], gallery: [retakes[1]]);
+      expect(find.koText('빠진 쪽만 더 찍어 주세요'), findsOneWidget);
+
+      await tapAddMissing(tester);
+      // 시트도 통째로 다시 찍는 게 아니라고 말한다
+      expect(find.koText(kAddMissingSheetTitle), findsOneWidget);
+      expect(find.koText('먼저 찍은 3장은 그대로 두고, 새로 찍은 장만 뒤에 붙여요'), findsOneWidget);
+
+      await tester.tap(find.koText('앨범에서 고르기'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent, hasLength(2));
+      expect(repo.sent.last, [...original, retakes[1]], reason: '먼저 찍은 장 + 새 장');
+      expect(find.koText('달라진 점이 없어요'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('카메라로 찍으면 촬영 뱃지가 4장째부터 센다 — 결과는 덧붙이기', (tester) async {
+      final repo = await pumpCompare(tester, [partial, done], gallery: const []);
+
+      await tapAddMissing(tester);
+      await tester.tap(find.koText('사진 찍기'));
+      await tester.pumpAndSettle();
+      expect(find.koText('4장째 찍었어요'), findsOneWidget);
+      await tester.tap(find.koText('완료 · 4장'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent.last, [...original, retakes[0]]);
+    });
+
+    testWidgets("다른 집이면 '사진 다시 고르기'가 통째로 바꾼다 (덧붙이지 않는다)", (tester) async {
+      const different = CompareResult(
+        outcome: CompareOutcome.differentProperty,
+        headline: '같은 집이 아닌 것 같아요',
+        baseline: CompareDoc(reportId: 'base'),
+        current: CompareDoc(),
+      );
+      final repo = await pumpCompare(tester, [different, done], gallery: [retakes[2]]);
+
+      await tester.tap(find.koText('사진 다시 고르기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('앨범에서 고르기'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent.last, [retakes[2]]);
+    });
+  });
+
+  group('리포트 — 가벼운 문제(다시 찍으면 더 정확해요)', () {
     Future<void> pumpReport(WidgetTester tester, AnalysisReport report, {List<String>? photos}) async {
       tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
       tester.view.devicePixelRatio = 3;
@@ -504,18 +634,22 @@ void main() {
       ],
     );
 
-    testWidgets('문제가 있는 장을 알리고, 사진이 있으면 [다시 찍어 새로 분석]', (tester) async {
+    testWidgets('문제가 있는 장을 알리고, 사진이 있으면 [3쪽 다시 찍기] (결과를 누그러뜨리지 않는다 — D5)', (tester) async {
       await pumpReport(tester, _report(id: 'r1', capture: soft), photos: original);
-      expect(find.koText('사진 확인이 필요한 장이 있어요'), findsOneWidget);
-      expect(find.koText('3쪽 · 잘림 (확인 필요)'), findsOneWidget);
+      expect(find.koText('글자를 잘못 읽었을 수 있는 장이 있어요'), findsOneWidget);
+      expect(find.koTextContaining('결과가 달라질 수 있어요'), findsOneWidget);
+      expect(find.koTextContaining('결과는 그대로 볼 수 있어요'), findsNothing);
+      // 등급 이름('확인 필요')과 같은 말을 쓰지 않는다
+      expect(find.koText('3쪽 · 잘림 (다시 찍으면 더 정확해요)'), findsOneWidget);
+      expect(find.koText('3쪽 · 잘림 (확인 필요)'), findsNothing);
       expect(find.koTextContaining('네 모서리'), findsOneWidget);
-      expect(find.koText('3쪽 다시 찍어 새로 분석'), findsOneWidget);
+      expect(find.koText('3쪽 다시 찍기'), findsOneWidget);
     });
 
     testWidgets('사진이 폰에 없으면 안내만 (버튼 없음)', (tester) async {
       await pumpReport(tester, _report(id: 'r2', capture: soft));
-      expect(find.koText('사진 확인이 필요한 장이 있어요'), findsOneWidget);
-      expect(find.koText('3쪽 다시 찍어 새로 분석'), findsNothing);
+      expect(find.koText('글자를 잘못 읽었을 수 있는 장이 있어요'), findsOneWidget);
+      expect(find.koText('3쪽 다시 찍기'), findsNothing);
     });
 
     testWidgets('문제가 없으면 아무것도 안 그린다', (tester) async {

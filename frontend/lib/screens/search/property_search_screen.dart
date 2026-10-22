@@ -128,8 +128,11 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     return int.parse(digits) * 10000;
   }
 
+  /// 다시 찍어야 할 장이 남아 있으면 보내지 않는다(D6) — 같은 사진을 또 보내면 서버가 또 거절한다.
   bool get _canAnalyze =>
-      _photos.isNotEmpty && (_manwonToWon(_depositCtrl.text) ?? 0) > 0;
+      _photos.isNotEmpty &&
+      (_manwonToWon(_depositCtrl.text) ?? 0) > 0 &&
+      _pagesStillToRetake.isEmpty;
 
   // ── 촬영 루프 ─────────────────────────────────────────────────────────────
 
@@ -190,7 +193,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         ..clear()
         ..addAll(result.paths);
     });
-    if (result.wantsRetake) await _openCaptureLoop();
+    // [이 장 다시 찍기] — 그 장을 **그 자리에서** 바꾼다(예전에는 맨 뒤에 새 장이 붙었다, 지수 리뷰 #1).
+    final int? retake = result.retakeIndex;
+    if (retake != null) await _replacePhotoAt(retake);
   }
 
   bool _samePaths(List<String> other) {
@@ -219,9 +224,13 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   }
 
   /// 문제인 장 하나를 다시 찍어 **그 자리에** 바꿔 끼운다. 나머지 장·입력값은 그대로다.
-  Future<void> _retakePage(CapturePageIssue page) async {
-    final int index = page.index;
+  Future<void> _retakePage(CapturePageIssue page) => _replacePhotoAt(page.index, tip: page.tip);
+
+  /// [index]번째 장을 다시 찍어 그 자리에 바꿔 끼운다 — 거절 안내의 [그 장만 다시 찍기]와
+  /// 크게 보기의 [이 장 다시 찍기]가 같은 흐름을 쓴다. 서버가 그 장에 이유를 줬으면 함께 보여 준다.
+  Future<void> _replacePhotoAt(int index, {String? tip}) async {
     if (index < 0 || index >= _photos.length) return;
+    final String? reason = tip ?? _rejection?.check.issueFor(index)?.tip;
     final CaptureLoopResult? result = await Navigator.of(context).push(
       MaterialPageRoute<CaptureLoopResult>(
         fullscreenDialog: true,
@@ -230,7 +239,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           maxPhotos: _maxImages,
           captureOne: widget.captureOne,
           replacePage: index,
-          replaceTip: page.tip,
+          replaceTip: reason,
         ),
       ),
     );
@@ -348,13 +357,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     onCta: () => context.push('/guide'),
   );
 
-  void _showAddressSheet() => _showSheet(
-    title: '주소로 찾기 — 준비 중이에요',
-    body: '주소만 입력하면 등기부등본을 자동으로 가져오는 기능을 다음 버전에서 '
-        '준비하고 있어요 (공공 데이터 연동). 지금은 사진으로 분석해 주세요.',
-    cta: '사진으로 분석하기',
-    onCta: _openCaptureLoop,
-  );
+  // [주소로 찾기]는 뺐다(2026-10-23) — 누르면 "준비 중이에요"만 나오는 입구였다. 부스에서 심사위원이 누르면
+  // 미완성으로 보인다(서연 리뷰 #4 "곧 제공" 버튼과 같은 기준: 만들 수 없으면 숨긴다). 주소→등기부 자동 조회(CODEF)는
+  // NOW.md 8절 '하지 않는 것'이다 — 발표에서는 로드맵으로 말한다.
 
   void _showPermissionSheet() => _showSheet(
     title: '카메라·사진 권한이 필요해요',
@@ -539,8 +544,6 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _footLink('등기부등본이 없어요', _showGuideSheet, strong: true),
-                    const SizedBox(width: AppSpacing.lg),
-                    _footLink('주소로 찾기', _showAddressSheet),
                   ],
                 ),
                 // ⑤ 사진 0장일 때 [분석하기] 버튼은 **아예 그리지 않는다.**
@@ -702,9 +705,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         check: CaptureCheck(ok: false, pages: pages),
         title: '바꿔 찍었어요 — 아래 [분석하기]로 다시 보내 주세요',
         message: '바꾼 장: ${(_replaced.toList()..sort()).map((i) => '${i + 1}쪽').join(', ')}'
-            '${pages.isEmpty ? '' : ' · 아래 장은 그대로 보내도 돼요(확인 필요)'}',
+            '${pages.isEmpty ? '' : ' · 아래 장은 그대로 보내도 돼요 $kSoftIssueNote'}',
         onRetake: _retakePage,
-        retakeLabel: '이 장도 다시 찍기',
+        retakeParticle: '도',
       );
     }
     final String done = _replaced.isEmpty
@@ -714,9 +717,11 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     return CaptureIssuePanel(
       check: CaptureCheck(ok: false, pages: pages),
       title: '사진을 다시 찍어야 분석할 수 있어요',
-      message: '${rejection.message}\n분석은 하지 않았어요(크레딧이 들지 않았어요). '
+      // '크레딧' 같은 내부 말은 빼고 지금 상태와 할 일만(지수 리뷰 #4)
+      message: '${rejection.message}\n아직 분석하지 않았어요. '
           '문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.$done',
       onRetake: _retakePage,
+      retakeParticle: '만',
     );
   }
 
@@ -1034,9 +1039,13 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
             // [분석하기]가 비활성인 **이유**를 체크 2개로 보여 준다.
             // 문장 안내("…을 입력하면 분석할 수 있어요")를 쓰지 않는다 —
             // 무엇이 모자란지가 한눈에 보여야 한다.
+            // D6(2026-10-23): 다시 찍을 장이 남았는데 초록 '사진 n장 ✓'이면 상태가 모순이다 → 앰버로 남은 장수를 말한다.
             Row(
               children: [
-                _check('사진 ${_photos.length}장', _photos.isNotEmpty),
+                if (_pagesStillToRetake.isNotEmpty)
+                  _retakeLeft(_pagesStillToRetake.length)
+                else
+                  _check('사진 ${_photos.length}장', _photos.isNotEmpty),
                 const SizedBox(width: 14),
                 _check('보증금', (_manwonToWon(_depositCtrl.text) ?? 0) > 0),
               ],
@@ -1064,6 +1073,25 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// "다시 찍을 장 n장" — 앰버는 아이콘에만, 글자는 진한 색(D8 — 작은 앰버 글자는 대비가 모자라다).
+  Widget _retakeLeft(int count) {
+    return Row(
+      key: const ValueKey('retake-left-check'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.photo_camera_outlined, size: 17, color: AppColors.caution),
+        const SizedBox(width: 5),
+        AppText(
+          '다시 찍을 장 $count장',
+          style: AppTypography.caption.copyWith(
+            color: AppColors.textStrong,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 

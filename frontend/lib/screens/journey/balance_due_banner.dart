@@ -23,8 +23,10 @@ import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
 import '../pricing/guardian_pass_widgets.dart';
 
-/// 오늘 띄울 배너의 제목·본문. 오늘이 세 날 중 하나가 아니면 null.
-({String title, String message})? journeyBannerFor(
+/// 오늘 띄울 배너의 제목·본문(+ 법 조문 꼬리표). 오늘이 세 날 중 하나가 아니면 null.
+///
+/// [isMoveInNext]면 잔금 이야기(홈의 '잔금 직전 확인이…' 한 줄)를 붙이지 않는다(D4 — 그날은 잔금이 이미 끝났다).
+({String title, String message, String? legalNote, bool isMoveInNext})? journeyBannerFor(
   JourneySchedule schedule, {
   DateTime? now,
 }) {
@@ -34,16 +36,22 @@ import '../pricing/guardian_pass_widgets.dart';
     JourneyReminderKind.balanceEve => (
       title: '잔금일이 내일이에요 · ${formatMonthDay(schedule.balance!)}',
       message: BalanceDueBanner.kBalanceDueMessage,
+      legalNote: null,
+      isMoveInNext: false,
     ),
     JourneyReminderKind.balanceDay => (
       title: '오늘이 잔금일이에요 · ${formatMonthDay(schedule.balance!)}',
       message: BalanceDueBanner.kBalanceDueMessage,
+      legalNote: null,
+      isMoveInNext: false,
     ),
     JourneyReminderKind.moveInNext => (
       title:
           '오늘은 입주 다음 날이에요 · '
           '${formatMonthDay(schedule[JourneyDateKey.moveInNext]!)}',
       message: BalanceDueBanner.kMoveInNextMessage,
+      legalNote: BalanceDueBanner.kMoveInNextLegalNote,
+      isMoveInNext: true,
     ),
   };
 }
@@ -57,21 +65,32 @@ class BalanceDueBanner extends StatelessWidget {
     this.onEditSchedule,
     this.note,
     this.message = kBalanceDueMessage,
+    this.legalNote,
   });
 
   /// 배너 본문 기본값 — 잔금 하루 전·당일.
   static const String kBalanceDueMessage =
       '돈을 보내기 직전에 등기부를 다시 떼어 새로 생긴 빚이 없는지 확인하세요';
 
-  /// 입주 다음 날 본문 — 여정 데이터('입주 다음 날' 단계)와 같은 사실만 쓴다.
+  /// 입주 다음 날 본문 (2026-10-23 지수 #5·#6 · 서연 #5) — 법 조문(주택임대차보호법 제3조 제1항: 주택 인도 +
+  /// 주민등록(전입신고)을 마친 **다음 날부터** 제3자에게 효력)과 여정 데이터('입주 다음 날' 단계)의 사실만 쓴다.
+  /// 예전 문장("대항력은 오늘 0시부터 생겨요")은 전입신고를 안 했어도 생기는 것처럼 읽혔다 — 조건을 앞에 둔다.
   static const String kMoveInNextMessage =
-      '대항력은 오늘 0시부터 생겨요. 그 사이 새 빚이 생기지 않았는지 등기부를 다시 떼어 확인하세요';
+      '이삿날 전입신고까지 마쳤다면 오늘 0시부터 대항력(집주인이 바뀌어도 세입자 자리를 지킬 힘)이 생겨요. '
+      '이삿날부터 오늘 0시 사이에 새 빚이 생기지 않았는지 등기부를 다시 떼어 확인하세요. '
+      '전입신고를 아직 안 했다면 오늘 주민센터(또는 정부24)부터 가세요.';
+
+  /// 입주 다음 날 본문의 근거 — 작은 글씨로(지수=쉬운 본문, 서연=근거).
+  static const String kMoveInNextLegalNote = '(주택임대차보호법 제3조)';
 
   /// "잔금일이 내일이에요 · 8월 6일" (홈에서는 앞에 별칭이 붙는다)
   final String title;
 
   /// 제목 아래 본문 (2026-10-22 — 알림과 같은 세 날짜에 뜨므로 날마다 다른 말을 한다)
   final String message;
+
+  /// 본문 아래 작은 글씨 근거(법 조문). null이면 없다.
+  final String? legalNote;
   final VoidCallback onCompare;
 
   /// [떼는 법] — 발급 가이드. null이면 버튼을 그리지 않는다(홈 버전).
@@ -108,20 +127,21 @@ class BalanceDueBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // D4(2026-10-23): 제목이 12px라 본문보다 작았다 → 제목은 title 굵게(진한 글자), 본문은 body.
+                    // 앰버는 아이콘에만 — 연앰버 바탕 위 앰버 글자는 대비가 모자라다(D8).
                     AppText(
                       title,
-                      style: AppTypography.label.copyWith(
-                        color: AppColors.caution,
+                      style: AppTypography.title.copyWith(
+                        color: AppColors.textStrong,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 6),
-                    AppText(
-                      message,
-                      style: AppTypography.body.copyWith(
-                        color: AppColors.caution,
-                      ),
-                    ),
+                    AppText(message, style: AppTypography.body),
+                    if (legalNote != null) ...[
+                      const SizedBox(height: 2),
+                      AppText(legalNote!, style: AppTypography.caption),
+                    ],
                     // 계약 지킴이 패스가 있으면 표시만 (2026-10-22, P2-1) — 없으면 자리도 없다
                     const GuardianPassBadge(
                       padding: EdgeInsets.only(top: AppSpacing.sm),
@@ -173,21 +193,19 @@ class BalanceDueBanner extends StatelessWidget {
                     ),
                   ),
                 ),
+                // D10(2026-10-23): 글자 링크는 손가락이 빗나가기 쉬웠다 — 48dp 이상 터치 영역의 TextButton.
                 if (onEditSchedule != null)
-                  GestureDetector(
-                    onTap: onEditSchedule,
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: AppSpacing.sm),
-                      child: AppText(
-                        '일정 수정',
-                        style: AppTypography.label.copyWith(
-                          color: AppColors.caution,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
-                          decorationColor: AppColors.caution,
-                        ),
-                      ),
+                  TextButton(
+                    onPressed: onEditSchedule,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(AppSize.minTouchTarget, AppSize.minTouchTarget),
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                      foregroundColor: AppColors.textStrong,
+                      textStyle: AppTypography.label.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    child: const AppText(
+                      '일정 수정',
+                      style: TextStyle(decoration: TextDecoration.underline),
                     ),
                   ),
               ],

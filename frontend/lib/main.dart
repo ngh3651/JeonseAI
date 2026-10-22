@@ -23,6 +23,7 @@ import 'repositories/api_content_repository.dart';
 import 'repositories/content_repository.dart';
 import 'repositories/payment_repository.dart';
 import 'state/app_session.dart';
+import 'state/booth_mode.dart';
 import 'services/api_client.dart';
 import 'services/device_id.dart';
 import 'services/journey_reminder_service.dart';
@@ -43,6 +44,8 @@ Future<void> main() async {
   await JourneyScheduleStore.instance.restore();
   // '사진 속 이름 가리기'를 첫 화면부터 저장된 값으로 그린다(켜 둔 채 껐다 켰는데 이름이 한 번 비치면 안 된다).
   await PrivacySettings.instance.restore();
+  // 부스 모드(2026-10-23) — 켜져 있으면 첫 화면부터 로그아웃·회원 탈퇴·기록 지우기를 숨긴다.
+  await BoothMode.instance.restore();
   // 기기 id를 미리 만들어 둔다 — 첫 서버 요청이 저장소를 기다리지 않게. 실패해도 요청 때 다시 만든다.
   await DeviceId.instance.get();
   // 카카오 로그인 세션(2026-10-22) — 폰의 보안 저장소에 남긴 세션을 올린다(만료면 지운다).

@@ -44,6 +44,7 @@ Future<void> _pump(WidgetTester tester, CompareResult result) async {
             baselineReportId: 'r-base',
             onRetry: () {},
             onRecapture: () {},
+            onAddMissing: () {},
             onQuestions: () {},
             onAnalyze: () {},
             onGuide: () {},
@@ -104,7 +105,11 @@ void main() {
     );
 
     expect(find.koText('달라진 점이 2가지 있어요'), findsOneWidget);
-    expect(find.koText('7월 9일자 서류 ↔ 8월 5일자 서류'), findsOneWidget);
+    // 맨 위 한 줄 — 어느 집·어느 서류끼리인지(캡처해 보내도 알아보게). 주소는 앞부분만
+    expect(
+      find.koText('정자동 빌라 · 경기 성남시 분당구 정자동 · 7월 9일 ↔ 8월 5일 등기부'),
+      findsOneWidget,
+    );
 
     // 맨 위에 '지금 할 일' 카드가 생겨(2026-10-22) 아래 줄들은 내려 봐야 보인다 — 위에서부터 차례로.
     final scrollable = find.byType(Scrollable).first;
@@ -134,7 +139,7 @@ void main() {
         headline: '일부는 대조하지 못했어요',
         subline: '4가지 중 2가지만 맞춰봤어요',
         baseline: _baseline,
-        current: CompareDoc(viewedAt: '2026.08.05'),
+        current: CompareDoc(viewedAt: '2026.08.05', pageCount: 3),
         rows: [
           CompareRow(
             kind: CompareRowKind.unknown,
@@ -150,8 +155,18 @@ void main() {
     );
 
     expect(find.koText("대조하지 못한 항목은 '달라진 게 없다'는 뜻이 아니에요"), findsOneWidget);
-    // 경고 문구 뒤에는 반드시 행동 버튼
-    expect(find.koText('빠진 쪽 찍어서 올리기'), findsWidgets);
+    // 경고 문구 뒤에는 반드시 행동 버튼 — 라벨은 화면 전체가 '빠진 쪽만 더 찍기' 하나(서버 actionLabel이 옛 말이어도)
+    expect(
+      find.koText('빠진 쪽만 더 찍기', skipOffstage: false),
+      findsOneWidget,
+      reason: '줄 안의 버튼',
+    );
+    // 맨 위 '지금 할 일' 카드의 버튼은 먼저 찍은 장이 그대로라는 것까지 말한다
+    expect(
+      find.koText('빠진 쪽만 더 찍기 (먼저 찍은 3장은 그대로)', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.koText('빠진 쪽 찍어서 올리기', skipOffstage: false), findsNothing);
   });
 
   testWidgets('6c 기준 없음 — 비난이 아니라 초대 톤 (경고색 금지)', (tester) async {

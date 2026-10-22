@@ -655,6 +655,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
                       BalanceDueBanner(
                         title: banner.title,
                         message: banner.message,
+                        legalNote: banner.legalNote,
                         note: _checkPointNote,
                         onCompare: () =>
                             startRegistryCompare(context, property.latest),
@@ -761,7 +762,10 @@ class _JourneyScreenState extends State<JourneyScreen> {
       child: InkWell(
         onTap: () => setState(() => _switcherOpen = !_switcherOpen),
         borderRadius: BorderRadius.circular(AppRadius.buttonMini),
-        child: Padding(
+        // D10(2026-10-23): 터치 영역 48dp 이상 — 글자 높이만큼만 눌리면 빗나가기 쉽다
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppSize.minTouchTarget),
+          child: Padding(
           padding: const EdgeInsets.fromLTRB(11, 7, 9, 7),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -778,6 +782,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
                 color: Colors.white.withValues(alpha: 0.85),
               ),
             ],
+          ),
           ),
         ),
       ),
@@ -1410,24 +1415,29 @@ class _JourneyScreenState extends State<JourneyScreen> {
           ),
         ),
         const SizedBox(height: 10),
+        // D10(2026-10-23): 글자 링크 → 48dp 이상 터치 영역
         GestureDetector(
           onTap: () => context.push('/report/${report.id}'),
           behavior: HitTestBehavior.opaque,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppText(
-                '리포트 다시 보기',
-                style: AppTypography.buttonSmall.copyWith(
+          child: ConstrainedBox(
+            key: const ValueKey('reopen-report-link'),
+            constraints: const BoxConstraints(minHeight: AppSize.minTouchTarget),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppText(
+                  '리포트 다시 보기',
+                  style: AppTypography.buttonSmall.copyWith(
+                    color: AppColors.primary,
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 18,
                   color: AppColors.primary,
                 ),
-              ),
-              const Icon(
-                Icons.chevron_right,
-                size: 18,
-                color: AppColors.primary,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
@@ -1492,7 +1502,8 @@ class _JourneyScreenState extends State<JourneyScreen> {
         children: [
           AppText(
             '계약서에 잔금일과 이사 날짜가 적혀 있어요. 지금 넣어둘까요?',
-            style: AppTypography.body.copyWith(color: AppColors.caution),
+            // D8: 연한 앰버 바탕 위 글자는 진한 색 — 앰버는 아이콘·테두리에만
+            style: AppTypography.body.copyWith(color: AppColors.textBody),
           ),
           const SizedBox(height: 10),
           SizedBox(

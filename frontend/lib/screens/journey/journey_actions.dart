@@ -18,6 +18,13 @@ import '../search/capture_loop_route.dart';
 /// 대조에 올릴 수 있는 최대 장수 — 분석(S-04)과 같은 상한.
 const int kCompareMaxPhotos = 10;
 
+/// 사진 시트의 기본 제목·안내 (처음 대조할 때).
+const String kComparePhotoSheetTitle = '다시 뗀 등기부를 올려 주세요';
+const String kComparePhotoSheetSubtitle = '오늘 발급받은 등기부여야 지금 상태를 볼 수 있어요';
+
+/// 사진 시트 맨 아래 — 아직 다시 떼지 않은 사람을 발급 가이드로.
+const String kNotIssuedYetLabel = '아직 안 뗐어요 — 떼는 법 보기 (인터넷등기소 열람용 700원)';
+
 /// **이 화면의 핵심 행동**: 등기부를 다시 떼어 기준 서류와 맞춰본다.
 ///
 /// 기준이 없는 리포트(이 기능 이전 이력·예시)는 **사진을 받기 전에** 대조 화면으로
@@ -40,7 +47,23 @@ Future<void> startRegistryCompare(
 }
 
 /// 등기부 사진 고르기 — 찍거나 앨범에서. 취소하면 빈 목록.
-Future<List<String>> pickRegistryPhotos(BuildContext context) async {
+///
+/// [alreadyTaken]은 **이미 들고 있는 장수**다 — '빠진 쪽만 더 찍기'(대조 결과가 일부만 맞춰봤을 때)는
+/// 먼저 찍은 장을 그대로 두고 새 장만 받으므로, 촬영 뱃지("4장째")와 상한(남은 칸)이 그 장수부터 센다.
+/// 돌려주는 것은 **새로 고른 사진만**이다 — 먼저 찍은 장과 합치는 일은 부른 화면이 한다.
+///
+/// [captureOne]·[pickMany]는 카메라·앨범 주입 지점(테스트는 가짜 함수).
+Future<List<String>> pickRegistryPhotos(
+  BuildContext context, {
+  String title = kComparePhotoSheetTitle,
+  String subtitle = kComparePhotoSheetSubtitle,
+  int alreadyTaken = 0,
+  int maxPhotos = kCompareMaxPhotos,
+  CaptureOne captureOne = defaultCaptureOne,
+  PickMany pickMany = defaultPickMany,
+}) async {
+  final int room = maxPhotos - alreadyTaken;
+  if (room <= 0) return const [];
   final source = await showModalBottomSheet<_PhotoSource>(
     context: context,
     builder: (sheetContext) => SafeArea(
@@ -57,12 +80,9 @@ Future<List<String>> pickRegistryPhotos(BuildContext context) async {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const AppText('다시 뗀 등기부를 올려 주세요', style: AppTypography.title),
+                AppText(title, style: AppTypography.title),
                 const SizedBox(height: AppSpacing.xs),
-                AppText(
-                  '오늘 발급받은 등기부여야 지금 상태를 볼 수 있어요',
-                  style: AppTypography.caption,
-                ),
+                AppText(subtitle, style: AppTypography.caption),
               ],
             ),
           ),
@@ -76,6 +96,13 @@ Future<List<String>> pickRegistryPhotos(BuildContext context) async {
             title: const AppText('앨범에서 고르기', style: AppTypography.body),
             onTap: () => Navigator.of(sheetContext).pop(_PhotoSource.gallery),
           ),
+          // 다시 떼는 법을 몰라 여기서 막힌다(지수 리뷰 #10) — 발급 가이드로. 금액은 앱에 이미 있는 값
+          // (촬영 화면 '등기부등본 발급 방법': 인터넷등기소 열람용 700원)
+          ListTile(
+            leading: const Icon(Icons.help_outline, color: AppColors.textMuted),
+            title: const AppText(kNotIssuedYetLabel, style: AppTypography.body),
+            onTap: () => Navigator.of(sheetContext).pop(_PhotoSource.guide),
+          ),
           const SizedBox(height: AppSpacing.sm),
         ],
       ),
@@ -83,10 +110,15 @@ Future<List<String>> pickRegistryPhotos(BuildContext context) async {
   );
   if (source == null || !context.mounted) return const [];
 
+  if (source == _PhotoSource.guide) {
+    context.push('/guide');
+    return const [];
+  }
+
   if (source == _PhotoSource.gallery) {
     try {
-      final picked = await defaultPickMany();
-      return picked.take(kCompareMaxPhotos).toList();
+      final picked = await pickMany();
+      return picked.take(room).toList();
     } catch (_) {
       return const [];
     }
@@ -94,13 +126,14 @@ Future<List<String>> pickRegistryPhotos(BuildContext context) async {
 
   final result = await Navigator.of(context).push<CaptureLoopResult>(
     MaterialPageRoute(
-      builder: (_) => const CaptureLoopRoute(
-        alreadyTaken: 0,
-        maxPhotos: kCompareMaxPhotos,
+      builder: (_) => CaptureLoopRoute(
+        alreadyTaken: alreadyTaken,
+        maxPhotos: maxPhotos,
+        captureOne: captureOne,
       ),
     ),
   );
-  return result?.newPaths ?? const [];
+  return (result?.newPaths ?? const <String>[]).take(room).toList();
 }
 
-enum _PhotoSource { camera, gallery }
+enum _PhotoSource { camera, gallery, guide }

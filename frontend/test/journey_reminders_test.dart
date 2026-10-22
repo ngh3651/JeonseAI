@@ -105,10 +105,12 @@ void main() {
         now: now,
       );
 
-      expect(plan[0].body, startsWith('내일 잔금 전에 등기부를 다시 떼서 찍어 주세요'));
+      expect(plan[0].body, '내일 돈 보내기 직전에 새로 뗀 등기부를 찍어 주세요 — 오늘 뗀 서류엔 내일 생긴 빚이 안 보여요');
       expect(plan[1].body, '입금 전 마지막 확인 — 오늘 뗀 등기부로 대조해 주세요');
       expect(plan[2].title, startsWith('입주 다음 날 등기부 확인'));
-      expect(plan[2].body, contains('대항력은 오늘 0시부터 생겨요'));
+      // 전입신고를 했을 때만 생긴다는 조건이 앞에 온다(주택임대차보호법 제3조)
+      expect(plan[2].body, startsWith('이삿날 전입신고를 했다면 오늘 0시부터 대항력이 생겨요'));
+      expect(plan[2].body, contains('이삿날 이후 새 빚이 없는지 다시 떼서 대조해 주세요'));
       for (final r in plan) {
         expect(r.title, endsWith(' · 정자동 빌라'));
         // 출처 없는 수치를 지어내지 않는다 — 문구의 숫자는 여정 데이터에 이미 있는 '0시'(대항력)뿐

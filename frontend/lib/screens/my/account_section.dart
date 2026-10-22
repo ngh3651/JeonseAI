@@ -2,6 +2,7 @@
 ///
 /// '개인정보' 칸(사진 속 이름 가리기)과 **따로** 둔다 — 그쪽은 다른 작업이 함께 고치는 자리라 섞지 않는다.
 /// 회원 탈퇴는 확인 대화상자를 거친다 → 서버 `DELETE /api/me`(기록·세션·패스 전부 삭제) → 카카오 연결 끊기.
+/// **부스 모드**(2026-10-23)에서는 로그아웃·회원 탈퇴를 숨긴다 — 관람객이 시연 계정의 기록을 지우지 않게.
 library;
 
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../state/app_session.dart';
+import '../../state/booth_mode.dart';
 import '../auth/kakao_login_button.dart';
 
 /// 탈퇴 확인 대화상자의 설명 — **실제로 지우는 것 그대로** (테스트가 문장을 함께 본다).
@@ -39,6 +41,13 @@ class AccountSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session = context.watch<AppSession>();
+    return ListenableBuilder(
+      listenable: BoothMode.instance,
+      builder: (context, _) => _card(context, session, booth: BoothMode.instance.on),
+    );
+  }
+
+  Widget _card(BuildContext context, AppSession session, {required bool booth}) {
     final String title;
     final String caption;
     if (session.isLoggedIn) {
@@ -73,7 +82,13 @@ class AccountSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          if (session.isLoggedIn) ...[
+          if (session.isLoggedIn && booth)
+            // 부스 모드 — 로그아웃·회원 탈퇴를 숨긴 이유를 한 줄로(버튼이 '사라진' 게 아니라 '숨긴' 것이다)
+            AppText(
+              '부스 모드라 로그아웃·회원 탈퇴는 숨겼어요',
+              style: AppTypography.caption,
+            )
+          else if (session.isLoggedIn) ...[
             AppSecondaryButton(
               label: '로그아웃',
               onPressed: session.busy ? null : () => _signOut(context),

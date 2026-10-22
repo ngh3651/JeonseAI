@@ -12,12 +12,45 @@ import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../models/content_models.dart';
 import '../../services/journey_reminder_service.dart';
 import '../../services/journey_reminders.dart';
 import '../../state/journey_schedule_store.dart';
+import '../../utils/korean_date.dart';
+import '../common/share_feedback.dart';
+
+/// 알림 권한을 묻기 전에 말하는 이유 (2026-10-23 지수 #5·#6 · 서연 #5).
+const String kReminderPermissionReason =
+    '잔금을 보내기 직전에 집주인이 이 집을 담보로 새 빚(근저당)을 지는 일이 있어요. '
+    '전입신고 효력은 다음 날 0시부터라 그 하루가 빈틈이에요. '
+    '돈 보내기 전에 등기부를 다시 떼 보라고 그날 알려 드릴게요.';
 
 /// 알림이 꺼져 있을 때의 한 줄 — 앱 안 배너가 무엇을 대신하는지 말한다.
-const String kReminderFallbackMessage = '알림이 꺼져 있어요. 그날 앱을 열면 맨 위 배너로 알려 드려요';
+/// 2026-10-23(서연 #8): "배너로 알려 드려요"는 앱을 안 열면 아무 일도 없다는 사실을 가렸다 — 그대로 말한다.
+const String kReminderFallbackMessage = '알림이 꺼져 있어요 — 잔금 날 앱을 직접 열어야 경고를 볼 수 있어요';
+
+/// 권한 시트의 거절 버튼 — 거절하면 무엇을 직접 해야 하는지 버튼에 적는다.
+const String kReminderDeclineLabel = '괜찮아요 (잔금 날 앱을 직접 열게요)';
+
+/// 날짜를 저장한 뒤 [가족·배우자에게 보내기] — 별칭·잔금일·입주 다음 날 한 줄 (2026-10-23 서연 리뷰 #6·P2-17).
+///
+/// 날짜는 지금처럼 **이 폰에만** 저장한다 — 서버로 보내지 않고, 사용자가 고른 사람에게 공유 창으로만 나간다.
+/// 둘 다 없으면 null(버튼을 달지 않는다).
+String? familyScheduleText(String alias, JourneySchedule schedule) {
+  final DateTime? balance = schedule.balance;
+  final DateTime? moveInNext = schedule[JourneyDateKey.moveInNext];
+  if (balance == null && moveInNext == null) return null;
+  final name = alias.trim();
+  return [
+    name.isEmpty ? '[전세AI프] 우리 집' : '[전세AI프] $name',
+    if (balance != null) '잔금일 ${formatMonthDayWeekday(balance)}',
+    if (moveInNext != null) '입주 다음 날 ${formatMonthDayWeekday(moveInNext)}',
+    '그날 등기부를 다시 떼어 확인해요',
+  ].join(' · ');
+}
+
+/// 저장 뒤 안내의 [가족·배우자에게 보내기] 라벨.
+const String kShareScheduleLabel = '가족·배우자에게 보내기';
 
 /// 알림 종류 → 사람이 읽는 때 (권한 안내 목록에 쓴다).
 String reminderMomentLabel(JourneyReminderKind kind) => switch (kind) {
@@ -58,12 +91,23 @@ Future<void> applyJourneyReminders(
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
   messenger.hideCurrentSnackBar();
+  // [가족·배우자에게 보내기] — 날짜를 함께 아는 사람이 있으면 그날을 놓치지 않는다(서연 리뷰 #6)
+  final String? familyText = familyScheduleText(alias, schedule);
   if (enabled == true) {
     messenger.showSnackBar(
       SnackBar(
         content: AppText(
           '알림을 맞춰 뒀어요 · 첫 알림 ${describeReminderTime(plan.first.fireAt)}',
         ),
+        duration: const Duration(seconds: 6),
+        action: familyText == null
+            ? null
+            : SnackBarAction(
+                label: kShareScheduleLabel,
+                onPressed: () {
+                  if (context.mounted) shareWithFeedback(context, familyText);
+                },
+              ),
       ),
     );
   } else if (enabled == false) {
@@ -77,8 +121,16 @@ Future<void> applyJourneyReminders(
   } else {
     // 이 휴대폰에서 알림 기능 자체를 쓸 수 없다(초기화 실패 등) — 알림을 약속하지 않는다.
     messenger.showSnackBar(
-      const SnackBar(
-        content: AppText('이 휴대폰에서는 알림을 맞추지 못했어요. 그날 앱을 열면 맨 위 배너로 알려 드려요'),
+      SnackBar(
+        content: const AppText('이 휴대폰에서는 알림을 맞추지 못했어요. 그날 앱을 열면 맨 위 배너로 알려 드려요'),
+        action: familyText == null
+            ? null
+            : SnackBarAction(
+                label: kShareScheduleLabel,
+                onPressed: () {
+                  if (context.mounted) shareWithFeedback(context, familyText);
+                },
+              ),
       ),
     );
   }
@@ -116,12 +168,9 @@ Future<bool?> showReminderPermissionSheet(
             const SizedBox(height: AppSpacing.md),
             const AppText('그날 알림을 보내 드릴까요?', style: AppTypography.headline),
             const SizedBox(height: AppSpacing.sm),
-            // 이유 — 여정 데이터의 잔금 단계 설명과 같은 사실만 쓴다(새 수치 없음)
-            AppText(
-              '잔금 직전에 근저당을 새로 설정하는 방식이 많아요. '
-              '돈을 보내기 전에 등기부를 다시 떼라고 알려 드릴게요.',
-              style: AppTypography.body,
-            ),
+            // 이유 — 여정 데이터(journey_stages.json '잔금 보내는 날')와 같은 사실 + 법 조문(전입신고 효력은
+            // 다음 날 0시 — 주택임대차보호법 제3조)만 쓴다(새 수치 없음). 판례는 검수 대기라 넣지 않는다.
+            AppText(kReminderPermissionReason, style: AppTypography.body),
             const SizedBox(height: AppSpacing.lg),
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
@@ -172,7 +221,7 @@ Future<bool?> showReminderPermissionSheet(
             TextButton(
               onPressed: () => Navigator.of(sheetContext).pop(false),
               style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-              child: const AppText('괜찮아요 (앱 안 배너로만 볼게요)'),
+              child: const AppText(kReminderDeclineLabel),
             ),
           ],
         ),

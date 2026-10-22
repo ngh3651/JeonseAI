@@ -227,7 +227,7 @@ void main() {
         ),
       );
       expect(find.koText('내가 올린 사진에서 보기'), findsOneWidget);
-      expect(find.koTextContaining('서버에는 저장하지 않아요'), findsOneWidget);
+      expect(find.koTextContaining('서버에는 사진도 실명도 남지 않아요'), findsOneWidget);
       // 열 수 없으니 chevron은 없다
       expect(find.byIcon(Icons.chevron_right), findsNothing);
     });

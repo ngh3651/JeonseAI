@@ -1,4 +1,9 @@
-/// 분석에 **실제로 전송한 JPEG 파일**과 그 리포트를 보관하는 저장소.
+/// **폰 원본 보관** — 분석에 **실제로 전송한 JPEG 파일**과 **원본 리포트**(실명이 보이는 분석 응답)를 보관한다.
+///
+/// "폰엔 원본, 서버엔 가린 사본" (2026-10-22 규혁 결정): 서버 기록에는 사람 이름을 `홍○○`로 가린 사본만 남는다.
+/// 실제 만난 계약자와 이름을 맞춰 보려면 원본이 있어야 하므로 **이 폰에만** 둔다. 리포트를 다시 열 때(기록 목록·
+/// 같은 사진 캐시 적중 포함) 저장소(`ApiAnalysisRepository`)가 이 원본을 서버 사본보다 **먼저** 쓴다.
+/// 기록을 지우면 [forget]이 사진·원본을 함께 지운다.
 ///
 /// 왜 필요한가:
 /// 서버가 주는 하이라이트 좌표는 **서버로 보낸 그 JPEG의 픽셀 기준**이다. 화면에
@@ -6,17 +11,16 @@
 /// 남아 있고 재인코딩(quality 90)도 거치지 않았다). 그래서 업로드에 쓴 **그 파일**을
 /// 그대로 다시 그려야 한다 — 갤러리 경로를 기억해 두었다가 다시 읽으면 안 된다.
 ///
-/// 보관 정책 — [devKeepRegistryPhotos] 한 줄로 갈린다:
-/// - **true (개발 기본)**: 전송한 JPEG를 앱 영구 저장소로 복사하고, 리포트 JSON도
-///   같은 폴더에 남긴다. 앱을 껐다 켜도, 백엔드를 재시작해 서버 메모리의 리포트가
-///   사라져도 '원본에서 보기'가 계속 열린다(테스트마다 재분석 = 크레딧 소모를 막는다).
-/// - **false (제출·배포)**: 예전 그대로 **메모리 전용**. 복사·기록·복원이 전부 꺼지고,
-///   앱을 껐다 켜면 사진이 사라져 뷰어 진입점도 함께 사라진다.
+/// 보관 정책 — [keepOriginalsOnPhone] 한 줄로 갈린다:
+/// - **true (기본)**: 전송한 JPEG를 앱 영구 저장소로 복사하고, 원본 리포트 JSON도 같은 폴더에 남긴다.
+///   앱을 껐다 켜도 '내가 올린 사진에서 보기'와 실명 리포트가 계속 열린다.
+/// - **false**: **메모리 전용**. 복사·기록·복원이 전부 꺼지고, 앱을 껐다 켜면 사진이 사라져
+///   뷰어 진입점도 함께 사라진다. 리포트는 서버의 가린 사본으로 보인다.
 ///
 /// 저장 위치·형태:
 /// ```
 /// <getApplicationDocumentsDirectory()>/registry_photos/<reportId>/page_1.jpg …
-///                                                      └ report.json  (fallback 전용 캐시)
+///                                                      └ report.json  (원본 리포트 — 실명)
 /// SharedPreferences['registry_photos_v1']
 ///     = [{"id": "<reportId>", "photos": ["page_1.jpg", …]}, …]   ← 최신순
 /// ```
@@ -24,8 +28,8 @@
 /// prefs에는 절대경로가 아니라 **폴더 안 파일 이름**만 적는다. 앱 문서 경로는 런타임에
 /// 다시 물어보면 되고, 절대경로를 굳혀 두면 경로가 바뀌었을 때 통째로 못 읽는다.
 ///
-/// ⚠ 등기부 사진에는 소유자 실명·주소가 있다. 그래서 켜 두더라도 최근
-/// [keepRecentReports]건만 남기고 오래된 폴더는 지운다.
+/// ⚠ 등기부 사진·원본 리포트에는 소유자 실명·주소가 있다. 그래서 최근 [keepRecentReports]건만 남기고
+/// 오래된 폴더는 통째로 지운다(원본 리포트는 사진과 같은 폴더라 함께 지워진다).
 library;
 
 import 'dart:convert';
@@ -46,17 +50,17 @@ class RegistryPhotoStore {
   /// 무한정 쌓이면 기기 용량도 문제지만, 실명이 담긴 사진이 계속 남는 것이 더 문제다.
   static const int keepRecentReports = 5;
 
-  /// 사진을 **어디에 얼마나** 남기는지 — 화면 문구는 전부 이 한 줄에서 가져온다 (2026-10-22).
+  /// 사진·이름을 **어디에 얼마나** 남기는지 — 화면 문구는 전부 이 한 줄에서 가져온다 (2026-10-22).
   ///
-  /// 예전에는 화면마다 따로 적어 서로 모순됐다. 리포트 카드·뷰어는 "등기부 사진은 안전을 위해
-  /// 저장하지 않아요", 권한 안내는 "최근 분석 5건만 기기에 남아요". 실제 동작은 둘 다 아니고 둘 다다:
-  /// ⑴ **서버는 사진을 저장하지 않는다**(분석에만 쓰고 버린다 — api-contract·서버 테스트),
-  /// ⑵ **이 폰은** [devKeepRegistryPhotos]가 켜져 있으면 최근 [keepRecentReports]건의 사진을 남긴다.
+  /// 실제 동작 그대로다: ⑴ 사진은 국내 AI(Upstage)가 **글자를 읽는 데만** 쓰고, 우리 서버에는 사진도 실명도
+  /// 남지 않는다(서버 기록은 이름을 가린 사본 — api-contract §9.11·서버 테스트), ⑵ 실명이 보이는 **원본 리포트와
+  /// 사진은 이 폰에만** 최근 [keepRecentReports]건 남는다([keepOriginalsOnPhone]).
   /// 스위치·건수가 바뀌면 문구도 저절로 따라간다 — 문구와 동작이 다시 갈라지지 않게.
-  static const String retentionNotice = devKeepRegistryPhotos
-      ? '사진은 분석에만 쓰고 서버에는 저장하지 않아요. '
-            '이 휴대폰에만 최근 분석 $keepRecentReports건의 사진이 남아요.'
-      : '사진은 분석에만 쓰고 서버에는 저장하지 않아요. 이 휴대폰에도 남기지 않아요.';
+  static const String retentionNotice = keepOriginalsOnPhone
+      ? '사진은 국내 AI(Upstage)가 글자를 읽는 데만 써요. 우리 서버에는 사진도 실명도 남지 않아요. '
+            '실명이 보이는 원본 리포트와 사진은 이 휴대폰에만 최근 $keepRecentReports건 남아요.'
+      : '사진은 국내 AI(Upstage)가 글자를 읽는 데만 써요. 우리 서버에는 사진도 실명도 남지 않아요. '
+            '이 휴대폰에도 남기지 않아요.';
 
   static const String _prefsKey = 'registry_photos_v1';
   static const String _folderName = 'registry_photos';
@@ -101,6 +105,10 @@ class RegistryPhotoStore {
     _order.clear();
   }
 
+  /// 테스트에서 보관 폴더를 임시 폴더로 바꾼다(위젯 테스트에는 앱 문서 폴더 플러그인이 없다).
+  @visibleForTesting
+  static Future<Directory> Function()? rootForTest;
+
   // ── 영구 보관 (비동기) ────────────────────────────────────────────────────
   // 이 아래는 전부 실패를 삼킨다. 보관은 편의 기능이라, 실패했다고 분석이나 화면이
   // 깨져서는 안 된다. 실패하면 그 세션 동안은 메모리 전용으로 동작할 뿐이다.
@@ -110,7 +118,7 @@ class RegistryPhotoStore {
   /// 스위치가 꺼져 있으면 **예전에 남긴 것까지 지운다.** 그래야 config 한 줄을 false로
   /// 바꾸는 것만으로 "기기에 실명 사진이 남지 않는" 예전 상태로 완전히 돌아간다.
   Future<void> restore() async {
-    if (!devKeepRegistryPhotos) {
+    if (!keepOriginalsOnPhone) {
       await _purgeAll();
       return;
     }
@@ -138,7 +146,7 @@ class RegistryPhotoStore {
     }
   }
 
-  /// 분석 직후 호출 — 전송한 JPEG를 영구 저장소로 **복사**하고 리포트 JSON도 남긴다.
+  /// 분석 직후 호출 — 전송한 JPEG를 영구 저장소로 **복사**하고 원본 리포트 JSON도 남긴다.
   ///
   /// ★ [jpegPaths]는 반드시 **서버로 보낸 그 변환 JPEG**여야 한다. 갤러리 원본 경로를
   ///   넘기면 해상도·회전이 달라 하이라이트가 통째로 어긋난다.
@@ -147,7 +155,7 @@ class RegistryPhotoStore {
     List<String> jpegPaths, {
     String? reportJson,
   }) async {
-    if (!devKeepRegistryPhotos || jpegPaths.isEmpty) return;
+    if (!keepOriginalsOnPhone || jpegPaths.isEmpty) return;
     try {
       final root = await _root();
       final dir = Directory('${root.path}/$reportId');
@@ -174,27 +182,44 @@ class RegistryPhotoStore {
       await _pruneAndSave(root);
       debugPrint(
         '[사진보관] 저장 — $reportId 사진 ${names.length}장'
-        '${reportJson != null ? ' + 리포트 캐시' : ''} (보관 ${_order.length}/$keepRecentReports건)',
+        '${reportJson != null ? ' + 원본 리포트' : ''} (보관 ${_order.length}/$keepRecentReports건)',
       );
     } catch (e) {
       debugPrint('[사진보관] 저장 실패 — 메모리 전용으로 계속 (${e.runtimeType})');
     }
   }
 
-  /// 로컬에 캐시해 둔 리포트 JSON 원문. 없으면 null.
+  /// 이 폰에 남긴 **원본 리포트**(분석 응답 그대로 — 실명). 없으면 null.
   ///
-  /// **fallback 전용이다.** 서버 조회가 성공하면 이 값을 쓰지 않는다 — 서버가 항상
-  /// 최신이고, 캐시는 분석 당시의 스냅샷일 뿐이다.
-  Future<String?> cachedReportJson(String reportId) async {
-    if (!devKeepRegistryPhotos) return null;
+  /// 서버 기록은 이름을 가린 사본이라, 저장소는 이 원본을 **먼저** 쓴다(서버 사본은 원본이 없을 때만).
+  /// 서버가 나중에 바꾸는 것은 별칭뿐이고(같은 사진 + 새 별칭), 그때는 분석 응답을 받으며 이 원본의 별칭을 고친다.
+  Future<Map<String, dynamic>?> originalReport(String reportId) async {
+    if (!keepOriginalsOnPhone) return null;
     try {
       final root = await _root();
       final file = File('${root.path}/$reportId/$_reportFile');
       if (!file.existsSync()) return null;
-      return await file.readAsString();
+      final decoded = jsonDecode(await file.readAsString());
+      return decoded is Map<String, dynamic> ? decoded : null;
     } catch (e) {
-      debugPrint('[사진보관] 리포트 캐시 읽기 실패 (${e.runtimeType})');
+      debugPrint('[사진보관] 원본 리포트 읽기 실패 (${e.runtimeType})');
       return null;
+    }
+  }
+
+  /// 기록을 지울 때 — 이 리포트의 사진·원본 리포트를 **이 폰에서도** 지운다. 실패해도 넘어간다.
+  Future<void> forget(String reportId) async {
+    _byReportId.remove(reportId);
+    final removed = _order.remove(reportId);
+    if (!keepOriginalsOnPhone) return;
+    try {
+      final root = await _root();
+      final dir = Directory('${root.path}/$reportId');
+      if (dir.existsSync()) await dir.delete(recursive: true);
+      if (removed) await _pruneAndSave(root);
+      debugPrint('[사진보관] 기록 삭제 — $reportId의 사진·원본 리포트도 이 폰에서 지웠어요');
+    } catch (e) {
+      debugPrint('[사진보관] 폰 사본 삭제 실패 (${e.runtimeType})');
     }
   }
 
@@ -214,6 +239,8 @@ class RegistryPhotoStore {
   }
 
   Future<Directory> _root() async {
+    final override = rootForTest;
+    if (override != null) return override();
     final docs = await getApplicationDocumentsDirectory();
     return Directory('${docs.path}/$_folderName');
   }

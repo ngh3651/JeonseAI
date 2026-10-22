@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..schemas.internal import RuleVerdict
-from . import fallback_texts, llm, questions, shadow_llm, text_guard
+from . import fallback_texts, llm, questions, text_guard
 from .llm import LlmError
 from .llm.prompts import EXPLAIN_SYSTEM_PROMPT
 
@@ -113,7 +113,7 @@ class ExplanationResult:
     # ── 아래 셋은 **로그·보고용**이다 (2026-08-14 D9). 리포트 내용에 영향이 없다.
     #    "어느 모델이 몇 초 만에 이 문장을 썼는가"를 [분석 완료] 요약에 찍기 위한 것 —
     #    제안서에 터미널을 그대로 캡처해 넣으므로 화면 밖에서도 모델명이 남아야 한다.
-    provider: str = "-"  # llm provider 이름 (upstage | exaone | ax)
+    provider: str = "-"  # llm provider 이름 (upstage)
     model: str = "-"  # 실제 호출한 모델명 (.env로 덮였으면 덮인 값)
     elapsed: float = 0.0  # 설명 생성에 쓴 초. 부르지 않았으면 0
     # ── 근거 카드별 설명 출처 (2026-08-14 D26) ────────────────────────────
@@ -317,11 +317,9 @@ def _generate_with_llm(
     t0 = time.perf_counter()
     payload: ExplanationPayload | None = None
     last_error = "알 수 없음"
-    primary_raw: str | None = None  # 그림자 비교용 — 사용자 경로에는 쓰이지 않는다
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             content = _call_solar(messages, api_key)
-            primary_raw = content
             payload = ExplanationPayload.model_validate(json.loads(content))
             break
         except _EXPECTED_FAILURES as e:
@@ -423,20 +421,6 @@ def _generate_with_llm(
             f"[Solar] 응답 OK ({elapsed:.1f}초) — 설명 {applied}건 생성 · {dropped}건 폴백"
             f" — 사유: {' | '.join(reasons)}"
         )
-    # ── 그림자 로깅 (2026-08-05) ────────────────────────────────────────────
-    # 사용자 응답은 이 아래 return으로 이미 확정됐다. 아래 호출은 **데몬 스레드를 띄우고
-    # 즉시 돌아오며**, 돌려주는 값이 없다 — 그림자 출력이 이 함수의 결과에 섞일 방법이
-    # 구조적으로 없다. 꺼져 있으면(기본) 아무 일도 하지 않는다.
-    shadow_llm.maybe_run(
-        material=material,
-        report_id=report_id,
-        grade=verdict.grade.value,
-        primary_name=provider.name,
-        primary_raw=primary_raw,
-        primary_elapsed=elapsed,
-        primary_source=source,
-        max_len=_MAX_LEN,
-    )
     return ExplanationResult(
         texts=texts,
         source=source,

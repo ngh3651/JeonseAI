@@ -11,7 +11,8 @@ from datetime import timedelta
 
 import pytest
 
-from app.services import analysis_cache, store
+from app.schemas.contract import Report
+from app.services import analysis_cache, name_privacy, store
 
 from tests.test_analyze_smoke import (  # noqa: F401 — pytest 픽스처 재사용
     blank_image,
@@ -79,7 +80,11 @@ def test_같은_사진을_다시_넣으면_같은_리포트가_크레딧_없이_
 
     second = _analyze(client, [_photo()])
     assert second.status_code == 200, second.text
-    assert second.json() == first.json(), "같은 사진인데 리포트가 다르다"
+    # 같은 리포트 — 다만 캐시 적중은 **서버 기록의 가린 사본**이다(2026-10-22 화면엔 실명, 저장은 가린 사본).
+    # 앱은 폰에 둔 원본(실명)을 먼저 쓴다.
+    stored = name_privacy.mask_report_for_storage(Report.model_validate(first.json()))
+    assert second.json() == stored.model_dump(mode="json"), "같은 사진인데 리포트가 다르다"
+    assert "홍길동" in first.text and "홍길동" not in second.text
     assert len(calls) == n_after_first, f"캐시 적중인데 외부 호출이 늘었다: {calls[n_after_first:]}"
     # 캐시 적중은 로그에 한 줄
     hits = [line for line in logs if line.startswith("[캐시] 적중")]
@@ -251,6 +256,23 @@ def test_키에는_서버_코드_버전이_들어간다(monkeypatch):
     monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "bbbb2222bbbb2222")
     deploy_b = analysis_cache.make_key(images, deposit=1, market_price=None)
     assert len({local, deploy_a, deploy_b}) == 3
+
+
+def test_시세_DB가_뜨기_전_결과는_DB가_뜬_뒤에_다시_쓰지_않는다(client, no_network, monkeypatch):
+    """배포 직후 시세 DB를 내려받는 몇 분 동안 만든 '시세 없음' 리포트가 24시간 나가면 안 된다.
+    DB를 끝내 안 올린 서버에서도 캐시는 그대로 돈다(키에 '준비 여부'만 넣었다)."""
+    ready = {"value": False}
+    monkeypatch.setattr(analysis_cache, "price_db_ready", lambda: ready["value"])
+    calls = no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))] * 2)
+    first = _analyze(client, [_photo()]).json()
+    assert _analyze(client, [_photo()]).json()["id"] == first["id"]  # DB 없음끼리는 적중
+    assert _ie_calls(calls) == 1
+
+    ready["value"] = True  # 뒤에서 내려받기가 끝났다
+    second = _analyze(client, [_photo()])
+    assert second.status_code == 200, second.text
+    assert second.json()["id"] != first["id"]
+    assert _ie_calls(calls) == 2
 
 
 def test_새로_배포하면_같은_사진도_처음부터_분석한다(client, no_network, monkeypatch):

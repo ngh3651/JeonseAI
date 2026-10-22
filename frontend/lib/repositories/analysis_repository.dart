@@ -9,10 +9,24 @@ import 'package:flutter/foundation.dart';
 import '../models/analysis_report.dart';
 import '../models/compare_result.dart';
 import '../models/risk_grade.dart';
+import '../state/privacy_settings.dart';
 import '../utils/money_format.dart';
 
 /// ChangeNotifier — 이력이 바뀌면(분석·삭제) 구독 중인 홈 등이 갱신된다.
+///
+/// '사진 속 이름 가리기'가 바뀌어도 알린다(2026-10-22) — 이름 가리기는 리포트 JSON을 모델로 바꿀 때
+/// 한 곳에서 하므로(`AnalysisReport.fromJson`), 목록을 들고 있는 화면(홈·여정·마이)이 다시 읽으면 바로 반영된다.
 abstract class AnalysisRepository extends ChangeNotifier {
+  AnalysisRepository() {
+    PrivacySettings.instance.addListener(notifyListeners);
+  }
+
+  @override
+  void dispose() {
+    PrivacySettings.instance.removeListener(notifyListeners);
+    super.dispose();
+  }
+
   /// 등기부 이미지 + 입력값(보증금 등)으로 분석을 실행하고 이력에 추가한다.
   Future<AnalysisReport> analyze(AnalysisRequest request);
 

@@ -35,8 +35,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 세로 고정 — 시연 안정성 (user-scenario.md §5)
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  // 지난 세션에 보관해 둔 등기부 사진 목록을 메모리로 올린다.
-  // (devKeepRegistryPhotos가 false면 아무 일도 하지 않는다 → 예전 메모리 전용 동작)
+  // 지난 세션에 이 폰에 남긴 등기부 사진·원본 리포트 목록을 메모리로 올린다.
+  // (keepOriginalsOnPhone이 false면 남겨 둔 것까지 지운다 → 메모리 전용 동작)
   await RegistryPhotoStore.instance.restore();
   // 계약 일정(잔금일 등)은 **이 기기에만** 있다 — 여정 화면과 홈 D-1 배너가 곧바로
   // 그릴 수 있게 먼저 올린다(첫 프레임에 배너가 깜빡이며 나타나지 않도록).

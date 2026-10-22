@@ -49,7 +49,7 @@ def llm_extract(seizure_ranks: tuple[str, ...] = ("9",)) -> RegistryExtract:
 
 
 def test_두_경로가_같으면_일치로_센다():
-    check = cross_check.compare(ie_extract(), ie_extract(), provider="exaone")
+    check = cross_check.compare(ie_extract(), ie_extract(), provider="upstage")
     assert check.ran is True
     assert check.disagreed == []
     labels = {c.label for c in check.agreed}
@@ -57,7 +57,7 @@ def test_두_경로가_같으면_일치로_센다():
 
 
 def test_두_경로가_다르면_불일치로_센다():
-    check = cross_check.compare(ie_extract(), llm_extract(), provider="exaone")
+    check = cross_check.compare(ie_extract(), llm_extract(), provider="upstage")
     disagreed = {c.label: (c.ie_count, c.llm_count) for c in check.disagreed}
     assert disagreed == {"압류": (3, 1)}
 
@@ -187,7 +187,7 @@ def test_교차검증_결과가_리포트_판정_필드를_바꾸지_않는다()
 
 def test_두_번째_경로_실패는_분석을_막지_않는다():
     """LLM이 죽어도 리포트는 지금과 똑같이 완성된다."""
-    check = cross_check.compare(ie_extract(), None, provider="exaone", error="LlmError")
+    check = cross_check.compare(ie_extract(), None, provider="upstage", error="LlmError")
     result = highlight.build_highlights(ie_extract(), as_result(gap_gu_page(0)), cross=check)
     assert result.highlights, "두 번째 경로가 없다고 표시까지 사라지면 안 된다"
     assert result.checked_notes

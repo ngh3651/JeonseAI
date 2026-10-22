@@ -431,7 +431,7 @@ def _registry_raw_full() -> dict:
     }
 
 
-def test_분석_응답에_가림_상자가_실리고_실명은_없다(client, no_network):
+def test_분석_응답에_가림_상자가_실리고_상자에는_글자가_없다(client, no_network):
     gap, eul = gap_gu_full(0), eul_gu_full(1)
     no_network(_registry_raw_full(), [raw_ocr_json(gap), raw_ocr_json(eul)])
     files = [("files", (f"page_{i + 1}.jpg", blank_image(PAGE_W, PAGE_H), "image/jpeg")) for i in range(2)]
@@ -442,8 +442,12 @@ def test_분석_응답에_가림_상자가_실리고_실명은_없다(client, no
     assert report["privacyMasksReady"] is True
     masks = report["privacyMasks"]
     assert masks and {m["page"] for m in masks} == {0, 1}
+    # 상자에는 **위치만** — 글자는 하나도 없다. (2026-10-22부터 분석 응답 자체는 실명이다 — 화면엔 실명,
+    # 서버 기록엔 가린 사본. 그쪽은 test_pii_persistence가 본다.)
+    assert all(set(m) == {"page", "x", "y", "w", "h"} for m in masks)
+    assert all(isinstance(m[k], (int, float)) for m in masks for k in ("x", "y", "w", "h"))
     for name in PEOPLE:
-        assert name not in resp.text, f"응답에 실명 '{name}'"
+        assert name not in repr(masks), f"가림 상자에 실명 '{name}'"
 
     # 응답의 상자로도 모든 이름이 덮인다 (서버 → JSON → 다시 읽어도 같은 결과)
     from app.schemas.contract import PrivacyMask

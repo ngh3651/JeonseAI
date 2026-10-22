@@ -292,10 +292,33 @@ def _role_masks(line: Line, med_h: float) -> list[Box]:
 _OTHERS_TAIL = re.compile(r"\s*외\s*\d+\s*(?:명|인)\s*$")
 
 
-def person_names(extract: RegistryExtract | None) -> list[str]:
-    """IE 결과에서 **사람으로 보이는** 이름만 (긴 것부터). 기관·관공서·꼬리표는 뺀다.
+def name_values(extract: RegistryExtract | None) -> list[str]:
+    """IE가 읽은 **이름 칸의 글자 그대로** — 현재 소유자 + `_IE_NAME_FIELDS`. 사람·기관을 가리지 않고 전부."""
+    if extract is None:
+        return []
+    raw: list[object] = [o.name for o in extract.current_owners]
+    for key, attrs in _IE_NAME_FIELDS:
+        for entry in getattr(extract, key, None) or []:
+            raw.extend(getattr(entry, attr, None) for attr in attrs)
+    return [v for v in raw if isinstance(v, str) and v.strip()]
 
-    ⚠ 이 목록은 함수 밖으로 나가지 않는다 — 위치를 찾는 데만 쓰고 응답·로그에 싣지 않는다.
+
+def without_others_tail(value: str) -> str:
+    """`홍길동 외 1명` → `홍길동`."""
+    return _OTHERS_TAIL.sub("", value or "")
+
+
+def is_person_value(value: str) -> bool:
+    """이름 칸 하나가 **사람**으로 보이는가 — 기관·관공서·표 머리 낱말이면 아니다(`외 N명` 꼬리는 떼고 본다)."""
+    compact = "".join(without_others_tail(value).split())
+    return len(compact) >= 2 and not _is_label(compact) and not _not_a_person(compact)
+
+
+def person_names(extract: RegistryExtract | None) -> list[str]:
+    """IE 결과에서 **사람으로 보이는** 이름 낱말만 (긴 것부터). 기관·관공서·꼬리표는 뺀다.
+
+    ⚠ 위치를 찾는 데만 쓴다 — 응답·로그에 싣지 않는다. 화면용 실명 목록(`Report.personNames`)은 따로
+      `name_privacy.person_names`가 **이름 칸 글자 그대로** 만든다(낱말로 쪼개지 않는다 — 2026-10-22).
     ⚠ 접두어를 떼지 않는다 — `이전수` 같은 이름이 '이전'(등기원인어)에 잘려 사라진다.
     ⚠ **주소에 든 낱말은 뺀다.** 압류 채권자가 `서울특별시 양천구`면 `양천구`가 사람 이름처럼 남아,
       모든 쪽 머리의 주소 줄(대조할 곳)이 가려진다. 진짜 이름 칸은 ①②가 따로 덮는다.
@@ -303,14 +326,8 @@ def person_names(extract: RegistryExtract | None) -> list[str]:
     if extract is None:
         return []
     address = "".join((extract.address or "").split())
-    raw: list[object] = [o.name for o in extract.current_owners]
-    for key, attrs in _IE_NAME_FIELDS:
-        for entry in getattr(extract, key, None) or []:
-            raw.extend(getattr(entry, attr, None) for attr in attrs)
     names: set[str] = set()
-    for value in raw:
-        if not isinstance(value, str):
-            continue
+    for value in name_values(extract):
         for token in re.split(r"[\s,·/()]+", _OTHERS_TAIL.sub("", value)):
             token = token.strip()
             if len(token) < 2 or not all(_is_hangul(c) for c in token):

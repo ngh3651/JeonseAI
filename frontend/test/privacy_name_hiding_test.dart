@@ -395,10 +395,11 @@ void main() {
   });
 
   group('사진 보관 문구 — 앱 어디서나 같은 사실 하나', () {
-    test('서버에는 저장하지 않고, 폰에는 최근 5건만 남는다 (지금 설정 기준)', () {
+    test('사진은 국내 AI가 읽기만, 서버엔 사진·실명 없음, 원본은 이 폰에만 최근 5건 (지금 설정 기준)', () {
       expect(RegistryPhotoStore.keepRecentReports, 5);
-      expect(RegistryPhotoStore.retentionNotice, contains('서버에는 저장하지 않아요'));
-      expect(RegistryPhotoStore.retentionNotice, contains('이 휴대폰에만 최근 분석 5건'));
+      expect(RegistryPhotoStore.retentionNotice, contains('국내 AI(Upstage)가 글자를 읽는 데만'));
+      expect(RegistryPhotoStore.retentionNotice, contains('서버에는 사진도 실명도 남지 않아요'));
+      expect(RegistryPhotoStore.retentionNotice, contains('원본 리포트와 사진은 이 휴대폰에만 최근 5건'));
       // 예전 문구("등기부 사진은 안전을 위해 저장하지 않아요")는 폰 보관과 모순이었다
       expect(RegistryPhotoStore.retentionNotice, isNot(contains('안전을 위해')));
     });

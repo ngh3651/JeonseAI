@@ -7,7 +7,9 @@
 같은 입력이면 **같은 리포트를 그대로** 돌려준다(크레딧 0원, 몇 밀리초).
 
 키 = 올라온 JPEG 묶음의 SHA-256(**순서 포함** — 하이라이트·가림 상자의 쪽 번호가 업로드 순서라서) + 보증금 + 시세 입력
-+ **서버 코드 버전**(`code_version()` — 배포로 규칙이 바뀌면 키도 바뀐다. 옛 판정을 24시간 돌려주지 않게).
++ **서버 코드 버전**(`code_version()` — 배포로 규칙이 바뀌면 키도 바뀐다. 옛 판정을 24시간 돌려주지 않게)
++ **시세 DB 준비 여부**(`price_db_ready()` — 배포 직후 시세 DB를 내려받기 전에 만든 '시세 없음' 리포트가
+  DB가 뜬 뒤에도 24시간 나가지 않게. DB를 끝내 안 올려도 캐시는 그대로 돈다).
 별칭은 키에 넣지 않는다 — 판정과 무관하다. 별칭만 바꿔 다시 보내면 같은 리포트에 새 별칭을 붙여 돌려준다.
 **같은 기기 안에서만** 찾는다(기록이 기기별이라 다른 기기의 리포트는 돌려줄 수 없다).
 기간은 `ANALYSIS_CACHE_HOURS`(기본 24시간, 0이면 끈다).
@@ -32,7 +34,7 @@ from datetime import datetime, timedelta, timezone
 
 from .. import settings
 from ..schemas.contract import Report
-from . import store
+from . import official_price, store
 
 _log = logging.getLogger("jeonseai")
 
@@ -78,13 +80,25 @@ def code_version() -> str:
     return settings.env_str("RAILWAY_GIT_COMMIT_SHA") or LOCAL_CODE_VERSION
 
 
+def price_db_ready() -> bool:
+    """시세 DB(공시가격 + 오피스텔 기준시가)가 **둘 다** 있는가 — 헬스체크 `priceDb`와 같은 판단.
+
+    서버는 바로 뜨고 시세 DB는 뒤에서 내려받는다(처음 몇 분은 없다). 내려받기는 다 받은 뒤 이름을 바꾸므로
+    파일이 있으면 다 받은 것이다(`prepare_runtime.py`). 확인하다 실패하면 '없음'으로 본다.
+    """
+    try:
+        return all(official_price.db_path(key).is_file() for key in official_price.DB_FILENAMES)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def make_key(images: list[tuple[str, bytes]], *, deposit: int, market_price: int | None) -> str:
-    """사진 묶음(순서 포함) + 보증금 + 시세 입력 + 서버 코드 버전 → 64자리 키.
+    """사진 묶음(순서 포함) + 보증금 + 시세 입력 + 서버 코드 버전 + 시세 DB 준비 여부 → 64자리 키.
 
     파일 이름은 넣지 않는다(앱이 늘 page_N.jpg로 보낸다).
     """
     h = hashlib.sha256()
-    h.update(f"{KEY_VERSION}|code={code_version()}|{len(images)}|".encode())
+    h.update(f"{KEY_VERSION}|code={code_version()}|pricedb={int(price_db_ready())}|{len(images)}|".encode())
     for _, data in images:
         h.update(hashlib.sha256(data).digest())
     price = "" if market_price is None else str(int(market_price))

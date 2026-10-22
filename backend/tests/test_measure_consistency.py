@@ -16,6 +16,18 @@ import pytest
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "measure_consistency.py"
 
 
+@pytest.fixture(autouse=True)
+def _restore_environ():
+    """도구의 `main()`은 `os.environ`에 **직접** 쓴다(`ANALYSIS_CACHE_HOURS=0`·`DATA_DIR` 등 — 혼자 돌 때는 맞다).
+    테스트가 끝나면 되돌린다 — 안 그러면 뒤에 도는 테스트에서 캐시가 꺼진 채로 남는다(2026-10-22 PR 검토에서 발견)."""
+    import os
+
+    saved = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
+
+
 @pytest.fixture(scope="module")
 def tool():
     spec = importlib.util.spec_from_file_location("measure_consistency", _SCRIPT)

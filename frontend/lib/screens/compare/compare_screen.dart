@@ -71,6 +71,10 @@ class _CompareScreenState extends State<CompareScreen> {
   /// 사진 품질로 분석 전에 거절됐을 때(400 + captureCheck, P1-1) 장별 안내. 있으면 '그 장만 다시 찍기'.
   CaptureCheck? _captureCheck;
 
+  /// 거절 뒤에 **이미 바꿔 찍은** 장(0부터). 있으면 위 안내가 서버의 처음 문구("2·3쪽이 흐려요") 대신
+  /// "바꾼 장 · 아직 다시 찍을 장"을 말한다 — 바꾼 쪽 번호를 또 찍으라고 하지 않게.
+  final Set<int> _replacedPages = {};
+
   /// 진행 항목이 하나씩 나타나는 연출 (시안 0 / 0.5 / 1.1 / 1.7초)
   int _shownSteps = 0;
   Timer? _stepTimer;
@@ -98,6 +102,7 @@ class _CompareScreenState extends State<CompareScreen> {
       _errorStatus = null;
       _needsAppUpdate = false;
       _captureCheck = null;
+      _replacedPages.clear();
       _shownSteps = _imagePaths.isEmpty ? 4 : 0;
     });
     if (_imagePaths.isNotEmpty) _startStepChoreography();
@@ -157,6 +162,7 @@ class _CompareScreenState extends State<CompareScreen> {
     ];
     setState(() {
       _imagePaths = List<String>.of(_imagePaths)..[index] = result.newPaths.last;
+      _replacedPages.add(index);
       // 아직 바꿀 심한 장이 남았으면 안내만 줄이고 기다린다(같은 사진을 또 보내지 않게).
       if (severeLeft.isNotEmpty) {
         _captureCheck = CaptureCheck(
@@ -354,8 +360,7 @@ class _CompareScreenState extends State<CompareScreen> {
         CaptureIssuePanel(
           check: check,
           title: waiting ? '사진을 다시 찍어야 대조할 수 있어요' : '남은 장도 바꿀 수 있어요',
-          message: '${_errorMessage ?? ''}\n대조는 하지 않았어요(크레딧이 들지 않았어요). '
-              '문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.',
+          message: _captureMessage(check),
           onRetake: _retakePage,
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -372,6 +377,19 @@ class _CompareScreenState extends State<CompareScreen> {
         ),
       ],
     );
+  }
+
+  /// 거절 안내 한 줄. 아직 아무 장도 안 바꿨으면 서버 문구 그대로, 바꾼 장이 있으면 **지금 남은 것**을 말한다.
+  String _captureMessage(CaptureCheck check) {
+    const String tail = '대조는 하지 않았어요(크레딧이 들지 않았어요). 문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.';
+    if (_replacedPages.isEmpty) return '${_errorMessage ?? ''}\n$tail';
+    final done = (_replacedPages.toList()..sort()).map((i) => '${i + 1}쪽').join(', ');
+    final left = [
+      for (final p in check.pages)
+        if (p.severe) '${p.index + 1}쪽',
+    ];
+    final leftText = left.isEmpty ? '' : ' · 아직 다시 찍을 장: ${left.join(', ')}';
+    return '바꾼 장: $done$leftText\n$tail';
   }
 
   Widget _errorBody() {

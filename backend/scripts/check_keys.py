@@ -10,7 +10,6 @@
                — **아주 적은 크레딧**을 쓴다(출력에 표시).
 - 국토부(MOLIT, data.go.kr): 실거래가 1건 조회(서울 종로구 1개월, 1행). 공공 API라 무료.
                HTTP 200이어도 본문의 오류 코드(SERVICE_KEY_IS_NOT_REGISTERED_ERROR 등)를 본다.
-- LG EXAONE (FriendliAI serverless, 설정됐을 때만): `GET /models`, 없으면 1토큰 채팅.
 
 실행: `cd backend && python scripts/check_keys.py`
 종료 코드: 설정된 키가 **모두 정상**이면 0, 하나라도 아니면 1. (설정 안 된 키는 판단에서 뺀다 —
@@ -45,8 +44,6 @@ TIMEOUT_SECONDS = 20
 UPSTAGE_MODELS_URL = "https://api.upstage.ai/v1/models"
 UPSTAGE_CHAT_URL = "https://api.upstage.ai/v1/solar/chat/completions"
 UPSTAGE_FALLBACK_MODEL = "solar-pro2"
-
-EXAONE_BASE_URL = "https://api.friendli.ai/serverless/v1"
 
 #: 실거래가 점검용 고정 조회값 — 서울 종로구(11110), 2026년 1월, 1행. 결과 내용은 보지 않는다.
 MOLIT_PROBE_LAWD = "11110"
@@ -145,7 +142,7 @@ def _openai_style_check(
     http_get: HttpGet,
     http_post: HttpPost,
 ) -> Result:
-    """`GET /models` → (404·405면) 1토큰 채팅. Upstage·EXAONE 공통."""
+    """`GET /models` → (404·405면) 1토큰 채팅 (OpenAI 호환 키 점검)."""
     headers = {"Authorization": f"Bearer {key}"}
     try:
         resp = http_get(models_url, headers=headers, timeout=TIMEOUT_SECONDS)
@@ -194,25 +191,6 @@ def check_upstage(*, http_get: HttpGet = requests.get, http_post: HttpPost = req
     )
 
 
-def check_exaone(*, http_get: HttpGet = requests.get, http_post: HttpPost = requests.post) -> Result:
-    key = settings.env_str("EXAONE_API_KEY")
-    if not key:
-        return Result("LG EXAONE (EXAONE_API_KEY)", NOT_SET, "서비스에서 안 씀")
-    from app.services.llm.providers import ExaoneProvider
-
-    base = settings.env_str("EXAONE_BASE_URL") or EXAONE_BASE_URL
-    model = settings.env_str("EXAONE_MODEL") or ExaoneProvider.default_model
-    return _openai_style_check(
-        "LG EXAONE (EXAONE_API_KEY)",
-        key=key,
-        models_url=f"{base.rstrip('/')}/models",
-        chat_url=f"{base.rstrip('/')}/chat/completions",
-        model=model,
-        http_get=http_get,
-        http_post=http_post,
-    )
-
-
 def check_molit(*, http_get: HttpGet = requests.get) -> Result:
     key = settings.env_str("MOLIT_API_KEY")
     if not key:
@@ -246,10 +224,9 @@ def run(
     results = [
         check_upstage(http_get=http_get, http_post=http_post),
         check_molit(http_get=http_get),
-        check_exaone(http_get=http_get, http_post=http_post),
     ]
     upstage, *optional = results
-    # 설정 안 된 선택 키(MOLIT·EXAONE)는 판단에서 뺀다. Upstage는 없어도 실패다(분석 불가).
+    # 설정 안 된 선택 키(MOLIT)는 판단에서 뺀다. Upstage는 없어도 실패다(분석 불가).
     failed = upstage.status != OK or any(r.status not in (OK, NOT_SET) for r in optional)
     return results, (1 if failed else 0)
 

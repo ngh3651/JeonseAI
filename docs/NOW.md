@@ -57,6 +57,8 @@
 > ⚠ 본선 이후 Upstage 키가 바뀜 — 배포 전 `python scripts/check_keys.py`로 확인. 키는 backend/.env와 Railway Variables에만 넣고 채팅·커밋에 쓰지 않는다.
 
 - **10/26까지** 포스터용 앱 화면 캡처를 팀에 넘긴다 (인쇄 주문 10/28).
+- **P1-1 숫자 재기(사람, 키 필요)**: 종이 등기부 하나를 10번 찍어 `촬영묶음/<등기부>/01~10/page_N.jpg`로 두고
+  `cd backend && python scripts/measure_consistency.py ../촬영묶음 --deposit <보증금>` → `backend/out/consistency_*.md`(판정 일치율·재촬영 안내·처리 시간). 크레딧: 묶음당 IE 1 + OCR 장수 + 설명 1.
 - **10/29 18시 기능 동결** → 이후는 버그만. 10/30~11/1 리허설·비상 영상·장비 점검.
 
 ## 6. 결정 (2026-10-21 규혁)

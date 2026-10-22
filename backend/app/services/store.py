@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS passes (
+    owner_key   TEXT NOT NULL,
+    order_id    TEXT NOT NULL PRIMARY KEY,
+    plan_id     TEXT NOT NULL,
+    payment_key TEXT NOT NULL,
+    amount      INTEGER NOT NULL,
+    method      TEXT,
+    approved_at TEXT,
+    test_mode   INTEGER NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_passes_owner_created ON passes (owner_key, created_at);
 """
 
 
@@ -305,3 +317,58 @@ def put_cases(report_id: str, cases: list[CaseMatch], *, device_id: str) -> None
 
 def clear_cases(report_id: str, *, device_id: str) -> None:
     _cases_cache.pop(_cases_key(report_id, device_id), None)
+
+
+# ── 계약 지킴이 패스 = 결제 기록 (2026-10-22, P2-1) ──────────────────────────────
+# 주인은 `owner_key` — **dependencies.get_pass_owner 한 곳에서만** 정한다(지금은 `device:<기기 id>`).
+# 카카오 로그인이 붙으면 그 함수만 계정 키를 돌려주게 바꾸면 된다(여기 저장 방식은 그대로).
+# 카드 번호·영수증 주소·이름은 저장하지 않는다. 테스트 결제만 받는다(services/payments.py).
+
+_PASS_COLUMNS = "owner_key, order_id, plan_id, payment_key, amount, method, approved_at, test_mode"
+
+
+def _pass_row(row: tuple) -> dict:
+    owner_key, order_id, plan_id, payment_key, amount, method, approved_at, test_mode = row
+    return {
+        "owner_key": owner_key,
+        "order_id": order_id,
+        "plan_id": plan_id,
+        "payment_key": payment_key,
+        "amount": int(amount),
+        "method": method,
+        "approved_at": approved_at,
+        "test_mode": bool(test_mode),
+    }
+
+
+def add_pass(
+    *,
+    owner_key: str,
+    order_id: str,
+    plan_id: str,
+    payment_key: str,
+    amount: int,
+    method: str | None,
+    approved_at: str | None,
+    test_mode: bool,
+) -> None:
+    """승인된 결제 한 건을 남긴다. 같은 주문번호는 한 번만 들어간다(두 번째는 무시)."""
+    _db().execute(
+        f"INSERT OR IGNORE INTO passes ({_PASS_COLUMNS}, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (owner_key, order_id, plan_id, payment_key, amount, method, approved_at, int(test_mode), _now_iso()),
+    )
+
+
+def pass_by_order(order_id: str) -> dict | None:
+    """주문번호로 찾은 결제 기록(주인과 상관없이). 없으면 None."""
+    rows = _db().execute(f"SELECT {_PASS_COLUMNS} FROM passes WHERE order_id = ?", (order_id,))
+    return _pass_row(rows[0]) if rows else None
+
+
+def latest_pass(owner_key: str) -> dict | None:
+    """이 주인의 가장 최근 결제 기록. 없으면 None."""
+    rows = _db().execute(
+        f"SELECT {_PASS_COLUMNS} FROM passes WHERE owner_key = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        (owner_key,),
+    )
+    return _pass_row(rows[0]) if rows else None

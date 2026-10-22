@@ -330,3 +330,66 @@ class CompareResult(BaseModel):
     # 이번에 뗀 등기부로 만들어진 새 리포트 id. **다른 집이면 None** — 기준 매물의
     # 보증금으로 계산된 값이라 그 집의 판정으로 쓸 수 없어 이력에서도 지운다.
     newReportId: Optional[str] = None
+
+
+# ── 요금제·테스트 결제 (§3.12~§3.14 — 2026-10-22, P2-1) ───────────────────────
+# 가격은 팀 확정 전까지 **예시**다(`label`). 결제 금액은 서버가 `data/pricing.json`의 price로
+# 검사한다 — 앱이 보낸 금액을 믿지 않는다. 결제는 토스페이먼츠 **테스트 키로만** 승인한다.
+
+
+class PricingPlan(BaseModel):
+    id: str  # free | guardian_pass | institution
+    name: str
+    tagline: str
+    price: Optional[int] = None  # 원. None이면 결제할 수 없다(문의)
+    priceText: str  # 화면에 그대로 쓰는 값 ("9,900원" · "문의")
+    period: Optional[str] = None  # "계약 1건" 등
+    purchasable: bool = False  # 결제 버튼을 붙이는가
+    contact: bool = False  # "문의" 요금제인가
+    features: list[str] = Field(default_factory=list)
+
+
+class Pricing(BaseModel):
+    label: str  # "예시 (팀 확정 전)" — 가격 옆 어디에나 붙인다
+    currency: str = "KRW"
+    testMode: bool = True  # 결제가 테스트 결제인가 (실제 청구 없음)
+    testNotice: str = "테스트 결제 — 실제 청구 없음"
+    plans: list[PricingPlan]
+
+
+class PaymentConfirmRequest(BaseModel):
+    """결제위젯이 성공으로 돌려준 값 + 산 요금제. **amount는 검사용**일 뿐 승인 금액은 서버가 정한다."""
+
+    planId: str
+    orderId: str = Field(pattern=r"^[A-Za-z0-9_-]{6,64}$")  # 토스 주문번호 규칙
+    paymentKey: str = Field(min_length=1, max_length=200)
+    amount: int = Field(ge=0)
+
+
+class GuardianPass(BaseModel):
+    """계약 지킴이 패스 한 장(= 결제 기록 한 건). 카드 번호·영수증 주소는 담지 않는다."""
+
+    planId: str
+    planName: str
+    orderId: str
+    amount: int
+    method: Optional[str] = None  # 토스가 준 결제수단 ("카드" · "간편결제" 등)
+    approvedAt: Optional[str] = None  # 토스 승인 시각 (ISO 8601)
+    testMode: bool = True
+
+
+class PaymentConfirmResponse(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    testMode: bool = True
+    notice: str = "테스트 결제 — 실제 청구 없음"
+    guardianPass: GuardianPass = Field(alias="pass")
+
+
+class PassStatus(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    active: bool
+    testMode: bool = True
+    notice: str = "테스트 결제 — 실제 청구 없음"
+    guardianPass: Optional[GuardianPass] = Field(default=None, alias="pass")

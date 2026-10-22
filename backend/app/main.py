@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from . import settings
 from .dependencies import app_key_ok
-from .routers import content, reports
+from .routers import content, payments, reports
 
 # ── 서버 콘솔 로그 (한국어, 사람이 읽는 용도) ──────────────────────────────────
 # services 쪽도 같은 이름("jeonseai")의 로거를 쓴다. uvicorn 로그와 섞이지 않게 전용 핸들러.
@@ -109,6 +109,7 @@ async def log_requests(request: Request, call_next):
 #       prefix="/api"가 이미 반영돼 있어 경로가 완전한 상태다.
 app.router.routes.extend(reports.router.routes)
 app.router.routes.extend(content.router.routes)
+app.router.routes.extend(payments.router.routes)  # 요금제·테스트 결제 (2026-10-22)
 
 # CORS 설정: Flutter 앱(모바일 에뮬레이터/실기기)에서 호출할 수 있도록 허용합니다.
 # 주의: 개발 단계라 모든 origin을 허용합니다.

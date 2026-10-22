@@ -98,6 +98,19 @@ def rate_limit_global_per_hour() -> int:
     return env_int("RATE_LIMIT_GLOBAL_PER_HOUR", 300)
 
 
+#: 토스페이먼츠 개발자 문서에 **공개된 테스트용** 결제위젯 시크릿 키 (2026-10-22, P2-1).
+#: 이 키로 승인한 결제는 실제로 청구되지 않는다. 문서 공개 값이라 비밀이 아니다.
+TOSS_DOCS_TEST_SECRET_KEY = "test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6"
+
+
+def toss_secret_key() -> str:
+    """토스페이먼츠 결제 승인 키(`TOSS_SECRET_KEY`). 비우면 문서 공개 **테스트** 키.
+
+    ⚠ `test_`로 시작하지 않는 키(실제 키 `live_…`)는 결제 라우터가 **거부**한다 — 결선은 테스트 결제만.
+    """
+    return env_str("TOSS_SECRET_KEY") or TOSS_DOCS_TEST_SECRET_KEY
+
+
 def docs_disabled() -> bool:
     """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
     return env_flag("DISABLE_DOCS")

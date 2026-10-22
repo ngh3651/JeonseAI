@@ -25,6 +25,8 @@ os.environ["APP_KEY"] = ""
 os.environ["REQUIRE_DEVICE_ID"] = ""
 os.environ["SAVE_RAW_RESPONSES"] = ""
 os.environ["RATE_LIMIT_ANALYZE_PER_HOUR"] = ""
+# 결제(2026-10-22): 개발자 `.env`의 토스 키가 끼어들지 않게 — 비우면 문서 공개 테스트 키. 토스 호출은 테스트가 전부 목으로 바꾼다.
+os.environ["TOSS_SECRET_KEY"] = ""
 
 import pytest  # noqa: E402
 

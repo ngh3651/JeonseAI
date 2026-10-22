@@ -190,7 +190,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         ..clear()
         ..addAll(result.paths);
     });
-    if (result.wantsRetake) await _openCaptureLoop();
+    // [이 장 다시 찍기] — 그 장을 **그 자리에서** 바꾼다(예전에는 맨 뒤에 새 장이 붙었다, 지수 리뷰 #1).
+    final int? retake = result.retakeIndex;
+    if (retake != null) await _replacePhotoAt(retake);
   }
 
   bool _samePaths(List<String> other) {
@@ -219,9 +221,13 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   }
 
   /// 문제인 장 하나를 다시 찍어 **그 자리에** 바꿔 끼운다. 나머지 장·입력값은 그대로다.
-  Future<void> _retakePage(CapturePageIssue page) async {
-    final int index = page.index;
+  Future<void> _retakePage(CapturePageIssue page) => _replacePhotoAt(page.index, tip: page.tip);
+
+  /// [index]번째 장을 다시 찍어 그 자리에 바꿔 끼운다 — 거절 안내의 [그 장만 다시 찍기]와
+  /// 크게 보기의 [이 장 다시 찍기]가 같은 흐름을 쓴다. 서버가 그 장에 이유를 줬으면 함께 보여 준다.
+  Future<void> _replacePhotoAt(int index, {String? tip}) async {
     if (index < 0 || index >= _photos.length) return;
+    final String? reason = tip ?? _rejection?.check.issueFor(index)?.tip;
     final CaptureLoopResult? result = await Navigator.of(context).push(
       MaterialPageRoute<CaptureLoopResult>(
         fullscreenDialog: true,
@@ -230,7 +236,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           maxPhotos: _maxImages,
           captureOne: widget.captureOne,
           replacePage: index,
-          replaceTip: page.tip,
+          replaceTip: reason,
         ),
       ),
     );

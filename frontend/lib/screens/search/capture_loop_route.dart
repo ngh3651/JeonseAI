@@ -240,7 +240,9 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
             ),
           ),
         ),
-        // 바꾸는 장이면 서버가 말한 "왜 문제였는지 + 어떻게 찍는지"를 그대로 다시 보여 준다.
+        // 바꾸는 장이면 서버가 말한 "왜 문제였는지 + 어떻게 찍는지"를 다시 보여 준다.
+        // ⚠ 그건 **아까 사진**의 문제다 — 앞에 '아까 사진:'을 붙인다. 안 붙이면 방금 찍은 새 사진도
+        //   문제라고 읽혀 멀쩡한 사진을 또 다시 찍는다(지수 리뷰 #3).
         if (widget.isReplace && (widget.replaceTip ?? '').isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(
@@ -250,7 +252,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
               0,
             ),
             child: AppText(
-              widget.replaceTip!,
+              '아까 사진: ${widget.replaceTip!}',
               textAlign: TextAlign.center,
               style: AppTypography.caption.copyWith(
                 color: Colors.white.withValues(alpha: 0.78),
@@ -290,7 +292,9 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
           child: Column(
             children: [
               AppText(
-                '글자가 흐리거나 잘렸으면 다시 찍어 주세요',
+                widget.isReplace
+                    ? '이번 사진 글자가 또렷하면 [이 사진으로 바꾸기]를 눌러 주세요'
+                    : '글자가 흐리거나 잘렸으면 다시 찍어 주세요',
                 textAlign: TextAlign.center,
                 style: AppTypography.body.copyWith(
                   color: Colors.white.withValues(alpha: 0.78),

@@ -206,7 +206,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.koText('2쪽을 새로 찍었어요'), findsOneWidget);
-      expect(find.koText('글자 테두리가 번져 있어요.'), findsOneWidget);
+      // 서버가 말한 문제는 **아까 사진**의 것이다 — 새 사진도 문제인 줄 알지 않게(지수 리뷰 #3)
+      expect(find.koText('아까 사진: 글자 테두리가 번져 있어요.'), findsOneWidget);
+      expect(find.koText('글자 테두리가 번져 있어요.'), findsNothing);
+      expect(find.koText('이번 사진 글자가 또렷하면 [이 사진으로 바꾸기]를 눌러 주세요'), findsOneWidget);
       expect(find.koText('이 사진으로 바꾸기'), findsOneWidget);
       expect(find.koText('다음 장 찍기'), findsNothing);
 

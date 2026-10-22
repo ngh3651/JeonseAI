@@ -1809,7 +1809,7 @@
     청소(오래된 칸 지우기)가 하루 칸을 지우지 않게 서버 전체 칸은 고정(`_PINNED`).
 - **출처**: 팀 내부 결정 (Android 앱 서명 — 같은 서명이어야 업데이트 설치, Flutter 공식 안내 "Build and release an Android app"의 key.properties 방식).
 
-### [2026-10-22] LG EXAONE 미사용 확정 — 코드에서 뺐다
+### [2026-10-22] LG EXAONE 미사용 확정 — 코드에서 뺐다 (SKT A.X 자리도)
 
 - **처음 의도**: 본선 때 대회 측이 공식 제공한 키로 LG K-EXAONE을 연결했다 — provider 추상화(Upstage Solar · LG EXAONE · SKT A.X)에
   넣고, 설명 모델 비교 하네스·그림자 호출(`SHADOW_LLM`)로 Solar와 나란히 쟀다([2026-07-22]·[2026-07-28] 항목).
@@ -1819,10 +1819,11 @@
   설정 안내가 그대로 남아 있었다.
 - **최종 결정**: 코드에서 전부 뺀다 — `llm/providers.py`의 공급자, 그림자 호출 `shadow_llm.py`와 집계 `scripts/shadow_report.py`,
   설명 단계의 그림자 호출, 리포트 요약의 회사 표기, `scripts/check_keys.py` 점검, `.env.example` 항목.
-  비교 도구(`compare_llm_backends.py`·`tools/model_ab.py`·`tools/chat_ab.py`)는 Solar·A.X 비교에도 쓰여 그 부분만 뺐다(B 기본값 `ax`).
+  실측 하네스 `compare_llm_backends.py`는 Solar만 재게 남기고, `tools/chat_ab.py`는 Solar(A) 모드만 쓴다.
   `git grep -i "exaone|friendli|SHADOW_LLM"`(backend·scripts·frontend·.github) = 0건. 옛 코드·실측 기록은 보관 브랜치
   `archive-2026-10-21`과 이 파일의 옛 항목에 그대로 있다.
-  - ⚠ SKT A.X 공급자 자리는 남겼다 — 키가 없어 한 번도 불리지 않는다(`available=False`). 지울지는 따로 정한다.
+  - **SKT A.X 공급자 자리도 뺐다**(같은 날 규혁 "AI는 Upstage만" — 키가 없어 한 번도 불린 적 없다). 두 모델을 견주던
+    `tools/model_ab.py`는 견줄 모델이 없어 지웠다(본선 결과표는 커밋 `fa7fbbf`·보관 브랜치에 있다).
 - **출처**: 팀 결정(규혁, 2026-10-22). NOW.md 6절 결정 6.
 
 ### [2026-10-22] 개인정보 — 화면은 실명, 저장은 가린 사본 ("폰엔 원본, 서버엔 가린 사본")

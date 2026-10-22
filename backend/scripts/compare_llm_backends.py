@@ -1,4 +1,4 @@
-"""국내 LLM(Solar Pro / SKT A.X) 역할별 비교 하네스.
+"""Upstage Solar Pro 역할별 실측 하네스 (2026-10-22부터 AI는 Upstage만 — 다른 회사 모델 자리는 뺐다).
 
 ⚠ 격리 원칙: 이 스크립트는 제품 코드를 **import(읽기)만** 하고 수정하지 않는다.
    제품의 LLM 경로는 여전히 Solar 고정이며, 이 하네스는 비교 실측 전용이다.
@@ -18,7 +18,6 @@
 
 프로바이더 설정 (환경변수 — backend/.env 또는 셸):
   Solar  : UPSTAGE_API_KEY (기존 키 그대로. base/model 기본값 내장)
-  A.X    : AX_BASE_URL / AX_MODEL / AX_API_KEY          (OpenAI 호환 chat/completions 가정)
 
 사용:
   python scripts/compare_llm_backends.py --list              # 설정 상태·필요 키 점검 (호출 0)
@@ -81,29 +80,7 @@ def _providers() -> dict[str, dict]:
             "extra": {"reasoning_effort": "low"},  # 제품 설정과 동일 (decisions.md 2026-07-07)
             "note": "제품 현행 (기존 UPSTAGE_API_KEY 재사용)",
         },
-        # 기본값은 2026-07-22 조사 확정 경로(docs/rag-expansion-review-2026-07-22.md §3.4).
-        # 키는 절대 코드에 넣지 않는다 — backend/.env로만.
-        "ax": {
-            "base_url": os.environ.get("AX_BASE_URL", "https://guest-api.sktax.chat/v1"),
-            "model": os.environ.get("AX_MODEL", "ax4"),
-            "api_key": os.environ.get("AX_API_KEY", "").strip(),
-            "extra": _extra_json("AX_EXTRA_JSON"),
-            # 허용 근거: 모델 사용 기준(decisions.md 2026-07-22) — SKT 공식 배포라 베이스 계보 무관.
-            # 연결 전 게스트 API 이용약관·레이트리밋 확인(미문서화 상태).
-            "note": "SKT A.X 무료 게스트 API — AX_API_KEY 필요(약관·리밋 확인 후 연결)",
-        },
     }
-
-
-def _extra_json(env_name: str) -> dict:
-    raw = os.environ.get(env_name, "").strip()
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except ValueError:
-        print(f"⚠ {env_name} JSON 해석 실패 — 무시합니다: {raw[:60]}")
-        return {}
 
 
 # ── 역할(태스크) 입력 구성 — 픽스처 → 실제 판정 → 실제 프롬프트 ─────────────

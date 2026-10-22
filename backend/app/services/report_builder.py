@@ -661,7 +661,7 @@ def analyze(
 # `.env` 덮어쓰기를 반영한 **실제 호출값**이다(추정·수기 입력 없음).
 
 #: provider 이름 → 캡처에 쓸 회사 표기. 모르는 이름은 그대로 찍는다(거짓말보다 낫다).
-_VENDOR_LABEL = {"upstage": "Upstage", "ax": "SKT A.X"}
+_VENDOR_LABEL = {"upstage": "Upstage"}
 
 
 def _vendor(provider: str | None, model: str | None) -> str:

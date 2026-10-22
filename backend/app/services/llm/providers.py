@@ -1,14 +1,11 @@
-"""국내 LLM provider 구현체 — 대회 규정상 쓸 수 있는 모델만.
+"""LLM provider 구현체 — **Upstage Solar 하나**(2026-10-22 "AI는 Upstage만").
 
 | provider | 모델 | 엔드포인트 | 키 환경변수 | 현재 상태 |
 |---|---|---|---|---|
 | `upstage` | solar-pro2 | api.upstage.ai/v1/solar | `UPSTAGE_API_KEY` | 키 있음 |
-| `ax` | SKT A.X 4.0 | guest-api.sktax.chat/v1 | `AX_API_KEY` | **키 없음** |
 
-**키가 없는 provider는 `available=False`로 조용히 빠진다.** 키가 도착하면
-`backend/.env`에 값만 넣으면 비교 대상에 **자동으로 합류한다** — 코드를 고칠 필요가 없다.
-이것이 이 파일의 설계 요구사항이다(2026-07-28 지시).
-2026-10-22: 다른 회사 모델 하나는 쓰지 않기로 해 코드에서 뺐다(decisions.md 2026-10-22).
+**키가 없는 provider는 `available=False`로 조용히 빠진다**(분석은 폴백 문구로 완성된다).
+2026-10-22: 본선 때 비교 실험에 쓰던 다른 회사 모델 자리는 모두 뺐다 — AI는 Upstage만(decisions.md 2026-10-22).
 
 모델명은 전부 환경변수로 덮을 수 있다(`*_MODEL`). serverless 엔드포인트는 제공 모델이
 바뀌므로, 모델명이 틀렸을 때 코드 배포 없이 `.env`만 고쳐 복구할 수 있어야 한다.
@@ -40,22 +37,7 @@ class UpstageSolarProvider(OpenAiCompatibleProvider):
         return payload
 
 
-class AxProvider(OpenAiCompatibleProvider):
-    """SKT A.X 4.0 — **키 미발급 상태**(2026-07-28).
-
-    구현은 전부 해 두었다. `backend/.env`에 `AX_API_KEY=...`를 넣는 순간
-    `available`이 True가 되어 비교 하네스와 provider 선택에 자동으로 합류한다.
-    """
-
-    name = "ax"
-    default_model = "ax4"
-    key_env = "AX_API_KEY"
-    model_env = "AX_MODEL"
-    base_url = "https://guest-api.sktax.chat/v1"
-
-
 #: 이름 → 클래스. 새 provider는 여기 한 줄만 더한다.
 PROVIDER_CLASSES = {
     UpstageSolarProvider.name: UpstageSolarProvider,
-    AxProvider.name: AxProvider,
 }

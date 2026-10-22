@@ -344,6 +344,9 @@ void main() {
       await PrivacySettings.instance.setHideNamesInPhotos(true);
       await tester.pump();
       expect(find.byKey(const ValueKey('preview-whole-cover')), findsOneWidget);
+      // 까만 띠만 있으면 "사진이 깨졌다"로 읽힌다 — 왜 덮었는지 가운데에 흰 글씨로(2026-10-23 서연 리뷰 #10)
+      expect(find.koText(kWholePageCoverLabel), findsOneWidget);
+      expect(find.koText('이름 가리기 켜짐 · 이 쪽은 통째로 가렸어요'), findsOneWidget);
     });
   });
 

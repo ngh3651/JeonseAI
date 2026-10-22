@@ -276,7 +276,7 @@ class _ReportScreenState extends State<ReportScreen> {
       padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
       child: RegistryEntryCard(
         subtitle: hasPhotos
-            ? _registryViewedLine(report)
+            ? _withNamesHiddenNote(_registryViewedLine(report))
             : '${RegistryPhotoStore.retentionNotice} 다시 보려면 새로 분석해 주세요.',
         onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
         preview: preview == null
@@ -312,6 +312,13 @@ class _ReportScreenState extends State<ReportScreen> {
   String? _registryViewedLine(AnalysisReport report) {
     final viewed = report.registryViewedAt;
     return viewed == null ? null : '※ $viewed 기준 등기부등본';
+  }
+
+  /// '사진 속 이름 가리기'가 켜져 있으면 부제 끝에 그 사실과 끄는 곳을 붙인다 (2026-10-23 서연 리뷰 #10 · 디자인 #9).
+  /// 뷰어는 가린 이유를 말하는데 진입 카드만 말이 없어, 덮인 띠가 "사진이 깨졌다"로 읽혔다.
+  String? _withNamesHiddenNote(String? line) {
+    if (!PrivacySettings.instance.hideNamesInPhotos) return line;
+    return line == null ? kNamesHiddenSuffix : '$line · $kNamesHiddenSuffix';
   }
 
   /// 무엇이 표시됐는지 **종류별 개수로** — `집주인 이름 1곳과 빚 3건을 사진 위에 표시했어요`.

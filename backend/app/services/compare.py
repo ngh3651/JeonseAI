@@ -14,9 +14,11 @@
   비교한 숫자는 틀린 결론으로 이어지고, 그 결론이 잔금을 보내게 만든다.
 
 개인정보:
-스냅샷에 **소유자 실명을 저장하지 않는다.** 비교는 프로세스마다 새로 만드는 소금(salt)을
-섞은 해시로 하고, 화면에는 `김○○`만 나간다. 해시는 서버가 살아 있는 동안만 뜻이 있고
-(이력 저장소도 메모리다), 소금이 매번 달라 사전 대입으로 이름을 되찾을 수 없다.
+스냅샷에 **소유자 실명을 저장하지 않는다.** 비교는 소금(salt)을 섞은 **느린 해시**(PBKDF2)로
+하고, 화면에는 `김○○`만 나간다. 2026-10-21부터 스냅샷이 SQLite에 남으므로 소금도 **기록 DB에**
+함께 둔다(`store.name_salt()`) — 재시작해도 옛 기준과 견줄 수 있어야 하기 때문이다.
+해시는 이름을 되찾는 **속도를 늦출 뿐**이다 — 기록에는 주소가 그대로 남고, 주소만 있으면 등기부를 떼어
+소유자를 볼 수 있다. 지켜야 할 것은 DB 파일 자체(공개 금지)와 보관 기간이다(NOW.md 열린 결정 7).
 """
 
 from __future__ import annotations
@@ -35,8 +37,13 @@ from .formatting import format_won, mask_name
 
 _log = logging.getLogger("jeonseai")
 
-#: 이름 해시용 소금 — 프로세스마다 새로 만든다(재시작하면 옛 스냅샷도 함께 사라진다).
+#: 이름 해시용 기본 소금 — 프로세스마다 새로 만든다. 실제 분석은 기록 DB의 소금을 넘긴다
+#: (`report_builder` → `build_snapshot(name_salt=store.name_salt())`). 단위 테스트는 이 값을 쓴다.
 _SALT = secrets.token_bytes(16)
+
+#: 이름 해시 반복 횟수 — 이름 하나에 수십 ms. 분석 1회(20~30초)에는 티가 안 나고,
+#: DB가 새어도 이름 사전 대입을 그만큼 느리게 만든다. **바꾸면 옛 스냅샷과 집주인 대조가 어긋난다.**
+_NAME_HASH_ITERATIONS = 50_000
 
 #: 등급 심각도 — 안전도가 내려갔는지 올라갔는지 판단용. `internal.Grade`와 같은 순서다.
 _SEVERITY = {Grade.GOOD.value: 0, Grade.CAUTION.value: 1, Grade.DANGER.value: 2}
@@ -143,12 +150,15 @@ class RegistrySnapshot:
     page_count: int = 0
 
 
-def _name_key(name: str | None) -> str:
+def _name_key(name: str | None, salt: bytes | None = None) -> str:
     """소유자 이름 → 비교용 해시. 실명은 어디에도 남기지 않는다."""
     normalized = re.sub(r"\s+", "", (name or "")).strip()
     if not normalized:
         return "이름없음"
-    return hashlib.sha256(_SALT + normalized.encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", normalized.encode("utf-8"), salt or _SALT, _NAME_HASH_ITERATIONS
+    )
+    return digest.hex()[:16]
 
 
 def _owner_display(names: list[str]) -> str:
@@ -215,8 +225,12 @@ def build_snapshot(
     report: Report,
     page_count: int,
     manual_market_price: int | None,
+    name_salt: bytes | None = None,
 ) -> RegistrySnapshot:
-    """분석이 끝난 직후, 그 추출 결과를 다음 대조의 기준으로 남긴다."""
+    """분석이 끝난 직후, 그 추출 결과를 다음 대조의 기준으로 남긴다.
+
+    `name_salt`: 집주인 이름 해시용 소금. 기준과 이번 서류가 **같은 소금**이어야 대조가 된다.
+    """
     owner_names = [str(o.name or "") for o in extract.current_owners]
     return RegistrySnapshot(
         report_id=report.id,
@@ -229,7 +243,7 @@ def build_snapshot(
         grade=report.grade,
         deposit=report.deposit,
         manual_market_price=manual_market_price,
-        owner_keys=tuple(sorted(_name_key(n) for n in owner_names)),
+        owner_keys=tuple(sorted(_name_key(n, name_salt) for n in owner_names)),
         owner_display=_owner_display(owner_names),
         entries={
             name: tuple(_fingerprints(extract, name))

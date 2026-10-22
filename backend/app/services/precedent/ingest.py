@@ -22,9 +22,10 @@ from urllib.parse import urlparse
 from .chunking import chunk_document
 from .embedding import EmbeddingBackend, get_backend
 from .models import PrecedentDoc
-from .store import DEFAULT_INDEX_DIR, VectorStore, get_store
+from .store import PRECEDENT_DATA_DIR, VectorStore, get_store
+from .store import current_index_dir as default_index_dir
 
-_PRECEDENT_DATA_DIR = DEFAULT_INDEX_DIR.parent  # backend/data/precedents
+_PRECEDENT_DATA_DIR = PRECEDENT_DATA_DIR  # backend/data/precedents (원본·시드 — 인덱스 위치와 무관)
 
 # 자동 태깅 키워드 규칙 (raw 대량 수집분용 — 큐레이션 태그가 항상 우선)
 _AUTO_TAG_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -281,7 +282,7 @@ def ingest(
     반환: meta dict (서명·건수). **대량 임베딩의 GPU 실행 지점**은 backend 선택뿐이다
     (embedding.py 참고) — 이 함수 자체는 백엔드가 무엇이든 동일하게 돈다.
     """
-    index_dir = Path(index_dir or DEFAULT_INDEX_DIR)
+    index_dir = Path(index_dir or default_index_dir())
     backend = backend or get_backend()
     store = store if store is not None else get_store(index_dir)
 

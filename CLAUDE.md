@@ -25,6 +25,8 @@
 
 ## 2. 불변 원칙 (반드시)
 
+(옛 코드 주석의 'CLAUDE.md 3절' = 지금의 §2)
+
 1. **위험 판정 = 규칙 엔진만** (ML 분류 금지). **LLM은 설명·문장만** — 판정을 바꾸거나 새로 만들 수 없다.
 2. 가중치·임계값은 `권위 출처 확보 → docs/decisions.md 기록 → 코드` 순서로만. **출처 없는 수치 금지.**
    인정 출처: HUG 공식 기준, 정부·금융기관 기준, 판례, 법령. (상세: `.claude/rules/risk-scoring.md`)
@@ -57,7 +59,8 @@
 # 서버 — backend/.env 에 UPSTAGE_API_KEY (견본: backend/.env.example)
 cd backend && python -m venv .venv && source .venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt && uvicorn app.main:app --reload      # API 문서: http://127.0.0.1:8000/docs
-python -m pytest -q        # 키 없이 돈다 (2026-10-21: 681 통과 · 6 건너뜀)
+python -m pytest -q        # 키 없이 돈다 (2026-10-22: 801 통과 · 6 건너뜀)
+python scripts/check_keys.py   # 키가 아직 맞는지 (키 값은 안 보인다) — 배포 전에
 
 # 앱 — 지금은 USB 실기기 + adb reverse 필요 (배포 작업으로 바뀔 예정: docs/NOW.md P0)
 cd frontend && flutter pub get && adb reverse tcp:8000 tcp:8000 && flutter run
@@ -69,3 +72,10 @@ flutter test
 - 검사: `python3 scripts/check_docs.py`(문서 양산 금지). CI = `.github/workflows/ci.yml` (PR마다 서버·앱 테스트).
 - 코드 주석에 나오는 옛 문서 경로(`docs/ocr-highlight-findings.md` 등)는 보관 브랜치에서 연다:
   `git show archive-2026-10-21:docs/<파일>`.
+
+## 6. 개발 원칙
+
+- **Android 우선**이되 iOS를 막는 코드는 쓰지 않는다 — 플랫폼 종속 코드는 한곳에 격리한다.
+- 화면은 **Repository 인터페이스에만 의존**한다 (Dummy↔Api 교체, 더미 모양 = `docs/api-contract.md`).
+- 비개발 팀원이 채울 내용(판례·문구·출처)은 코드가 아니라 **`backend/data/` 파일**로 둔다.
+- 임시·더미 파일은 `docs/NOW.md` **"정리 대상"**에 적고, 때가 되면 지운다.

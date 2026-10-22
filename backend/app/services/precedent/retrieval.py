@@ -26,7 +26,8 @@ from pathlib import Path
 
 from .embedding import EmbeddingBackend, get_backend
 from .models import PrecedentChunk, PrecedentDoc, RetrievedPrecedent
-from .store import DEFAULT_INDEX_DIR, VectorStore, get_store
+from .store import VectorStore, get_store
+from .store import current_index_dir as default_index_dir
 
 # ── 검색 파라미터 (인프라 수치 — 판정 아님. 평가셋 루프로 캘리브레이션) ──────
 RETRIEVE_K = 12          # 융합 전 후보 폭 (벡터·BM25 각각)
@@ -107,7 +108,7 @@ class HybridRetriever:
         store: VectorStore | None = None,
         backend: EmbeddingBackend | None = None,
     ) -> None:
-        self._index_dir = Path(index_dir or DEFAULT_INDEX_DIR)
+        self._index_dir = Path(index_dir or default_index_dir())
         self._store = store if store is not None else get_store(self._index_dir)
         self._backend = backend if backend is not None else get_backend()
         self._docs: dict[str, PrecedentDoc] = {}

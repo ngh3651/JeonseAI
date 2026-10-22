@@ -33,8 +33,19 @@ from .price_sources import PriceSourceNotReady
 _log = logging.getLogger("jeonseai")
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
-PRICE_DIR = _BACKEND_ROOT / "data" / "price"
-RAW_DIR = PRICE_DIR / "raw"
+#: 원본 CSV/ZIP을 두는 곳(로컬 빌드용). DB 위치와 따로 둔다 — 원본은 수 GB라 서버에 올리지 않는다.
+RAW_DIR = _BACKEND_ROOT / "data" / "price" / "raw"
+#: DB 위치를 **코드로 고정할 때만** 쓴다(테스트·스크립트). None이면 `PRICE_DB_DIR`(기본
+#: `backend/data/price`)을 부를 때마다 읽는다 — 클라우드에서는 `/data/price` (2026-10-21).
+PRICE_DIR: Path | None = None
+
+
+def price_dir() -> Path:
+    if PRICE_DIR is not None:
+        return Path(PRICE_DIR)
+    from .. import settings  # 순환 import 방지
+
+    return settings.price_db_dir()
 
 DB_FILENAMES = {
     PS.SOURCE_OFFICIAL_PRICE: "official_price.sqlite",
@@ -52,7 +63,7 @@ AREA_TOLERANCE_RATIO = market_price.AREA_TOLERANCE_RATIO
 
 
 def db_path(source_key: str) -> Path:
-    return PRICE_DIR / DB_FILENAMES[source_key]
+    return price_dir() / DB_FILENAMES[source_key]
 
 
 # ── 결과 ─────────────────────────────────────────────────────────────────────

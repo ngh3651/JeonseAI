@@ -4,7 +4,7 @@
 지금까지의 방어는 `.gitignore`와 "시연 전에 비운다"는 절차뿐이었고, 절차는 잊힌다.
 이 파일이 지키는 두 가지:
 
-1. **운영 모드에서는 애초에 저장하지 않는다** (`DEV_MODE_AUTH` 하나에 묶여 있다)
+1. **기본은 저장하지 않는다** (환경변수 `SAVE_RAW_RESPONSES=1`일 때만 — 2026-10-21 분리)
 2. 저장하더라도 **최근 N회분만** 남는다
 """
 
@@ -22,7 +22,7 @@ def sandbox(tmp_path, monkeypatch):
     """`out/`을 임시 폴더로 갈아끼운다 — 진짜 out/을 건드리지 않는다."""
     monkeypatch.setattr(artifacts, "OUT_DIR", tmp_path)
     monkeypatch.setattr(artifacts, "RUNS_DIR", tmp_path / "runs")
-    monkeypatch.setattr(artifacts, "SAVE_RAW", True)
+    monkeypatch.setenv("SAVE_RAW_RESPONSES", "1")
     return tmp_path
 
 
@@ -31,30 +31,54 @@ def sandbox(tmp_path, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def test_개발_모드가_꺼지면_저장하지_않는다(tmp_path, monkeypatch):
-    """운영 전환 시 스위치 **하나**로 저장이 멈춰야 한다.
+def test_스위치가_꺼져_있으면_저장하지_않는다(tmp_path, monkeypatch):
+    """기본값(환경변수 없음)에서는 저장 자체가 없어야 한다 — 클라우드에서 실명이 쌓이지 않는다.
 
     스위치가 여럿이면 "어디선가 아직 저장하고 있었다"가 반드시 생긴다.
     """
     monkeypatch.setattr(artifacts, "OUT_DIR", tmp_path)
     monkeypatch.setattr(artifacts, "RUNS_DIR", tmp_path / "runs")
-    monkeypatch.setattr(artifacts, "SAVE_RAW", False)
+    monkeypatch.delenv("SAVE_RAW_RESPONSES", raising=False)
 
+    assert artifacts.save_enabled() is False
     assert artifacts.run_dir("20260728_000000_000") is None
     assert artifacts.save_json("20260728_000000_000", "ie.json", {"a": 1}) is None
     assert not (tmp_path / "runs").exists()
 
 
-def test_저장_스위치는_DEV_MODE_AUTH를_그대로_따른다():
-    """`SAVE_RAW`가 다른 값에서 파생되면 운영 전환 때 한쪽만 남는다."""
-    from app.dependencies import DEV_MODE_AUTH
+@pytest.mark.parametrize("value", ["0", "", "false", "no", "아무거나"])
+def test_켜짐_값이_아니면_꺼진_것으로_본다(monkeypatch, value):
+    monkeypatch.setenv("SAVE_RAW_RESPONSES", value)
+    assert artifacts.save_enabled() is False
 
-    assert artifacts.SAVE_RAW is DEV_MODE_AUTH
-    # 원응답을 남기는 두 모듈도 같은 스위치를 봐야 한다
-    from app.services import extraction, ocr
 
-    assert ocr.SAVE_OCR_RAW is DEV_MODE_AUTH
-    assert extraction.SAVE_IE_RAW is DEV_MODE_AUTH
+def test_스위치는_부를_때마다_환경변수를_읽는다(monkeypatch):
+    """import 때 굳으면 플랫폼 Variables·테스트 setenv가 먹지 않는다."""
+    monkeypatch.setenv("SAVE_RAW_RESPONSES", "1")
+    assert artifacts.save_enabled() is True
+    monkeypatch.setenv("SAVE_RAW_RESPONSES", "0")
+    assert artifacts.save_enabled() is False
+
+
+def test_원응답을_남기는_모듈은_모두_같은_스위치를_본다():
+    """IE·OCR·DP·실거래가가 각자 스위치를 들면 하나만 꺼지고 나머지는 계속 저장한다."""
+    import inspect
+
+    from app.services import document_parse, extraction, market_price, ocr
+
+    for module in (extraction, ocr, market_price):
+        src = inspect.getsource(module)
+        assert "artifacts.save_enabled()" in src, module.__name__
+        assert "import DEV_MODE_AUTH" not in src, module.__name__
+    # DP는 save_json만 부르고, save_json이 스위치를 본다
+    assert "artifacts.save_json(" in inspect.getsource(document_parse)
+
+
+def test_인증_우회_상수는_더_이상_없다():
+    """예전 `DEV_MODE_AUTH` 하나가 인증 우회 + 실명 저장을 같이 켰다(2026-10-21 분리)."""
+    from app import dependencies
+
+    assert not hasattr(dependencies, "DEV_MODE_AUTH")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -1,8 +1,8 @@
 # backend/data/precedents/ — 판례 데이터 안내 (정민재 편집 대상)
 
 > 판례 매칭 화면의 재료가 되는 폴더입니다. **`seed_cases.json`만 직접 편집하면 됩니다.**
-> (기존 `backend/data/cases.json`은 구 방식(수기 전체 입력)이고, 이 폴더가 신 방식입니다 —
-> E-3에서 화면이 이 데이터로 전환되면 cases.json은 정리 예정. docs/cleanup-tracker.md 참고.)
+> (기존 `backend/data/cases.json`은 구 방식(수기 전체 입력)이고 **이미 쓰지 않습니다** — 판례 화면은
+> 이 폴더의 데이터로 전환됐습니다. cases.json은 `docs/NOW.md` "정리 대상"에 올라 있습니다.)
 
 ## 폴더 구성
 

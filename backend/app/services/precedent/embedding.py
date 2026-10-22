@@ -26,24 +26,35 @@ from dotenv import load_dotenv
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 # [Upstage Embeddings — 공식 문서 확인값. 모델·URL 교체는 환경변수로]
-UPSTAGE_EMBEDDING_URL = os.environ.get(
-    "UPSTAGE_EMBEDDING_URL", "https://api.upstage.ai/v1/embeddings"
-)
-UPSTAGE_EMBEDDING_QUERY_MODEL = os.environ.get(
-    "UPSTAGE_EMBEDDING_QUERY_MODEL", "embedding-query"
-)
-UPSTAGE_EMBEDDING_PASSAGE_MODEL = os.environ.get(
-    "UPSTAGE_EMBEDDING_PASSAGE_MODEL", "embedding-passage"
-)
+# ⚠ 2026-10-21: 예전에는 import 순간 `os.environ`을 읽어, `backend/.env`가 읽히기 **전**의 값
+#   (= 기본값)으로 굳었다. 이제 **부를 때** 읽는다(`.env`를 먼저 읽고, 플랫폼 값이 이긴다).
+DEFAULT_UPSTAGE_EMBEDDING_URL = "https://api.upstage.ai/v1/embeddings"
+DEFAULT_UPSTAGE_EMBEDDING_QUERY_MODEL = "embedding-query"
+DEFAULT_UPSTAGE_EMBEDDING_PASSAGE_MODEL = "embedding-passage"
+
+
+def _env(name: str, default: str) -> str:
+    load_dotenv(dotenv_path=_BACKEND_ROOT / ".env")
+    return os.environ.get(name, "").strip() or default
+
+
+def upstage_embedding_url() -> str:
+    return _env("UPSTAGE_EMBEDDING_URL", DEFAULT_UPSTAGE_EMBEDDING_URL)
+
+
+def upstage_query_model() -> str:
+    return _env("UPSTAGE_EMBEDDING_QUERY_MODEL", DEFAULT_UPSTAGE_EMBEDDING_QUERY_MODEL)
+
+
+def upstage_passage_model() -> str:
+    return _env("UPSTAGE_EMBEDDING_PASSAGE_MODEL", DEFAULT_UPSTAGE_EMBEDDING_PASSAGE_MODEL)
 _UPSTAGE_BATCH_SIZE = 32  # 인프라 수치 — 요청당 입력 수 (문서 상한 100 이내 보수 운용)
 _REQUEST_TIMEOUT = 60
 
 # 로컬 GPU 백엔드 기본 모델 — 카카오 공식 배포(모델 사용 기준: decisions.md 2026-07-22).
 # 초기 후보 KURE-v1은 "개인·학계 외산 베이스 파인튜닝 배제" 기준에 따라 교체.
 # 주의: kanana 임베딩은 512토큰 권장 — 대량 배치 전 청킹 길이·평가셋 A/B 확인 (precedent-rag.md §3)
-LOCAL_EMBEDDING_MODEL = os.environ.get(
-    "PRECEDENT_LOCAL_MODEL", "kakaocorp/kanana-nano-2.1b-embedding"
-)
+DEFAULT_LOCAL_EMBEDDING_MODEL = "kakaocorp/kanana-nano-2.1b-embedding"
 
 
 class EmbeddingBackend(Protocol):
@@ -77,14 +88,14 @@ class UpstageEmbeddingBackend:
 
     @property
     def signature(self) -> str:
-        return f"upstage:{UPSTAGE_EMBEDDING_PASSAGE_MODEL}"
+        return f"upstage:{upstage_passage_model()}"
 
     def _call(self, model: str, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         for i in range(0, len(texts), _UPSTAGE_BATCH_SIZE):
             batch = texts[i : i + _UPSTAGE_BATCH_SIZE]
             resp = requests.post(
-                UPSTAGE_EMBEDDING_URL,
+                upstage_embedding_url(),
                 headers={"Authorization": f"Bearer {self._api_key}"},
                 json={"model": model, "input": batch},
                 timeout=_REQUEST_TIMEOUT,
@@ -95,10 +106,10 @@ class UpstageEmbeddingBackend:
         return [_l2_normalize(v) for v in vectors]
 
     def embed_passages(self, texts: list[str]) -> list[list[float]]:
-        return self._call(UPSTAGE_EMBEDDING_PASSAGE_MODEL, texts)
+        return self._call(upstage_passage_model(), texts)
 
     def embed_query(self, text: str) -> list[float]:
-        return self._call(UPSTAGE_EMBEDDING_QUERY_MODEL, [text])[0]
+        return self._call(upstage_query_model(), [text])[0]
 
 
 class LocalEmbeddingBackend:
@@ -109,7 +120,8 @@ class LocalEmbeddingBackend:
     한 줄이면 전체 인덱스가 로컬 모델 벡터로 재구축된다.
     """
 
-    def __init__(self, model_name: str = LOCAL_EMBEDDING_MODEL) -> None:
+    def __init__(self, model_name: str | None = None) -> None:
+        model_name = model_name or _env("PRECEDENT_LOCAL_MODEL", DEFAULT_LOCAL_EMBEDDING_MODEL)
         try:
             from sentence_transformers import SentenceTransformer  # 선택 의존성
         except ImportError as e:

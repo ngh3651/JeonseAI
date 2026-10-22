@@ -52,7 +52,6 @@ from statistics import quantiles
 import requests
 from dotenv import load_dotenv
 
-from ..dependencies import DEV_MODE_AUTH
 from . import artifacts, lawd_code
 from .lawd_code import lawd_candidates
 
@@ -69,11 +68,10 @@ REQUEST_TIMEOUT_SECONDS = 20
 # 동시 요청을 과하게 늘리면 제한에 걸릴 위험만 커진다(ocr.py의 판단과 같은 이유).
 MAX_WORKERS = 6
 
-# [개발 모드 전용] 원응답 저장 — extraction.SAVE_IE_RAW / ocr.SAVE_OCR_RAW와 같은 스위치.
-# 운영 전환(DEV_MODE_AUTH=False) 시 함께 꺼진다.
+# [진단 전용] 원응답 저장 — IE·OCR과 같은 스위치 `artifacts.save_enabled()`
+# (환경변수 `SAVE_RAW_RESPONSES`, 기본 꺼짐 — 2026-10-21).
 # ⚠ 실거래가 응답 자체에는 개인정보가 없지만(지번·면적·금액은 공개 정보),
 #   **어느 지번을 조회했는지**가 남으므로 out/(.gitignore)에만 둔다.
-SAVE_MOLIT_RAW = DEV_MODE_AUTH
 
 _RESULT_OK = "000"
 
@@ -300,7 +298,7 @@ def fetch_month(
         raise MarketPriceError(502, f"실거래가 서버가 오류를 돌려줬어요 (HTTP {resp.status_code})")
 
     trades = _parse_items(resp.text, house_type)
-    if SAVE_MOLIT_RAW and run_id:
+    if run_id and artifacts.save_enabled():
         artifacts.save_json(
             run_id,
             f"molit_{house_type}_{lawd_cd}_{ymd}.json",

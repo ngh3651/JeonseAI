@@ -24,7 +24,6 @@ import img2pdf
 import requests
 from dotenv import load_dotenv
 
-from ..dependencies import DEV_MODE_AUTH
 from ..schemas.internal import RegistryExtract
 from ..schemas.registry_schema import build_response_format
 from . import artifacts
@@ -38,19 +37,19 @@ REQUEST_TIMEOUT_SECONDS = 300  # test_extract.py에서 검증한 상한 (IE는 �
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = _BACKEND_ROOT / "out"
 
-# [개발 모드 전용] IE 추출 결과를 `out/runs/<회차>/ie.json` 으로 남긴다.
+# [진단 전용 — `SAVE_RAW_RESPONSES=1`일 때만] IE 추출 결과를 `out/runs/<회차>/ie.json` 으로 남긴다.
 #
 # 왜 필요한가 (2026-07-27):
 # 리포트 근거 카드("유효 채권최고액 등 합계 27억 8,000만원 · 근저당 4건")와 뷰어
 # 하이라이트(근저당 3건 · 14억원)가 어긋났을 때, **IE가 각 항목의 `is_canceled`를
-# 무엇으로 줬는지 확인할 방법이 전혀 없었다.** OCR 쪽은 `SAVE_OCR_RAW` 덕분에
+# 무엇으로 줬는지 확인할 방법이 전혀 없었다.** OCR 쪽은 원응답 저장 덕분에
 # out/ocr_page_*.json 으로 크레딧 0원 재현이 됐지만, IE 쪽은 다시 호출해야만
 # — 즉 크레딧을 또 태워야만 — 알 수 있었다. 같은 질문이 반복될 것이므로 대칭으로 남긴다.
 #
-# `ocr.py`의 `SAVE_OCR_RAW`와 같은 방식으로 `DEV_MODE_AUTH`에 묶는다 —
-# 운영 전환(=False) 시 함께 꺼져 **운영 경로에서는 저장하지 않는다**(스위치 하나로 보장).
+# 2026-10-21: 스위치를 `artifacts.save_enabled()`(환경변수 `SAVE_RAW_RESPONSES`, 기본 꺼짐)
+# 하나로 모았다 — OCR·DP·실거래가 저장도 같은 함수를 본다. 예전 `DEV_MODE_AUTH` 묶음은
+# 인증 우회와 실명 저장을 한 스위치로 켜서, 배포하려면 둘 다 포기해야 했다(decisions.md).
 # ⚠ out/ 에는 등기부 소유자 실명·주소가 담긴다 → .gitignore 대상, 절대 커밋 금지.
-SAVE_IE_RAW = DEV_MODE_AUTH
 
 # 사용자에게 보여줄 상태코드별 한국어 안내 (test_extract.py 안내문 이식).
 # 401/403(우리 키 문제)은 앱의 인증 의미(계약 §1.3)와 겹치지 않게 502로 감싼다.
@@ -166,14 +165,14 @@ def call_information_extract(
         raise ExtractionError(502, "추출 결과를 해석하지 못했어요. 다시 시도해 주세요") from e
     if not isinstance(raw, dict):
         raise ExtractionError(502, "추출 결과를 해석하지 못했어요. 다시 시도해 주세요")
-    if SAVE_IE_RAW:  # 개발 모드에서만 (요약본 거부보다 **앞**에 둔다 — 거부된 문서도 봐야 한다)
+    if artifacts.save_enabled():  # 진단 저장이 켜졌을 때만 (요약본 거부보다 **앞** — 거부된 문서도 봐야 한다)
         _save_raw_ie(run_id, raw)
     reject_summary_document(raw)  # 요약본이면 여기서 분석 중단 (400)
     return raw
 
 
 def _save_raw_ie(run_id: str | None, raw: dict) -> None:
-    """[개발 모드 전용] IE 추출 결과를 `out/runs/<회차>/ie.json` 으로 남긴다.
+    """[진단 전용 — `SAVE_RAW_RESPONSES=1`] IE 추출 결과를 `out/runs/<회차>/ie.json` 으로 남긴다.
 
     남기는 것은 **모델이 실제로 돌려준 스키마 형태의 추출 결과**(`choices[0].message.content`)다.
     HTTP 봉투(usage 등)는 판정과 무관해 버린다. 이 파일 하나면
@@ -189,7 +188,7 @@ def _save_raw_ie(run_id: str | None, raw: dict) -> None:
     """
     path = artifacts.save_json(run_id, "ie.json", raw)
     if path is not None:
-        _log.info(f"[Upstage] IE 원응답 저장(개발 모드): out/runs/{path.parent.name}/{path.name}")
+        _log.info(f"[Upstage] IE 원응답 저장(진단 저장 켜짐): out/runs/{path.parent.name}/{path.name}")
 
 
 def extract_registry(

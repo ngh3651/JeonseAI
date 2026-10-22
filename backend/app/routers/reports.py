@@ -1,11 +1,16 @@
 """리포트·분석 관련 라우터 (계약 §3.1~§3.6).
 
-- POST   /api/analyze                    분석 실행 (인증 필요=개발모드 통과)
-- GET    /api/reports                    이력 목록 (비회원 허용)
-- GET    /api/reports/{id}               리포트 단건 (비회원 허용)
-- DELETE /api/reports/{id}               이력 삭제 (인증 필요=개발모드 통과, 예시는 403)
-- GET    /api/reports/{id}/cases         판례 매칭 (비회원 허용)
-- GET    /api/reports/{id}/questions     질문 생성 (비회원 허용)
+- POST   /api/analyze                    분석 실행
+- POST   /api/reports/{id}/compare       다시 뗀 등기부 대조
+- GET    /api/reports                    이력 목록 (이 기기 것 + 예시)
+- GET    /api/reports/{id}               리포트 단건
+- DELETE /api/reports/{id}               이력 삭제 (예시는 403)
+- GET    /api/reports/{id}/cases         판례 매칭
+- GET    /api/reports/{id}/questions     질문 생성
+
+**기기별 기록 (2026-10-21):** 모든 엔드포인트가 `get_current_user`(= `X-Device-Id` 기기 id)를
+받아 **그 기기의 기록만** 다룬다. 다른 기기의 리포트 id를 넣으면 404 — "있는데 못 본다"와
+"없다"를 구분해 주지 않는다. 예시 리포트(`dummy-example`)만 모든 기기에 보인다.
 
 E-1c: analyze/이력 실배선(추출→규칙 엔진→저장) 완료.
 E-2: 질문은 data/questions.json 템플릿 실연동 완료. 판례만 아직 dummy_data(E-3에서 교체).
@@ -16,10 +21,10 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
-from .. import dummy_data
-from ..dependencies import get_current_user
+from .. import dummy_data, settings
+from ..dependencies import get_current_user, limit_analyze
 from ..schemas.contract import CaseMatch, CompareResult, QuestionGroup, Report
 from ..services import compare, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
@@ -33,20 +38,18 @@ _log = logging.getLogger("jeonseai")
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 파일당 10MB (기존 /api/upload와 동일 상한)
 
 
-@router.post("/analyze", response_model=Report)
-def analyze(
-    files: list[UploadFile] = File(..., description="등기부 페이지 이미지(여러 장)"),
-    deposit: int = Form(..., description="예정 보증금(원)"),
-    marketPrice: Optional[int] = Form(default=None, description="매매 시세(원, 선택)"),
-    alias: Optional[str] = Form(default=None, description="매물 별칭(선택)"),
-    user: dict = Depends(get_current_user),  # 인증 필요 (개발 모드=항상 통과)
-) -> Report:
-    """등기부 사진 + 입력값으로 분석해 리포트를 만든다 (E-1c 실배선).
+def _read_images(files: list[UploadFile], *, empty_detail: str) -> list[tuple[str, bytes]]:
+    """올라온 사진을 읽는다. 장수·용량·빈 요청을 **외부 API를 부르기 전에** 거른다.
 
-    업로드 → Information Extract(여러 장은 PDF 병합 1회 호출) → 규칙 엔진 판정
-    → 설명 문구(폴백, E-2에서 LLM 교체) → 이력 저장. Upstage 호출이 수십 초
-    걸릴 수 있어 동기(def) 핸들러로 두어 스레드풀에서 실행되게 한다.
+    ⚠ 장수는 **내용을 읽기 전에** 센다(2026-10-22) — 사진 수백 장을 보내 OCR(장당 호출) 크레딧을
+      태우는 것을 막는다. 앱은 10장까지 보내므로 상한(`settings.MAX_PHOTOS_PER_REQUEST`=20)은 넉넉하다.
     """
+    limit = settings.MAX_PHOTOS_PER_REQUEST
+    if len(files) > limit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"사진이 너무 많아요. 한 번에 {limit}장까지 올릴 수 있어요",
+        )
     images: list[tuple[str, bytes]] = []
     for f in files:
         data = f.file.read()
@@ -59,11 +62,32 @@ def analyze(
             )
         images.append((f.filename or "page.jpg", data))
     if not images:
-        raise HTTPException(status_code=400, detail="등기부 사진을 1장 이상 올려 주세요")
+        raise HTTPException(status_code=400, detail=empty_detail)
+    return images
+
+
+@router.post("/analyze", response_model=Report)
+def analyze(
+    request: Request,
+    files: list[UploadFile] = File(..., description="등기부 페이지 이미지(여러 장)"),
+    deposit: int = Form(..., description="예정 보증금(원)"),
+    marketPrice: Optional[int] = Form(default=None, description="매매 시세(원, 선택)"),
+    alias: Optional[str] = Form(default=None, description="매물 별칭(선택)"),
+    device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
+) -> Report:
+    """등기부 사진 + 입력값으로 분석해 리포트를 만든다 (E-1c 실배선).
+
+    업로드 → Information Extract(여러 장은 PDF 병합 1회 호출) → 규칙 엔진 판정
+    → 설명 문구(폴백, E-2에서 LLM 교체) → 이력 저장. Upstage 호출이 수십 초
+    걸릴 수 있어 동기(def) 핸들러로 두어 스레드풀에서 실행되게 한다.
+    """
+    images = _read_images(files, empty_detail="등기부 사진을 1장 이상 올려 주세요")
+    # 입력 검사를 모두 통과한 뒤에만 센다 — 형식이 틀린 요청은 분석 기회를 깎지 않는다
+    limit_analyze(request, device_id)
 
     try:
         return report_builder.analyze(
-            images, deposit=deposit, market_price=marketPrice, alias=alias
+            images, deposit=deposit, market_price=marketPrice, alias=alias, device_id=device_id
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
@@ -71,9 +95,10 @@ def analyze(
 
 @router.post("/reports/{report_id}/compare", response_model=CompareResult)
 def compare_registry(
+    request: Request,
     report_id: str,
     files: list[UploadFile] = File(default=[], description="이번에 뗀 등기부 사진(여러 장)"),
-    user: dict = Depends(get_current_user),  # 인증 필요 (개발 모드=항상 통과)
+    device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
 ) -> CompareResult:
     """기준 리포트의 등기부와 **이번에 뗀 등기부**를 맞춰본다 (계약 여정 S-11).
 
@@ -85,28 +110,18 @@ def compare_registry(
     사진을 받기 전에 '기준 없음'으로 답한다 — 찍게 해 놓고 마지막에 못 한다고 말하지
     않기 위해서다. 기준이 있는데 사진이 없으면 400.
     """
-    base_report = store.get(report_id)
+    base_report = store.get(report_id, device_id=device_id)
     if base_report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
 
-    baseline = store.get_snapshot(report_id)
+    baseline = store.get_snapshot(report_id, device_id=device_id)
     if baseline is None:
         _log.info(f"[대조] 기준 없음 — 리포트 {report_id}에 스냅샷이 없습니다(사진 요청 안 함)")
         return compare.no_baseline_result(base_report)
 
-    images: list[tuple[str, bytes]] = []
-    for f in files:
-        data = f.file.read()
-        if not data:
-            continue
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail="사진 용량이 너무 커요. 10MB 이하 사진으로 다시 시도해 주세요",
-            )
-        images.append((f.filename or "page.jpg", data))
-    if not images:
-        raise HTTPException(status_code=400, detail="다시 뗀 등기부 사진을 1장 이상 올려 주세요")
+    images = _read_images(files, empty_detail="다시 뗀 등기부 사진을 1장 이상 올려 주세요")
+    # 다시 분석하므로 분석과 같은 상한을 쓴다 — 검사를 통과한 뒤, 외부 호출 직전에 센다
+    limit_analyze(request, device_id)
 
     try:
         # ⚠ 보증금·시세는 **기준 분석과 같은 값**을 쓴다. 다른 값으로 계산하면 등급 차이가
@@ -116,11 +131,12 @@ def compare_registry(
             deposit=baseline.deposit,
             market_price=baseline.manual_market_price,
             alias=base_report.alias,
+            device_id=device_id,
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
-    current = store.get_snapshot(current_report.id)
+    current = store.get_snapshot(current_report.id, device_id=device_id)
     if current is None:  # 스냅샷 저장이 실패한 경우 — 견줄 재료가 없다
         raise HTTPException(
             status_code=503,
@@ -131,42 +147,46 @@ def compare_registry(
     if result.result == "different_property":
         # 다른 집 서류로 만들어진 리포트다. **기준 매물의 보증금으로 계산된 등급**이라
         # 그 집의 판정으로 쓸 수 없고, 이력에 남기면 홈 카드가 틀린 등급을 보여준다.
-        store.remove(current_report.id)
+        store.remove(current_report.id, device_id=device_id)
         _log.info(f"[대조] 다른 집이라 이번 분석({current_report.id})을 이력에서 지웠습니다")
     return result
 
 
 @router.get("/reports", response_model=list[Report])
-async def list_reports() -> list[Report]:
-    """분석 이력 목록(최신순). 비회원도 예시 리포트를 본다."""
-    return store.list_reports()
+def list_reports(device_id: str = Depends(get_current_user)) -> list[Report]:
+    """이 기기의 분석 이력(최신순) + 예시 리포트. 다른 기기의 기록은 섞이지 않는다."""
+    return store.list_reports(device_id=device_id)
 
 
 @router.get("/reports/{report_id}", response_model=Report)
-async def get_report(report_id: str) -> Report:
-    report = store.get(report_id)
+def get_report(report_id: str, device_id: str = Depends(get_current_user)) -> Report:
+    report = store.get(report_id, device_id=device_id)
     if report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
     return report
 
 
 @router.delete("/reports/{report_id}", status_code=204)
-async def delete_report(
+def delete_report(
     report_id: str,
-    user: dict = Depends(get_current_user),  # 인증 필요 (개발 모드=항상 통과)
+    device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
 ) -> None:
     # 예시 리포트는 조회만 허용, 삭제 대상 아님 (계약 §3.4)
     if report_id in store.EXAMPLE_IDS:
         raise HTTPException(status_code=403, detail="예시 리포트는 삭제할 수 없어요")
-    if store.get(report_id) is None:
+    if store.get(report_id, device_id=device_id) is None:
         raise HTTPException(status_code=404, detail="이 리포트를 찾을 수 없어요")
-    store.remove(report_id)
+    store.remove(report_id, device_id=device_id)
     # 204 No Content (본문 없음)
 
 
 @router.get("/reports/{report_id}/cases", response_model=list[CaseMatch])
-async def report_cases(report_id: str) -> list[CaseMatch]:
-    report = store.get(report_id)
+def report_cases(
+    report_id: str, device_id: str = Depends(get_current_user)
+) -> list[CaseMatch]:
+    # 동기(def) 핸들러다 (2026-10-21) — 기록 DB 조회와 판례 검색·Solar 호출(수 초)이 모두
+    # 막히는 호출이라, async로 두면 그동안 **서버 전체**(다른 사람 요청)가 멈춘다. 스레드풀에서 돌게 한다.
+    report = store.get(report_id, device_id=device_id)
     if report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
     # E-3 실연동 (2026-08-07): 규칙이 태그를 파생 → 하이브리드 검색 → LLM은 문장만.
@@ -174,7 +194,7 @@ async def report_cases(report_id: str) -> list[CaseMatch]:
     #
     # 결과를 리포트 단위로 캐시한다. 캐시가 없으면 화면에 들어올 때마다 검색 +
     #   판례 수만큼 Solar 호출이 다시 돌아 매번 수 초를 기다리게 된다.
-    cached = store.get_cases(report_id)
+    cached = store.get_cases(report_id, device_id=device_id)
     if cached is not None:
         return cached
 
@@ -198,13 +218,15 @@ async def report_cases(report_id: str) -> list[CaseMatch]:
             exc_info=True,
         )
         return []
-    store.put_cases(report_id, cases)
+    store.put_cases(report_id, cases, device_id=device_id)
     return cases
 
 
 @router.get("/reports/{report_id}/questions", response_model=list[QuestionGroup])
-async def report_questions(report_id: str) -> list[QuestionGroup]:
-    report = store.get(report_id)
+def report_questions(
+    report_id: str, device_id: str = Depends(get_current_user)
+) -> list[QuestionGroup]:
+    report = store.get(report_id, device_id=device_id)
     if report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
     # E-2 실연동: data/questions.json 템플릿 + 조건부 변형 (LLM 미개입)

@@ -10,7 +10,7 @@
 > - 원천끼리 다르면 **둘 다 적고 어느 쪽이 최신인지** 표시한다.
 > - 추론 금지. 확인 못 한 것은 `⚠ 미확인`으로만 적는다.
 >
-> **판단 근거·AI 사용 실태 상세는 [2026-08-14-final-session.md](claude-chat/2026-08-14-final-session.md)에 있다.**
+> **판단 근거·AI 사용 실태 상세는 보관 브랜치 `archive-2026-10-21:docs/claude-chat/2026-08-14-final-session.md`에 있다** (`git show`로 연다).
 > 여기서는 중복하지 않고 링크로 넘긴다 — 단 **§4(AI 사용 실적)만은 확약서 정본이라 전문을 담는다.**
 
 ## 원천 목록 (신뢰 순서)
@@ -23,7 +23,7 @@
 | 보조 | `1777340465947_2026년도_인공지능_루키_대회_공고문.pdf` (과기정통부 공고 제2026-0378호) | `Desktop\컴퓨터 그 자체\` | **레포 밖 원천** — 확인함 (5쪽) |
 | 보조 | `[전국민 AI 경진대회] K-EXAONE API 사용 가이드.pdf` | `Desktop\컴퓨터 그 자체\` | **레포 밖 원천** — 확인함 (2쪽) |
 | 보조 | `[AI 루키대회] 동크크 팀별 기획서 제출.docx` (2026-07-08) | `Desktop\컴퓨터 그 자체\` | **레포 밖 원천** — 확인함 |
-| 보조 | `docs/evaluation-criteria.md` | 이 레포 | 본선 제안서 양식(HWP)에서 추출한 배점 |
+| 보조 | `archive-2026-10-21:docs/evaluation-criteria.md` | 보관 브랜치 | 본선 제안서 양식(HWP)에서 추출한 배점 (§1 배점 세부에 합침) |
 
 ---
 
@@ -59,7 +59,7 @@
 | 도전성 | 50 | 창의성 30 · 혁신성 20 | |
 | 팀역량 | 50 | 추진성 30 · 성장성 20 | |
 
-출처: `docs/evaluation-criteria.md` (본선 제안서 양식 HWP에서 추출).
+출처: `archive-2026-10-21:docs/evaluation-criteria.md` (본선 제안서 양식 HWP에서 추출).
 ⚠ **공고문 자체에는 배점이 없다** — "평가기준·방법 등 세부사항은 심사위원단 심의를 거쳐
 추후 홈페이지 안내"라고만 적혀 있다(공고문 p3).
 
@@ -165,7 +165,7 @@
 | 지원 항목 | 사실 | 출처 |
 |---|---|---|
 | **GPU (A100 2개월)** | ⚠ **원천 미확보** — 지원 여부·기간·사용 여부를 확인할 원천이 없다 | — |
-| GPU 사용 실적 (코드 측) | **코드에 GPU 실행 지점이 없다.** `torch`·`cuda`·`nvidia` grep 0건. `LocalEmbeddingBackend`가 "대량 임베딩 배치의 GPU 실행 지점"이라 적혀 있으나 `sentence-transformers`에 위임하는 **미설치 선택 의존성**이고, 현재 `PRECEDENT_EMBEDDING_BACKEND=upstage`로 꺼져 있다 | `docs/claude-chat/2026-08-13-제출전-전수분석.md` §3-c · 세션기록 §3③ |
+| GPU 사용 실적 (코드 측) | **코드에 GPU 실행 지점이 없다.** `torch`·`cuda`·`nvidia` grep 0건. `LocalEmbeddingBackend`가 "대량 임베딩 배치의 GPU 실행 지점"이라 적혀 있으나 `sentence-transformers`에 위임하는 **미설치 선택 의존성**이고, 현재 `PRECEDENT_EMBEDDING_BACKEND=upstage`로 꺼져 있다 | `archive-2026-10-21:docs/claude-chat/2026-08-13-제출전-전수분석.md` §3-c · 세션기록 §3③ |
 | | → 제안서에 **"GPU를 사용했다"고 적으면 안 된다.** 사실은 "대량 배치용 로컬 임베딩 백엔드를 인터페이스 뒤에 준비해 두었고 환경변수 한 줄로 전환 가능하다"까지다 | 같은 문서 §3-c |
 | **LG K-EXAONE API 키** | ✅ **대회 측이 전달한 키다.** 대회 배포 문서가 "`$TOKEN`: **전달받은 API Key** (`flp_` 로 시작)"이라고 명시하고, 우리 `.env`의 `EXAONE_API_KEY` 접두어가 실제로 `flp_`(49자)다 | `[전국민 AI 경진대회] K-EXAONE API 사용 가이드.pdf` p1 · `.env` 실측 |
 | | 보강 근거: `decisions.md:399`(2026-07-22 PM 방침) "EXAONE 키는 주최 공식 제공이고 FriendliAI가 주최 안내 경로 — flp_ 키 체계 일치" | `docs/decisions.md:399·401` |
@@ -182,7 +182,7 @@
 ## §4. AI 사용 실적 — **확약서 정본** ★
 
 > 이 표가 확약서의 근거다. **실호출 로그·코드 경로가 있는 것만 적었다.**
-> 조사 방법과 상세 근거는 [세션기록 §3](claude-chat/2026-08-14-final-session.md)에 있다.
+> 조사 방법과 상세 근거는 세션기록 §3(`archive-2026-10-21:docs/claude-chat/2026-08-14-final-session.md`)에 있다.
 > 기준일 **2026-08-14**.
 
 ### 실제로 호출되는 모델
@@ -193,13 +193,13 @@
 | **업스테이지** | `ocr`<br/>`https://api.upstage.ai/v1/document-digitization` | 글자·좌표 추출 → 원본 사진 위 근거 하이라이트 | 분석 1회당 **사진 장당 1회**(5장 → 5회). `out/runs/<회차>/ocr_page_1~5.json` |
 | **업스테이지** | `solar-pro2`<br/>`https://api.upstage.ai/v1/solar` | ⑴ OCR 텍스트 2차 구조화(교차검증) ⑵ 판정 JSON → 근거 카드 설명 문장 ⑶ 판례 `commonPoint` 생성·`result` 분류 선택·`emphasis` 선택 ⑷ 용어 챗봇 답변 | ⑴⑵ 분석 1회당 각 **1회** (`report_builder.py:307`; `logs/llm_shadow/2026-08-13.jsonl` — 리포트 1건당 1행, 응답 하나에 전 근거 카드가 들어 있다). ⑶ 판례 화면 진입 시 1회 (`precedent/explainer.py:85`). ⑷ 챗봇 질문이 L1~L3을 통과할 때 (`chat.py` L4) |
 | **업스테이지** | `embedding-passage` / `embedding-query`<br/>`https://api.upstage.ai/v1/embeddings` | 판례 하이브리드 검색의 의미 벡터 (색인 적재 · 검색 질의) | 색인 서명 `upstage:embedding-passage` (`data/precedents/index/meta.json`, 문서 40건·청크 612). 검색은 판례 화면에서 태그당 1회 (`retrieval.py:152`) |
-| **LG AI연구원** | `LGAI-EXAONE/K-EXAONE-236B-A23B`<br/>FriendliAI 경유 | **모델 선정·품질 비교 검증** (설명 생성 모델을 무엇으로 할지 정하기 위한 실측) | **2026-08-14 총 18회 호출** (`backend/out/model_ab_20260814.md`, 하네스 `backend/tools/model_ab.py`). 결과표는 [세션기록 §2⑵](claude-chat/2026-08-14-final-session.md) |
+| **LG AI연구원** | `LGAI-EXAONE/K-EXAONE-236B-A23B`<br/>FriendliAI 경유 | **모델 선정·품질 비교 검증** (설명 생성 모델을 무엇으로 할지 정하기 위한 실측) | **2026-08-14 총 18회 호출** (`backend/out/model_ab_20260814.md`, 하네스 `backend/tools/model_ab.py`). 결과표는 세션기록 §2⑵(`archive-2026-10-21:docs/claude-chat/2026-08-14-final-session.md`) |
 
 > **⚠ K-EXAONE 행의 용도를 "응답 생성"이라고 쓰면 안 된다.**
 > 서비스 응답 생성 경로에서 호출되지 않는다. 실사용 provider는 Solar Pro 2로 유지했고,
 > 그 이유는 **품질이 아니라 가용성**이다 — 응답을 받은 건만 보면 두 모델의 검증 통과율·
 > 3문장·200자 준수율이 모두 100%, 평균 응답도 1.4초로 같았으나 K-EXAONE은 6회 중 3회가
-> 429 요청 제한으로 응답 자체를 받지 못했다. ([세션기록 §2⑶](claude-chat/2026-08-14-final-session.md))
+> 429 요청 제한으로 응답 자체를 받지 못했다. (세션기록 §2⑶ — `archive-2026-10-21:docs/claude-chat/2026-08-14-final-session.md`)
 
 ### 코드에 있으나 호출되지 않는 것 (확약서에 적지 않는다)
 
@@ -258,11 +258,11 @@ K-EXAONE을 **FriendliAI 서빙을 통해** 호출한다는 점에 대해 규정
 |---|---|---|---|
 | 하이라이트 표시 종류 | 15종 | **14종** (`area` 1종을 되돌릴 수 있는 스위치로 OFF) | `highlight.py` `_SPECS` · `_DISABLED_KINDS` |
 | 판례 검수 서술 | "2단계 사람 검수가 노출 게이트" | **문구 검수는 게이트가 아니다.** 노출 게이트는 ⑴ `source_verified` ⑵ 판정 태그 교집합 ≥1 ⑶ 벡터 유사도 ≥0.45. 미검수 판례는 차단 대신 '검수 전' 표시 | `precedent/retrieval.py` 게이트 docstring |
-| 용어 챗봇 | LLM 호출 **0건** (사전 부분 문자열 조회 + 404 거절) | **LLM 도입** — L1 규칙 차단 → L2 검수 사전 → L3 도메인 게이트 → L4 생성+검증 | 커밋 `a6a84d3` · [세션기록 §2⑸](claude-chat/2026-08-14-final-session.md) |
+| 용어 챗봇 | LLM 호출 **0건** (사전 부분 문자열 조회 + 404 거절) | **LLM 도입** — L1 규칙 차단 → L2 검수 사전 → L3 도메인 게이트 → L4 생성+검증 | 커밋 `a6a84d3` · 세션기록 §2⑸(`archive-2026-10-21:docs/claude-chat/2026-08-14-final-session.md`) |
 | 계약 여정 | 체크리스트 | **9단계 재설계 + 등기부 대조(4단계) + 잔금 D-1 배너.** 대조는 규칙 전용(LLM 미개입) | 커밋 `2e4ba98` |
-| 테스트 수 | 738 | **pytest 687 + flutter test 188** (백엔드/앱을 분리해 센다) | `pytest -q` · `flutter test` 실측 |
+| 테스트 수 | 738 | **pytest 801 통과·6 건너뜀(키 없이) + flutter test 187** (백엔드/앱을 분리해 센다) | `pytest -q` · `flutter test` 실측 |
 
-> ⚠ "테스트 738"의 원천은 08-13 문서로 **확인하지 못했다.** 현재 값 687/188만 실측이다.
+> ⚠ "테스트 738"의 원천은 08-13 문서로 **확인하지 못했다.** 현재 값 801/187만 실측이다.
 
 ---
 
@@ -271,13 +271,13 @@ K-EXAONE을 **FriendliAI 서빙을 통해** 호출한다는 점에 대해 규정
 | 산출물 | 무엇이 들어 있나 | 위치 |
 |---|---|---|
 | `제안서-원고.md` (1·4·5장·3.3.3 완료) | ⚠ **원천 미확보** — 레포·로컬 디스크에 없다. Claude.ai 프로젝트 지식 전용으로 보인다 | — |
-| 다이어그램 교정본 2종 | ⚠ **원천 미확보** — 같은 이유. 레포의 다이어그램은 `docs/diagrams/`와 `docs/architecture.md`(Mermaid)에 있다 | `docs/diagrams/` · `docs/architecture.md` |
-| **`docs/presentation-material.md`** | "모델을 하나 더 붙였더니 앞 모델이 못 주는 정보가 나왔다" — **숫자 있는 실험 사례만** 모은 발표 재료. 배점의 혁신성·추진성을 겨냥한다. 등기부 실데이터는 마스킹됨 | 레포 |
+| 다이어그램 교정본 2종 | ⚠ **원천 미확보** — 같은 이유. 옛 다이어그램은 보관 브랜치 `archive-2026-10-21:docs/diagrams/`와 `archive-2026-10-21:docs/architecture.md`(Mermaid)에 있다 | 보관 브랜치 |
+| **`archive-2026-10-21:docs/presentation-material.md`** | "모델을 하나 더 붙였더니 앞 모델이 못 주는 정보가 나왔다" — **숫자 있는 실험 사례만** 모은 발표 재료. 배점의 혁신성·추진성을 겨냥한다. 등기부 실데이터는 마스킹됨 | 보관 브랜치 |
 | **`backend/scripts/compare_llm_backends.py`** | 국내 LLM 3종(Solar / SKT A.X / LG EXAONE) **역할별** 비교 하네스. 4축(한국어 품질·스키마 준수율·지연·비용/안정성) × 역할 4종. 제품 코드를 읽기만 하고 수정하지 않으며, `--run` 없이는 호출하지 않는다 | 레포 |
 | **`backend/tools/model_ab.py`** (2026-08-14 신규) | 챗봇 경로 전용 A/B 하네스. 검증에 걸려 버려진 **원문까지** 재고, 429를 모델 실패와 분리하며, A/B 블라인드 표를 만든다. 호출 60회 상한 | 레포 (커밋 `fa7fbbf`) |
-| **`docs/claude-chat/2026-08-14-final-session.md`** | 오늘의 판단 근거 + AI 사용 실태 전수 조사 + 확약서 문장 초안 + 미해결 목록 | 레포 |
-| **`docs/claude-chat/2026-08-13-제출전-전수분석.md`** | 08-13 시점 코드 감사 — 기능 인벤토리(실동작 vs 더미), AI 호출 전수, 폴백 판별, 판례 실데이터 건수 | 레포 |
-| `docs/evaluation-criteria.md` | 공식 배점표(창의성30·혁신성20·추진성30·성장성20)와 **제안서 연계 섹션 번호** | 레포 |
+| **`archive-2026-10-21:docs/claude-chat/2026-08-14-final-session.md`** | 오늘의 판단 근거 + AI 사용 실태 전수 조사 + 확약서 문장 초안 + 미해결 목록 | 보관 브랜치 |
+| **`archive-2026-10-21:docs/claude-chat/2026-08-13-제출전-전수분석.md`** | 08-13 시점 코드 감사 — 기능 인벤토리(실동작 vs 더미), AI 호출 전수, 폴백 판별, 판례 실데이터 건수 | 보관 브랜치 |
+| `archive-2026-10-21:docs/evaluation-criteria.md` | 공식 배점표(창의성30·혁신성20·추진성30·성장성20)와 **제안서 연계 섹션 번호** (§1에 합침) | 보관 브랜치 |
 | `docs/decisions.md` | 결정 로그 (append-only). 의도 → 바꾼 이유 → 최종 결정 흐름 | 레포 |
 
 ---
@@ -293,7 +293,7 @@ K-EXAONE을 **FriendliAI 서빙을 통해** 호출한다는 점에 대해 규정
 | 5 | **FriendliAI 경유의 국내 AI 트랙 규정 해석** | 주최 측 유권해석이 없다. §4 미해결 절 참고. 판단은 규혁님 몫이다 |
 | 6 | **GPU(A100 2개월) 지원 여부·미사용 사유** | 원천 미확보. 제안서 4.1에 쓸 내용이고, 코드에는 GPU 실행 지점이 없다는 사실만 확인됐다 |
 | 7 | **교육(워크샵·세미나) 참석 기업별 인원·이름** | 원천 미확보. 성장성 배점(20점)의 "팀 학습 성과" 항목에 직결된다 |
-| 8 | **테스트 738건의 출처** | 08-13 문서 수치를 확인하지 못했다. 현재 실측은 pytest 687 + flutter test 188이다 |
+| 8 | **테스트 738건의 출처** | 08-13 문서 수치를 확인하지 못했다. 현재 실측은 pytest 801(통과, 6 건너뜀) + flutter test 187이다 |
 
 ---
 

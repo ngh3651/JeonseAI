@@ -225,7 +225,8 @@ def test_서버를_다시_켜도_캐시가_남는다(client, no_network):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def test_키는_사진_바이트와_순서와_입력으로만_정해진다():
+def test_키는_사진_바이트와_순서와_입력으로만_정해진다(monkeypatch):
+    monkeypatch.delenv("RAILWAY_GIT_COMMIT_SHA", raising=False)
     a, b = _photo(0), _photo(1)
     k = analysis_cache.make_key([("x.jpg", a), ("y.jpg", b)], deposit=1, market_price=None)
     assert k == analysis_cache.make_key([("다른이름.jpg", a), ("z.jpg", b)], deposit=1, market_price=None)
@@ -233,6 +234,38 @@ def test_키는_사진_바이트와_순서와_입력으로만_정해진다():
     assert k != analysis_cache.make_key([("x.jpg", a), ("y.jpg", b)], deposit=2, market_price=None)
     assert k != analysis_cache.make_key([("x.jpg", a), ("y.jpg", b)], deposit=1, market_price=0)
     assert len(k) == 64
+
+
+def test_키에는_서버_코드_버전이_들어간다(monkeypatch):
+    """Railway가 배포마다 넣는 커밋 해시(`RAILWAY_GIT_COMMIT_SHA`) — 없으면 고정 문자열."""
+    images = [("x.jpg", _photo(0))]
+    monkeypatch.delenv("RAILWAY_GIT_COMMIT_SHA", raising=False)
+    assert analysis_cache.code_version() == analysis_cache.LOCAL_CODE_VERSION
+    local = analysis_cache.make_key(images, deposit=1, market_price=None)
+    assert local == analysis_cache.make_key(images, deposit=1, market_price=None)
+
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "aaaa1111aaaa1111")
+    assert analysis_cache.code_version() == "aaaa1111aaaa1111"
+    deploy_a = analysis_cache.make_key(images, deposit=1, market_price=None)
+    assert deploy_a == analysis_cache.make_key(images, deposit=1, market_price=None)  # 같은 배포 = 같은 키
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "bbbb2222bbbb2222")
+    deploy_b = analysis_cache.make_key(images, deposit=1, market_price=None)
+    assert len({local, deploy_a, deploy_b}) == 3
+
+
+def test_새로_배포하면_같은_사진도_처음부터_분석한다(client, no_network, monkeypatch):
+    """규칙을 고쳐 배포했는데 24시간 동안 옛 판정을 돌려주면 안 된다."""
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "aaaa1111aaaa1111")
+    calls = no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))] * 2)
+    first = _analyze(client, [_photo()]).json()
+    assert _analyze(client, [_photo()]).json()["id"] == first["id"]  # 같은 배포 안에서는 적중
+    assert _ie_calls(calls) == 1
+
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "bbbb2222bbbb2222")  # 새 배포
+    second = _analyze(client, [_photo()])
+    assert second.status_code == 200, second.text
+    assert second.json()["id"] != first["id"]
+    assert _ie_calls(calls) == 2
 
 
 def test_캐시_표에는_사진도_이름도_없다(client, no_network):

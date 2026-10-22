@@ -6,7 +6,8 @@
   · 갤러리에서 같은 사진을 다시 골라 다시 분석한 경우
 같은 입력이면 **같은 리포트를 그대로** 돌려준다(크레딧 0원, 몇 밀리초).
 
-키 = 올라온 JPEG 묶음의 SHA-256(**순서 포함** — 하이라이트·가림 상자의 쪽 번호가 업로드 순서라서) + 보증금 + 시세 입력.
+키 = 올라온 JPEG 묶음의 SHA-256(**순서 포함** — 하이라이트·가림 상자의 쪽 번호가 업로드 순서라서) + 보증금 + 시세 입력
++ **서버 코드 버전**(`code_version()` — 배포로 규칙이 바뀌면 키도 바뀐다. 옛 판정을 24시간 돌려주지 않게).
 별칭은 키에 넣지 않는다 — 판정과 무관하다. 별칭만 바꿔 다시 보내면 같은 리포트에 새 별칭을 붙여 돌려준다.
 **같은 기기 안에서만** 찾는다(기록이 기기별이라 다른 기기의 리포트는 돌려줄 수 없다).
 기간은 `ANALYSIS_CACHE_HOURS`(기본 24시간, 0이면 끈다).
@@ -38,6 +39,9 @@ _log = logging.getLogger("jeonseai")
 #: 키를 만드는 법이 바뀌면 올린다 — 옛 쪽지가 새 계산과 섞이지 않게.
 KEY_VERSION = "v1"
 
+#: Railway 밖(로컬·테스트)에서 쓰는 코드 버전 — 배포 커밋을 모르면 이 고정 문자열이다.
+LOCAL_CODE_VERSION = "local"
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS analysis_cache (
     device_id  TEXT NOT NULL,
@@ -64,10 +68,23 @@ def _iso(when: datetime) -> str:
     return when.isoformat(timespec="milliseconds")  # store.py와 같은 형식 — 문자열 비교가 시간 순서다
 
 
+def code_version() -> str:
+    """지금 서버 코드의 버전 — 키에 넣어 **새로 배포하면 캐시가 저절로 빗나가게** 한다.
+
+    규칙(판정)을 고쳐 배포했는데 같은 사진에 24시간 동안 옛 리포트를 돌려주면 안 된다.
+    Railway는 배포마다 그 커밋 해시를 `RAILWAY_GIT_COMMIT_SHA`로 넣어 준다(헬스체크 `version`과 같은 값).
+    없으면(로컬·테스트) 고정 문자열 — 로컬에서 코드를 고친 뒤 옛 결과가 보이면 `ANALYSIS_CACHE_HOURS=0`으로 끈다.
+    """
+    return settings.env_str("RAILWAY_GIT_COMMIT_SHA") or LOCAL_CODE_VERSION
+
+
 def make_key(images: list[tuple[str, bytes]], *, deposit: int, market_price: int | None) -> str:
-    """사진 묶음(순서 포함) + 보증금 + 시세 입력 → 64자리 키. 파일 이름은 넣지 않는다(앱이 늘 page_N.jpg로 보낸다)."""
+    """사진 묶음(순서 포함) + 보증금 + 시세 입력 + 서버 코드 버전 → 64자리 키.
+
+    파일 이름은 넣지 않는다(앱이 늘 page_N.jpg로 보낸다).
+    """
     h = hashlib.sha256()
-    h.update(f"{KEY_VERSION}|{len(images)}|".encode())
+    h.update(f"{KEY_VERSION}|code={code_version()}|{len(images)}|".encode())
     for _, data in images:
         h.update(hashlib.sha256(data).digest())
     price = "" if market_price is None else str(int(market_price))

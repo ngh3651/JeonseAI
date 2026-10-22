@@ -313,7 +313,8 @@ def test_IE에_없는_옛_소유자는_칠하지_않는다():
     지분을 넘긴 옛 소유자를 칠하면 사용자가 그 사람을 임대인으로 오인한다."""
     extract = extract_with(current_owners=[Owner(name="김영희")])
     result = _run(extract, as_result(gap_gu_page()))
-    assert [h.title for h in result] == ["집주인 이름 · 김○○"]  # 제목은 가린 이름 (2026-10-21)
+    # 제목은 실명 (2026-10-22 — 화면엔 실명, 서버 기록엔 가린 사본: test_pii_persistence)
+    assert [h.title for h in result] == ["집주인 이름 · 김영희"]
 
 
 def test_법인_소유자에게는_법인용_문구가_나간다():

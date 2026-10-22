@@ -11,7 +11,8 @@ from datetime import timedelta
 
 import pytest
 
-from app.services import analysis_cache, store
+from app.schemas.contract import Report
+from app.services import analysis_cache, name_privacy, store
 
 from tests.test_analyze_smoke import (  # noqa: F401 — pytest 픽스처 재사용
     blank_image,
@@ -79,7 +80,11 @@ def test_같은_사진을_다시_넣으면_같은_리포트가_크레딧_없이_
 
     second = _analyze(client, [_photo()])
     assert second.status_code == 200, second.text
-    assert second.json() == first.json(), "같은 사진인데 리포트가 다르다"
+    # 같은 리포트 — 다만 캐시 적중은 **서버 기록의 가린 사본**이다(2026-10-22 화면엔 실명, 저장은 가린 사본).
+    # 앱은 폰에 둔 원본(실명)을 먼저 쓴다.
+    stored = name_privacy.mask_report_for_storage(Report.model_validate(first.json()))
+    assert second.json() == stored.model_dump(mode="json"), "같은 사진인데 리포트가 다르다"
+    assert "홍길동" in first.text and "홍길동" not in second.text
     assert len(calls) == n_after_first, f"캐시 적중인데 외부 호출이 늘었다: {calls[n_after_first:]}"
     # 캐시 적중은 로그에 한 줄
     hits = [line for line in logs if line.startswith("[캐시] 적중")]

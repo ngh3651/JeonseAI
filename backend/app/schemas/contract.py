@@ -174,6 +174,11 @@ class Report(BaseModel):
     # 앱은 그 장에 '확인 필요'를 붙이고 다시 찍기를 권한다. 심한 문제는 분석 전에 400으로 거절된다(§9.9).
     # 없으면(None) 검사하지 않은 옛 기록이거나 서버에서 검사를 끈 것이다(`CAPTURE_CHECK=off`).
     captureCheck: Optional[CaptureCheck] = None
+    # 이 등기부의 **사람 이름** 목록 (2026-10-22 — 화면엔 실명, 저장은 가린 사본 · api-contract §9.11).
+    # 분석 응답에는 실명이 온다 — 앱의 '사진 속 이름 가리기'가 켜지면 화면 글자에서 이 이름들을 `홍○○`로 바꾼다.
+    # 서버 기록에 남는 사본(기록 API·캐시 적중)에서는 이 목록도 가려져 있다(`name_privacy.mask_report_for_storage`).
+    # 회사·은행·관공서 이름은 넣지 않는다(원래부터 그대로 보인다).
+    personNames: list[str] = Field(default_factory=list)
 
 
 # ── 판례 (§2.3 CaseMatch) ──────────────────────────────────────────────────

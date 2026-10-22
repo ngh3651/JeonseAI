@@ -31,6 +31,7 @@ from . import (
     highlight,
     lawd_code,
     llm,
+    name_privacy,
     ocr,
     ocr_layout,
     price_lookup,
@@ -545,6 +546,13 @@ def analyze(
     if mask_result is not None:
         report.privacyMasks = mask_result.masks
         report.privacyMasksReady = True
+    # 화면엔 실명, 저장은 가린 사본 (2026-10-22) — 사람 이름 목록. 앱 가리기 스위치가 쓰고, `store.add`가 이 목록으로
+    # 가린 사본을 만든다. ⚠ 목록이 비면 저장 사본에 실명(집주인 제목)이 남으므로, 실패해도 집주인 이름만은 꼭 넣는다.
+    try:
+        report.personNames = name_privacy.person_names(extract)
+    except Exception:  # noqa: BLE001
+        _log.error("[이름] ⚠ 사람 이름 목록을 만들지 못함 — 집주인 이름만으로 가립니다", exc_info=True)
+        report.personNames = name_privacy.owner_names_fallback(extract)
     try:
         # 촬영 검사 + OCR 뒤 발견(쪽 번호 안 보임 = 잘림 의심) — 표시 전용. 판정은 이미 끝났다.
         report.captureCheck = capture_check.add_ocr_findings(capture, ocr_result.pages, len(images))
@@ -563,7 +571,8 @@ def analyze(
             report.id,
             compare.build_snapshot(
                 extract,
-                report=report,
+                # 스냅샷도 서버에 남는다 — 별칭 등에 든 사람 이름까지 가린 사본에서 옮긴다(이름은 원래 해시뿐)
+                report=name_privacy.mask_report_for_storage(report),
                 page_count=len(images),
                 manual_market_price=market_price,
                 name_salt=store.name_salt(),

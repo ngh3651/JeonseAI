@@ -176,8 +176,12 @@ void main() {
     await _pumpReport(tester, 'dummy-danger'); // 7일 전 분석
     expect(find.koText('다시 떼서 대조'), findsOneWidget);
     expect(find.koText('재분석'), findsNothing);
+    // TextButton.icon은 TextButton의 하위 타입이라 byType으로는 안 잡힌다 — `is`로 찾는다
     final Size size = tester.getSize(
-      find.ancestor(of: find.koText('다시 떼서 대조'), matching: find.byType(TextButton)),
+      find.ancestor(
+        of: find.koText('다시 떼서 대조'),
+        matching: find.byWidgetPredicate((w) => w is TextButton),
+      ).first,
     );
     expect(size.height, greaterThanOrEqualTo(48));
   });

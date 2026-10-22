@@ -3,7 +3,10 @@
 /// 서버가 사진 품질을 본다(api-contract §9.9):
 /// - **심하면** 분석 전에 거절한다(400 + `captureCheck`) → 촬영 화면이 이 패널을 띄우고, 문제인 장만 다시 찍어
 ///   바꾼 뒤 다시 보낸다(나머지 장은 그대로).
-/// - **가벼우면** 분석하고 리포트에 `captureCheck`를 싣는다 → 리포트가 같은 패널로 "확인 필요"를 알린다.
+/// - **가벼우면** 분석하고 리포트에 `captureCheck`를 싣는다 → 리포트가 같은 패널로 "다시 찍으면 더 정확해요"를 알린다.
+///
+/// ⚠ 가벼운 장에 '(확인 필요)'를 붙이지 않는다(2026-10-23) — 등급 이름과 같은 말이라 판정처럼 읽혔고,
+///   "보내라는 거야 말라는 거야"(지수 리뷰 #4)로 막혔다. 대신 **[kSoftIssueNote]** — 보수적이면서 할 일을 말한다.
 ///
 /// ⚠ 판정이 아니라 **사진 품질** 안내다. 색은 주의(앰버) 톤이고 위험(빨강)을 쓰지 않는다.
 library;
@@ -29,7 +32,13 @@ class CaptureRejection {
   final String message;
 }
 
+/// 가벼운 문제(분석은 했다)인 장 뒤에 붙는 말 — 촬영 화면·리포트가 같은 말을 쓴다.
+const String kSoftIssueNote = '(다시 찍으면 더 정확해요)';
+
 /// 장별 문제 목록 + 장마다 [다시 찍기] 버튼.
+///
+/// 버튼 글자 = `{쪽}{조사} {retakeLabel}` — "2쪽만 다시 찍기"(거절된 장) · "2쪽도 다시 찍기"(남은 가벼운 장) ·
+/// "2쪽 다시 찍기"(리포트). 예전 "2쪽 이 장만 다시 찍기"는 말이 꼬였다(지수 리뷰 #4).
 class CaptureIssuePanel extends StatelessWidget {
   const CaptureIssuePanel({
     super.key,
@@ -37,12 +46,13 @@ class CaptureIssuePanel extends StatelessWidget {
     required this.title,
     this.message,
     this.onRetake,
-    this.retakeLabel = '이 장만 다시 찍기',
+    this.retakeParticle = '',
+    this.retakeLabel = '다시 찍기',
   });
 
   final CaptureCheck check;
 
-  /// 패널 제목 — 거절이면 "사진을 다시 찍어야 분석할 수 있어요", 리포트면 "사진 확인이 필요한 장이 있어요".
+  /// 패널 제목 — 거절이면 "사진을 다시 찍어야 분석할 수 있어요", 리포트면 "글자를 잘못 읽었을 수 있는 장이 있어요".
   final String title;
 
   /// 제목 아래 한 줄 (서버 `detail` 등). 없으면 생략.
@@ -50,6 +60,9 @@ class CaptureIssuePanel extends StatelessWidget {
 
   /// 장 번호(0부터)를 받아 그 장만 다시 찍는다. null이면 버튼 없이 안내만.
   final void Function(CapturePageIssue page)? onRetake;
+
+  /// 쪽 번호 바로 뒤 조사 — '만'(이 장만) · '도'(이 장도) · ''(그냥).
+  final String retakeParticle;
 
   final String retakeLabel;
 
@@ -89,7 +102,7 @@ class CaptureIssuePanel extends StatelessWidget {
             _PageRow(
               page: page,
               onRetake: onRetake == null ? null : () => onRetake!(page),
-              retakeLabel: retakeLabel,
+              retakeLabel: '${page.index + 1}쪽$retakeParticle $retakeLabel',
             ),
           ],
         ],
@@ -112,7 +125,7 @@ class _PageRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppText(
-          '${page.index + 1}쪽 · ${page.shortLabel}${page.severe ? '' : ' (확인 필요)'}',
+          '${page.index + 1}쪽 · ${page.shortLabel}${page.severe ? '' : ' $kSoftIssueNote'}',
           style: AppTypography.label.copyWith(color: AppColors.textStrong),
         ),
         if (page.tip.isNotEmpty) ...[
@@ -132,7 +145,7 @@ class _PageRow extends StatelessWidget {
                 textStyle: AppTypography.buttonSmall,
               ),
               icon: const Icon(Icons.photo_camera, size: AppSize.iconSm),
-              label: AppText('${page.index + 1}쪽 $retakeLabel'),
+              label: AppText(retakeLabel),
             ),
           ),
         ],

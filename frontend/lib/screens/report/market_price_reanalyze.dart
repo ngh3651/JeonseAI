@@ -1,6 +1,6 @@
 /// [시세 입력하기] — 시세를 넣고 **같은 사진·같은 보증금으로** 새로 분석한다 (2026-10-23).
 ///
-/// 예전에는 리포트 근거 카드·손실 시뮬레이터의 이 버튼이 "곧 제공되는 기능이에요"만 띄웠다
+/// 예전에는 리포트 근거 카드·손실 시뮬레이터의 이 버튼이 '곧 제공' 안내만 띄웠다
 /// (심사위원이 누르면 끝 — 서연 리뷰 #4). 이제 실제로 돈다:
 ///   시세(만원) 입력 → 이 폰에 남은 그 리포트의 사진 + 같은 보증금 + 입력한 시세 → 로딩 → 새 리포트.
 ///
@@ -26,14 +26,13 @@ bool canReanalyzeWithMarketPrice(AnalysisReport report) =>
 Future<void> reanalyzeWithMarketPrice(BuildContext context, AnalysisReport report) async {
   final paths = RegistryPhotoStore.instance.pathsFor(report.id);
   if (paths.isEmpty) return;
-  final router = GoRouter.of(context);
   final messenger = ScaffoldMessenger.maybeOf(context);
   final int? won = await showDialog<int>(
     context: context,
     builder: (_) => const _MarketPriceDialog(),
   );
-  if (won == null) return;
-  final Object? returned = await router.push<Object?>(
+  if (won == null || !context.mounted) return;
+  final Object? returned = await GoRouter.of(context).push<Object?>(
     '/loading',
     extra: AnalysisRequest(
       imagePaths: List.of(paths),
@@ -46,7 +45,7 @@ Future<void> reanalyzeWithMarketPrice(BuildContext context, AnalysisReport repor
   if (returned is CaptureRejection) {
     messenger?.showSnackBar(
       SnackBar(
-        content: AppText('${returned.message}\n분석은 하지 않았어요. 사진을 다시 찍어 새로 분석해 주세요.'),
+        content: AppText('${returned.message}\n아직 분석하지 않았어요. 사진을 다시 찍어 새로 분석해 주세요.'),
         duration: const Duration(seconds: 5),
       ),
     );

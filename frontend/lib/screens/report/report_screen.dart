@@ -188,17 +188,16 @@ class _ReportScreenState extends State<ReportScreen> {
     if (check == null || check.pages.isEmpty) return const [];
     final paths = RegistryPhotoStore.instance.pathsFor(report.id);
     final canRetake = paths.isNotEmpty;
+    // D5(2026-10-23): '결과는 그대로 볼 수 있어요'로 시작하면 결과를 누그러뜨린다 — 잘못 읽었으면 결과가
+    // **달라질 수 있다**는 사실을 먼저 말한다(보수적 편향). 장 줄 끝은 '(다시 찍으면 더 정확해요)'.
     return [
       CaptureIssuePanel(
         check: check,
-        title: '사진 확인이 필요한 장이 있어요',
+        title: '글자를 잘못 읽었을 수 있는 장이 있어요',
         message: canRetake
-            ? '결과는 그대로 볼 수 있어요. 다만 아래 장은 글자를 잘못 읽었을 수 있어요 — '
-                '그 장만 다시 찍어 새로 분석하면 더 정확해요.'
-            : '결과는 그대로 볼 수 있어요. 다만 아래 장은 글자를 잘못 읽었을 수 있어요 — '
-                '정확히 보려면 그 장을 다시 찍어 새로 분석해 주세요.',
+            ? '이 장을 잘못 읽었다면 결과가 달라질 수 있어요. 그 장만 다시 찍어 새로 분석해 주세요.'
+            : '이 장을 잘못 읽었다면 결과가 달라질 수 있어요. 등기부를 다시 찍어 새로 분석해 주세요.',
         onRetake: canRetake ? (page) => _retakeAndReanalyze(context, report, paths, page) : null,
-        retakeLabel: '다시 찍어 새로 분석',
       ),
       const SizedBox(height: AppSpacing.xl),
     ];
@@ -244,7 +243,7 @@ class _ReportScreenState extends State<ReportScreen> {
     messenger?.showSnackBar(
       SnackBar(
         content: AppText(
-          '${returned.message}\n분석은 하지 않았어요(크레딧 0원). 다시 찍어 주세요.',
+          '${returned.message}\n아직 분석하지 않았어요. 그 장을 다시 찍어 주세요.',
           style: AppTypography.body.copyWith(color: Colors.white),
         ),
         behavior: SnackBarBehavior.floating,

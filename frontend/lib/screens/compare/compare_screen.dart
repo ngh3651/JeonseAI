@@ -410,6 +410,7 @@ class _CompareScreenState extends State<CompareScreen> {
           title: waiting ? '사진을 다시 찍어야 대조할 수 있어요' : '남은 장도 바꿀 수 있어요',
           message: _captureMessage(check),
           onRetake: _retakePage,
+          retakeParticle: waiting ? '만' : '도',
         ),
         const SizedBox(height: AppSpacing.sm),
         // 실패를 '이상 없음'으로 읽지 않게 못 박는다(일반 실패 화면과 같은 고지).
@@ -429,7 +430,8 @@ class _CompareScreenState extends State<CompareScreen> {
 
   /// 거절 안내 한 줄. 아직 아무 장도 안 바꿨으면 서버 문구 그대로, 바꾼 장이 있으면 **지금 남은 것**을 말한다.
   String _captureMessage(CaptureCheck check) {
-    const String tail = '대조는 하지 않았어요(크레딧이 들지 않았어요). 문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.';
+    // '크레딧' 같은 내부 말은 빼고 지금 상태와 할 일만(지수 리뷰 #4)
+    const String tail = '아직 대조하지 않았어요. 문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.';
     if (_replacedPages.isEmpty) return '${_errorMessage ?? ''}\n$tail';
     final done = (_replacedPages.toList()..sort()).map((i) => '${i + 1}쪽').join(', ');
     final left = [

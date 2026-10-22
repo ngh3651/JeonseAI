@@ -702,9 +702,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         check: CaptureCheck(ok: false, pages: pages),
         title: '바꿔 찍었어요 — 아래 [분석하기]로 다시 보내 주세요',
         message: '바꾼 장: ${(_replaced.toList()..sort()).map((i) => '${i + 1}쪽').join(', ')}'
-            '${pages.isEmpty ? '' : ' · 아래 장은 그대로 보내도 돼요(확인 필요)'}',
+            '${pages.isEmpty ? '' : ' · 아래 장은 그대로 보내도 돼요 $kSoftIssueNote'}',
         onRetake: _retakePage,
-        retakeLabel: '이 장도 다시 찍기',
+        retakeParticle: '도',
       );
     }
     final String done = _replaced.isEmpty
@@ -714,9 +714,11 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     return CaptureIssuePanel(
       check: CaptureCheck(ok: false, pages: pages),
       title: '사진을 다시 찍어야 분석할 수 있어요',
-      message: '${rejection.message}\n분석은 하지 않았어요(크레딧이 들지 않았어요). '
+      // '크레딧' 같은 내부 말은 빼고 지금 상태와 할 일만(지수 리뷰 #4)
+      message: '${rejection.message}\n아직 분석하지 않았어요. '
           '문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.$done',
       onRetake: _retakePage,
+      retakeParticle: '만',
     );
   }
 

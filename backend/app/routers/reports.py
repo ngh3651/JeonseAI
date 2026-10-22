@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 from .. import dummy_data, settings
 from ..dependencies import get_current_user, limit_analyze
 from ..schemas.contract import CaptureCheck, CaseMatch, CompareResult, QuestionGroup, Report
-from ..services import capture_check, compare, patterns, questions, report_builder, store
+from ..services import analysis_cache, capture_check, compare, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
@@ -106,6 +106,11 @@ def analyze(
     images = _read_images(files, empty_detail="등기부 사진을 1장 이상 올려 주세요")
     # 입력 검사를 모두 통과한 뒤에만 센다 — 형식이 틀린 요청은 분석 기회를 깎지 않는다
     limit_analyze(request, device_id)
+    # 같은 사진·같은 입력이면 같은 리포트 (P1-1 — `analysis_cache`). 촬영 검사·IE·OCR 전부 건너뛴다.
+    cache_key = analysis_cache.make_key(images, deposit=deposit, market_price=marketPrice)
+    cached = analysis_cache.lookup(cache_key, device_id=device_id)
+    if cached is not None:
+        return analysis_cache.with_alias(cached, alias, device_id=device_id)
     # 사진 품질 — 심하면 여기서 끝(크레딧 0원). ⚠ 횟수는 **센 뒤**다: 검사 자체가 서버 계산(장당 0.2~0.4초)을
     # 쓰므로, 안 세면 흐린 사진을 끝없이 보내 서버를 붙잡을 수 있다(decisions.md 2026-10-22 촬영 품질 검사).
     capture, rejected = _capture_gate(images)
@@ -113,7 +118,7 @@ def analyze(
         return rejected
 
     try:
-        return report_builder.analyze(
+        report = report_builder.analyze(
             images,
             deposit=deposit,
             market_price=marketPrice,
@@ -123,6 +128,8 @@ def analyze(
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
+    analysis_cache.remember(cache_key, report, device_id=device_id)
+    return report
 
 
 @router.post("/reports/{report_id}/compare", response_model=CompareResult)

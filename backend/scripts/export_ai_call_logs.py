@@ -112,8 +112,12 @@ def describe_request(kwargs: dict) -> tuple[object, str | None]:
             mime = spec[2] if len(spec) > 2 else None
         else:
             name, blob, mime = None, spec, None
-        if hasattr(blob, "read"):
-            blob = blob.read()
+        if hasattr(blob, "read"):  # 파일 객체 — 읽은 뒤 **제자리로 되감는다**(안 그러면 실제 업로드가 빈 파일이 된다)
+            start = blob.tell() if hasattr(blob, "tell") else None
+            data = blob.read()
+            if start is not None and hasattr(blob, "seek"):
+                blob.seek(start)
+            blob = data
         blob = blob if isinstance(blob, (bytes, bytearray)) else str(blob).encode()
         files.append(
             {

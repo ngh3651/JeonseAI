@@ -144,3 +144,13 @@ def test_응답_속_JSON_문자열은_풀어서_가리고_구조는_그대로():
     inner = json.loads(masked["choices"][0]["message"]["content"])
     assert inner["address"] == "[주소 가림]"
     assert inner["current_owners"] == [{"name": "홍○○", "share": "1분의 1"}]  # 키·순서·다른 값은 그대로
+
+
+def test_파일_객체를_기록해도_실제_업로드는_비지_않는다():
+    """2026-10-23 규혁 PC 실측: 기록하느라 파일을 끝까지 읽어 OCR이 'The document is empty'(400)를 받았다."""
+    import io
+
+    stream = io.BytesIO(b"\x89PNG" + b"0" * 500)
+    content, _ = ail.describe_request({"files": {"document": ("1.png", stream, "image/png")}, "data": {"model": "ocr"}})
+    assert "505바이트" in content["files"][0]["내용"]
+    assert stream.read() == b"\x89PNG" + b"0" * 500  # 되감겨 있어 실제 호출이 같은 내용을 보낸다

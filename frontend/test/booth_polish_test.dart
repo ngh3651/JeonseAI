@@ -4,6 +4,7 @@
 ///   ② 오래된 리포트의 [재분석] → [다시 떼서 대조]
 ///   ③ 근거 카드의 [시세 입력하기]는 사진이 이 폰에 있을 때만 (누를 수 없는 버튼을 두지 않는다)
 ///   ④ 앱 어디에도 "곧 제공되는 기능" 문구가 없다
+///   ⑤ 부스 모드 — 앱 버전 줄 7번 연속 탭으로 켜고 끔, 켜면 로그아웃·회원 탈퇴·기록 지우기를 숨긴다
 library;
 
 import 'dart:io';
@@ -14,11 +15,22 @@ import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
+import 'package:jeonse_ai/repositories/auth_repository.dart';
+import 'package:jeonse_ai/screens/my/account_section.dart';
+import 'package:jeonse_ai/screens/my/app_version_line.dart';
+import 'package:jeonse_ai/screens/my/my_screen.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:jeonse_ai/screens/report/report_share.dart';
+import 'package:jeonse_ai/services/kakao_login_gateway.dart';
+import 'package:jeonse_ai/services/session_credentials.dart';
+import 'package:jeonse_ai/services/session_storage.dart';
 import 'package:jeonse_ai/services/text_share.dart';
+import 'package:jeonse_ai/state/app_session.dart';
+import 'package:jeonse_ai/state/booth_mode.dart';
 import 'package:jeonse_ai/state/registry_photo_store.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/ko_finders.dart';
 import 'support/registry_fixture.dart' show kPhoneHeight, kPhoneWidth;
@@ -250,6 +262,126 @@ void main() {
     }
     expect(offenders, isEmpty, reason: '누르면 "곧 제공"만 뜨는 버튼은 부스에서 고장처럼 보인다');
   });
+
+  group('⑤ 부스 모드', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      SessionCredentials.instance.resetForTest();
+      BoothMode.instance.resetForTest();
+      PackageInfo.setMockInitialValues(
+        appName: '전세AI프',
+        packageName: 'com.jeonseai.jeonse_ai',
+        version: '1.0.0',
+        buildNumber: '42',
+        buildSignature: '',
+      );
+    });
+    tearDown(() => BoothMode.instance.resetForTest());
+
+    test('7번 연속이어야 켜진다 — 쉬었다 누르면 처음부터 센다', () async {
+      final booth = BoothMode.instance;
+      final t0 = DateTime(2026, 11, 3, 10);
+      for (int i = 0; i < 6; i++) {
+        expect(await booth.registerTap(now: t0.add(Duration(milliseconds: 300 * i))), isNull);
+      }
+      // 3초 쉬고 누르면 1번째부터 다시
+      expect(await booth.registerTap(now: t0.add(const Duration(seconds: 5))), isNull);
+      expect(booth.on, isFalse);
+      for (int i = 1; i < 6; i++) {
+        expect(await booth.registerTap(now: t0.add(Duration(seconds: 5, milliseconds: 300 * i))), isNull);
+      }
+      expect(await booth.registerTap(now: t0.add(const Duration(seconds: 7))), isTrue);
+      expect(booth.on, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(BoothMode.prefsKey), isTrue, reason: '폰에만 저장');
+    });
+
+    Future<AppSession> loggedIn() async {
+      final session = AppSession(
+        storage: MemorySessionStorage(
+          SavedSession(
+            token: 'session-token-booth',
+            expiresAt: DateTime.utc(2099, 1, 1),
+            customerKey: 'acct_0123456789abcdef0123456789abcdef01234567',
+          ),
+        ),
+        kakao: _FakeKakao(),
+        auth: _FakeAuth(),
+        kakaoEnabled: true,
+      );
+      await session.restore(now: DateTime.utc(2026, 11, 3));
+      expect(session.isLoggedIn, isTrue);
+      return session;
+    }
+
+    testWidgets('버전 줄을 7번 누르면 로그아웃·회원 탈퇴를 숨기고(토스트), 다시 7번이면 되돌린다', (tester) async {
+      final session = await loggedIn();
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppSession>.value(
+          value: session,
+          child: MaterialApp(
+            theme: buildAppTheme(),
+            home: Scaffold(
+              body: ListView(children: const [AccountSection(), AppVersionLine()]),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.koText('앱 버전 1.0.0 (빌드 42)'), findsOneWidget);
+      expect(find.koText('로그아웃'), findsOneWidget);
+      expect(find.koText('회원 탈퇴'), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('app-version-line'))).height,
+        greaterThanOrEqualTo(48),
+      );
+
+      for (int i = 0; i < BoothMode.tapsToToggle; i++) {
+        await tester.tap(find.byKey(const ValueKey('app-version-line')));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpAndSettle();
+      expect(BoothMode.instance.on, isTrue);
+      expect(find.koText(kBoothModeOnMessage), findsOneWidget);
+      expect(find.koText('로그아웃'), findsNothing);
+      expect(find.koText('회원 탈퇴'), findsNothing);
+      expect(find.koText('부스 모드라 로그아웃·회원 탈퇴는 숨겼어요'), findsOneWidget);
+      expect(find.koText('앱 버전 1.0.0 (빌드 42) · 부스 모드'), findsOneWidget);
+      // 그 밖의 동작은 그대로 — 처리방침은 그대로 열 수 있다
+      expect(find.koText('개인정보 처리방침'), findsOneWidget);
+
+      for (int i = 0; i < BoothMode.tapsToToggle; i++) {
+        await tester.tap(find.byKey(const ValueKey('app-version-line')));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpAndSettle();
+      expect(BoothMode.instance.on, isFalse);
+      expect(find.koText('로그아웃'), findsOneWidget);
+      expect(find.koText('회원 탈퇴'), findsOneWidget);
+    });
+
+    testWidgets('부스 모드에서는 분석 이력의 [삭제]도 숨긴다', (tester) async {
+      tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.reset);
+      final session = await loggedIn();
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AppSession>.value(value: session),
+            ChangeNotifierProvider<AnalysisRepository>(create: (_) => DummyAnalysisRepository()),
+          ],
+          child: MaterialApp(theme: buildAppTheme(), home: const MyScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('삭제'), findsWidgets);
+
+      BoothMode.instance.resetForTest(on: true);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('삭제'), findsNothing);
+    });
+  });
 }
 
 class _OneReport extends DummyAnalysisRepository {
@@ -259,4 +391,33 @@ class _OneReport extends DummyAnalysisRepository {
 
   @override
   Future<AnalysisReport?> getReport(String id) async => id == report.id ? report : null;
+}
+
+class _FakeKakao implements KakaoLoginGateway {
+  @override
+  Future<String> login() async => 'kakao-token';
+
+  @override
+  Future<void> logout() async {}
+
+  @override
+  Future<void> unlink() async {}
+}
+
+class _FakeAuth implements AuthRepository {
+  @override
+  Future<SavedSession> loginWithKakao(String kakaoAccessToken) async => SavedSession(
+    token: 'session-token-booth',
+    expiresAt: DateTime.utc(2099, 1, 1),
+    customerKey: 'acct_0123456789abcdef0123456789abcdef01234567',
+  );
+
+  @override
+  Future<MeStatus> me() async => const MeStatus(loggedIn: true);
+
+  @override
+  Future<void> logout(String sessionToken) async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }

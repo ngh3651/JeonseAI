@@ -3,6 +3,7 @@
 /// 맨 위 **계정** 칸(2026-10-22 카카오 로그인 — `account_section.dart`): 로그인 상태 · 로그아웃 · 회원 탈퇴 · 개인정보 처리방침.
 /// 분석 이력(재열람·삭제) — 로그인했으면 계정의 기록, 아니면 이 기기의 기록(서버가 가른다).
 /// 공통: **개인정보** — '사진 속 이름 가리기' 스위치 + 사진을 어디에 남기는지 한 줄 (2026-10-22).
+/// 맨 아래: **앱 버전·빌드 번호** 한 줄 — 7번 연속 누르면 부스 모드(로그아웃·회원 탈퇴·기록 지우기 숨김, 2026-10-23).
 library;
 
 import 'package:flutter/material.dart';
@@ -18,12 +19,14 @@ import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
 import '../../state/app_session.dart';
+import '../../state/booth_mode.dart';
 import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
 import '../pricing/guardian_pass_widgets.dart';
 import 'account_section.dart';
+import 'app_version_line.dart';
 import '../../design_system/text/app_text.dart';
 
 class MyScreen extends StatefulWidget {
@@ -131,7 +134,10 @@ class _MyScreenState extends State<MyScreen> {
           AppText('개인정보', style: AppTypography.title),
           const SizedBox(height: AppSpacing.md),
           const PrivacySettingsCard(),
-          const SizedBox(height: AppSpacing.xxxl),
+          const SizedBox(height: AppSpacing.xxl),
+          // 앱 버전 — 부스에서 최신 APK인지 확인. 7번 연속 누르면 부스 모드(state/booth_mode.dart)
+          const AppVersionLine(),
+          const SizedBox(height: AppSpacing.xl),
         ],
       ),
     );
@@ -229,10 +235,16 @@ class _MyScreenState extends State<MyScreen> {
             ),
           ),
           RiskBadge(grade: report.grade),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: AppSize.iconSm),
-            tooltip: '삭제',
-            onPressed: () => _delete(report),
+          // 부스 모드에서는 기록 지우기를 숨긴다 — 관람객이 시연 기록을 지우지 않게(state/booth_mode.dart)
+          ListenableBuilder(
+            listenable: BoothMode.instance,
+            builder: (context, _) => BoothMode.instance.on
+                ? const SizedBox(width: AppSpacing.sm)
+                : IconButton(
+                    icon: const Icon(Icons.delete_outline, size: AppSize.iconSm),
+                    tooltip: '삭제',
+                    onPressed: () => _delete(report),
+                  ),
           ),
         ],
       ),

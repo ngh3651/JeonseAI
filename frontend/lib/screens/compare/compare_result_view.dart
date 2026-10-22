@@ -6,9 +6,12 @@
 /// - **다른 집이면 숫자를 아예 그리지 않는다.** 다른 집끼리 비교한 값은 틀린 결론으로
 ///   이어지고, 그 결론이 잔금을 보내게 만든다.
 ///
-/// 문구는 서버(규칙 기반)가 준 것을 그대로 쓴다. 앱이 덧붙이는 것은 둘 —
-/// 기기에 저장된 계약 일정과 접수일을 견준 "계약서 쓴 다음 날이에요", 그리고 맨 위
-/// **지금 할 일** 카드(compare_next_step.dart — 서버 결과의 갈래만 옮기고 새 판정은 없다).
+/// 문구는 서버(규칙 기반)가 준 것을 그대로 쓴다. 앱이 덧붙이는 것은 —
+/// 기기에 저장된 계약 일정과 접수일을 견준 "계약서 쓴 다음 날이에요", 결론 바로 아래
+/// **지금 할 일** 카드(compare_next_step.dart — 서버 결과의 갈래만 옮기고 새 판정은 없다),
+/// 그리고 맨 위 **어느 집·어느 서류** 한 줄(서버 응답의 별칭·주소·열람일만 — 캡처해 보내도 알아보게, 서연 #2).
+///
+/// 순서(2026-10-23 D2): 어느 집·서류 한 줄 → 결론 헤더 → 지금 할 일 → 줄 카드들 — 리포트의 '등급 → 결정'과 같다.
 library;
 
 import 'package:flutter/material.dart';
@@ -31,6 +34,18 @@ import 'compare_next_step.dart';
 /// '빠진 쪽만 더 찍기' — 일부만 맞춰봤을 때 화면의 모든 다시 찍기 버튼이 쓰는 **한 가지 라벨**(D3).
 const String kAddMissingLabel = '빠진 쪽만 더 찍기';
 
+/// 주소 앞부분 — 동·로·길·읍·면·리·가로 끝나는 첫 낱말까지("경기 성남시 분당구 정자동 456-7" → "… 정자동").
+/// 그런 낱말이 없으면 앞의 세 낱말. 번지·호수는 빼서 캡처에 덜 남긴다.
+String addressHead(String address) {
+  final words = address.trim().split(RegExp(r'\s+'));
+  for (int i = 1; i < words.length; i++) {
+    if (RegExp(r'(동|로|길|읍|면|리|가)$').hasMatch(words[i]) && words[i].length >= 2) {
+      return words.sublist(0, i + 1).join(' ');
+    }
+  }
+  return words.take(3).join(' ');
+}
+
 class CompareResultView extends StatelessWidget {
   const CompareResultView({
     super.key,
@@ -44,6 +59,7 @@ class CompareResultView extends StatelessWidget {
     required this.onGuide,
     required this.onBackToJourney,
     this.keptPhotoCount,
+    this.now,
   });
 
   final CompareResult result;
@@ -60,6 +76,21 @@ class CompareResultView extends StatelessWidget {
 
   /// 이번 대조에 이미 올린 사진 장수 — 버튼의 "(먼저 찍은 N장은 그대로)". 모르면 서버가 센 장수.
   final int? keptPhotoCount;
+
+  /// '오늘' — 잔금일이 지났는지 볼 때(테스트가 넣는다). null이면 지금.
+  final DateTime? now;
+
+  /// 폰에 저장된 이 집의 잔금일이 **오늘보다 앞**인가(서연 리뷰 #3). 날짜는 이 폰에만 있다(서버는 모른다).
+  /// 잔금 당일은 아직 '보내기 전'으로 본다.
+  bool get _balancePassed {
+    final address = result.baseline.address;
+    if (address == null || address.trim().isEmpty) return false;
+    final balance = JourneyScheduleStore.instance.scheduleFor(journeyPropertyKey(address)).balance;
+    if (balance == null) return false;
+    final t = now ?? DateTime.now();
+    final today = DateTime(t.year, t.month, t.day);
+    return DateTime(balance.year, balance.month, balance.day).isBefore(today);
+  }
 
   /// 중개사 질문 생성기로
   final VoidCallback onQuestions;
@@ -101,18 +132,31 @@ class CompareResultView extends StatelessWidget {
         : hasDanger
         ? AppColors.danger
         : AppColors.primary;
+    // '그대로'의 결론 카드는 흰 바탕 — 민트 박스(결론 + 체크리스트)가 연달아 서면 '안전하다'는 단언처럼 보인다(D2)
     final Color soft = partial
         ? AppColors.cautionSoft
         : hasDanger
         ? AppColors.dangerSoft
-        : AppColors.primarySoft;
+        : AppColors.surface;
 
-    // 지금 할 일 (2026-10-22, P1-2) — 결과를 읽고 멈추지 않게 맨 위에 하나. 판정은 서버 결과 그대로.
+    // 지금 할 일 (2026-10-22, P1-2) — 결과를 읽고 멈추지 않게 결론 바로 아래 하나. 판정은 서버 결과 그대로.
     final CompareNextStep? next = compareNextStepFor(result);
+    final bool passed = _balancePassed;
+    final String? context0 = _contextLine;
 
     return ListView(
       padding: _pagePadding,
       children: [
+        if (context0 != null) ...[
+          AppText(
+            context0,
+            key: const ValueKey('compare-context-line'),
+            style: AppTypography.caption.copyWith(color: AppColors.textBody),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        _headerCard(tone: tone, soft: soft),
+        const SizedBox(height: AppSpacing.lg),
         if (next != null) ...[
           CompareNextStepCard(
             step: next,
@@ -120,11 +164,10 @@ class CompareResultView extends StatelessWidget {
             reportId: result.newReportId ?? baselineReportId,
             onAddMissing: onAddMissing,
             keptPhotoCount: keptPhotoCount ?? result.current.pageCount,
+            balancePassed: passed,
           ),
           const SizedBox(height: AppSpacing.lg),
         ],
-        _headerCard(tone: tone, soft: soft),
-        const SizedBox(height: AppSpacing.lg),
         for (final row in result.rows) ...[
           _rowCard(context, row),
           const SizedBox(height: AppSpacing.lg),
@@ -135,9 +178,10 @@ class CompareResultView extends StatelessWidget {
         ],
         _ruleBasedNotice(),
         const SizedBox(height: AppSpacing.lg),
+        // 위에 '지금 할 일' 카드가 주 행동을 이미 말한다 — 맨 아래는 보조 버튼으로(D3)
         if (!partial) ...[
-          AppPrimaryButton(
-            label: '잔금 보내기 전에 확인할 것 보기',
+          AppSecondaryButton(
+            label: passed ? '계약 여정 보기' : '잔금 보내기 전에 확인할 것 보기',
             onPressed: onBackToJourney,
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -161,22 +205,16 @@ class CompareResultView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 결론은 큰 제목이라 등급 색을 쓴다. 작은 글씨는 진한 본문색(D8 — 연한 바탕 위 같은 계열 글자는 대비 미달)
           AppText(
             result.headline,
             style: AppTypography.headline.copyWith(color: tone),
           ),
-          if (_documentLine != null) ...[
+          if (result.subline != null) ...[
             const SizedBox(height: 6),
             AppText(
-              _documentLine!,
-              style: AppTypography.caption.copyWith(color: tone),
-            ),
-          ],
-          if (result.subline != null) ...[
-            const SizedBox(height: 2),
-            AppText(
               result.subline!,
-              style: AppTypography.caption.copyWith(color: tone),
+              style: AppTypography.caption.copyWith(color: AppColors.textBody),
             ),
           ],
         ],
@@ -184,14 +222,16 @@ class CompareResultView extends StatelessWidget {
     );
   }
 
-  /// "7월 9일자 서류 ↔ 8월 5일자 서류" — 두 서류를 뗀 날. 못 읽은 쪽이 있으면 안 그린다.
-  String? get _documentLine {
-    final base = parseRegistryViewedAt(result.baseline.viewedAt);
-    final now = parseRegistryViewedAt(result.current.viewedAt);
-    if (base == null && now == null) return null;
-    final left = base == null ? '기준 서류' : '${formatMonthDay(base)}자 서류';
-    final right = now == null ? '이번 서류' : '${formatMonthDay(now)}자 서류';
-    return '$left ↔ $right';
+  /// 맨 위 한 줄 — "정자동 빌라 · 경기 성남시 분당구 정자동 · 7월 9일 ↔ 8월 5일 등기부" (서연 리뷰 #2).
+  /// 결과를 캡처해 배우자에게 보내도 **어느 집·어느 서류끼리** 견줬는지 보이게. 서버 응답에 있는 값만 쓴다.
+  /// 주소는 앞부분(동·로·길까지)만 — 호수까지 화면에 크게 남기지 않는다.
+  String? get _contextLine {
+    final parts = <String>[
+      if ((result.baseline.alias ?? '').trim().isNotEmpty) result.baseline.alias!.trim(),
+      if ((result.baseline.address ?? '').trim().isNotEmpty) addressHead(result.baseline.address!),
+      if (compareDocumentDates(result) != null) '${compareDocumentDates(result)} 등기부',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
   }
 
   Widget _rowCard(BuildContext context, CompareRow row) {

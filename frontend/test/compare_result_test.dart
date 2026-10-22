@@ -105,7 +105,11 @@ void main() {
     );
 
     expect(find.koText('달라진 점이 2가지 있어요'), findsOneWidget);
-    expect(find.koText('7월 9일자 서류 ↔ 8월 5일자 서류'), findsOneWidget);
+    // 맨 위 한 줄 — 어느 집·어느 서류끼리인지(캡처해 보내도 알아보게). 주소는 앞부분만
+    expect(
+      find.koText('정자동 빌라 · 경기 성남시 분당구 정자동 · 7월 9일 ↔ 8월 5일 등기부'),
+      findsOneWidget,
+    );
 
     // 맨 위에 '지금 할 일' 카드가 생겨(2026-10-22) 아래 줄들은 내려 봐야 보인다 — 위에서부터 차례로.
     final scrollable = find.byType(Scrollable).first;

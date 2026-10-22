@@ -259,7 +259,11 @@ class _CompareScreenState extends State<CompareScreen> {
     return Scaffold(
       appBar: AppBar(
         // 진행 중에는 제목을 두지 않는다(시안 5는 앱바 없는 전면 화면이다)
-        title: AppText(_running ? '' : _appBarTitle(result)),
+        title: AppText(
+          _running ? '' : _appBarTitle(result),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         automaticallyImplyLeading: !_running,
       ),
       body: SafeArea(
@@ -285,10 +289,13 @@ class _CompareScreenState extends State<CompareScreen> {
     );
   }
 
+  /// 앱바 — "{별칭} · 대조 결과" (서연 리뷰 #2: 캡처해 보내면 어느 집인지 알 수 있게). 별칭이 없으면 예전 제목.
   String _appBarTitle(CompareResult? result) {
     if (result == null) return '등기부 대조';
+    final String alias = (result.baseline.alias ?? '').trim();
     return switch (result.outcome) {
-      CompareOutcome.changed || CompareOutcome.partial => '등기부 대조 결과',
+      CompareOutcome.changed || CompareOutcome.partial =>
+        alias.isEmpty ? '등기부 대조 결과' : '$alias · 대조 결과',
       _ => '등기부 대조',
     };
   }

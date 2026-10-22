@@ -342,6 +342,61 @@ def test_가리기는_말소된_줄의_이름도_덮는다():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ④-b 하이라이트가 '이름'으로 읽은 칸은 하나도 빠짐없이 가린다 (기존 OCR 픽스처)
+# ══════════════════════════════════════════════════════════════════════════════
+
+from app.services.ocr_layout import build_items  # noqa: E402
+
+from tests.test_highlight import corp_gap_gu_page, real_pages, requires_real  # noqa: E402
+
+
+def _assert_every_name_hit_covered(pages: list[OcrPage]) -> int:
+    """`ocr_layout`(하이라이트)이 등록번호 앞에서 찾은 이름(개인) 낱말이 전부 가림 상자 안에 있는가.
+
+    ⚠ 하이라이트 쪽이 **꼬리표(`소유자`)를 이름으로** 집는 경우는 뺀다 — 이름이 등기원인어로 시작하면
+      (`이전수` → '이전'을 떼면 `수` 한 글자) 그 이름을 버리고 한 칸 앞의 `소유자`를 집는다(기존 동작, 집주인
+      하이라이트가 빠질 뿐 엉뚱한 곳을 칠하지는 않는다). 꼬리표는 실명이 아니고, 진짜 이름 `이전수`는
+      `test_사람_이름과_주민번호는_전부_덮는다`가 덮이는 것을 확인한다.
+    """
+    result = privacy_masks.build_privacy_masks(OcrResult(pages=pages), None, page_count=len(pages))
+    by_index = {p.index: p for p in pages}
+    checked = 0
+    for item in build_items(pages):
+        for hit in item.names:
+            if hit.kind != "개인":
+                continue
+            page = by_index[hit.page_index]
+            line = next(ln for ln in page.lines if ln.index == hit.line_index)
+            word = line.words[hit.word_index]
+            if privacy_masks._is_label(word.text.strip()):
+                continue
+            assert _covered(word, page, result.masks), f"{page.name} L{hit.line_index}의 이름 낱말이 안 덮였다"
+            checked += 1
+    return checked
+
+
+def test_하이라이트가_찾은_이름은_전부_덮인다_합성_픽스처():
+    pages = [gap_gu_page(0), gap_gu_full(1), eul_gu_full(2)]
+    assert _assert_every_name_hit_covered(pages) >= 6
+
+
+def test_법인_소유자_등기부도_돈다():
+    """법인 소유자 이름은 공개된 이름이라 덮지 않아도 되지만, 그 등록번호는 덮는다."""
+    page = corp_gap_gu_page(0)
+    result = _run(page)
+    corp_id = next(w for w in page.words if w.text == "110111-0000000")
+    assert _covered(corp_id, page, result.masks)
+    corp_name = next(w for w in page.words if w.text == "주식회사가나다")
+    assert not _covered(corp_name, page, result.masks)
+
+
+@requires_real
+def test_실제_등기부에서_이름_낱말이_전부_덮인다():
+    """`backend/out/ocr_*.json`(실명 포함, 커밋 안 함)이 있을 때만 — 실제 OCR 배치에서도 빠짐없는가."""
+    assert _assert_every_name_hit_covered(real_pages()) >= 5
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ⑤ 분석 응답 — 끝에서 끝까지 (크레딧 0원)
 # ══════════════════════════════════════════════════════════════════════════════
 

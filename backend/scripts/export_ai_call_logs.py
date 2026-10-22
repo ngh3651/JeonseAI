@@ -43,14 +43,13 @@ import tempfile
 import threading
 import time
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 BACKEND = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND))
 
-KST = ZoneInfo("Asia/Seoul")
+KST = timezone(timedelta(hours=9), "KST")  # 한국은 서머타임이 없어 +9 고정 — 윈도우에 시간대 DB(tzdata)가 없어도 된다
 UPSTAGE_HOST = "api.upstage.ai"
 DEVICE_ID = "ailog-export-0001"
 DEFAULT_NAMES = ["등기부등본 분석", "판례 근거 찾기", "다시 떼서 대조", "용어 챗봇"]

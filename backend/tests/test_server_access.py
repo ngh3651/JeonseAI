@@ -226,7 +226,7 @@ def test_앱_키_비교는_상수_시간_비교를_쓴다():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ④ 속도 제한 — 최근 1시간, 세 겹(기기×IP · IP · 서버 전체)
+# ④ 속도 제한 — 최근 1시간 세 겹(기기×IP · IP · 서버 전체) + 서버 전체 하루
 # ══════════════════════════════════════════════════════════════════════════════
 
 
@@ -328,10 +328,60 @@ def test_한_시간이_지나면_다시_된다(monkeypatch):
 
 
 def test_상한을_0으로_두면_그_겹은_끈다(monkeypatch):
+    for name in (
+        "RATE_LIMIT_ANALYZE_PER_HOUR",
+        "RATE_LIMIT_IP_PER_HOUR",
+        "RATE_LIMIT_GLOBAL_PER_HOUR",
+        "RATE_LIMIT_GLOBAL_PER_DAY",
+    ):
+        monkeypatch.setenv(name, "0")
+    for _ in range(600):
+        dependencies.limit_analyze(_req(), "phone-dddd-0004")
+
+
+def _only_day_limit(monkeypatch, per_day: int) -> list[float]:
+    """하루 겹만 켜고 시계를 손으로 움직이게 한다."""
     for name in ("RATE_LIMIT_ANALYZE_PER_HOUR", "RATE_LIMIT_IP_PER_HOUR", "RATE_LIMIT_GLOBAL_PER_HOUR"):
         monkeypatch.setenv(name, "0")
-    for _ in range(500):
-        dependencies.limit_analyze(_req(), "phone-dddd-0004")
+    monkeypatch.setenv("RATE_LIMIT_GLOBAL_PER_DAY", str(per_day))
+    now = [1000.0]
+    monkeypatch.setattr(dependencies.time, "monotonic", lambda: now[0])
+    return now
+
+
+def test_하루_상한은_한_시간이_지나도_풀리지_않고_24시간_뒤에_풀린다(monkeypatch):
+    """공개 APK에서 앱 키를 꺼내 써도 하루 지출에는 뚜껑이 있다 (2026-10-22)."""
+    now = _only_day_limit(monkeypatch, 3)
+    for i in range(3):
+        dependencies.limit_analyze(_req(f"198.51.100.{i}"), f"phone-day-000{i}")
+    with pytest.raises(HTTPException) as e:
+        dependencies.limit_analyze(_req("198.51.100.50"), "phone-day-0050")
+    assert e.value.status_code == 429
+    assert "내일" in e.value.detail  # 한 시간 뒤가 아니라 내일이라고 말한다
+
+    now[0] += 3601  # 한 시간 지나도 그대로
+    with pytest.raises(HTTPException):
+        dependencies.limit_analyze(_req("198.51.100.51"), "phone-day-0051")
+
+    now[0] += 86400  # 하루가 지나면 다시 된다
+    dependencies.limit_analyze(_req("198.51.100.52"), "phone-day-0052")
+
+
+def test_하루_칸은_청소에서_버려지지_않는다(monkeypatch):
+    """한 시간 넘게 조용했던 칸을 치우는 청소가 하루 횟수까지 지우면 뚜껑이 풀린다."""
+    now = _only_day_limit(monkeypatch, 5)
+    monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "100")  # 기기 칸이 생기게(청소 대상)
+    monkeypatch.setattr(dependencies, "_MAX_BUCKETS", 10)
+    for i in range(5):
+        dependencies.limit_analyze(_req(f"203.0.113.{i}"), f"phone-dcl-{i:04d}")
+    now[0] += 3601  # 기기 칸은 전부 조용해졌다
+    monkeypatch.setenv("RATE_LIMIT_GLOBAL_PER_DAY", "0")  # 청소만 일으키려고 잠깐 끈다
+    for i in range(20):
+        dependencies.limit_analyze(_req(f"192.0.2.{i}"), f"phone-dcl-new-{i:04d}")
+    assert len(dependencies._hits[dependencies._GLOBAL_DAY]) == 5  # 하루 횟수는 그대로
+    monkeypatch.setenv("RATE_LIMIT_GLOBAL_PER_DAY", "5")
+    with pytest.raises(HTTPException):
+        dependencies.limit_analyze(_req("192.0.2.200"), "phone-dcl-last-0001")
 
 
 def test_오래된_칸은_치우고_칸_수에_상한이_있다(monkeypatch):

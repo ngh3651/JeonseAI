@@ -235,16 +235,12 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       ),
     );
     if (!mounted || result == null || result.newPaths.isEmpty) return;
+    // ⚠ 토스트를 띄우지 않는다 — 떠 있는 2.6초 동안 바로 아래 [분석하기]를 덮어 누를 수 없다.
+    //   무엇을 바꿨고 무엇이 남았는지는 안내 패널이 그 자리에서 바뀌어 말한다.
     setState(() {
       _photos[index] = result.newPaths.last;
       _replaced.add(index);
     });
-    final int left = _pagesStillToRetake.length;
-    _toast(
-      left == 0
-          ? '${index + 1}쪽을 바꿨어요. 이제 다시 분석할 수 있어요'
-          : '${index + 1}쪽을 바꿨어요. 다시 찍을 장이 $left장 남았어요',
-    );
   }
 
   /// 거절됐는데 아직 안 바꾼 **심한** 장들 — 이게 남아 있으면 같은 사진을 또 보내는 셈이다.
@@ -711,11 +707,15 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         retakeLabel: '이 장도 다시 찍기',
       );
     }
+    final String done = _replaced.isEmpty
+        ? ''
+        : '\n바꾼 장: ${(_replaced.toList()..sort()).map((i) => '${i + 1}쪽').join(', ')}'
+            ' · 다시 찍을 장 ${remaining.length}장 남았어요';
     return CaptureIssuePanel(
       check: CaptureCheck(ok: false, pages: pages),
       title: '사진을 다시 찍어야 분석할 수 있어요',
       message: '${rejection.message}\n분석은 하지 않았어요(크레딧이 들지 않았어요). '
-          '문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.',
+          '문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.$done',
       onRetake: _retakePage,
     );
   }

@@ -127,6 +127,8 @@ class LocalNotificationsPlatform implements ReminderPlatform {
           color: AppColors.primary,
           // 접힌 알림은 한 줄만 보인다 — 펼치면 문장 전체가 보이게
           styleInformation: BigTextStyleInformation(reminder.body),
+          // 계약 지킴이 패스가 있으면 머리줄에 표시만 (2026-10-22, P2-1)
+          subText: reminder.subText,
         ),
         iOS: const DarwinNotificationDetails(),
       ),

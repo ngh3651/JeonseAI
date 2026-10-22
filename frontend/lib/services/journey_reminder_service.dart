@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../state/journey_schedule_store.dart';
+import '../state/pass_store.dart';
 import 'journey_reminders.dart';
 import 'local_notifications_platform.dart';
 
@@ -103,6 +104,8 @@ class JourneyReminderService {
       alias: alias,
       schedule: schedule,
       now: now ?? DateTime.now(),
+      // 패스가 있으면 알림 머리줄에 '계약 지킴이 패스' — 표시만(알림은 패스와 상관없이 울린다)
+      withPass: PassStore.instance.active,
     );
     // 앞의 예약이 끝날 때까지 기다린다 — 끝난 순서대로 하나씩.
     while (_running != null) {

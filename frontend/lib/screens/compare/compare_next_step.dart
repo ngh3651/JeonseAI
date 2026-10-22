@@ -24,6 +24,7 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/compare_result.dart';
 import '../../models/content_models.dart';
 import '../../repositories/content_repository.dart';
+import '../pricing/guardian_pass_widgets.dart';
 
 /// 대조 결과 다음에 할 일 — 세 가지.
 enum CompareNextStep {
@@ -154,9 +155,17 @@ class _StepFrame extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AppText(
-            '지금 할 일',
-            style: AppTypography.label.copyWith(color: color),
+          Row(
+            children: [
+              Expanded(
+                child: AppText(
+                  '지금 할 일',
+                  style: AppTypography.label.copyWith(color: color),
+                ),
+              ),
+              // 계약 지킴이 패스가 있으면 다시 대조에도 표시만 (2026-10-22, P2-1)
+              const GuardianPassBadge(),
+            ],
           ),
           const SizedBox(height: AppSpacing.xs),
           Row(

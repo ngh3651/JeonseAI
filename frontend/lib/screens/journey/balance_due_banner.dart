@@ -21,6 +21,7 @@ import '../../models/content_models.dart';
 import '../../services/journey_reminders.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
+import '../pricing/guardian_pass_widgets.dart';
 
 /// 오늘 띄울 배너의 제목·본문. 오늘이 세 날 중 하나가 아니면 null.
 ({String title, String message})? journeyBannerFor(
@@ -120,6 +121,10 @@ class BalanceDueBanner extends StatelessWidget {
                       style: AppTypography.body.copyWith(
                         color: AppColors.caution,
                       ),
+                    ),
+                    // 계약 지킴이 패스가 있으면 표시만 (2026-10-22, P2-1) — 없으면 자리도 없다
+                    const GuardianPassBadge(
+                      padding: EdgeInsets.only(top: AppSpacing.sm),
                     ),
                   ],
                 ),

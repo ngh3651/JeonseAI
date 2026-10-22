@@ -20,10 +20,12 @@ import 'repositories/analysis_repository.dart';
 import 'repositories/api_analysis_repository.dart';
 import 'repositories/api_content_repository.dart';
 import 'repositories/content_repository.dart';
+import 'repositories/payment_repository.dart';
 import 'state/app_session.dart';
 import 'services/device_id.dart';
 import 'services/journey_reminder_service.dart';
 import 'state/journey_schedule_store.dart';
+import 'state/pass_store.dart';
 import 'state/privacy_settings.dart';
 import 'state/registry_photo_store.dart';
 
@@ -48,7 +50,11 @@ Future<void> main() async {
   await reminders.init();
   final String? launchedFrom = await reminders.launchPayload();
   // 앱을 강제 종료하면 안드로이드가 걸어 둔 알림을 지운다 → 켤 때마다 저장된 일정으로 다시 건다.
-  unawaited(reminders.resyncAll(JourneyScheduleStore.instance));
+  // 계약 지킴이 패스(P2-1)를 먼저 물어 알림에도 '지킴이 패스' 표시를 붙인다(표시만 — 기능은 막지 않는다).
+  unawaited(() async {
+    await PassStore.instance.refresh(ApiPaymentRepository());
+    await reminders.resyncAll(JourneyScheduleStore.instance);
+  }());
   runApp(const JeonseSafeApp());
   // 알림을 눌러 앱이 켜졌으면 첫 화면이 그려진 뒤 그 집의 여정으로 간다.
   if (launchedFrom != null) {
@@ -63,11 +69,13 @@ class JeonseSafeApp extends StatelessWidget {
     super.key,
     this.analysisRepository,
     this.contentRepository,
+    this.paymentRepository,
   });
 
   /// 테스트 전용 오버라이드 (null이면 서버 구현 사용). 프로덕션은 항상 Api*.
   final AnalysisRepository? analysisRepository;
   final ContentRepository? contentRepository;
+  final PaymentRepository? paymentRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +90,10 @@ class JeonseSafeApp extends StatelessWidget {
         ),
         Provider<ContentRepository>(
           create: (_) => contentRepository ?? ApiContentRepository(),
+        ),
+        // 요금제·테스트 결제·내 패스 (2026-10-22, P2-1)
+        Provider<PaymentRepository>(
+          create: (_) => paymentRepository ?? ApiPaymentRepository(),
         ),
         // 계약 일정 — 기기 로컬 저장. 여정 화면과 홈 배너가 같은 값을 본다.
         ChangeNotifierProvider<JourneyScheduleStore>.value(

@@ -34,6 +34,7 @@ import '../../services/api_client.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
 import '../common/analyze_gate.dart';
+import '../pricing/guardian_pass_widgets.dart';
 import 'balance_due_banner.dart';
 import 'journey_actions.dart';
 import 'journey_reminder_prompt.dart';
@@ -664,6 +665,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
                     ],
                     for (int i = 0; i < _stages.length; i++)
                       _stageRow(i, property, schedule, store),
+                    // 요금제로 가는 입구 (2026-10-22, P2-1) — 패스가 없어도 위 단계·알림·대조는 그대로 쓴다
+                    const SizedBox(height: AppSpacing.lg),
+                    const GuardianPassEntry(),
                   ],
                 ),
               ),

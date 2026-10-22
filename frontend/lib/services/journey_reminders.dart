@@ -50,6 +50,7 @@ class JourneyReminder {
     required this.fireAt,
     required this.title,
     required this.body,
+    this.subText,
   });
 
   final JourneyReminderKind kind;
@@ -62,12 +63,18 @@ class JourneyReminder {
   final String title;
   final String body;
 
+  /// 알림 머리줄의 작은 글씨(안드로이드). 계약 지킴이 패스가 있으면 "계약 지킴이 패스" — **표시만** 붙는다.
+  final String? subText;
+
   /// 같은 집·같은 종류면 늘 같은 id — 날짜를 바꿔 다시 걸면 **덮어쓰고**, 지우면 이 id로 취소한다.
   int get id => journeyReminderId(propertyKey, kind);
 
   /// 알림을 눌렀을 때 앱이 받는 값 → 그 집의 여정 화면을 연다.
   String get payload => journeyReminderPayload(propertyKey);
 }
+
+/// 계약 지킴이 패스가 있을 때 알림 머리줄에 붙는 말.
+const String kReminderPassSubText = '계약 지킴이 패스';
 
 /// 알림 payload 앞머리. 다른 알림이 생겨도 헷갈리지 않게 붙인다.
 const String _payloadPrefix = 'journey|';
@@ -103,11 +110,13 @@ List<int> journeyReminderIds(String propertyKey) => [
 /// 일정 → 예약할 알림 목록 (울리는 순서대로). 지난 시각은 빠진다.
 ///
 /// [alias]는 알림 제목 뒤에 붙는 집 이름(예: "정자동 빌라") — 집이 여럿일 때 어느 집인지 알게.
+/// [withPass]면 알림 머리줄에 "계약 지킴이 패스"를 붙인다(표시만 — 울리는 때·문구는 같다).
 List<JourneyReminder> planJourneyReminders({
   required String propertyKey,
   required String alias,
   required JourneySchedule schedule,
   required DateTime now,
+  bool withPass = false,
 }) {
   final String suffix = alias.trim().isEmpty ? '' : ' · ${alias.trim()}';
   final out = <JourneyReminder>[];
@@ -128,6 +137,7 @@ List<JourneyReminder> planJourneyReminders({
         fireAt: fireAt,
         title: '$title$suffix',
         body: body,
+        subText: withPass ? kReminderPassSubText : null,
       ),
     );
   }

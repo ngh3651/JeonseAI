@@ -52,6 +52,11 @@ dependencies:
   flutter_local_notifications: ^22.3.0
   # 알림 예약 시각을 넘기는 형식(TZDateTime). 시간대 DB는 내려받지 않고 UTC 순간으로만 쓴다.
   timezone: ^0.11.0
+  # 계약 지킴이 패스 테스트 결제 (2026-10-22, P2-1) — 토스페이먼츠 공식 결제위젯 SDK.
+  # 부르는 곳은 services/toss_payment_gateway.dart 한 곳뿐이다. 테스트 키만 쓴다(실제 청구 없음).
+  tosspayments_widget_sdk_flutter: ^2.2.0
+  # 결제 주인 키(토스 customerKey)를 기기 id에서 만들 때 SHA-256 — 기기 id를 결제사에 그대로 넘기지 않는다.
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

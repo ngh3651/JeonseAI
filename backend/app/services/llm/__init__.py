@@ -26,7 +26,7 @@ from .base import (
     LlmResponse,
 )
 from .prompts import render_layout_text
-from .providers import PROVIDER_CLASSES, AxProvider, ExaoneProvider, UpstageSolarProvider
+from .providers import PROVIDER_CLASSES, AxProvider, UpstageSolarProvider
 
 _log = logging.getLogger("jeonseai")
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
@@ -46,7 +46,6 @@ __all__ = [
     "EXPLAIN_TEMPERATURE",
     "STRUCTURE_TEMPERATURE",
     "AxProvider",
-    "ExaoneProvider",
     "LlmError",
     "LlmProvider",
     "LlmResponse",

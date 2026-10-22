@@ -1,4 +1,4 @@
-"""국내 LLM 3종(Solar Pro / SKT A.X / LG EXAONE) 역할별 비교 하네스.
+"""국내 LLM(Solar Pro / SKT A.X) 역할별 비교 하네스.
 
 ⚠ 격리 원칙: 이 스크립트는 제품 코드를 **import(읽기)만** 하고 수정하지 않는다.
    제품의 LLM 경로는 여전히 Solar 고정이며, 이 하네스는 비교 실측 전용이다.
@@ -19,9 +19,6 @@
 프로바이더 설정 (환경변수 — backend/.env 또는 셸):
   Solar  : UPSTAGE_API_KEY (기존 키 그대로. base/model 기본값 내장)
   A.X    : AX_BASE_URL / AX_MODEL / AX_API_KEY          (OpenAI 호환 chat/completions 가정)
-  EXAONE : EXAONE_BASE_URL / EXAONE_MODEL / EXAONE_API_KEY
-           (FriendliAI serverless 경유 시 base=https://api.friendli.ai/serverless/v1 예상 —
-            실측 전 조사 보고서의 확정값으로 대체할 것)
 
 사용:
   python scripts/compare_llm_backends.py --list              # 설정 상태·필요 키 점검 (호출 0)
@@ -94,19 +91,6 @@ def _providers() -> dict[str, dict]:
             # 허용 근거: 모델 사용 기준(decisions.md 2026-07-22) — SKT 공식 배포라 베이스 계보 무관.
             # 연결 전 게스트 API 이용약관·레이트리밋 확인(미문서화 상태).
             "note": "SKT A.X 무료 게스트 API — AX_API_KEY 필요(약관·리밋 확인 후 연결)",
-        },
-        "exaone": {
-            "base_url": os.environ.get("EXAONE_BASE_URL", "https://api.friendli.ai/serverless/v1"),
-            "model": os.environ.get("EXAONE_MODEL", "LGAI-EXAONE/K-EXAONE-236B-A23B"),
-            "api_key": os.environ.get("EXAONE_API_KEY", "").strip(),
-            # K-EXAONE은 기본 thinking 모드 — 켜두면 reasoning이 max_tokens를 소진해
-            # content가 비는 것을 실측으로 확인(2026-07-22). 제품 용도(빠른 결정적 JSON)에
-            # 맞춰 비활성화가 기본. EXAONE_EXTRA_JSON으로 오버라이드 가능.
-            "extra": _extra_json("EXAONE_EXTRA_JSON")
-            or {"chat_template_kwargs": {"enable_thinking": False}},
-            # FriendliAI serverless 레이트리밋(429) 실측 확인 — 호출 간 간격을 둔다
-            "throttle_s": float(os.environ.get("EXAONE_THROTTLE_S", "15")),
-            "note": "LG K-EXAONE (FriendliAI serverless) — EXAONE_API_KEY(flp_) 필요",
         },
     }
 

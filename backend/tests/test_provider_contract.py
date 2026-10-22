@@ -129,7 +129,7 @@ def test_temperature가_전선까지_간다(name, cls, keyed_provider, captured_
 
 @pytest.mark.parametrize(("name", "cls"), ALL_PROVIDERS, ids=PROVIDER_IDS)
 def test_추론모델_보정이_max_tokens에_더해진다(name, cls, keyed_provider, captured_post):
-    """`extra_max_tokens`는 '사고에 예산을 쓰는 모델' 보정이다(EXAONE 실측 근거).
+    """`extra_max_tokens`는 '사고에 예산을 쓰는 모델' 보정이다(2026-07 추론 모델 실측 근거).
 
     이 값이 본문에서 빠지면 응답 `content`가 빈 문자열로 돌아온다 — 조용한 실패다.
     """
@@ -147,10 +147,10 @@ def test_provider별_고유_튜닝이_실제로_실린다(keyed_provider, captur
     upstage = keyed_provider(PROVIDER_CLASSES["upstage"])
     upstage.chat("시스템", "사용자", max_tokens=100)
     assert captured_post[-1]["body"]["reasoning_effort"] == "low"
-
-    exaone = keyed_provider(PROVIDER_CLASSES["exaone"])
-    exaone.chat("시스템", "사용자", max_tokens=100)
-    assert captured_post[-1]["body"]["chat_template_kwargs"] == {"enable_thinking": False}
+    # 다른 provider(ax)는 공통 본문 그대로다 — Upstage 전용 튜닝이 새지 않는다
+    ax = keyed_provider(PROVIDER_CLASSES["ax"])
+    ax.chat("시스템", "사용자", max_tokens=100)
+    assert "reasoning_effort" not in captured_post[-1]["body"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════

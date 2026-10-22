@@ -20,8 +20,8 @@
 
 쓰는 법:
     backend/.venv/Scripts/python.exe tools/model_ab.py
-    # 모델을 바꾸려면 (기본: A=upstage · B=exaone)
-    MODEL_A=upstage MODEL_B=exaone backend/.venv/Scripts/python.exe tools/model_ab.py
+    # 모델을 바꾸려면 (기본: A=upstage · B=ax — 두 모델 키가 다 있어야 비교다)
+    MODEL_A=upstage MODEL_B=ax backend/.venv/Scripts/python.exe tools/model_ab.py
 """
 
 from __future__ import annotations
@@ -212,7 +212,7 @@ def _rate_limited(runs: list[Run]) -> list[Run]:
     """429(요청 제한)로 실패한 실행 — **모델 품질이 아니라 티어 용량 문제다.**
 
     분모에서 빼지 않는다(실측 가용성도 사실이다). 다만 표에서 분리해 보여야
-    "EXAONE 통과율 50%"가 모델 성적으로 오독되지 않는다.
+    "B 모델 통과율 50%"가 모델 성적으로 오독되지 않는다.
     """
     return [r for r in runs if r.llm_called and r.http_status == 429]
 
@@ -259,7 +259,7 @@ def main() -> int:
     questions: list[dict] = json.loads(EVAL_PATH.read_text(encoding="utf-8"))["questions"]
 
     name_a = (os.environ.get("MODEL_A", "") or "upstage").strip()
-    name_b = (os.environ.get("MODEL_B", "") or "exaone").strip()
+    name_b = (os.environ.get("MODEL_B", "") or "ax").strip()
     provider_a, provider_b = llm.get_provider(name_a), llm.get_provider(name_b)
     for p in (provider_a, provider_b):
         if not p.available:
@@ -340,24 +340,6 @@ def main() -> int:
             )
             L.append("")
 
-    # 추론 모드 각주
-    for label, provider in lineup:
-        llm_runs = [r for r in results[label] if r.llm_called]
-        max_reason = max((r.reasoning_len for r in llm_runs), default=0)
-        if provider.name == "exaone":
-            if max_reason == 0:
-                L.append(
-                    f"> 각주: **{label}는 사고 모드를 끄고 호출했다**"
-                    " (`chat_template_kwargs={\"enable_thinking\": false}`)."
-                    " 전 호출에서 `reasoning_content` 길이 0으로 확인됨 — 옵션이 실제로 먹었다."
-                )
-            else:
-                L.append(
-                    f"> 각주: ⚠ **{label}의 사고 모드가 꺼지지 않았다.**"
-                    " `enable_thinking=false`를 보냈으나 `reasoning_content`가"
-                    f" 최대 {max_reason}자 돌아왔다 — 켠 채로 잰 수치다."
-                )
-            L.append("")
 
     L.append("## 2. 가드레일은 모델과 무관하다 (L1 · L3)")
     L.append("")

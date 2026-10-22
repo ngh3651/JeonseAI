@@ -14,7 +14,7 @@
     # A만 (기본): Solar
     backend/.venv/Scripts/python.exe tools/chat_ab.py
     # A + B: B는 환경변수로만 켠다 (OpenAI 호환이면 provider 이름만 주면 된다)
-    CHAT_PROVIDER_B=exaone backend/.venv/Scripts/python.exe tools/chat_ab.py
+    CHAT_PROVIDER_B=ax backend/.venv/Scripts/python.exe tools/chat_ab.py
 
 크레딧: 질문 10개 중 **자연어 4개만** LLM을 탄다(나머지는 규칙·사전에서 끝난다).
         4문항 × 3회 = 모델당 12회. A만 12회, A+B 24회.

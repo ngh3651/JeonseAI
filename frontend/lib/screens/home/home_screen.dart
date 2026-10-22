@@ -120,8 +120,12 @@ class _HomeScreenState extends State<HomeScreen> {
         BalanceDueBanner(
           title: '${report.alias} · ${banner.title}',
           message: banner.message,
-          note: '잔금 직전 확인이 이 앱에서 가장 중요한 단계예요',
+          legalNote: banner.legalNote,
+          // 입주 다음 날에는 잔금이 이미 끝났다 — 잔금 이야기는 빼고(D4)
+          note: banner.isMoveInNext ? null : '잔금 직전 확인이 이 앱에서 가장 중요한 단계예요',
           onCompare: () => startRegistryCompare(context, report),
+          // 다시 뗄 줄 모르면 여기서 막힌다(지수 리뷰 #10) — 홈 배너에도 [떼는 법]
+          onGuide: () => context.push('/guide'),
         ),
       );
       banners.add(const SizedBox(height: AppSpacing.lg));

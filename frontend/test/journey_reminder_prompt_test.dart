@@ -129,7 +129,8 @@ void main() {
 
       // 이유 → 권한 (이유 없이 시스템 창부터 띄우지 않는다)
       expect(find.koText('그날 알림을 보내 드릴까요?'), findsOneWidget);
-      expect(find.koTextContaining('잔금 직전에 근저당을 새로 설정하는 방식이 많아요'), findsOneWidget);
+      expect(find.koText(kReminderPermissionReason), findsOneWidget);
+      expect(find.koTextContaining('그 하루가 빈틈이에요'), findsOneWidget);
       expect(find.koTextContaining('잔금 하루 전'), findsOneWidget);
       expect(find.koTextContaining('잔금 당일 아침'), findsOneWidget);
       expect(find.koTextContaining('날짜는 서버로 보내지 않아요'), findsOneWidget);
@@ -310,6 +311,9 @@ void main() {
 
       expect(find.koTextContaining('오늘은 입주 다음 날이에요'), findsOneWidget);
       expect(find.koText(BalanceDueBanner.kMoveInNextMessage), findsOneWidget);
+      // 쉬운 본문은 조건부터(전입신고를 했다면) — 근거는 작은 글씨로
+      expect(find.koTextContaining('이삿날 전입신고까지 마쳤다면'), findsOneWidget);
+      expect(find.koText(BalanceDueBanner.kMoveInNextLegalNote), findsOneWidget);
       expect(find.koText('지금 다시 떼서 대조하기'), findsOneWidget);
     });
 

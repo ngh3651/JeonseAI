@@ -655,6 +655,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
                       BalanceDueBanner(
                         title: banner.title,
                         message: banner.message,
+                        legalNote: banner.legalNote,
                         note: _checkPointNote,
                         onCompare: () =>
                             startRegistryCompare(context, property.latest),

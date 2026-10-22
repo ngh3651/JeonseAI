@@ -159,7 +159,8 @@ List<JourneyReminder> planJourneyReminders({
     JourneyReminderKind.moveInNext,
     schedule.dates[JourneyDateKey.moveIn],
     '입주 다음 날 등기부 확인',
-    '대항력은 오늘 0시부터 생겨요 — 그 사이 새 빚이 생기지 않았는지 등기부를 떼서 대조해 주세요',
+    // 2026-10-23: 전입신고를 했을 때만 생긴다는 조건을 앞에(주택임대차보호법 제3조 — 인도 + 주민등록 다음 날)
+    '이삿날 전입신고를 했다면 오늘 0시부터 대항력이 생겨요 — 이삿날 이후 새 빚이 없는지 다시 떼서 대조해 주세요',
   );
 
   out.sort((a, b) => a.fireAt.compareTo(b.fireAt));

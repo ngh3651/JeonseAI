@@ -1846,9 +1846,13 @@
     (`AnalysisReport.fromJson`)에서 서버와 같은 규칙으로. 남의 진짜 이름이 큰 화면·포스터·영상에 나올 때만 켠다.
   - 자동 테스트 `test_pii_persistence.py`: (a) 분석 응답 집주인 카드 실명 (b) 기록 DB 바이트·로그·저장 JSON 실명 0
     (c) 기록 API·캐시 적중·대조 응답 가린 이름 (d) 기관 이름 그대로 (e) 설명 입력 실명 0. 앱 `test/privacy_names_test.dart`.
-  - ⚠ 남은 한계: 대조 결과는 가린 이름(이전 실명이 서버에 없다). 두 번째 경로(OCR 글자 → Solar 구조화, `LLM_STRUCTURE_PROVIDER`)는
-    **글자를 읽는** 단계라 실명이 든 OCR 글자를 그대로 보낸다(IE가 사진을 읽는 것과 같은 성격) — 이것도 막을지는 따로 정한다.
-    분석 전 화면은 이름 위치를 몰라 못 가린다. CLAUDE.md §2-5 문구("실명은 화면·로그·저장소에 남기지 않는다")는 이 결정에 맞춰 따로 고친다.
+  - **글자를 읽는 단계(IE·OCR·Solar 정리)는 실명이 든 글자를 다룬다 — 모두 Upstage. 쉬운 설명 단계 Solar엔 가린 이름.**
+    두 번째 경로(OCR 글자 → Solar 구조화, `LLM_STRUCTURE_PROVIDER`)를 끄거나 OCR 글자를 가리지 않는다 — 교차검증이 사라져서(PR #8 검토 때 정함).
+    근거: [Upstage 이용약관](https://upstage.ai/terms-of-service/update-march-25-2025) 제22조 — API 입력·출력은 저장·학습하지 않고, 비동기 API만 결과를 30일 보관(우리는 동기 API만 쓴다:
+    `information-extraction`·`document-digitization`·`solar/chat/completions`·`embeddings`). [개인정보처리방침](https://www.upstage.ai/ko/privacy-policy) — 무료 요금제 API는
+    요청·응답을 서비스 개선·연구 목적으로 보관할 수 있다 → 우리 키의 요금제는 규혁이 확인 중.
+  - ⚠ 남은 한계: 대조 결과는 가린 이름(이전 실명이 서버에 없다). 분석 전 화면은 이름 위치를 몰라 못 가린다.
+    CLAUDE.md §2-5도 이 결정에 맞췄다(서버 저장소·로그·설명용 LLM 입력엔 실명 0, 폰 화면엔 원본).
 - **출처**: 팀 결정(규혁, 2026-10-22). [2026-10-21] 마스킹 결정의 갱신.
 
 ### [2026-10-22] 같은 사진 캐시 키에 시세 DB 준비 여부를 넣는다

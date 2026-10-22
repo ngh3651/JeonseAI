@@ -20,6 +20,7 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
+import '../search/capture_issue_panel.dart' show CaptureRejection;
 import '../../design_system/text/app_text.dart';
 
 class AnalysisLoadingScreen extends StatefulWidget {
@@ -116,6 +117,14 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
       // (gap-checker 2026-07-07 치명 지적 — user-scenario §4 S-06 분기 복원)
       _timer?.cancel();
       if (!mounted) return;
+      // 사진 품질 거절(2026-10-22, P1-1) — 분석 전에 막혔다(크레딧 0원). 실패 화면 대신 **촬영 화면으로 바로**
+      // 돌아가 "몇 쪽이 왜 — 그 장만 다시 찍기"를 띄운다(사진·입력값은 그대로 남아 있다).
+      final capture = e.captureCheck;
+      if (capture != null && capture.pages.isNotEmpty && context.canPop()) {
+        _navigated = true;
+        context.pop(CaptureRejection(check: capture, message: e.message));
+        return;
+      }
       setState(() {
         _failed = true;
         _errorMessage = e.message;

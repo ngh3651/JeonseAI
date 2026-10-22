@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../app/config.dart';
+import '../models/analysis_report.dart' show CaptureCheck;
 import 'device_id.dart';
 
 /// 서버 호출 실패. [message]는 사용자에게 보여줄 한국어 문구.
@@ -25,6 +26,7 @@ class ApiException implements Exception {
     this.message, {
     this.statusCode,
     this.needsAppUpdate = false,
+    this.captureCheck,
   });
 
   final String message;
@@ -33,6 +35,10 @@ class ApiException implements Exception {
   /// 기기 정보(400)·앱 인증(401) 문제 — **다시 시도해도, 사진을 바꿔도 풀리지 않는다.**
   /// 화면은 이때 '다시 시도'·'사진 다시 고르기'를 내밀지 않는다(헛걸음만 시킨다).
   final bool needsAppUpdate;
+
+  /// 서버가 **사진 품질 때문에 분석 전에 거절**했을 때(400 + `captureCheck`, api-contract §9.9) 장별 안내.
+  /// 있으면 화면은 "몇 쪽이 왜 — 그 장만 다시 찍기"를 보여 준다.
+  final CaptureCheck? captureCheck;
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -60,8 +66,20 @@ const String kRateLimitedMessage =
 /// - **429는 우리 서버의 횟수 제한일 때만** 바꾼다. Upstage 쪽 한도(같은 429)는 서버 문구
 ///   ("요청이 몰려 잠시 제한됐어요…")가 더 정확하다 — "1시간 횟수"라고 하면 틀린 말이 된다.
 @visibleForTesting
-ApiException apiExceptionFor(int statusCode, String? serverDetail) {
+ApiException apiExceptionFor(
+  int statusCode,
+  String? serverDetail, {
+  CaptureCheck? captureCheck,
+}) {
   final detail = (serverDetail ?? '').trim();
+  // 사진 품질 거절(§9.9) — 서버 문구("2쪽이 흐려요 — 다시 찍어 주세요 (…)")가 이미 할 일을 말한다.
+  if (statusCode == 400 && captureCheck != null) {
+    return ApiException(
+      detail.isEmpty ? '사진을 다시 찍어 주세요' : detail,
+      statusCode: 400,
+      captureCheck: captureCheck,
+    );
+  }
   switch (statusCode) {
     case 401:
       return const ApiException(
@@ -196,14 +214,20 @@ class ApiClient {
   void _ensureOk(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
     String? detail;
+    CaptureCheck? capture;
     try {
       final body = jsonDecode(utf8.decode(res.bodyBytes));
       if (body is Map && body['detail'] is String) {
         detail = body['detail'] as String;
       }
+      if (body is Map && body['captureCheck'] is Map<String, dynamic>) {
+        capture = CaptureCheck.fromJson(
+          body['captureCheck'] as Map<String, dynamic>,
+        );
+      }
     } catch (_) {
       /* 본문이 JSON이 아니면 서버 문구 없음 → 기본 문구 */
     }
-    throw apiExceptionFor(res.statusCode, detail);
+    throw apiExceptionFor(res.statusCode, detail, captureCheck: capture);
   }
 }

@@ -69,6 +69,38 @@ class Highlight(BaseModel):
     source: Optional[str] = None
 
 
+# ── 사진 속 실명·주민번호 자리 (§9.8 — 2026-10-22 추가, **선택적**) ─────────────
+# '사진 속 이름 가리기'가 켜지면 앱이 이 상자를 전부 불투명하게 덮는다. **글자는 담지 않는다 — 위치만.**
+class PrivacyMask(BaseModel):
+    """가릴 자리 하나 — 정규화 좌표(0~1). `page`는 업로드한 사진 순서(0부터).
+
+    `x=0, y=0, w=1, h=1`은 "이 쪽은 이름 자리를 찾아보지 못했다(OCR 실패 등)"는 뜻이다 → 쪽 전체를 덮는다.
+    """
+
+    page: int
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+# ── 촬영 검사 (§9.9 — 2026-10-22 추가, **선택적**) ──────────────────────────────
+# 판정이 아니라 **사진 품질**이다. 등급·근거 카드에 어떤 영향도 주지 않는다.
+class CapturePageIssue(BaseModel):
+    """문제가 있는 사진 한 장. 문제가 없는 장은 목록에 넣지 않는다."""
+
+    index: int  # 업로드한 사진 순서 (0부터) — 화면에는 index+1쪽으로
+    # blurry · too_dark · too_bright · low_contrast · no_text · low_resolution · cut_off
+    issues: list[str] = Field(default_factory=list)
+    severe: bool = False  # true = 분석하지 않고 거절한 장(크레딧 0원)
+    tip: str = ""  # 왜 문제인지 + 어떻게 다시 찍는지 (쉬운 말 두 문장)
+
+
+class CaptureCheck(BaseModel):
+    ok: bool = True  # 문제가 하나도 없으면 true
+    pages: list[CapturePageIssue] = Field(default_factory=list)
+
+
 # ── 시세 출처 (§2.8 — 2026-08-03 추가, **선택적**) ─────────────────────────
 # 앱이 이 필드를 통째로 무시해도 기존과 똑같이 동작한다(전부 기본값 있음).
 class MarketPriceAlternative(BaseModel):
@@ -132,6 +164,16 @@ class Report(BaseModel):
     # "사진부터 찍게 해 놓고 마지막에 못 한다고 말하는" 흐름을 피할 수 있다
     # (계약 여정 S-11 "기준 없음" 화면은 사진을 받기 전에 나온다).
     comparable: bool = False
+    # 사진 속 **실명·주민번호 자리** (2026-10-22, P0-2b). '사진 속 이름 가리기'가 켜지면 앱이 전부 덮는다.
+    # 글자는 없고 위치만 있다. 표시 전용 — 판정과 무관하다.
+    privacyMasks: list[PrivacyMask] = Field(default_factory=list)
+    # 위 목록을 **실제로 만들었는가**. false = 이 기능 전에 만든 기록(위치 정보 없음) →
+    # 앱은 가리기가 켜져 있으면 사진을 통째로 덮는다(어디에 이름이 있는지 모르므로).
+    privacyMasksReady: bool = False
+    # 촬영 검사 결과 (2026-10-22, P1-1). 가벼운 문제(조금 흐림·쪽 번호 잘림 등)는 분석하되 여기서 알린다 —
+    # 앱은 그 장에 '확인 필요'를 붙이고 다시 찍기를 권한다. 심한 문제는 분석 전에 400으로 거절된다(§9.9).
+    # 없으면(None) 검사하지 않은 옛 기록이거나 서버에서 검사를 끈 것이다(`CAPTURE_CHECK=off`).
+    captureCheck: Optional[CaptureCheck] = None
 
 
 # ── 판례 (§2.3 CaseMatch) ──────────────────────────────────────────────────

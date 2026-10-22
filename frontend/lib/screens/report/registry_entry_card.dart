@@ -145,6 +145,8 @@ class RegistryPreviewSource {
     required this.examineCount,
     required this.totalCount,
     this.pageMarks = const [],
+    this.privacyBoxes = const [],
+    this.namesUnlocated = false,
   });
 
   /// 그 표시가 있는 쪽의 **서버로 보낸 그 JPEG** 경로
@@ -154,6 +156,12 @@ class RegistryPreviewSource {
   /// 같은 쪽의 다른 표시들 — '사진 속 이름 가리기'가 켜졌을 때 스트립에 함께 비치는
   /// 이름 칸(공동명의의 다른 집주인 등)까지 덮기 위해 받는다. 형광펜은 [mark] 하나에만 긋는다.
   final List<RegistryHighlight> pageMarks;
+
+  /// 같은 쪽의 실명·주민번호 자리 (서버 §9.8) — 빚 줄을 확대하면 바로 아래 **채무자 줄**이 비친다.
+  final List<HighlightBox> privacyBoxes;
+
+  /// 이 쪽은 이름 자리를 모른다(옛 기록·OCR 실패) — 가리기가 켜지면 스트립 사진을 통째로 덮는다.
+  final bool namesUnlocated;
 
   /// 뱃지에 적을 **따져볼 곳** 개수 (이름·주소 같은 '대조할 곳'은 빠진다)
   final int examineCount;
@@ -381,6 +389,9 @@ class _PreviewStripState extends State<_PreviewStrip> {
           ]
         : const <RegistryHighlight>[];
     final markIsRedacted = redacted.contains(source.mark);
+    // 서버가 찾은 나머지 이름·주민번호 자리 (채무자 줄 등) — 켜졌을 때만
+    final privacy = hideNames ? source.privacyBoxes : const <HighlightBox>[];
+    final coverAll = hideNames && source.namesUnlocated;
 
     return DecoratedBox(
       // ⚠ **foreground**여야 한다. 기본값(background)으로 두면 구분선을 먼저 그리고
@@ -417,6 +428,17 @@ class _PreviewStripState extends State<_PreviewStrip> {
               Positioned.fromRect(
                 rect: crop.markRect(m.box),
                 child: const NameRedactionBox(),
+              ),
+            for (final b in privacy)
+              Positioned.fromRect(
+                rect: crop.markRect(b),
+                child: const NameRedactionBox(),
+              ),
+            // 이름 자리를 모르는 쪽 — 스트립 사진을 통째로 덮는다(어디에 이름이 비칠지 모른다)
+            if (coverAll)
+              const Positioned.fill(
+                key: ValueKey('preview-whole-cover'),
+                child: ColoredBox(color: AppColors.markRedaction),
               ),
             Positioned(left: 10, top: 10, child: _badge(source)),
           ],

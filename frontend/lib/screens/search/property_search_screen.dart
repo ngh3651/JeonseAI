@@ -25,6 +25,7 @@ import '../../models/analysis_report.dart';
 import '../../models/market_price_source.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
+import 'capture_issue_panel.dart';
 import 'capture_loop_route.dart';
 import '../../design_system/text/app_text.dart';
 
@@ -72,6 +73,12 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   static const int _maxImages = 10;
 
   final List<String> _photos = [];
+
+  /// 서버가 사진 품질로 거절한 결과 (없으면 null). 문제인 장을 다시 찍어 바꾸면 그 장은 목록에서 빠진다.
+  CaptureRejection? _rejection;
+
+  /// 거절 뒤에 **이미 바꾼** 장 번호(0부터) — 다시 보내기 전에 "바꿨어요" 표시를 단다.
+  final Set<int> _replaced = {};
   final TextEditingController _depositCtrl = TextEditingController();
   final TextEditingController _priceCtrl = TextEditingController();
   final TextEditingController _aliasCtrl = TextEditingController();
@@ -177,6 +184,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     );
     if (!mounted || result == null) return;
     setState(() {
+      // 크게 보기에서 지우거나 순서를 바꿨으면 "몇 쪽이 문제" 안내가 어긋난다 → 접는다.
+      if (!_samePaths(result.paths)) _clearRejection();
       _photos
         ..clear()
         ..addAll(result.paths);
@@ -184,11 +193,68 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     if (result.wantsRetake) await _openCaptureLoop();
   }
 
+  bool _samePaths(List<String> other) {
+    if (other.length != _photos.length) return false;
+    for (var i = 0; i < other.length; i++) {
+      if (other[i] != _photos[i]) return false;
+    }
+    return true;
+  }
+
   void _reorder(int oldIndex, int newIndex) {
     setState(() {
       if (newIndex > oldIndex) newIndex -= 1;
       final String p = _photos.removeAt(oldIndex);
       _photos.insert(newIndex, p);
+      // 장 순서가 바뀌면 "몇 쪽이 문제"라는 안내가 엉뚱한 장을 가리킨다 → 안내를 접는다.
+      _clearRejection();
+    });
+  }
+
+  // ── 그 장만 다시 찍기 (P1-1) ───────────────────────────────────────────────
+
+  void _clearRejection() {
+    _rejection = null;
+    _replaced.clear();
+  }
+
+  /// 문제인 장 하나를 다시 찍어 **그 자리에** 바꿔 끼운다. 나머지 장·입력값은 그대로다.
+  Future<void> _retakePage(CapturePageIssue page) async {
+    final int index = page.index;
+    if (index < 0 || index >= _photos.length) return;
+    final CaptureLoopResult? result = await Navigator.of(context).push(
+      MaterialPageRoute<CaptureLoopResult>(
+        fullscreenDialog: true,
+        builder: (_) => CaptureLoopRoute(
+          alreadyTaken: _photos.length,
+          maxPhotos: _maxImages,
+          captureOne: widget.captureOne,
+          replacePage: index,
+          replaceTip: page.tip,
+        ),
+      ),
+    );
+    if (!mounted || result == null || result.newPaths.isEmpty) return;
+    // ⚠ 토스트를 띄우지 않는다 — 떠 있는 2.6초 동안 바로 아래 [분석하기]를 덮어 누를 수 없다.
+    //   무엇을 바꿨고 무엇이 남았는지는 안내 패널이 그 자리에서 바뀌어 말한다.
+    setState(() {
+      _photos[index] = result.newPaths.last;
+      _replaced.add(index);
+    });
+  }
+
+  /// 거절됐는데 아직 안 바꾼 **심한** 장들 — 이게 남아 있으면 같은 사진을 또 보내는 셈이다.
+  List<CapturePageIssue> get _pagesStillToRetake => [
+    for (final p in _rejection?.check.pages ?? const <CapturePageIssue>[])
+      if (p.severe && !_replaced.contains(p.index)) p,
+  ];
+
+  /// 분석 화면에서 돌아온 결과를 받는다 — 사진 품질 거절이면 장별 안내를 띄운다.
+  void _onAnalysisReturned(Object? result) {
+    if (!mounted || result is! CaptureRejection) return;
+    setState(() {
+      _rejection = result;
+      _replaced.clear();
     });
   }
 
@@ -308,10 +374,11 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     }
   }
 
-  void _analyze() {
+  Future<void> _analyze() async {
     final int? deposit = _manwonToWon(_depositCtrl.text);
     if (!_canAnalyze || deposit == null) return;
-    context.push(
+    setState(_clearRejection); // 다시 보내면 지난 안내는 접는다(새 결과가 오면 다시 띄운다)
+    final Object? returned = await context.push<Object?>(
       '/loading',
       extra: AnalysisRequest(
         imagePaths: List.of(_photos),
@@ -320,6 +387,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         alias: _aliasCtrl.text,
       ),
     );
+    _onAnalysisReturned(returned);
   }
 
   // ── build ─────────────────────────────────────────────────────────────────
@@ -573,7 +641,22 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 onTapPhoto: _openViewer,
                 onAddMore: _openCaptureLoop,
                 onReorder: _reorder,
+                // 서버가 문제라고 한 장(아직 안 바꾼 장)에 한 단어 표시 — "어느 장"이 눈에 바로 보이게
+                issueLabels: {
+                  for (final p in _rejection?.check.pages ?? const <CapturePageIssue>[])
+                    if (!_replaced.contains(p.index)) p.index: p.shortLabel,
+                },
               ),
+              if (_rejection != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenPadding,
+                    AppSpacing.md,
+                    AppSpacing.screenPadding,
+                    0,
+                  ),
+                  child: _rejectionPanel(_rejection!),
+                ),
               if (_hintsOn)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
@@ -604,6 +687,36 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         ),
         _bottomBar(),
       ],
+    );
+  }
+
+  /// 거절 안내 — 아직 바꿀 장이 남았으면 장마다 [다시 찍기], 다 바꿨으면 "다시 분석할 수 있어요".
+  Widget _rejectionPanel(CaptureRejection rejection) {
+    final remaining = _pagesStillToRetake;
+    final List<CapturePageIssue> pages = [
+      for (final p in rejection.check.pages)
+        if (!_replaced.contains(p.index)) p,
+    ];
+    if (remaining.isEmpty) {
+      return CaptureIssuePanel(
+        check: CaptureCheck(ok: false, pages: pages),
+        title: '바꿔 찍었어요 — 아래 [분석하기]로 다시 보내 주세요',
+        message: '바꾼 장: ${(_replaced.toList()..sort()).map((i) => '${i + 1}쪽').join(', ')}'
+            '${pages.isEmpty ? '' : ' · 아래 장은 그대로 보내도 돼요(확인 필요)'}',
+        onRetake: _retakePage,
+        retakeLabel: '이 장도 다시 찍기',
+      );
+    }
+    final String done = _replaced.isEmpty
+        ? ''
+        : '\n바꾼 장: ${(_replaced.toList()..sort()).map((i) => '${i + 1}쪽').join(', ')}'
+            ' · 다시 찍을 장 ${remaining.length}장 남았어요';
+    return CaptureIssuePanel(
+      check: CaptureCheck(ok: false, pages: pages),
+      title: '사진을 다시 찍어야 분석할 수 있어요',
+      message: '${rejection.message}\n분석은 하지 않았어요(크레딧이 들지 않았어요). '
+          '문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.$done',
+      onRetake: _retakePage,
     );
   }
 

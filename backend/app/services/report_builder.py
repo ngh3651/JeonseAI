@@ -16,11 +16,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from ..schemas.contract import Evidence, Highlight, MarketPriceAlternative, Report
+from ..schemas.contract import CaptureCheck, Evidence, Highlight, MarketPriceAlternative, Report
 from ..schemas.internal import Grade, PriceProvenance, RegistryExtract, RuleVerdict
 from . import (
     artifacts,
     cancellation,
+    capture_check,
     compare,
     cross_check,
     document_parse,
@@ -34,6 +35,7 @@ from . import (
     ocr_layout,
     price_lookup,
     price_resolver,
+    privacy_masks,
     rule_engine,
     store,
     terms,
@@ -373,11 +375,16 @@ def analyze(
     market_price: int | None,
     alias: str | None,
     device_id: str,
+    capture: CaptureCheck | None = None,
 ) -> Report:
     """업로드 이미지 → (IE ∥ OCR→구조화) → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)
 
     `device_id`: 이 분석을 요청한 기기(`dependencies.get_current_user`). 리포트·대조 기준이
     이 기기의 기록으로 저장된다 — 다른 기기에서는 보이지 않는다(2026-10-21).
+
+    `capture`: 라우터가 IE·OCR **전에** 돌린 촬영 검사 결과(2026-10-22). 심한 장이 있으면 라우터가 이미
+    거절했으므로 여기 오는 것은 '문제 없음' 또는 '가벼운 문제'뿐이다. OCR 뒤의 발견(쪽 번호 잘림)을 더해
+    `Report.captureCheck`에 싣는다 — **표시 전용**, 판정과 무관하다.
 
     **세 경로가 있고, 판정에 들어가는 것은 하나뿐이다** (2026-07-28):
 
@@ -494,6 +501,16 @@ def analyze(
         _log.error(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})", exc_info=True)
         highlight_result = highlight.HighlightResult([])
 
+    # 사진 속 실명·주민번호 **자리** (2026-10-22, P0-2b) — 표시 전용. 판정과 하이라이트를 건드리지 않는다.
+    # 실패하면 `privacyMasksReady=False`로 나가고, 앱은 가리기가 켜져 있으면 사진을 통째로 덮는다.
+    try:
+        mask_result = privacy_masks.build_privacy_masks(
+            ocr_result, extract, page_count=len(images)
+        )
+    except Exception:  # noqa: BLE001
+        _log.error("[가리기] ⚠ 가림 상자를 만들지 못함 — 앱이 사진을 통째로 덮습니다", exc_info=True)
+        mask_result = None
+
     # ── 시세 자동조회 ────────────────────────────────────────────────────────
     # 주소는 **OCR/IE 이후에야** 알 수 있으므로 여기가 가장 이른 시점이다.
     # ⚠ 어떤 실패도 리포트를 막지 못한다. `price_lookup.collect`는 스스로 예외를
@@ -525,6 +542,15 @@ def analyze(
         registry_viewed_at=highlight_result.viewed_at,
         price_info=price_info,
     )
+    if mask_result is not None:
+        report.privacyMasks = mask_result.masks
+        report.privacyMasksReady = True
+    try:
+        # 촬영 검사 + OCR 뒤 발견(쪽 번호 안 보임 = 잘림 의심) — 표시 전용. 판정은 이미 끝났다.
+        report.captureCheck = capture_check.add_ocr_findings(capture, ocr_result.pages, len(images))
+    except Exception:  # noqa: BLE001 — 안내 한 줄 때문에 리포트를 잃지 않는다
+        _log.error("[촬영검사] ⚠ OCR 뒤 검사 실패 — 분석 전 검사 결과만 싣습니다", exc_info=True)
+        report.captureCheck = capture
     # ── 여기서부터 리포트는 **이미 완성됐다.** 아래는 기록·정리·로그뿐이다 ──────────
     # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
     # 2026-07-28 실기기 500이 정확히 이 모양이었다(리포트 완성 → 마지막 문장에서 사망).
@@ -599,6 +625,17 @@ def analyze(
                     ("시세", _price_note),
                     ("선순위채권 합계", format_won(report.seniorDebtAmount)),
                     ("하이라이트", f"{len(report.highlights)}건"),
+                    ("가림 상자", f"{len(report.privacyMasks)}개" if report.privacyMasksReady else "없음(실패)"),
+                    (
+                        "촬영 검사",
+                        "꺼짐"
+                        if report.captureCheck is None
+                        else "문제 없음"
+                        if report.captureCheck.ok
+                        else ", ".join(
+                            f"{p.index + 1}쪽 {'/'.join(p.issues)}" for p in report.captureCheck.pages
+                        ),
+                    ),
                     ("교차검증", _cross_note),
                 ],
             )

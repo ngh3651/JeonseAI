@@ -27,7 +27,12 @@ class PhotoTray extends StatelessWidget {
     required this.onAddMore,
     required this.onReorder,
     this.canAddMore = true,
+    this.issueLabels = const {},
   });
+
+  /// 장 번호(0부터) → 사진 위에 붙일 짧은 주의 표시(예: `흐림`). 서버가 사진 품질 문제를 알린 장에만 (P1-1).
+  /// 색이 아니라 **글자**로 알린다 — 앰버 띠 + 단어.
+  final Map<int, String> issueLabels;
 
   /// 사진 파일 경로 (표시 순서 = 목록 순서)
   final List<String> paths;
@@ -163,6 +168,32 @@ class PhotoTray extends StatelessWidget {
                   ),
                 ),
               ),
+              // 사진 품질 문제 표시 (P1-1) — 아래쪽 앰버 띠에 한 단어
+              if (issueLabels[i] != null)
+                Positioned(
+                  key: ValueKey('photo-tray-issue-$i'),
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    decoration: const BoxDecoration(
+                      color: AppColors.caution,
+                      borderRadius: BorderRadius.vertical(
+                        bottom: Radius.circular(AppRadius.thumb),
+                      ),
+                    ),
+                    child: AppText(
+                      issueLabels[i]!,
+                      textAlign: TextAlign.center,
+                      style: AppTypography.label.copyWith(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
               // 확대 칩 — "탭하면 커진다"를 형태로 알린다.
               Positioned(
                 right: 4,

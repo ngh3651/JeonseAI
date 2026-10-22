@@ -206,6 +206,104 @@ class RegistryHighlight {
       );
 }
 
+/// 사진 속 **실명·주민번호 자리** 하나 (api-contract.md §9.8 — 2026-10-22, P0-2b).
+///
+/// 서버는 **글자 없이 위치만** 보낸다. '사진 속 이름 가리기'가 켜지면 앱이 이 상자를 불투명하게 덮는다.
+/// `x=0, y=0, w=1, h=1`은 "이 쪽은 이름 자리를 찾아보지 못했다(OCR 실패 등)"는 뜻 — 쪽 전체를 덮는다.
+class PrivacyMask {
+  const PrivacyMask({required this.page, required this.box});
+
+  /// 업로드한 사진 순서 (0부터)
+  final int page;
+
+  /// 정규화 좌표 (0~1) — 하이라이트와 같은 방식
+  final HighlightBox box;
+
+  /// 쪽 전체를 덮는 상자인가 (서버가 그 쪽의 이름 자리를 찾아보지 못했다)
+  bool get coversWholePage =>
+      box.x <= 0 && box.y <= 0 && box.w >= 1 && box.h >= 1;
+
+  factory PrivacyMask.fromJson(Map<String, dynamic> json) => PrivacyMask(
+    page: json['page'] as int,
+    box: HighlightBox.fromJson(json),
+  );
+}
+
+/// 촬영 검사에서 문제가 있었던 사진 한 장 (api-contract.md §9.9 — 2026-10-22, P1-1).
+///
+/// **판정이 아니라 사진 품질**이다. 등급과 무관하다.
+class CapturePageIssue {
+  const CapturePageIssue({
+    required this.index,
+    this.issues = const [],
+    this.severe = false,
+    this.tip = '',
+  });
+
+  /// 업로드한 사진 순서 (0부터) — 화면에는 index+1쪽
+  final int index;
+
+  /// `blurry`·`too_dark`·`too_bright`·`low_contrast`·`no_text`·`low_resolution`·`cut_off`
+  final List<String> issues;
+
+  /// true = 서버가 분석하지 않고 거절한 장 (다시 찍어야 분석된다)
+  final bool severe;
+
+  /// 이유 + 다시 찍는 법 (서버가 쓴 쉬운 말 두 문장)
+  final String tip;
+
+  /// 한 단어 요약 — 사진 위 뱃지용. 여럿이면 먼저 고칠 것 하나(서버의 우선순위와 같은 순서).
+  String get shortLabel {
+    const order = [
+      ('no_text', '글자 없음'),
+      ('too_dark', '어두움'),
+      ('too_bright', '빛 번짐'),
+      ('blurry', '흐림'),
+      ('low_contrast', '흐릿함'),
+      ('low_resolution', '너무 작음'),
+      ('cut_off', '잘림'),
+    ];
+    for (final (key, label) in order) {
+      if (issues.contains(key)) return label;
+    }
+    return '확인 필요';
+  }
+
+  factory CapturePageIssue.fromJson(Map<String, dynamic> json) =>
+      CapturePageIssue(
+        index: json['index'] as int,
+        issues: [
+          for (final i in (json['issues'] as List? ?? const [])) i as String,
+        ],
+        severe: json['severe'] as bool? ?? false,
+        tip: json['tip'] as String? ?? '',
+      );
+}
+
+/// 촬영 검사 결과 (api-contract.md §9.9). 문제가 없는 장은 [pages]에 없다.
+class CaptureCheck {
+  const CaptureCheck({this.ok = true, this.pages = const []});
+
+  final bool ok;
+  final List<CapturePageIssue> pages;
+
+  /// 그 장의 문제 (없으면 null)
+  CapturePageIssue? issueFor(int index) {
+    for (final p in pages) {
+      if (p.index == index) return p;
+    }
+    return null;
+  }
+
+  factory CaptureCheck.fromJson(Map<String, dynamic> json) => CaptureCheck(
+    ok: json['ok'] as bool? ?? true,
+    pages: [
+      for (final p in (json['pages'] as List? ?? const []))
+        CapturePageIssue.fromJson(p as Map<String, dynamic>),
+    ],
+  );
+}
+
 class AnalysisReport {
   const AnalysisReport({
     required this.id,
@@ -226,6 +324,9 @@ class AnalysisReport {
     this.checkedNotes = const [],
     this.registryViewedAt,
     this.comparable = false,
+    this.privacyMasks = const [],
+    this.privacyMasksReady = false,
+    this.captureCheck,
     this.marketPriceSource = MarketPriceSource.unknown,
     this.marketPriceAsOf,
     this.marketPriceSampleCount,
@@ -295,6 +396,31 @@ class AnalysisReport {
   /// 찍게 해 놓고 마지막에 못 한다고 말하지 않기 위해서다. 옛 서버·옛 이력이면 false.
   final bool comparable;
 
+  /// 사진 속 실명·주민번호 **자리** (api-contract.md §9.8). '사진 속 이름 가리기'가 켜지면 전부 덮는다.
+  final List<PrivacyMask> privacyMasks;
+
+  /// 서버가 [privacyMasks]를 **실제로 만들었는가**. false = 이 기능 전 기록(또는 만들다 실패) —
+  /// 이름이 어디 있는지 모르므로, 가리기가 켜져 있으면 사진을 **통째로** 덮는다([namesUnlocatedOn]).
+  final bool privacyMasksReady;
+
+  /// 이 쪽은 **이름 자리를 모르는가** — 가리기가 켜졌을 때 쪽 전체를 덮어야 하는가.
+  ///
+  /// 서버가 위치를 안 보냈거나(옛 기록) 그 쪽을 못 찾아봤다고 알렸을 때(쪽 전체 상자) true.
+  /// "가리기 켜면 화면에 실명 0건"(NOW.md P0-2)을 지키는 마지막 방어선이다 — 모르면 덮는다.
+  bool namesUnlocatedOn(int page) =>
+      !privacyMasksReady ||
+      privacyMasks.any((m) => m.page == page && m.coversWholePage);
+
+  /// 촬영 검사 결과 (api-contract.md §9.9). null = 검사하지 않은 옛 기록이거나 서버에서 끔.
+  /// 문제가 있으면 리포트가 "몇 쪽이 왜 — 그 장만 다시 찍기"를 권한다(판정은 그대로).
+  final CaptureCheck? captureCheck;
+
+  /// 이 쪽에서 가릴 상자들 (쪽 전체 상자는 빼고 — 그건 [namesUnlocatedOn]이 따로 말한다).
+  List<HighlightBox> privacyBoxesOn(int page) => [
+    for (final m in privacyMasks)
+      if (m.page == page && !m.coversWholePage) m.box,
+  ];
+
   // ── 시세 출처 (api-contract.md §2.8 · 2026-08-03 추가, 전부 선택) ──────────
   // 서버가 안 보내면 unknown/null — 앱은 출처 줄을 그리지 않거나 "확인 필요"로 말한다.
 
@@ -345,6 +471,16 @@ class AnalysisReport {
     registryViewedAt: json['registryViewedAt'] as String?,
     // 구버전 서버·옛 이력이면 없음 → false(대조 기준으로 쓸 수 없음)로 본다.
     comparable: json['comparable'] as bool? ?? false,
+    // 사진 속 실명 자리 (§9.8). 옛 서버·옛 이력이면 없음 → 준비 안 됨(false) → 가리기가 켜지면 통째로 덮는다.
+    privacyMasks: [
+      for (final m in (json['privacyMasks'] as List? ?? const []))
+        PrivacyMask.fromJson(m as Map<String, dynamic>),
+    ],
+    privacyMasksReady: json['privacyMasksReady'] as bool? ?? false,
+    // 촬영 검사 (§9.9). 옛 서버·옛 이력이면 없음(null).
+    captureCheck: json['captureCheck'] is Map<String, dynamic>
+        ? CaptureCheck.fromJson(json['captureCheck'] as Map<String, dynamic>)
+        : null,
     // 시세 출처 (§2.8). 구버전 서버면 unknown/null — 앱은 출처 줄을 숨긴다.
     marketPriceSource: MarketPriceSource.fromWire(
       json['marketPriceSource'] as String?,

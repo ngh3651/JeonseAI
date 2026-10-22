@@ -3,6 +3,13 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- 카메라로 등기부등본을 촬영하기 위한 권한 -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- 계약 지킴이 알림 (2026-10-22): 안드로이드 13 이상은 알림 권한이 따로 있다.
+         사용자가 잔금일·이사일을 저장하는 순간 이유와 함께 묻는다(앱을 켤 때 묻지 않는다). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- 폰을 껐다 켜도 예약한 알림을 다시 건다 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- ⚠ 정확한 알람 권한(SCHEDULE_EXACT_ALARM·USE_EXACT_ALARM)은 일부러 넣지 않는다 — 구글 정책상
+         달력·알람 앱이 아니면 쓰기 어렵다. 알림은 몇 분 늦게 울릴 수 있다(inexactAllowWhileIdle). -->
 
     <application
         android:label="전세AI프"
@@ -31,6 +38,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- 계약 지킴이 알림 (flutter_local_notifications): 예약한 시각에 알림을 띄우는 수신기 +
+             폰을 다시 켜거나 앱을 새로 설치(업데이트)했을 때 알림을 다시 거는 수신기 -->
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

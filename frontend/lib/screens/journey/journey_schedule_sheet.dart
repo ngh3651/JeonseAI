@@ -21,6 +21,13 @@ import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
 import '../report/registry_mark_sheet.dart' show kSheetEnterDuration, kSheetExitDuration;
 
+/// 잔금 칸 아래 약속 — **실제 알림 시각과 같아야 한다** (journey_reminders.dart 의 ①②).
+const String kBalanceReminderPromise =
+    '잔금 하루 전 오전 9시와 당일 오전 8시에 등기부를 다시 떼라고 알림을 보내 드려요';
+
+/// 이사 칸 아래 약속 — journey_reminders.dart 의 ③.
+const String kMoveInReminderPromise = '입주 다음 날 오전 9시에도 한 번 더 알려 드려요';
+
 /// 일정 시트를 연다. 저장하면 새 일정을, 그냥 닫으면 null을 돌려준다.
 ///
 /// 진입 260ms / 퇴장 200ms — 앱의 다른 시트(등기부 표시 시트)와 같은 곡선이다.
@@ -148,6 +155,7 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
   /// 일반 칸 — 높이 48, 테두리 1px
   Widget _plainField(JourneyDateKey key) {
     final value = _draft[key];
+    final bool moveIn = key == JourneyDateKey.moveIn;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -191,6 +199,10 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
             ),
           ),
         ),
+        if (moveIn) ...[
+          const SizedBox(height: 6),
+          AppText(kMoveInReminderPromise, style: AppTypography.caption),
+        ],
       ],
     );
   }
@@ -250,10 +262,9 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
           ),
         ),
         const SizedBox(height: 6),
-        AppText(
-          '하루 전에 등기부를 다시 떼라고 알려드려요',
-          style: AppTypography.caption,
-        ),
+        // 실제 동작과 같은 말 (2026-10-22): 휴대폰 알림 = 하루 전 오전 9시 + 당일 오전 8시.
+        // 알림을 끄면 그날 앱 맨 위 배너로 같은 말을 한다(journey_reminders.dart).
+        AppText(kBalanceReminderPromise, style: AppTypography.caption),
       ],
     );
   }

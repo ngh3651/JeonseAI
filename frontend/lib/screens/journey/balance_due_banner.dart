@@ -6,6 +6,9 @@
 ///
 /// ⚠ 경고 문구 뒤에는 반드시 행동 버튼 (IA.md §0). 이 배너는 항상 [다시 떼서 대조하기]를
 ///   달고 다닌다 — 문구만 있는 형태로 쓰지 않는다.
+///
+/// 2026-10-22: 휴대폰 알림(잔금 하루 전·당일·입주 다음 날)과 **같은 세 날**에 뜬다
+/// ([journeyBannerFor]). 알림을 꺼 둔 사람도 그날 앱을 열면 같은 말을 본다.
 library;
 
 import 'package:flutter/material.dart';
@@ -14,6 +17,35 @@ import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../models/content_models.dart';
+import '../../services/journey_reminders.dart';
+import '../../state/journey_schedule_store.dart';
+import '../../utils/korean_date.dart';
+
+/// 오늘 띄울 배너의 제목·본문. 오늘이 세 날 중 하나가 아니면 null.
+({String title, String message})? journeyBannerFor(
+  JourneySchedule schedule, {
+  DateTime? now,
+}) {
+  final kind = journeyAlertToday(schedule, now: now);
+  if (kind == null) return null;
+  return switch (kind) {
+    JourneyReminderKind.balanceEve => (
+      title: '잔금일이 내일이에요 · ${formatMonthDay(schedule.balance!)}',
+      message: BalanceDueBanner.kBalanceDueMessage,
+    ),
+    JourneyReminderKind.balanceDay => (
+      title: '오늘이 잔금일이에요 · ${formatMonthDay(schedule.balance!)}',
+      message: BalanceDueBanner.kBalanceDueMessage,
+    ),
+    JourneyReminderKind.moveInNext => (
+      title:
+          '오늘은 입주 다음 날이에요 · '
+          '${formatMonthDay(schedule[JourneyDateKey.moveInNext]!)}',
+      message: BalanceDueBanner.kMoveInNextMessage,
+    ),
+  };
+}
 
 class BalanceDueBanner extends StatelessWidget {
   const BalanceDueBanner({
@@ -23,10 +55,22 @@ class BalanceDueBanner extends StatelessWidget {
     this.onGuide,
     this.onEditSchedule,
     this.note,
+    this.message = kBalanceDueMessage,
   });
+
+  /// 배너 본문 기본값 — 잔금 하루 전·당일.
+  static const String kBalanceDueMessage =
+      '돈을 보내기 직전에 등기부를 다시 떼어 새로 생긴 빚이 없는지 확인하세요';
+
+  /// 입주 다음 날 본문 — 여정 데이터('입주 다음 날' 단계)와 같은 사실만 쓴다.
+  static const String kMoveInNextMessage =
+      '대항력은 오늘 0시부터 생겨요. 그 사이 새 빚이 생기지 않았는지 등기부를 다시 떼어 확인하세요';
 
   /// "잔금일이 내일이에요 · 8월 6일" (홈에서는 앞에 별칭이 붙는다)
   final String title;
+
+  /// 제목 아래 본문 (2026-10-22 — 알림과 같은 세 날짜에 뜨므로 날마다 다른 말을 한다)
+  final String message;
   final VoidCallback onCompare;
 
   /// [떼는 법] — 발급 가이드. null이면 버튼을 그리지 않는다(홈 버전).
@@ -72,7 +116,7 @@ class BalanceDueBanner extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     AppText(
-                      '돈을 보내기 직전에 등기부를 다시 떼어 새로 생긴 빚이 없는지 확인하세요',
+                      message,
                       style: AppTypography.body.copyWith(
                         color: AppColors.caution,
                       ),

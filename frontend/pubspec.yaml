@@ -47,6 +47,11 @@ dependencies:
   go_router: ^17.3.0
   provider: ^6.1.5+1
   shared_preferences: ^2.5.5
+  # 계약 지킴이 알림 (2026-10-22, P1-2) — 폰을 꺼 둬도 울리는 로컬 알림(서버 푸시 아님).
+  # 부르는 곳은 services/local_notifications_platform.dart 한 곳뿐이다.
+  flutter_local_notifications: ^22.3.0
+  # 알림 예약 시각을 넘기는 형식(TZDateTime). 시간대 DB는 내려받지 않고 UTC 순간으로만 쓴다.
+  timezone: ^0.11.0
 
 dev_dependencies:
   flutter_test:

@@ -19,12 +19,16 @@ os.environ["UPSTAGE_API_KEY"] = ""
 # `price_lookup`이 그것을 '조회 불가' 안내로 바꾼다 — 리포트는 그대로 완성된다.
 os.environ["MOLIT_API_KEY"] = ""
 
+# 결제(2026-10-22): 개발자 `.env`의 토스 키가 끼어들지 않게 — 비우면 문서 공개 테스트 키. 토스 호출은 테스트가 전부 목으로 바꾼다.
+os.environ["TOSS_SECRET_KEY"] = ""
+
 # 서버 문(2026-10-21): 개발자 `.env`의 값이 테스트 결과를 바꾸지 않게 비운다.
 # (load_dotenv는 이미 있는 환경변수를 덮지 않으므로, 빈 값이 그대로 유지된다)
 os.environ["APP_KEY"] = ""
 os.environ["REQUIRE_DEVICE_ID"] = ""
 os.environ["SAVE_RAW_RESPONSES"] = ""
 os.environ["RATE_LIMIT_ANALYZE_PER_HOUR"] = ""
+os.environ["RATE_LIMIT_GLOBAL_PER_DAY"] = ""
 
 import pytest  # noqa: E402
 

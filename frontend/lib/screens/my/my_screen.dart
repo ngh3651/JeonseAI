@@ -23,6 +23,7 @@ import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
+import '../pricing/guardian_pass_widgets.dart';
 import '../../design_system/text/app_text.dart';
 
 class MyScreen extends StatefulWidget {
@@ -113,6 +114,11 @@ class _MyScreenState extends State<MyScreen> {
           AppText('분석 이력', style: AppTypography.title),
           const SizedBox(height: AppSpacing.md),
           _historyList(),
+          const SizedBox(height: AppSpacing.xxl),
+          // 요금제 · 계약 지킴이 패스 (2026-10-22, P2-1) — 가격은 예시, 결제는 테스트 결제
+          AppText('계약 지킴이 패스', style: AppTypography.title),
+          const SizedBox(height: AppSpacing.md),
+          const GuardianPassEntry(),
           const SizedBox(height: AppSpacing.xxl),
           AppText('개인정보', style: AppTypography.title),
           const SizedBox(height: AppSpacing.md),

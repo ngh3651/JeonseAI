@@ -54,6 +54,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // 휴대폰 알림(flutter_local_notifications)이 옛 안드로이드에서도 새 날짜 API를 쓰게 한다 (2026-10-22, P1-2)
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -101,4 +103,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // 위 isCoreLibraryDesugaringEnabled의 짝 — 알림 플러그인 안내서가 정한 버전
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

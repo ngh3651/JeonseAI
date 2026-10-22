@@ -34,8 +34,10 @@ import '../../services/api_client.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
 import '../common/analyze_gate.dart';
+import '../pricing/guardian_pass_widgets.dart';
 import 'balance_due_banner.dart';
 import 'journey_actions.dart';
+import 'journey_reminder_prompt.dart';
 import 'journey_schedule_sheet.dart';
 
 /// 딥그린 헤더 위에서는 상태바 아이콘도 밝게 (안드로이드 상태바가 초록에 묻히지 않게)
@@ -620,6 +622,8 @@ class _JourneyScreenState extends State<JourneyScreen> {
     final JourneySchedule schedule = property == null
         ? const JourneySchedule()
         : store.scheduleFor(property.key);
+    // 잔금 하루 전·당일·입주 다음 날 — 휴대폰 알림과 같은 세 날 (알림을 꺼 둔 사람도 여기서 본다)
+    final banner = journeyBannerFor(schedule);
 
     return Column(
       children: [
@@ -647,11 +651,10 @@ class _JourneyScreenState extends State<JourneyScreen> {
                       _askScheduleCard(property, store),
                       const SizedBox(height: AppSpacing.lg),
                     ],
-                    if (property != null && schedule.isBalanceTomorrow) ...[
+                    if (property != null && banner != null) ...[
                       BalanceDueBanner(
-                        title:
-                            '잔금일이 내일이에요 · '
-                            '${formatMonthDay(schedule.balance!)}',
+                        title: banner.title,
+                        message: banner.message,
                         note: _checkPointNote,
                         onCompare: () =>
                             startRegistryCompare(context, property.latest),
@@ -662,6 +665,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
                     ],
                     for (int i = 0; i < _stages.length; i++)
                       _stageRow(i, property, schedule, store),
+                    // 요금제로 가는 입구 (2026-10-22, P2-1) — 패스가 없어도 위 단계·알림·대조는 그대로 쓴다
+                    const SizedBox(height: AppSpacing.lg),
+                    const GuardianPassEntry(),
                   ],
                 ),
               ),
@@ -1088,6 +1094,15 @@ class _JourneyScreenState extends State<JourneyScreen> {
     );
     if (saved == null) return;
     await store.save(property.key, saved);
+    if (!mounted) return;
+    // 저장한 **그 순간** 알림을 맞춘다 — 바뀐 날짜로 다시 걸고, 지운 날짜는 취소, 지난 시각은 빼고.
+    // 알림이 꺼져 있으면 이유를 말한 뒤 권한을 묻는다(거절해도 배너로 동작).
+    await applyJourneyReminders(
+      context,
+      propertyKey: property.key,
+      alias: property.alias,
+      schedule: saved,
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════

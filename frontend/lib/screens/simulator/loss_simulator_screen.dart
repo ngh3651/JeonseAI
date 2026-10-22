@@ -25,6 +25,7 @@ import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../utils/money_format.dart';
 import '../../design_system/text/app_text.dart';
+import '../report/market_price_reanalyze.dart';
 
 class LossSimulatorScreen extends StatefulWidget {
   const LossSimulatorScreen({super.key, required this.reportId});
@@ -154,7 +155,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
         const SizedBox(height: AppSpacing.lg),
 
         // ── 시세 미입력 고지 (기준가 무고지 방지 — 리뷰 공통 반영) ──
-        if (noMarketPrice) _noMarketPriceNotice(),
+        if (noMarketPrice) _noMarketPriceNotice(report),
 
         // ── 계산 내역 (기준가 명시) ──
         _detailRow(
@@ -267,7 +268,10 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
     );
   }
 
-  Widget _noMarketPriceNotice() {
+  Widget _noMarketPriceNotice(AnalysisReport report) {
+    // [시세 입력하기] = 시세를 넣고 같은 사진·같은 보증금으로 새로 분석(2026-10-23 — 예전엔 "곧 제공" 안내뿐).
+    // 사진이 이 폰에 없으면 버튼을 그리지 않는다 — 누를 수 없는 버튼을 두지 않는다.
+    final bool canReanalyze = canReanalyzeWithMarketPrice(report);
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -279,21 +283,22 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AppText(
-            '시세가 입력되지 않아 보증금을 기준으로 계산한 예시예요. '
-            '시세를 입력하면 더 정확해져요.',
-            style: AppTypography.body.copyWith(color: AppColors.caution),
+            canReanalyze
+                ? '시세가 입력되지 않아 보증금을 기준으로 계산한 예시예요. '
+                    '시세를 입력하면 더 정확해져요.'
+                : '시세가 입력되지 않아 보증금을 기준으로 계산한 예시예요. '
+                    '시세를 넣어 새로 분석하면 더 정확해져요.',
+            // 연앰버 바탕 위 앰버 글자는 대비가 모자라다(D8) — 글자는 본문색
+            style: AppTypography.body.copyWith(color: AppColors.textBody),
           ),
-          const SizedBox(height: AppSpacing.md),
-          // F3/F8: 라인 대신 톤(연초록 filled) 버튼 — 대표 적용례
-          AppTonalButton(
-            label: '시세 입력하기',
-            onPressed: () {
-              // 시세 입력은 매물 검색(S-04)과 함께 C-3에서 연결
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(const SnackBar(content: AppText('곧 제공되는 기능이에요')));
-            },
-          ),
+          if (canReanalyze) ...[
+            const SizedBox(height: AppSpacing.md),
+            // F3/F8: 라인 대신 톤(연초록 filled) 버튼 — 대표 적용례
+            AppTonalButton(
+              label: '시세 입력하기',
+              onPressed: () => reanalyzeWithMarketPrice(context, report),
+            ),
+          ],
         ],
       ),
     );

@@ -33,9 +33,13 @@ import '../../repositories/analysis_repository.dart';
 import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
+import '../common/share_feedback.dart';
+import '../journey/journey_actions.dart' show startRegistryCompare;
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
+import 'market_price_reanalyze.dart';
 import 'registry_entry_card.dart';
+import 'report_share.dart';
 import '../../design_system/text/app_text.dart';
 
 /// 악성임대인 명단이 **아직 우리에게 없을 때** 서버가 붙이는 상태 라벨.
@@ -135,10 +139,11 @@ class _ReportScreenState extends State<ReportScreen> {
           appBar: AppBar(
             title: AppText(report.alias),
             actions: [
+              // 글자 요약을 안드로이드 공유 창으로 — 이름은 기본으로 가린다(report_share.dart)
               IconButton(
                 icon: const Icon(Icons.ios_share),
-                tooltip: '리포트 공유',
-                onPressed: () => _stub(context),
+                tooltip: '리포트 요약 보내기',
+                onPressed: () => showReportShareSheet(context, report),
               ),
             ],
           ),
@@ -331,33 +336,55 @@ class _ReportScreenState extends State<ReportScreen> {
     RiskGrade.ok => MascotState.safe,
   };
 
-  /// 오래된 분석 배너 — 컴팩트 한 줄 (결론을 밀어내지 않게, 서연 리뷰 반영)
+  /// 오래된 분석 배너 — 컴팩트 (결론을 밀어내지 않게, 서연 리뷰 반영).
+  ///
+  /// [다시 떼서 대조] = 여정의 대조 흐름 그대로(`startRegistryCompare`) — 오늘 뗀 등기부를 이 리포트와 맞춰본다.
+  /// (예전 [재분석]은 "곧 제공" 가짜 버튼이었다 — 서연 리뷰 #4.) 글자는 진한 본문색, 앰버는 아이콘에만(대비 — D8).
   Widget _staleBanner(BuildContext context, AnalysisReport report) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.xs,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.xs,
       ),
       decoration: BoxDecoration(
         color: AppColors.cautionSoft,
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(
-            Icons.history,
-            size: AppSize.iconSm,
-            color: AppColors.caution,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.history,
+                size: AppSize.iconSm,
+                color: AppColors.caution,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: AppText(
+                  '${formatDaysAgo(report.analyzedAt)} 결과예요 — 계약 직전엔 최신 등기부등본으로 재확인하세요',
+                  style: AppTypography.caption.copyWith(color: AppColors.textBody),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: AppText(
-              '${formatDaysAgo(report.analyzedAt)} 결과예요 — 계약 직전엔 최신 등기부등본으로 재확인하세요',
-              style: AppTypography.caption.copyWith(color: AppColors.caution),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => startRegistryCompare(context, report),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, AppSize.minTouchTarget),
+                textStyle: AppTypography.buttonSmall,
+              ),
+              icon: const Icon(Icons.compare_arrows, size: AppSize.iconSm),
+              label: const AppText('다시 떼서 대조'),
             ),
           ),
-          TextButton(onPressed: () => _stub(context), child: const AppText('재분석')),
         ],
       ),
     );
@@ -532,6 +559,7 @@ class _ReportScreenState extends State<ReportScreen> {
       for (int i = 0; i < visible.length; i++) ...[
         _evidenceCard(
           context,
+          report,
           visible[i],
           initiallyExpanded: i == expandedIndex,
         ),
@@ -557,6 +585,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _evidenceCard(
     BuildContext context,
+    AnalysisReport report,
     EvidenceItem evidence, {
     required bool initiallyExpanded,
   }) {
@@ -571,24 +600,38 @@ class _ReportScreenState extends State<ReportScreen> {
       sourceText: evidence.sourceText,
       explanationSource: evidence.explanationSource,
       initiallyExpanded: initiallyExpanded,
-      action: evidence.actionLabel == null
-          ? null
-          // F3: 근거 카드는 흰 표면이므로 라인 대신 톤(연초록) 버튼
-          : AppCompactButton(
-              label: evidence.actionLabel!,
-              tonal: true,
-              onPressed: () => _onEvidenceAction(context, evidence),
-            ),
+      action: _evidenceAction(context, report, evidence),
     );
   }
 
-  void _onEvidenceAction(BuildContext context, EvidenceItem evidence) {
-    if (evidence.actionLabel == '중개사에게 물어볼 질문 보기') {
-      context.push('/questions/$reportId');
-    } else {
-      // 예: "시세 입력하기" — 매물 검색 재진입은 C-3 범위 밖(재분석 흐름). 안내만.
-      _stub(context);
-    }
+  /// 근거 카드의 행동 버튼. **실제로 도는 것만** 그린다 — "곧 제공" 같은 가짜 버튼을 두지 않는다
+  /// (2026-10-23 서연 리뷰 #4: 심사위원이 누르면 끝). 모르는 라벨이거나 지금 할 수 없으면 null(버튼 없음).
+  Widget? _evidenceAction(BuildContext context, AnalysisReport report, EvidenceItem evidence) {
+    final String? label = evidence.actionLabel;
+    if (label == null) return null;
+    final VoidCallback? onPressed = switch (label) {
+      '중개사에게 물어볼 질문 보기' => () => context.push('/questions/$reportId'),
+      // 시세를 넣고 같은 사진·같은 보증금으로 새로 분석 — 사진이 이 폰에 없으면 버튼을 그리지 않는다
+      '시세 입력하기' => canReanalyzeWithMarketPrice(report)
+          ? () => reanalyzeWithMarketPrice(context, report)
+          : null,
+      // 단독·다가구: 앞순위 보증금은 등기부에 없다 — 집주인·중개사에게 서류를 달라고 할 문자를 공유 창으로
+      '앞순위 보증금 확인하기' => () => shareWithFeedback(context, _priorDepositRequest(report)),
+      _ => null,
+    };
+    if (onPressed == null) return null;
+    // F3: 근거 카드는 흰 표면이므로 라인 대신 톤(연초록) 버튼
+    return AppCompactButton(label: label, tonal: true, onPressed: onPressed);
+  }
+
+  /// 앞순위 보증금을 확인할 서류를 달라는 문자 — 서버 근거 상세의 말(전입세대 열람내역·확정일자 부여현황)만 쓴다.
+  String _priorDepositRequest(AnalysisReport report) {
+    final address = report.address.trim();
+    return [
+      '안녕하세요. 계약 전에 저보다 먼저 들어온 세입자들의 보증금(앞순위 보증금)을 확인하고 싶어요.',
+      if (address.isNotEmpty) '집: $address',
+      "'전입세대 열람내역'과 '확정일자 부여현황'을 보여 주실 수 있을까요?",
+    ].join('\n');
   }
 
   /// 쉬운 설명에 용어 툴팁(termSpan)을 심는다 (지수·design-reviewer 리뷰 반영).
@@ -724,11 +767,5 @@ class _ReportScreenState extends State<ReportScreen> {
         ],
       ),
     );
-  }
-
-  void _stub(BuildContext context) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: AppText('곧 제공되는 기능이에요')));
   }
 }

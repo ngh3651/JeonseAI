@@ -354,13 +354,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     onCta: () => context.push('/guide'),
   );
 
-  void _showAddressSheet() => _showSheet(
-    title: '주소로 찾기 — 준비 중이에요',
-    body: '주소만 입력하면 등기부등본을 자동으로 가져오는 기능을 다음 버전에서 '
-        '준비하고 있어요 (공공 데이터 연동). 지금은 사진으로 분석해 주세요.',
-    cta: '사진으로 분석하기',
-    onCta: _openCaptureLoop,
-  );
+  // [주소로 찾기]는 뺐다(2026-10-23) — 누르면 "준비 중이에요"만 나오는 입구였다. 부스에서 심사위원이 누르면
+  // 미완성으로 보인다(서연 리뷰 #4 "곧 제공" 버튼과 같은 기준: 만들 수 없으면 숨긴다). 주소→등기부 자동 조회(CODEF)는
+  // NOW.md 8절 '하지 않는 것'이다 — 발표에서는 로드맵으로 말한다.
 
   void _showPermissionSheet() => _showSheet(
     title: '카메라·사진 권한이 필요해요',
@@ -545,8 +541,6 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _footLink('등기부등본이 없어요', _showGuideSheet, strong: true),
-                    const SizedBox(width: AppSpacing.lg),
-                    _footLink('주소로 찾기', _showAddressSheet),
                   ],
                 ),
                 // ⑤ 사진 0장일 때 [분석하기] 버튼은 **아예 그리지 않는다.**

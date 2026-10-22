@@ -295,7 +295,9 @@ void main() {
         greaterThanOrEqualTo(AppSize.minTouchTarget),
       );
     }
-    for (final String label in ['등기부등본이 없어요', '주소로 찾기']) {
+    // '주소로 찾기'는 "준비 중" 입구라 뺐다(2026-10-23) — 남은 링크만 잰다
+    expect(find.koText('주소로 찾기'), findsNothing);
+    for (final String label in ['등기부등본이 없어요']) {
       final Size size = tester.getSize(
         find.ancestor(of: find.koText(label), matching: find.byType(Container)).first,
       );

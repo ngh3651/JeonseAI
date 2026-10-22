@@ -1903,3 +1903,16 @@
 - **출처**: 팀 결정(규혁, 2026-10-22 — NOW.md 6절 #2). 카카오 공식 Flutter SDK 저장소(github.com/kakao/kakao_flutter_sdk, v2.0.1) — `AccessTokenInfo`(`app_id`·`id` 회원번호·`expires_in`)와
   `/v1/user/access_token_info`·`/v1/user/unlink` 경로와 API 호스트 `kapi.kakao.com`(SDK `ServerHosts`), 예제 앱의 로그인 조합·`CANCELED` 처리·AndroidManifest `AuthCodeHandlerActivity`(`kakao{앱 키}://oauth`).
   ⚠ 카카오 개발자 문서 사이트(developers.kakao.com)는 작업 환경에서 열리지 않아 위 SDK 저장소로 확인했다. 세션 401 표시는 RFC 6750(Bearer Token Usage) §3 `error="invalid_token"`.
+
+### [2026-10-23] AI API 호출 로그는 서버에 늘 남기지 않고, 제출용 스크립트로 기능별 1회만 뽑는다
+
+- **처음 의도**: 대회 「국내 AI API 호출 로그 제출 가이드」(v11.0)는 "기능이 끝날 때까지 호출 로그를 누적 저장"하는 절차를 예로 든다.
+  그대로 하면 서버가 모든 분석의 요청·응답(등기부 사진·OCR 글자 = 실명·주민번호·주소)을 계속 쌓는다.
+- **바꾼 이유**: 10/22 개인정보 결정("폰엔 원본, 서버엔 가린 사본")과 정면으로 부딪힌다. 가이드가 요구하는 제출물은 **기능별 1회** 로그이고,
+  민감정보는 빼거나 가리라고 한다.
+- **최종 결정**: 서비스 코드는 그대로 두고 `backend/scripts/export_ai_call_logs.py`가 **그 실행 안에서만** `requests.post`를 감싸
+  api.upstage.ai 호출을 기록한다(일반 API는 기록 안 함). 기능 4개(분석·판례·대조·챗봇)를 실제 키로 한 번씩 돌려 기능명 파일(JSON) +
+  압축 하나를 만든다. 헤더·API 키는 처음부터 안 남기고, 사진 데이터는 자리(형식·크기·SHA-256)만, 이름(personNames + 주민번호 앞 이름)·
+  주민등록번호·주소꼴 낱말은 가리며, 응답 속 JSON 문자열은 풀어서 가린 뒤 다시 묶어 구조를 지킨다. 실행은 임시 기록 DB·캐시 끔·
+  촬영 검사 경고만으로 해서 실제 기록을 건드리지 않는다.
+- **출처**: 대회 「국내 AI API 호출 로그 제출 가이드」 v11.0(기간·기록 항목·절차·유의사항·제출 파일), NOW.md 6절 결정 8.

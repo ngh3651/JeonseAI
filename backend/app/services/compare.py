@@ -394,7 +394,7 @@ def _group_rows(
                     title=group.title_unknown,
                     subtitle=subtitle,
                     action="recapture" if missing_here else None,
-                    actionLabel="빠진 쪽 찍어서 올리기" if missing_here else None,
+                    actionLabel="빠진 쪽만 더 찍기" if missing_here else None,
                 )
             )
             continue
@@ -456,7 +456,7 @@ def _owner_row(base: RegistrySnapshot, cur: RegistrySnapshot) -> tuple[CompareRo
                 title="집주인 · 대조하지 못했어요",
                 subtitle=f"이번에 올린 사진 {cur.page_count}장에서 소유자 칸을 찾지 못했어요",
                 action="recapture",
-                actionLabel="빠진 쪽 찍어서 올리기",
+                actionLabel="빠진 쪽만 더 찍기",
             ),
             False,
         )

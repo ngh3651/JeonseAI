@@ -28,6 +28,9 @@ import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
 import 'compare_next_step.dart';
 
+/// '빠진 쪽만 더 찍기' — 일부만 맞춰봤을 때 화면의 모든 다시 찍기 버튼이 쓰는 **한 가지 라벨**(D3).
+const String kAddMissingLabel = '빠진 쪽만 더 찍기';
+
 class CompareResultView extends StatelessWidget {
   const CompareResultView({
     super.key,
@@ -35,10 +38,12 @@ class CompareResultView extends StatelessWidget {
     required this.baselineReportId,
     required this.onRetry,
     required this.onRecapture,
+    required this.onAddMissing,
     required this.onQuestions,
     required this.onAnalyze,
     required this.onGuide,
     required this.onBackToJourney,
+    this.keptPhotoCount,
   });
 
   final CompareResult result;
@@ -47,8 +52,14 @@ class CompareResultView extends StatelessWidget {
   /// 같은 사진으로 다시 시도
   final VoidCallback onRetry;
 
-  /// 사진을 다시 골라 대조 (빠진 쪽 올리기 · 사진 다시 고르기)
+  /// **다른 집**일 때 — 사진을 통째로 다시 골라 대조 (사진 다시 고르기)
   final VoidCallback onRecapture;
+
+  /// **일부만 맞춰봤을 때** — 빠진 쪽만 더 찍어 먼저 찍은 장 뒤에 붙여 다시 대조
+  final VoidCallback onAddMissing;
+
+  /// 이번 대조에 이미 올린 사진 장수 — 버튼의 "(먼저 찍은 N장은 그대로)". 모르면 서버가 센 장수.
+  final int? keptPhotoCount;
 
   /// 중개사 질문 생성기로
   final VoidCallback onQuestions;
@@ -107,8 +118,8 @@ class CompareResultView extends StatelessWidget {
             step: next,
             result: result,
             reportId: result.newReportId ?? baselineReportId,
-            onRecapture: onRecapture,
-            onBackToJourney: onBackToJourney,
+            onAddMissing: onAddMissing,
+            keptPhotoCount: keptPhotoCount ?? result.current.pageCount,
           ),
           const SizedBox(height: AppSpacing.lg),
         ],
@@ -277,13 +288,16 @@ class CompareResultView extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: AppCompactButton(
-                label: row.actionLabel ?? '빠진 쪽 찍어서 올리기',
+                // 다시 찍기는 앱이 정한 동작(먼저 찍은 장 뒤에 덧붙이기)이라 라벨도 앱이 하나로 맞춘다(D3)
+                label: row.action == CompareAction.recapture
+                    ? kAddMissingLabel
+                    : row.actionLabel ?? '이 집을 새로 분석하기',
                 icon: row.action == CompareAction.recapture
                     ? Icons.photo_camera
                     : Icons.search,
                 tonal: true,
                 onPressed: row.action == CompareAction.recapture
-                    ? onRecapture
+                    ? onAddMissing
                     : onAnalyze,
               ),
             ),
@@ -383,13 +397,8 @@ class CompareResultView extends StatelessWidget {
               ),
             ],
           ),
+          // 다시 찍기 주 버튼은 맨 위 '지금 할 일' 카드에 하나만 둔다 — 같은 행동 버튼을 겹쳐 두지 않는다(D3).
           const SizedBox(height: AppSpacing.md),
-          AppPrimaryButton(
-            label: '빠진 쪽 찍어서 올리기',
-            icon: Icons.photo_camera,
-            onPressed: onRecapture,
-          ),
-          const SizedBox(height: AppSpacing.sm),
           SizedBox(
             width: double.infinity,
             child: AppCompactButton(

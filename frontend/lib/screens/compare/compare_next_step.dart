@@ -4,7 +4,7 @@
 ///
 ///   - 위험 줄이 있는 `changed` → **잔금 보내기 전에 멈추세요** + 중개사에게 보낼 문자 복사 + 상담처
 ///   - 달라진 위험이 없는 `changed` → **입금 전 마지막 체크리스트** (여정 데이터의 잔금 단계 항목)
-///   - `partial` → **다시 찍기**
+///   - `partial` → **빠진 쪽만 더 찍기** (먼저 찍은 장은 그대로 두고 새 장을 덧붙여 다시 대조)
 ///   - 기준 없음·다른 집 → 카드 없음 (그 화면이 이미 할 일 하나만 말한다)
 ///
 /// ⚠ 여기서 **새 판정을 만들지 않는다.** 어느 카드를 띄울지는 서버가 준 결과(`result`)와
@@ -34,7 +34,7 @@ enum CompareNextStep {
   /// 다 맞춰봤고 위험 줄이 없다 — 입금 전 마지막 체크리스트
   finalChecklist,
 
-  /// 일부를 못 봤다 — 다시 찍는다
+  /// 일부를 못 봤다 — 빠진 쪽만 더 찍는다
   recapture,
 }
 
@@ -92,15 +92,15 @@ String brokerMessageFor(CompareResult result, List<QuestionGroup> groups) {
   return b.toString();
 }
 
-/// 대조 결과 맨 위 카드. [step]이 할 일을 정한다.
+/// 대조 결과의 '지금 할 일' 카드. [step]이 할 일을 정한다.
 class CompareNextStepCard extends StatelessWidget {
   const CompareNextStepCard({
     super.key,
     required this.step,
     required this.result,
     required this.reportId,
-    required this.onRecapture,
-    required this.onBackToJourney,
+    required this.onAddMissing,
+    this.keptPhotoCount,
   });
 
   final CompareNextStep step;
@@ -108,8 +108,12 @@ class CompareNextStepCard extends StatelessWidget {
 
   /// 질문 템플릿을 받을 리포트 — 이번에 뗀 서류의 리포트(없으면 기준 리포트)
   final String reportId;
-  final VoidCallback onRecapture;
-  final VoidCallback onBackToJourney;
+
+  /// 빠진 쪽만 더 찍기 — 먼저 찍은 장 뒤에 덧붙여 다시 대조한다(통째로 바꾸지 않는다)
+  final VoidCallback onAddMissing;
+
+  /// 먼저 찍은 장수 — 버튼의 "(먼저 찍은 N장은 그대로)". 모르면 괄호를 뺀다.
+  final int? keptPhotoCount;
 
   @override
   Widget build(BuildContext context) {
@@ -118,10 +122,12 @@ class CompareNextStepCard extends StatelessWidget {
         result: result,
         reportId: reportId,
       ),
-      CompareNextStep.finalChecklist => _ChecklistCard(
-        onBackToJourney: onBackToJourney,
+      // 여정으로 돌아가는 버튼은 화면 맨 아래에 이미 있다 — 카드에 같은 버튼을 겹쳐 두지 않는다(D3)
+      CompareNextStep.finalChecklist => const _ChecklistCard(),
+      CompareNextStep.recapture => _RecaptureCard(
+        onAddMissing: onAddMissing,
+        keptPhotoCount: keptPhotoCount,
       ),
-      CompareNextStep.recapture => _RecaptureCard(onRecapture: onRecapture),
     };
   }
 }
@@ -280,9 +286,7 @@ class _StopCardState extends State<_StopCard> {
 // ── ② 입금 전 마지막 체크리스트 ────────────────────────────────────────────
 
 class _ChecklistCard extends StatefulWidget {
-  const _ChecklistCard({required this.onBackToJourney});
-
-  final VoidCallback onBackToJourney;
+  const _ChecklistCard();
 
   @override
   State<_ChecklistCard> createState() => _ChecklistCardState();
@@ -331,19 +335,13 @@ class _ChecklistCardState extends State<_ChecklistCard> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final item in items) ...[
-                  _checkRow(item),
-                  const SizedBox(height: AppSpacing.sm),
+                for (int i = 0; i < items.length; i++) ...[
+                  if (i > 0) const SizedBox(height: AppSpacing.sm),
+                  _checkRow(items[i]),
                 ],
               ],
             );
           },
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        AppTonalButton(
-          label: '잔금 단계로 돌아가기',
-          icon: Icons.arrow_back,
-          onPressed: widget.onBackToJourney,
         ),
       ],
     );
@@ -381,27 +379,32 @@ class _ChecklistCardState extends State<_ChecklistCard> {
 // ── ③ 다시 찍기 ──────────────────────────────────────────────────────────
 
 class _RecaptureCard extends StatelessWidget {
-  const _RecaptureCard({required this.onRecapture});
+  const _RecaptureCard({required this.onAddMissing, this.keptPhotoCount});
 
-  final VoidCallback onRecapture;
+  final VoidCallback onAddMissing;
+  final int? keptPhotoCount;
 
   @override
   Widget build(BuildContext context) {
+    final int? kept = keptPhotoCount;
     return _StepFrame(
       color: AppColors.caution,
       soft: AppColors.cautionSoft,
       icon: Icons.photo_camera_outlined,
-      title: '빠진 쪽을 다시 찍어 주세요',
+      title: '빠진 쪽만 더 찍어 주세요',
       children: [
         AppText(
-          '다 맞춰보기 전에는 "그대로"라고 말할 수 없어요. 빠진 쪽을 찍어 올리면 다시 대조해요',
+          '다 맞춰보기 전에는 "그대로"라고 말할 수 없어요. '
+          '빠진 쪽만 더 찍으면 먼저 찍은 장과 합쳐 다시 대조해요',
           style: AppTypography.body,
         ),
         const SizedBox(height: AppSpacing.md),
         AppPrimaryButton(
-          label: '다시 찍기',
+          label: kept == null || kept <= 0
+              ? '빠진 쪽만 더 찍기'
+              : '빠진 쪽만 더 찍기 (먼저 찍은 $kept장은 그대로)',
           icon: Icons.photo_camera,
-          onPressed: onRecapture,
+          onPressed: onAddMissing,
         ),
       ],
     );

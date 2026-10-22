@@ -2,7 +2,7 @@
 ///
 ///   ① 위험 줄이 있는 `changed` → "잔금 보내기 전에 멈추세요" + 중개사에게 보낼 문자 복사 + 상담처
 ///   ② 위험 줄이 없는 `changed` → "입금 전 마지막 체크리스트" (여정 데이터의 잔금 단계 항목)
-///   ③ `partial` → "다시 찍기"
+///   ③ `partial` → "빠진 쪽만 더 찍기" (먼저 찍은 장은 그대로)
 ///   ④ 기준 없음·다른 집 → 카드 없음
 ///   ⑤ 새 판정을 만들지 않는다 — 문자는 서버 줄 제목 + 서버 질문 템플릿뿐, 이름은 넣지 않는다
 library;
@@ -129,7 +129,9 @@ Future<void> _pump(
   ContentRepository? content,
   bool withContent = true,
   VoidCallback? onRecapture,
+  VoidCallback? onAddMissing,
   VoidCallback? onBackToJourney,
+  int? keptPhotoCount,
 }) async {
   tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
   tester.view.devicePixelRatio = 3.0;
@@ -143,6 +145,8 @@ Future<void> _pump(
         baselineReportId: 'r-base',
         onRetry: () {},
         onRecapture: onRecapture ?? () {},
+        onAddMissing: onAddMissing ?? () {},
+        keptPhotoCount: keptPhotoCount,
         onQuestions: () {},
         onAnalyze: () {},
         onGuide: () {},
@@ -361,8 +365,13 @@ void main() {
         findsOneWidget,
       );
       expect(find.koText('잔금 보내기 전에 멈추세요'), findsNothing);
+      // 여정으로 돌아가는 버튼은 화면 맨 아래 하나뿐이다 — 카드 안에 같은 버튼을 겹쳐 두지 않는다(D3)
+      expect(find.koText('잔금 단계로 돌아가기', skipOffstage: false), findsNothing);
 
-      await tester.tap(find.koText('잔금 단계로 돌아가기'));
+      final bottom = find.koText('잔금 보내기 전에 확인할 것 보기');
+      await tester.scrollUntilVisible(bottom, 200, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.tap(bottom);
       await tester.pumpAndSettle();
       expect(back, 1);
     });
@@ -372,20 +381,30 @@ void main() {
 
       expect(find.koText('입금 전 마지막 체크리스트'), findsOneWidget);
       expect(find.koTextContaining('잔금 단계에서 확인할 것을 마저 보세요'), findsOneWidget);
-      expect(find.koText('잔금 단계로 돌아가기'), findsOneWidget);
     });
 
-    testWidgets('일부 못 봄 → 다시 찍기', (tester) async {
-      var recaptured = 0;
-      await _pump(tester, _partial, onRecapture: () => recaptured++);
+    testWidgets('일부 못 봄 → 빠진 쪽만 더 찍기 (통째로 다시 고르기가 아니다)', (tester) async {
+      var added = 0;
+      var repicked = 0;
+      await _pump(
+        tester,
+        _partial,
+        onAddMissing: () => added++,
+        onRecapture: () => repicked++,
+        keptPhotoCount: 3,
+      );
 
-      expect(find.koText('빠진 쪽을 다시 찍어 주세요'), findsOneWidget);
+      expect(find.koText('빠진 쪽만 더 찍어 주세요'), findsOneWidget);
       expect(find.koText('잔금 보내기 전에 멈추세요'), findsNothing);
       expect(find.koText('입금 전 마지막 체크리스트'), findsNothing);
 
-      await tester.tap(find.koText('다시 찍기'));
+      final button = find.koText('빠진 쪽만 더 찍기 (먼저 찍은 3장은 그대로)');
+      await tester.scrollUntilVisible(button, 200, scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
-      expect(recaptured, 1);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(added, 1);
+      expect(repicked, 0, reason: "'사진 다시 고르기'(통째로 바꾸기)는 다른 집일 때만");
     });
 
     testWidgets('기준 없음 → 지금 할 일 카드를 따로 띄우지 않는다', (tester) async {

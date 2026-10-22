@@ -478,6 +478,118 @@ void main() {
     });
   });
 
+  group('대조 — 일부만 맞춰봤으면 빠진 쪽만 더 찍어 덧붙인다 (P0-1)', () {
+    const partial = CompareResult(
+      outcome: CompareOutcome.partial,
+      headline: '일부는 대조하지 못했어요',
+      baseline: CompareDoc(reportId: 'base', alias: '샘플빌라'),
+      current: CompareDoc(pageCount: 3),
+      rows: [
+        CompareRow(
+          kind: CompareRowKind.unknown,
+          tone: CompareTone.caution,
+          marker: '?',
+          title: '빚 · 대조하지 못했어요',
+          action: CompareAction.recapture,
+          actionLabel: '빠진 쪽 찍어서 올리기',
+        ),
+      ],
+    );
+    const done = CompareResult(
+      outcome: CompareOutcome.changed,
+      headline: '달라진 점이 없어요',
+      baseline: CompareDoc(reportId: 'base'),
+      current: CompareDoc(),
+    );
+
+    Future<_CompareRepository> pumpCompare(
+      WidgetTester tester,
+      List<Object> script, {
+      required List<String> gallery,
+    }) async {
+      tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final repo = _CompareRepository(script);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AnalysisRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: buildAppTheme(),
+            home: CompareScreen(
+              reportId: 'base',
+              request: CompareRequest(report: _report(id: 'base'), imagePaths: List.of(original)),
+              captureOne: () async => retakes[0],
+              pickMany: () async => List.of(gallery),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    Future<void> tapAddMissing(WidgetTester tester) async {
+      final button = find.koText('빠진 쪽만 더 찍기 (먼저 찍은 3장은 그대로)');
+      await tester.scrollUntilVisible(button, 200, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('앨범에서 고른 새 장을 먼저 찍은 3장 **뒤에** 붙여 다시 보낸다', (tester) async {
+      final repo = await pumpCompare(tester, [partial, done], gallery: [retakes[1]]);
+      expect(find.koText('빠진 쪽만 더 찍어 주세요'), findsOneWidget);
+
+      await tapAddMissing(tester);
+      // 시트도 통째로 다시 찍는 게 아니라고 말한다
+      expect(find.koText(kAddMissingSheetTitle), findsOneWidget);
+      expect(find.koTextContaining('먼저 찍은 3장은 그대로'), findsOneWidget);
+
+      await tester.tap(find.koText('앨범에서 고르기'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent, hasLength(2));
+      expect(repo.sent.last, [...original, retakes[1]], reason: '먼저 찍은 장 + 새 장');
+      expect(find.koText('달라진 점이 없어요'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('카메라로 찍으면 촬영 뱃지가 4장째부터 센다 — 결과는 덧붙이기', (tester) async {
+      final repo = await pumpCompare(tester, [partial, done], gallery: const []);
+
+      await tapAddMissing(tester);
+      await tester.tap(find.koText('사진 찍기'));
+      await tester.pumpAndSettle();
+      expect(find.koText('4장째 찍었어요'), findsOneWidget);
+      await tester.tap(find.koText('완료 · 4장'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent.last, [...original, retakes[0]]);
+    });
+
+    testWidgets("다른 집이면 '사진 다시 고르기'가 통째로 바꾼다 (덧붙이지 않는다)", (tester) async {
+      const different = CompareResult(
+        outcome: CompareOutcome.differentProperty,
+        headline: '같은 집이 아닌 것 같아요',
+        baseline: CompareDoc(reportId: 'base'),
+        current: CompareDoc(),
+      );
+      final repo = await pumpCompare(tester, [different, done], gallery: [retakes[2]]);
+
+      await tester.tap(find.koText('사진 다시 고르기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('앨범에서 고르기'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent.last, [retakes[2]]);
+    });
+  });
+
   group('리포트 — 가벼운 문제(확인 필요)', () {
     Future<void> pumpReport(WidgetTester tester, AnalysisReport report, {List<String>? photos}) async {
       tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);

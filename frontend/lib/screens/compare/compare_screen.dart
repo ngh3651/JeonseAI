@@ -41,19 +41,27 @@ class CompareRequest {
   final List<String> imagePaths;
 }
 
+/// '빠진 쪽만 더 찍기'의 사진 시트 제목 — 통째로 다시 찍는 게 아니라는 것을 시트에서도 말한다.
+const String kAddMissingSheetTitle = '빠진 쪽만 찍어 주세요 — 먼저 찍은 장과 합쳐 다시 맞춰봐요';
+
 class CompareScreen extends StatefulWidget {
   const CompareScreen({
     super.key,
     required this.reportId,
     this.request,
     this.captureOne = defaultCaptureOne,
+    this.pickMany = defaultPickMany,
   });
 
   final String reportId;
   final CompareRequest? request;
 
-  /// 카메라 주입 지점 — 사진 품질로 거절됐을 때 '그 장만 다시 찍기'에서 쓴다(테스트는 가짜 함수).
+  /// 카메라 주입 지점 — 사진 품질로 거절됐을 때 '그 장만 다시 찍기', 일부만 맞춰봤을 때
+  /// '빠진 쪽만 더 찍기'에서 쓴다(테스트는 가짜 함수).
   final CaptureOne captureOne;
+
+  /// 앨범 주입 지점 — '빠진 쪽만 더 찍기'·'사진 다시 고르기'의 [앨범에서 고르기].
+  final PickMany pickMany;
 
   @override
   State<CompareScreen> createState() => _CompareScreenState();
@@ -79,8 +87,9 @@ class _CompareScreenState extends State<CompareScreen> {
   int _shownSteps = 0;
   Timer? _stepTimer;
 
-  /// 이번에 올린 사진. 결과 화면에서 [빠진 쪽 찍어서 올리기]를 누르면 여기만 갈아 끼우고
-  /// 같은 화면에서 다시 돈다 — 라우트를 쌓지 않아야 뒤로가기가 여정으로 곧장 간다.
+  /// 이번에 올린 사진. 결과 화면에서 [빠진 쪽만 더 찍기]를 누르면 새 장을 **뒤에 덧붙이고**,
+  /// [사진 다시 고르기](다른 집일 때)를 누르면 통째로 갈아 끼운다. 어느 쪽이든 같은 화면에서
+  /// 다시 돈다 — 라우트를 쌓지 않아야 뒤로가기가 여정으로 곧장 간다.
   late List<String> _imagePaths = widget.request?.imagePaths ?? const [];
 
   @override
@@ -177,12 +186,49 @@ class _CompareScreenState extends State<CompareScreen> {
     if (severeLeft.isEmpty) await _run();
   }
 
-  /// 사진을 다시 골라 **같은 화면에서** 다시 대조한다 (빠진 쪽 올리기 · 사진 다시 고르기).
+  /// **다른 집**일 때만 — 사진을 통째로 다시 골라 같은 화면에서 다시 대조한다.
   Future<void> _recapture() async {
-    final paths = await pickRegistryPhotos(context);
+    final paths = await pickRegistryPhotos(
+      context,
+      captureOne: widget.captureOne,
+      pickMany: widget.pickMany,
+    );
     if (paths.isEmpty || !mounted) return;
     setState(() {
       _imagePaths = paths;
+      _result = null;
+    });
+    await _run();
+  }
+
+  /// **일부만 맞춰봤을 때**(partial) — 빠진 쪽만 새로 찍어 **먼저 찍은 장 뒤에 덧붙이고** 다시 대조한다.
+  ///
+  /// 대조 API는 한 번에 받은 사진만 본다(서버는 이전 요청의 사진을 갖고 있지 않다 — 원본 사진을 저장하지 않으므로).
+  /// 그래서 앱이 먼저 찍은 사진 + 새 사진을 **합쳐** 보낸다. 순서는 서버가 쪽 번호(N/M)를 읽어 다시 맞춘다
+  /// (highlight.py '사진 순서 자동 정렬'). 쪽 번호를 못 읽으면 서버가 "순서대로 다시 올려 주세요"라고 말한다.
+  Future<void> _addMissingPages() async {
+    final int kept = _imagePaths.length;
+    if (kept >= kCompareMaxPhotos) {
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: AppText('사진은 최대 $kCompareMaxPhotos장까지 올릴 수 있어요'),
+          ),
+        );
+      return;
+    }
+    final added = await pickRegistryPhotos(
+      context,
+      title: kAddMissingSheetTitle,
+      subtitle: '먼저 찍은 $kept장은 그대로 두고, 새로 찍은 장만 뒤에 붙여요',
+      alreadyTaken: kept,
+      captureOne: widget.captureOne,
+      pickMany: widget.pickMany,
+    );
+    if (added.isEmpty || !mounted) return;
+    setState(() {
+      _imagePaths = [..._imagePaths, ...added].take(kCompareMaxPhotos).toList();
       _result = null;
     });
     await _run();
@@ -223,8 +269,10 @@ class _CompareScreenState extends State<CompareScreen> {
             ? CompareResultView(
                 result: result,
                 baselineReportId: widget.reportId,
+                keptPhotoCount: _imagePaths.length,
                 onRetry: _run,
                 onRecapture: _recapture,
+                onAddMissing: _addMissingPages,
                 onQuestions: () => context.push(
                   '/questions/${result.newReportId ?? widget.reportId}',
                 ),

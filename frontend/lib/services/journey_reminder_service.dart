@@ -32,8 +32,12 @@ class JourneyReminderService {
   ReminderPlatform _platform = LocalNotificationsPlatform();
   bool _ready = false;
 
-  /// 예약을 한 줄로 세운다 — 두 번 연달아 저장해도 취소·예약이 뒤섞이지 않게.
-  Future<void> _queue = Future<void>.value();
+  /// 지금 돌고 있는 예약 한 건(없으면 null) — 두 번 연달아 저장해도 취소·예약이 뒤섞이지 않게
+  /// **한 줄로** 세운다.
+  ///
+  /// ⚠ '이미 끝난 Future'를 미리 만들어 두고 거기에 이어 붙이지 않는다 — 다른 Zone(예: 테스트의
+  ///   setUp)에서 만든 Future에 이어 붙이면 위젯 테스트의 가짜 시계가 그 뒤를 돌리지 못해 멈춘다.
+  Future<void>? _running;
 
   /// 알림을 눌렀을 때 화면을 옮기는 함수. main.dart가 라우터로 채운다(서비스는 화면을 모른다).
   void Function(String location)? navigate;
@@ -50,7 +54,7 @@ class JourneyReminderService {
   void resetForTest() {
     _platform = LocalNotificationsPlatform();
     _ready = false;
-    _queue = Future<void>.value();
+    _running = null;
     navigate = null;
   }
 
@@ -92,34 +96,51 @@ class JourneyReminderService {
     required String alias,
     required JourneySchedule schedule,
     DateTime? now,
-  }) {
+  }) async {
+    // 계획은 부른 그 순간의 시각으로 세운다(앞의 예약을 기다리는 동안 시각이 흘러도 같은 계획).
     final plan = planJourneyReminders(
       propertyKey: propertyKey,
       alias: alias,
       schedule: schedule,
       now: now ?? DateTime.now(),
     );
-    final done = _queue.then((_) async {
-      await _rememberAlias(propertyKey, alias);
-      if (!_ready) return;
-      // 하나가 실패해도 나머지는 건다 — 한 줄의 실패가 다른 알림을 지우지 않게 각각 잡는다.
-      for (final id in journeyReminderIds(propertyKey)) {
-        try {
-          await _platform.cancel(id);
-        } catch (e) {
-          debugPrint('[알림] 옛 알림을 지우지 못했어요 (${e.runtimeType})');
-        }
+    // 앞의 예약이 끝날 때까지 기다린다 — 끝난 순서대로 하나씩.
+    while (_running != null) {
+      await _running;
+    }
+    final Future<void> job = _apply(propertyKey, alias, plan);
+    _running = job;
+    try {
+      await job;
+    } finally {
+      if (identical(_running, job)) _running = null;
+    }
+    return plan;
+  }
+
+  /// 이 집의 알림 세 개를 모두 지우고 [plan]에 있는 것만 건다. **예외를 밖으로 내지 않는다.**
+  Future<void> _apply(
+    String propertyKey,
+    String alias,
+    List<JourneyReminder> plan,
+  ) async {
+    await _rememberAlias(propertyKey, alias);
+    if (!_ready) return;
+    // 하나가 실패해도 나머지는 건다 — 한 줄의 실패가 다른 알림을 지우지 않게 각각 잡는다.
+    for (final id in journeyReminderIds(propertyKey)) {
+      try {
+        await _platform.cancel(id);
+      } catch (e) {
+        debugPrint('[알림] 옛 알림을 지우지 못했어요 (${e.runtimeType})');
       }
-      for (final reminder in plan) {
-        try {
-          await _platform.schedule(reminder);
-        } catch (e) {
-          debugPrint('[알림] 알림 1개를 예약하지 못했어요 (${e.runtimeType}) — 배너로만 안내합니다');
-        }
+    }
+    for (final reminder in plan) {
+      try {
+        await _platform.schedule(reminder);
+      } catch (e) {
+        debugPrint('[알림] 알림 1개를 예약하지 못했어요 (${e.runtimeType}) — 배너로만 안내합니다');
       }
-    });
-    _queue = done.catchError((Object _) {});
-    return done.then((_) => plan);
+    }
   }
 
   /// 이 휴대폰에 저장된 모든 일정의 알림을 다시 건다 — 앱을 켤 때마다.

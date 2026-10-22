@@ -310,6 +310,26 @@ void main() {
       expect(times, [DateTime(2026, 11, 9, 9), DateTime(2026, 11, 10, 8)]);
     });
 
+    test('연달아 두 번 저장해도 뒤의 일정만 남는다 (취소·예약이 뒤섞이지 않는다)', () async {
+      // 첫 번째가 끝나기 전에 두 번째를 부른다 — 한 줄로 서서 차례대로 돈다
+      final first = svc.sync(
+        propertyKey: _key,
+        alias: '정자동 빌라',
+        schedule: _schedule(balance: DateTime(2026, 11, 5)),
+        now: now,
+      );
+      final second = svc.sync(
+        propertyKey: _key,
+        alias: '정자동 빌라',
+        schedule: _schedule(balance: DateTime(2026, 11, 10)),
+        now: now,
+      );
+      await Future.wait([first, second]);
+
+      final times = platform.scheduled.values.map((r) => r.fireAt).toList()..sort();
+      expect(times, [DateTime(2026, 11, 9, 9), DateTime(2026, 11, 10, 8)]);
+    });
+
     test('날짜를 지우면 취소한다', () async {
       await svc.sync(
         propertyKey: _key,

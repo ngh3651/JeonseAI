@@ -229,6 +229,81 @@ class PrivacyMask {
   );
 }
 
+/// 촬영 검사에서 문제가 있었던 사진 한 장 (api-contract.md §9.9 — 2026-10-22, P1-1).
+///
+/// **판정이 아니라 사진 품질**이다. 등급과 무관하다.
+class CapturePageIssue {
+  const CapturePageIssue({
+    required this.index,
+    this.issues = const [],
+    this.severe = false,
+    this.tip = '',
+  });
+
+  /// 업로드한 사진 순서 (0부터) — 화면에는 index+1쪽
+  final int index;
+
+  /// `blurry`·`too_dark`·`too_bright`·`low_contrast`·`no_text`·`low_resolution`·`cut_off`
+  final List<String> issues;
+
+  /// true = 서버가 분석하지 않고 거절한 장 (다시 찍어야 분석된다)
+  final bool severe;
+
+  /// 이유 + 다시 찍는 법 (서버가 쓴 쉬운 말 두 문장)
+  final String tip;
+
+  /// 한 단어 요약 — 사진 위 뱃지용. 여럿이면 먼저 고칠 것 하나(서버의 우선순위와 같은 순서).
+  String get shortLabel {
+    const order = [
+      ('no_text', '글자 없음'),
+      ('too_dark', '어두움'),
+      ('too_bright', '빛 번짐'),
+      ('blurry', '흐림'),
+      ('low_contrast', '흐릿함'),
+      ('low_resolution', '너무 작음'),
+      ('cut_off', '잘림'),
+    ];
+    for (final (key, label) in order) {
+      if (issues.contains(key)) return label;
+    }
+    return '확인 필요';
+  }
+
+  factory CapturePageIssue.fromJson(Map<String, dynamic> json) =>
+      CapturePageIssue(
+        index: json['index'] as int,
+        issues: [
+          for (final i in (json['issues'] as List? ?? const [])) i as String,
+        ],
+        severe: json['severe'] as bool? ?? false,
+        tip: json['tip'] as String? ?? '',
+      );
+}
+
+/// 촬영 검사 결과 (api-contract.md §9.9). 문제가 없는 장은 [pages]에 없다.
+class CaptureCheck {
+  const CaptureCheck({this.ok = true, this.pages = const []});
+
+  final bool ok;
+  final List<CapturePageIssue> pages;
+
+  /// 그 장의 문제 (없으면 null)
+  CapturePageIssue? issueFor(int index) {
+    for (final p in pages) {
+      if (p.index == index) return p;
+    }
+    return null;
+  }
+
+  factory CaptureCheck.fromJson(Map<String, dynamic> json) => CaptureCheck(
+    ok: json['ok'] as bool? ?? true,
+    pages: [
+      for (final p in (json['pages'] as List? ?? const []))
+        CapturePageIssue.fromJson(p as Map<String, dynamic>),
+    ],
+  );
+}
+
 class AnalysisReport {
   const AnalysisReport({
     required this.id,
@@ -251,6 +326,7 @@ class AnalysisReport {
     this.comparable = false,
     this.privacyMasks = const [],
     this.privacyMasksReady = false,
+    this.captureCheck,
     this.marketPriceSource = MarketPriceSource.unknown,
     this.marketPriceAsOf,
     this.marketPriceSampleCount,
@@ -335,6 +411,10 @@ class AnalysisReport {
       !privacyMasksReady ||
       privacyMasks.any((m) => m.page == page && m.coversWholePage);
 
+  /// 촬영 검사 결과 (api-contract.md §9.9). null = 검사하지 않은 옛 기록이거나 서버에서 끔.
+  /// 문제가 있으면 리포트가 "몇 쪽이 왜 — 그 장만 다시 찍기"를 권한다(판정은 그대로).
+  final CaptureCheck? captureCheck;
+
   /// 이 쪽에서 가릴 상자들 (쪽 전체 상자는 빼고 — 그건 [namesUnlocatedOn]이 따로 말한다).
   List<HighlightBox> privacyBoxesOn(int page) => [
     for (final m in privacyMasks)
@@ -397,6 +477,10 @@ class AnalysisReport {
         PrivacyMask.fromJson(m as Map<String, dynamic>),
     ],
     privacyMasksReady: json['privacyMasksReady'] as bool? ?? false,
+    // 촬영 검사 (§9.9). 옛 서버·옛 이력이면 없음(null).
+    captureCheck: json['captureCheck'] is Map<String, dynamic>
+        ? CaptureCheck.fromJson(json['captureCheck'] as Map<String, dynamic>)
+        : null,
     // 시세 출처 (§2.8). 구버전 서버면 unknown/null — 앱은 출처 줄을 숨긴다.
     marketPriceSource: MarketPriceSource.fromWire(
       json['marketPriceSource'] as String?,

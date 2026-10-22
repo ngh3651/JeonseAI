@@ -26,11 +26,14 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../models/market_price_source.dart' show MarketPriceSource;
 import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
+import '../search/capture_issue_panel.dart';
+import '../search/capture_loop_route.dart';
 import 'registry_entry_card.dart';
 import '../../design_system/text/app_text.dart';
 
@@ -56,9 +59,16 @@ bool _isPendingBlacklist(EvidenceItem e) =>
     e.id == 'blacklist' && e.statusLabel == kBlacklistPendingLabel;
 
 class ReportScreen extends StatefulWidget {
-  const ReportScreen({super.key, required this.reportId});
+  const ReportScreen({
+    super.key,
+    required this.reportId,
+    this.captureOne = defaultCaptureOne,
+  });
 
   final String reportId;
+
+  /// 카메라 주입 지점 — '그 장만 다시 찍기'에서 쓴다(테스트는 카메라 없이 가짜 함수를 넣는다).
+  final CaptureOne captureOne;
 
   @override
   State<ReportScreen> createState() => _ReportScreenState();
@@ -130,6 +140,8 @@ class _ReportScreenState extends State<ReportScreen> {
               if (_isStale(report)) _staleBanner(context, report),
               _conclusionHeader(report),
               const SizedBox(height: AppSpacing.xl),
+              // 촬영 검사에서 '확인 필요'가 나온 장 (P1-1, 2026-10-22) — 판정은 그대로, 사진만 권한다.
+              ..._captureNotice(context, report),
               // [D15 · 2026-08-14] 결론 헤더와 진입 카드 사이에 있던 아웃라인 버튼
               // '중개사 질문 모아 보기'를 뺐다. 자세한 사유는 아래 주석 참고.
               _originPhotoEntry(context, report),
@@ -151,6 +163,80 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// 촬영 검사 안내 (P1-1, 2026-10-22) — 서버가 "가볍게 흐리다·쪽 번호가 잘렸다" 등으로 표시한 장.
+  ///
+  /// 분석은 끝났고 **판정은 그대로다**. 다만 그 장의 글자를 잘못 읽었을 수 있으니, 그 장만 다시 찍어
+  /// **새로 분석**하길 권한다. 사진이 이 폰에 남아 있으면(최근 5건) 나머지 장은 그대로 쓰고 그 장만 바꾼다.
+  List<Widget> _captureNotice(BuildContext context, AnalysisReport report) {
+    final check = report.captureCheck;
+    if (check == null || check.pages.isEmpty) return const [];
+    final paths = RegistryPhotoStore.instance.pathsFor(report.id);
+    final canRetake = paths.isNotEmpty;
+    return [
+      CaptureIssuePanel(
+        check: check,
+        title: '사진 확인이 필요한 장이 있어요',
+        message: canRetake
+            ? '결과는 그대로 볼 수 있어요. 다만 아래 장은 글자를 잘못 읽었을 수 있어요 — '
+                '그 장만 다시 찍어 새로 분석하면 더 정확해요.'
+            : '결과는 그대로 볼 수 있어요. 다만 아래 장은 글자를 잘못 읽었을 수 있어요 — '
+                '정확히 보려면 그 장을 다시 찍어 새로 분석해 주세요.',
+        onRetake: canRetake ? (page) => _retakeAndReanalyze(context, report, paths, page) : null,
+        retakeLabel: '다시 찍어 새로 분석',
+      ),
+      const SizedBox(height: AppSpacing.xl),
+    ];
+  }
+
+  /// 그 장만 다시 찍어 **같은 보증금·시세로** 새로 분석한다. 나머지 장은 이 폰에 남은 그 사진을 그대로 쓴다.
+  Future<void> _retakeAndReanalyze(
+    BuildContext context,
+    AnalysisReport report,
+    List<String> paths,
+    CapturePageIssue page,
+  ) async {
+    if (page.index < 0 || page.index >= paths.length) return;
+    final router = GoRouter.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final CaptureLoopResult? result = await Navigator.of(context).push(
+      MaterialPageRoute<CaptureLoopResult>(
+        fullscreenDialog: true,
+        builder: (_) => CaptureLoopRoute(
+          alreadyTaken: paths.length,
+          maxPhotos: paths.length,
+          captureOne: widget.captureOne,
+          replacePage: page.index,
+          replaceTip: page.tip,
+        ),
+      ),
+    );
+    if (!mounted || result == null || result.newPaths.isEmpty) return;
+    final updated = List<String>.of(paths)..[page.index] = result.newPaths.last;
+    final Object? returned = await router.push<Object?>(
+      '/loading',
+      extra: AnalysisRequest(
+        imagePaths: updated,
+        deposit: report.deposit,
+        // 시세는 사용자가 **직접 넣은** 값만 다시 보낸다(자동 조회 값은 서버가 다시 찾는다)
+        marketPrice: report.marketPriceSource == MarketPriceSource.manual ? report.marketPrice : null,
+        alias: report.alias,
+      ),
+    );
+    // 새로 찍은 장도 서버가 거절했다(여전히 흐림 등) — 조용히 돌아오지 않고 이유를 말한다.
+    // 이 리포트는 그대로라 아래 [다시 찍어 새로 분석]을 다시 누르면 된다.
+    if (!mounted || returned is! CaptureRejection) return;
+    messenger?.showSnackBar(
+      SnackBar(
+        content: AppText(
+          '${returned.message}\n분석은 하지 않았어요(크레딧 0원). 다시 찍어 주세요.',
+          style: AppTypography.body.copyWith(color: Colors.white),
+        ),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+      ),
     );
   }
 

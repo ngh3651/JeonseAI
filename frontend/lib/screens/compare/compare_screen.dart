@@ -26,6 +26,7 @@ import '../../services/api_client.dart';
 import '../../utils/korean_date.dart';
 import '../common/analyze_gate.dart';
 import '../journey/journey_actions.dart';
+import '../loading/analysis_loading_screen.dart' show LoadingStepLine, kAnalysisTypicalWait;
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
 import 'compare_result_view.dart';
@@ -246,11 +247,13 @@ class _CompareScreenState extends State<CompareScreen> {
     });
   }
 
+  // ⚠ 진행형으로만 쓴다(2026-10-23 D1) — 타이머 연출이라 서버보다 먼저 '…했어요 ✓'를 띄우면 사진이 거절될 때
+  //   ✓가 다 찬 뒤 "대조하지 않았어요"가 나온다(가짜 완료). 내부어 '규칙'도 뺐다.
   List<String> get _steps => [
-    '사진 ${_imagePaths.length}장 올렸어요',
-    '등기부를 읽었어요 — 소유자·빚·압류 항목',
-    '안전도를 규칙으로 다시 계산했어요',
-    '기준 서류와 달라진 항목을 맞춰보는 중',
+    '사진 ${_imagePaths.length}장을 올리는 중이에요',
+    '등기부를 읽는 중이에요',
+    '안전도를 다시 계산하는 중이에요',
+    '기준 서류와 달라진 항목을 맞춰보는 중이에요',
   ];
 
   @override
@@ -305,9 +308,10 @@ class _CompareScreenState extends State<CompareScreen> {
   Widget _loadingBody() {
     final baseline = widget.request?.report;
     final viewed = parseRegistryViewedAt(baseline?.registryViewedAt);
+    // 실측 21~31초(NOW.md 2절) — 분석 로딩과 같은 말(kAnalysisTypicalWait)
     final String docLine = viewed == null
-        ? '지금 뗀 서류와 맞춰보는 중 · 보통 1~2분 걸려요'
-        : '${formatMonthDay(viewed)}자 ↔ 오늘 뗀 서류 · 보통 1~2분 걸려요';
+        ? '지금 뗀 서류와 맞춰보는 중 · $kAnalysisTypicalWait'
+        : '${formatMonthDay(viewed)}자 ↔ 오늘 뗀 서류 · $kAnalysisTypicalWait';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -363,41 +367,17 @@ class _CompareScreenState extends State<CompareScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 체크(완료) 표시 없이 — 지난 줄은 흐린 점, 지금(맨 아래) 줄만 작은 스피너(D1)
                 for (int i = 0; i < _steps.length; i++)
                   if (i < _shownSteps) ...[
                     if (i > 0) const SizedBox(height: AppSpacing.md),
-                    _stepLine(_steps[i], spinning: i == _steps.length - 1),
+                    LoadingStepLine(text: _steps[i], active: i == _shownSteps - 1),
                   ],
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _stepLine(String text, {required bool spinning}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (spinning)
-          const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.textMuted,
-            ),
-          )
-        else
-          const Icon(
-            Icons.check_circle,
-            size: 18,
-            color: AppColors.primary,
-          ),
-        const SizedBox(width: 10),
-        Expanded(child: AppText(text, style: AppTypography.body)),
-      ],
     );
   }
 

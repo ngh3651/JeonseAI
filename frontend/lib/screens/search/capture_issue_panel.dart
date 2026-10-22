@@ -88,7 +88,8 @@ class CaptureIssuePanel extends StatelessWidget {
               Expanded(
                 child: AppText(
                   title,
-                  style: AppTypography.bodyStrong.copyWith(color: AppColors.caution),
+                  // D8: 연한 앰버 바탕 위 글자는 진한 색 — 앰버는 아이콘·테두리에만
+                  style: AppTypography.bodyStrong.copyWith(color: AppColors.textStrong),
                 ),
               ),
             ],
@@ -139,7 +140,7 @@ class _PageRow extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onRetake,
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.caution,
+                foregroundColor: AppColors.textStrong,
                 side: const BorderSide(color: AppColors.caution),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
                 textStyle: AppTypography.buttonSmall,

@@ -128,8 +128,11 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     return int.parse(digits) * 10000;
   }
 
+  /// 다시 찍어야 할 장이 남아 있으면 보내지 않는다(D6) — 같은 사진을 또 보내면 서버가 또 거절한다.
   bool get _canAnalyze =>
-      _photos.isNotEmpty && (_manwonToWon(_depositCtrl.text) ?? 0) > 0;
+      _photos.isNotEmpty &&
+      (_manwonToWon(_depositCtrl.text) ?? 0) > 0 &&
+      _pagesStillToRetake.isEmpty;
 
   // ── 촬영 루프 ─────────────────────────────────────────────────────────────
 
@@ -1036,9 +1039,13 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
             // [분석하기]가 비활성인 **이유**를 체크 2개로 보여 준다.
             // 문장 안내("…을 입력하면 분석할 수 있어요")를 쓰지 않는다 —
             // 무엇이 모자란지가 한눈에 보여야 한다.
+            // D6(2026-10-23): 다시 찍을 장이 남았는데 초록 '사진 n장 ✓'이면 상태가 모순이다 → 앰버로 남은 장수를 말한다.
             Row(
               children: [
-                _check('사진 ${_photos.length}장', _photos.isNotEmpty),
+                if (_pagesStillToRetake.isNotEmpty)
+                  _retakeLeft(_pagesStillToRetake.length)
+                else
+                  _check('사진 ${_photos.length}장', _photos.isNotEmpty),
                 const SizedBox(width: 14),
                 _check('보증금', (_manwonToWon(_depositCtrl.text) ?? 0) > 0),
               ],
@@ -1066,6 +1073,25 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// "다시 찍을 장 n장" — 앰버는 아이콘에만, 글자는 진한 색(D8 — 작은 앰버 글자는 대비가 모자라다).
+  Widget _retakeLeft(int count) {
+    return Row(
+      key: const ValueKey('retake-left-check'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.photo_camera_outlined, size: 17, color: AppColors.caution),
+        const SizedBox(width: 5),
+        AppText(
+          '다시 찍을 장 $count장',
+          style: AppTypography.caption.copyWith(
+            color: AppColors.textStrong,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 

@@ -318,6 +318,18 @@ void main() {
       // 트레이의 2번째 장에 표시
       expect(find.byKey(const ValueKey('photo-tray-issue-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('photo-tray-issue-0')), findsNothing);
+      // D7: 문제 띠가 있는 장은 확대 칩을 위로 올린다(띠 글자를 가리지 않게)
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('photo-tray-zoom-1'))).dy,
+        lessThan(tester.getTopLeft(find.byKey(const ValueKey('photo-tray-issue-1'))).dy),
+      );
+      // D6: 다시 찍을 장이 남았으면 아래 체크가 앰버 '다시 찍을 장 n장'이고 [분석하기]가 눌리지 않는다
+      expect(find.koText('다시 찍을 장 1장'), findsOneWidget);
+      expect(find.koText('사진 3장'), findsNothing);
+      final FilledButton analyze = tester.widget(
+        find.ancestor(of: find.koText('분석하기'), matching: find.byWidgetPredicate((w) => w is FilledButton)).first,
+      );
+      expect(analyze.onPressed, isNull);
       expect(repo.requests.single.imagePaths, original);
     });
 
@@ -333,8 +345,10 @@ void main() {
       await tester.tap(find.koText('이 사진으로 바꾸기'));
       await tester.pumpAndSettle();
 
-      // 바꾼 뒤: 트레이 표시가 사라지고, 다시 보내라는 안내
+      // 바꾼 뒤: 트레이 표시가 사라지고, 다시 보내라는 안내 — 아래 체크도 다시 '사진 3장'
       expect(find.byKey(const ValueKey('photo-tray-issue-1')), findsNothing);
+      expect(find.koText('다시 찍을 장 1장'), findsNothing);
+      expect(find.koText('사진 3장'), findsOneWidget);
       expect(find.koText('바꿔 찍었어요 — 아래 [분석하기]로 다시 보내 주세요'), findsOneWidget);
       final tray = tester.widget<PhotoTray>(find.byType(PhotoTray));
       expect(tray.paths, [original[0], retakes[1], original[2]]);

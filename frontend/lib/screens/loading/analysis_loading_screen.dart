@@ -23,6 +23,60 @@ import '../../services/api_client.dart';
 import '../search/capture_issue_panel.dart' show CaptureRejection;
 import '../../design_system/text/app_text.dart';
 
+/// 분석·대조가 보통 걸리는 시간 — 실측(NOW.md 2절: 21~31초)에 맞춘 말.
+const String kAnalysisTypicalWait = '보통 30초쯤 걸려요';
+
+/// 로딩 화면의 한 줄 — 흐린 점(지난 줄) 또는 작은 스피너(지금 줄). **체크(완료) 표시는 쓰지 않는다**(D1).
+class LoadingStepLine extends StatelessWidget {
+  const LoadingStepLine({super.key, required this.text, required this.active});
+
+  final String text;
+
+  /// 맨 아래(지금) 줄 — 작은 스피너
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: AppSize.iconSm,
+          height: AppSize.iconSm,
+          child: Center(
+            child: active
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.textMuted,
+                    ),
+                  )
+                : Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: AppColors.line,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: AppText(
+            text,
+            style: AppTypography.body.copyWith(
+              color: active ? AppColors.textBody : AppColors.textMuted,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class AnalysisLoadingScreen extends StatefulWidget {
   const AnalysisLoadingScreen({super.key, required this.request});
 
@@ -50,11 +104,15 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     '거의 다 됐어요, 조금만 기다려 주세요',
   ];
 
-  // 추출 항목이 하나씩 나타나는 연출 — 용어 대신 쉬운 말+중립 표현 (지수 리뷰)
+  // 살펴보는 항목이 하나씩 나타나는 연출 — 용어 대신 쉬운 말 (지수 리뷰).
+  //
+  // ⚠ **진행형으로만 쓴다**(2026-10-23 D1). 이 목록은 서버 진행과 이어져 있지 않은 타이머 연출이라,
+  //   예전처럼 '…읽었어요 ✓'로 쓰면 사진이 거절될 때도 ✓가 다 찬 뒤 "분석하지 않았어요"가 나왔다(가짜 완료).
+  //   그래서 체크 표시 없이 흐린 점, 맨 아래 줄만 작은 스피너를 둔다.
   static const _extracted = [
-    '집에 걸린 빚 정보를 읽었어요',
-    '소유권 정보를 읽었어요',
-    '집주인 정보를 읽었어요',
+    '집에 걸린 빚을 찾고 있어요',
+    '소유권을 확인하고 있어요',
+    '집주인을 확인하고 있어요',
   ];
 
   int _stage = 0;
@@ -273,8 +331,9 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: AppSpacing.sm),
+                      // 실측 21~31초(NOW.md 2절) — '1~2분'은 실제보다 길게 말했다(D1). 배포 서버에서 다시 잰다(NOW.md 사람 할 일)
                       AppText(
-                        '보통 1~2분 걸려요',
+                        kAnalysisTypicalWait,
                         style: AppTypography.caption,
                         textAlign: TextAlign.center,
                       ),
@@ -304,20 +363,13 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
                         color: AppColors.primary,
                       ),
                       const SizedBox(height: AppSpacing.xxl),
-                      // 추출 항목 실시간 노출 (동작 실체 증명)
-                      for (final item in _found)
+                      // 살펴보는 항목 — 완료(✓)를 말하지 않는다. 지난 줄은 흐린 점, 맨 아래 줄만 작은 스피너(D1)
+                      for (int i = 0; i < _found.length; i++)
                         Padding(
                           padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.check_circle,
-                                color: AppColors.primary,
-                                size: AppSize.iconSm,
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              AppText(item, style: AppTypography.body),
-                            ],
+                          child: LoadingStepLine(
+                            text: _found[i],
+                            active: i == _found.length - 1,
                           ),
                         ),
                     ],

@@ -430,8 +430,9 @@ class CompareResultView extends StatelessWidget {
               Expanded(
                 child: AppText(
                   "대조하지 못한 항목은 '달라진 게 없다'는 뜻이 아니에요",
+                  // D8: 연한 앰버 바탕 위 글자는 진한 색 — 앰버는 아이콘·테두리에만
                   style: AppTypography.bodyStrong.copyWith(
-                    color: AppColors.caution,
+                    color: AppColors.textStrong,
                   ),
                 ),
               ),
@@ -683,7 +684,8 @@ class CompareResultView extends StatelessWidget {
                 const SizedBox(height: 6),
                 AppText(
                   result.subline!,
-                  style: AppTypography.body.copyWith(color: AppColors.caution),
+                  // D8: 연한 앰버 바탕 위 글자는 진한 색 — 앰버는 아이콘·테두리에만
+                  style: AppTypography.body.copyWith(color: AppColors.textBody),
                 ),
               ],
             ],

@@ -426,8 +426,9 @@ class TestPaymentNotice extends StatelessWidget {
               children: [
                 AppText(
                   kTestPaymentNotice,
+                  // D8: 연한 앰버 바탕 위 글자는 진한 색 — 앰버는 아이콘·테두리에만
                   style: AppTypography.bodyStrong.copyWith(
-                    color: AppColors.caution,
+                    color: AppColors.textStrong,
                   ),
                 ),
                 // 지수 #9: '카드 정보를 넣어도'는 진짜 카드를 넣으라는 말로 읽혔다. 진짜 번호 없이 끝내는 방법은

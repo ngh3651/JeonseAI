@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../design_system/components/app_button.dart';
+import '../../design_system/components/app_callout.dart';
 import '../../design_system/components/app_card.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
@@ -113,39 +114,14 @@ class _PricingScreenState extends State<PricingScreen> {
   /// 2026-10-23(지수 #7 · 서연 #7 · 디자인 #12): 예전 첫 줄 "가격은 예시예요 · 예시 (팀 확정 전)"은
   /// '돈을 내야 안전하다'처럼 읽혔고, '팀 확정 전'은 심사위원 눈에 미완성으로 보였다.
   Widget _notice(Pricing pricing) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.info_outline,
-            size: AppSize.iconSm,
-            color: AppColors.primary,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const AppText(kPricingFreeNowLine, style: AppTypography.bodyStrong),
-                const SizedBox(height: 2),
-                AppText(
-                  pricing.testMode
-                      ? kPricingExampleLine
-                      : '가격은 아직 정하지 않은 예시예요 · 결제 전에 가격을 꼭 확인하세요',
-                  style: AppTypography.caption.copyWith(color: AppColors.textBody),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    // 새 안내 박스는 AppCallout(글자는 진한 색, 톤 색은 아이콘에만 — D8)
+    return AppCallout(
+      tone: CalloutTone.info,
+      icon: Icons.info_outline,
+      title: kPricingFreeNowLine,
+      text: pricing.testMode
+          ? kPricingExampleLine
+          : '가격은 아직 정하지 않은 예시예요 · 결제 전에 가격을 꼭 확인하세요',
     );
   }
 

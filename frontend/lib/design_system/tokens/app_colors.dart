@@ -80,6 +80,12 @@ abstract final class AppColors {
   static const Color buttonDisabledBg = Color(0x1F16211B);
   static const Color buttonDisabledFg = Color(0x6116211B);
 
+  /// 사진 트레이 썸네일 그림자 — rgba(16,24,20,.22) (2026-10-23 D7: photo_tray.dart의 hex를 토큰으로)
+  static const Color thumbShadow = Color(0x38101814);
+
+  /// 사진 트레이 확대 칩 바탕 — rgba(11,26,22,.55). 흰 아이콘이 사진 위에서도 보이게
+  static const Color thumbChipScrim = Color(0x8C0B1A16);
+
   // ── 원본 사진 마킹 (S-07b 하이라이트 전용) ────────────────────
   // ⚠ 판정 색과 **계보를 분리**해 둔다. 지금은 값이 같아도, 판정 색을 바꿀 때
   //   마킹까지 따라 바뀌면 안 된다 (마킹은 '위치 안내'이지 '위험도 판정'이 아니다 —

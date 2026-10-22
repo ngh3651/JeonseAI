@@ -199,8 +199,9 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                       AppText(
                         '잠깐 — 이 매물은 보증보험 가입 가능 여부가 아직 확인되지 않았어요. '
                         '가입이 안 될 수도 있으니, 가입 요건부터 먼저 확인하세요.',
+                        // D8: 연한 앰버 바탕 위 글자는 진한 색 — 앰버는 아이콘·테두리에만
                         style: AppTypography.body.copyWith(
-                          color: AppColors.caution,
+                          color: AppColors.textBody,
                         ),
                       ),
                       const SizedBox(height: AppSpacing.md),

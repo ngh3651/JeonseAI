@@ -105,12 +105,24 @@ void main() {
 
     expect(find.koText('달라진 점이 2가지 있어요'), findsOneWidget);
     expect(find.koText('7월 9일자 서류 ↔ 8월 5일자 서류'), findsOneWidget);
+
+    // 맨 위에 '지금 할 일' 카드가 생겨(2026-10-22) 아래 줄들은 내려 봐야 보인다 — 위에서부터 차례로.
+    final scrollable = find.byType(Scrollable).first;
+    Future<void> reveal(Finder target) async {
+      await tester.scrollUntilVisible(target, 200, scrollable: scrollable);
+      await tester.pumpAndSettle();
+    }
+
+    await reveal(find.koText('근저당권 1건 · 채권최고액 1억 2,000만원'));
     expect(find.koText('근저당권 1건 · 채권최고액 1억 2,000만원'), findsOneWidget);
-    // 안 변한 것도 반드시 보인다 (변한 것만 나열하면 "나머지는 안 봤나?"가 된다)
-    expect(find.koText('집주인 · 그대로예요'), findsOneWidget);
     // 등급 변화는 뱃지 두 개로
+    await reveal(find.byType(RiskBadge).first);
     expect(find.byType(RiskBadge), findsNWidgets(2));
+    // 안 변한 것도 반드시 보인다 (변한 것만 나열하면 "나머지는 안 봤나?"가 된다)
+    await reveal(find.koText('집주인 · 그대로예요'));
+    expect(find.koText('집주인 · 그대로예요'), findsOneWidget);
     // 규칙 기반 고지가 늘 따라붙는다
+    await reveal(find.koTextContaining('AI가 판단하지 않았어요'));
     expect(find.koTextContaining('AI가 판단하지 않았어요'), findsOneWidget);
   });
 

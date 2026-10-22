@@ -83,7 +83,8 @@ class GuardianPassEntry extends StatelessWidget {
                     AppText(
                       active
                           ? '패스가 있어요 · $kTestPaymentNotice'
-                          : '잔금 전부터 입주 다음 날까지 다시 확인 · 요금제 보기 (예시 가격)',
+                          // 돈을 내야 안전한 것처럼 읽히지 않게 — 지금은 무료로 다 된다는 사실부터(지수 #7·서연 #7)
+                          : '지금은 무료로 모두 쓸 수 있어요 · 요금제 보기(예시 가격)',
                       style: AppTypography.caption,
                     ),
                   ],
@@ -98,13 +99,15 @@ class GuardianPassEntry extends StatelessWidget {
   }
 }
 
-/// "예시 가격 · 예시 (팀 확정 전)" 꼬리표 — 가격 바로 밑에 붙는다.
+/// "예시 가격" 꼬리표 — 가격 바로 밑에 붙는다. '예시'는 화면마다 **한 번씩만** 말한다(2026-10-23 디자인 #12):
+/// 요금제 화면은 맨 위 안내가 이미 "예시예요"라고 해서 꼬리표는 짧게 `예시 가격`, 결제 화면은 서버 label 그대로.
+/// 0원에는 꼬리표를 붙이지 않는다.
 ///
 /// 알약([AppPill])은 줄바꿈이 안 돼 서버가 긴 label을 주면 넘친다 → 줄바꿈 되는 꼬리표로 그린다.
 class ExamplePriceTag extends StatelessWidget {
-  const ExamplePriceTag({super.key, required this.label});
+  const ExamplePriceTag({super.key, this.label = '예시 가격'});
 
-  /// 서버가 준 label ("예시 (팀 확정 전)")
+  /// 꼬리표 글자 — 기본 `예시 가격`, 결제 화면은 서버가 준 label("예시 가격(확정 전)")
   final String label;
 
   @override
@@ -118,9 +121,10 @@ class ExamplePriceTag extends StatelessWidget {
         color: AppColors.cautionSoft,
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
+      // 연앰버 바탕 위 앰버 글자는 12px에서 대비가 모자라다(D8) — 글자는 진한 본문색
       child: AppText(
-        '예시 가격 · $label',
-        style: AppTypography.label.copyWith(color: AppColors.caution),
+        label,
+        style: AppTypography.label.copyWith(color: AppColors.textBody),
       ),
     );
   }

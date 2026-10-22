@@ -105,7 +105,7 @@ void main() {
         now: now,
       );
 
-      expect(plan[0].body, startsWith('내일 잔금 전에 등기부를 다시 떼서 찍어 주세요'));
+      expect(plan[0].body, '내일 돈 보내기 직전에 새로 뗀 등기부를 찍어 주세요 — 오늘 뗀 서류엔 내일 생긴 빚이 안 보여요');
       expect(plan[1].body, '입금 전 마지막 확인 — 오늘 뗀 등기부로 대조해 주세요');
       expect(plan[2].title, startsWith('입주 다음 날 등기부 확인'));
       // 전입신고를 했을 때만 생긴다는 조건이 앞에 온다(주택임대차보호법 제3조)

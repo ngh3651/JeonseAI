@@ -8,8 +8,8 @@ library;
 /// 결제 화면·영수증 어디에나 붙이는 말. 서버 응답의 `testNotice`·`notice`와 같다.
 const String kTestPaymentNotice = '테스트 결제 — 실제 청구 없음';
 
-/// 가격 옆에 붙이는 말 — 서버가 `label`을 안 주면(옛 서버) 이것.
-const String kExamplePriceLabel = '예시 (팀 확정 전)';
+/// 가격 옆에 붙이는 말 — 서버가 `label`을 안 주면(옛 서버) 이것. ('팀 확정 전' 같은 내부 말은 뺐다 — 2026-10-23)
+const String kExamplePriceLabel = '예시 가격(확정 전)';
 
 /// 계약 지킴이 패스 요금제 id (`data/pricing.json`).
 const String kGuardianPassPlanId = 'guardian_pass';
@@ -77,7 +77,7 @@ class Pricing {
     this.testNotice = kTestPaymentNotice,
   });
 
-  /// "예시 (팀 확정 전)"
+  /// "예시 가격(확정 전)"
   final String label;
   final String currency;
   final bool testMode;

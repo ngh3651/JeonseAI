@@ -361,10 +361,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
-        AppText(
-          '잔금 하루 전·당일·입주 다음 날 알림과 다시 대조 화면에 "지킴이 패스" 표시가 붙어요.',
-          style: AppTypography.caption,
-        ),
+        // 무엇을 산 것인지 한 줄로(서연 #7) — 요금제 파일의 패스 기능과 같은 말
+        const AppText(kPassIncludesLine, style: AppTypography.body),
         const SizedBox(height: AppSpacing.xl),
         AppPrimaryButton(
           label: '계약 여정으로 가기',
@@ -392,6 +390,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 }
+
+/// 영수증 — 이 패스에 든 것.
+const String kPassIncludesLine =
+    '이 패스에 든 것: 잔금 하루 전·당일·입주 다음 날 알림 · 다시 떼서 대조 · 지금 할 일 안내';
+
+/// 테스트 결제 띠의 둘째 줄.
+const String kTestPaymentPracticeLine = '연습용 결제라 돈이 나가지 않아요. 진짜 카드 번호는 넣지 마세요';
 
 /// "테스트 결제 — 실제 청구 없음" 띠 — 결제 화면·영수증 맨 위에 늘 붙는다.
 class TestPaymentNotice extends StatelessWidget {
@@ -425,10 +430,9 @@ class TestPaymentNotice extends StatelessWidget {
                     color: AppColors.caution,
                   ),
                 ),
-                const AppText(
-                  '토스페이먼츠 테스트 환경이에요. 카드 정보를 넣어도 돈이 나가지 않아요',
-                  style: AppTypography.caption,
-                ),
+                // 지수 #9: '카드 정보를 넣어도'는 진짜 카드를 넣으라는 말로 읽혔다. 진짜 번호 없이 끝내는 방법은
+                // 토스 공식 문서로 확인하지 못해 적지 않는다(NOW.md 사람 할 일 — 실기기에서 확인).
+                const AppText(kTestPaymentPracticeLine, style: AppTypography.caption),
               ],
             ),
           ),

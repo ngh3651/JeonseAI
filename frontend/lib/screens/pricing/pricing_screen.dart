@@ -22,6 +22,12 @@ import '../../services/api_client.dart';
 import '../../state/pass_store.dart';
 import 'guardian_pass_widgets.dart';
 
+/// 요금제 화면 맨 위 첫 줄.
+const String kPricingFreeNowLine = '지금은 돈을 내지 않아도 알림·다시 대조를 모두 쓸 수 있어요';
+
+/// 맨 위 둘째 줄 — '예시'는 여기서 한 번, 가격 꼬리표에서 한 번.
+const String kPricingExampleLine = '가격은 아직 정하지 않은 예시예요 · 결제는 테스트 결제(실제 청구 없음)';
+
 class PricingScreen extends StatefulWidget {
   const PricingScreen({super.key});
 
@@ -96,23 +102,22 @@ class _PricingScreenState extends State<PricingScreen> {
           _planCard(pricing, plan),
           const SizedBox(height: AppSpacing.md),
         ],
-        const SizedBox(height: AppSpacing.md),
-        AppText(
-          '패스가 없어도 알림과 다시 대조는 그대로 쓸 수 있어요(결선 시연 기간).',
-          style: AppTypography.caption,
-        ),
+        // '(결선 시연 기간)' 같은 내부 말은 뺐다 — 무료로 다 된다는 말은 맨 위 첫 줄이 한다
         const SizedBox(height: AppSpacing.xxxl),
       ],
     );
   }
 
-  /// 맨 위 — 가격은 예시, 결제는 테스트 결제.
+  /// 맨 위 — **지금은 돈을 내지 않아도 다 쓴다**가 먼저, 그다음 가격은 예시·결제는 테스트 결제.
+  ///
+  /// 2026-10-23(지수 #7 · 서연 #7 · 디자인 #12): 예전 첫 줄 "가격은 예시예요 · 예시 (팀 확정 전)"은
+  /// '돈을 내야 안전하다'처럼 읽혔고, '팀 확정 전'은 심사위원 눈에 미완성으로 보였다.
   Widget _notice(Pricing pricing) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: AppColors.cautionSoft,
+        color: AppColors.primarySoft,
         borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
@@ -121,25 +126,20 @@ class _PricingScreenState extends State<PricingScreen> {
           const Icon(
             Icons.info_outline,
             size: AppSize.iconSm,
-            color: AppColors.caution,
+            color: AppColors.primary,
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                AppText(
-                  '가격은 예시예요 · ${pricing.label}',
-                  style: AppTypography.bodyStrong.copyWith(
-                    color: AppColors.caution,
-                  ),
-                ),
+                const AppText(kPricingFreeNowLine, style: AppTypography.bodyStrong),
                 const SizedBox(height: 2),
                 AppText(
                   pricing.testMode
-                      ? '결제는 ${pricing.testNotice}'
-                      : '결제 전에 가격을 꼭 확인하세요',
-                  style: AppTypography.caption,
+                      ? kPricingExampleLine
+                      : '가격은 아직 정하지 않은 예시예요 · 결제 전에 가격을 꼭 확인하세요',
+                  style: AppTypography.caption.copyWith(color: AppColors.textBody),
                 ),
               ],
             ),
@@ -186,10 +186,10 @@ class _PricingScreenState extends State<PricingScreen> {
               ),
             ],
           ),
-          // 가격이 있는 요금제(0원 포함)에는 가격 바로 밑에 '예시' — 확정 가격처럼 읽히지 않게
-          if (plan.price != null) ...[
+          // 돈을 받는 요금제에만 가격 바로 밑에 '예시 가격' — 확정 가격처럼 읽히지 않게(0원에는 붙이지 않는다)
+          if ((plan.price ?? 0) > 0) ...[
             const SizedBox(height: AppSpacing.sm),
-            ExamplePriceTag(label: pricing.label),
+            const ExamplePriceTag(),
           ],
           const SizedBox(height: AppSpacing.md),
           for (final feature in plan.features) ...[

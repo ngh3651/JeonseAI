@@ -474,7 +474,7 @@ MarketPriceAlternative {
 ### 3.12 `GET /api/pricing` — 요금제 · **비회원 허용** (2026-10-22 추가 · P2-1)
 - **목적**: 요금제 화면. 정본 `backend/data/pricing.json`.
 - **응답 200**: `Pricing` = `{label, currency, testMode, testNotice, plans: PricingPlan[]}`
-  - `label` = `"예시 (팀 확정 전)"` — **가격 옆 어디에나** 붙인다(가격은 팀이 확정하기 전까지 예시 — NOW.md 6절 #5).
+  - `label` = `"예시 가격(확정 전)"`(2026-10-23 — 예전 `"예시 (팀 확정 전)"`, 내부 말을 뺐다) — 결제 화면 가격 밑에 붙인다. 요금제 화면은 맨 위 안내가 "예시예요"라고 하므로 돈을 받는 요금제 가격 밑에 짧게 `예시 가격`만(0원에는 없음 — '예시'는 한 번씩만). 가격은 팀이 확정하기 전까지 예시 — NOW.md 6절 #5.
   - `testMode: true` · `testNotice: "테스트 결제 — 실제 청구 없음"` — 결제 화면·영수증 어디에나 붙인다.
   - `PricingPlan` = `{id, name, tagline, price: int|null, priceText, period: string|null, purchasable, contact, features: string[]}`.
     `id`: `free`(무료 — 분석) · `guardian_pass`(계약 지킴이 패스 — 알림·재대조) · `institution`(기관용 — `price: null`, `priceText: "문의"`, `contact: true`).

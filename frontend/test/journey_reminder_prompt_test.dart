@@ -162,11 +162,15 @@ void main() {
       svc.platformForTest = platform;
 
       await _pumpSaver(tester, _withBalance(5));
-      await tester.tap(find.koTextContaining('괜찮아요'));
+      // 거절하면 무엇을 직접 해야 하는지 버튼에 적혀 있다(서연 리뷰 #8)
+      expect(find.koText(kReminderDeclineLabel), findsOneWidget);
+      await tester.tap(find.koText(kReminderDeclineLabel));
       await tester.pumpAndSettle();
 
       expect(platform.permissionRequests, 0);
       expect(find.koText(kReminderFallbackMessage), findsOneWidget);
+      expect(find.koText('알림이 꺼져 있어요 — 잔금 날 앱을 직접 열어야 경고를 볼 수 있어요'), findsOneWidget);
+      expect(find.text('알림 켜기'), findsOneWidget);
       // 권한과 상관없이 예약은 걸어 둔다 — 나중에 설정에서 켜면 그대로 울린다
       expect(platform.scheduled.length, 2);
     });

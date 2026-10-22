@@ -110,7 +110,7 @@ def test_요금제는_세_가지이고_가격은_예시로_표시된다(client):
     resp = client.get("/api/pricing")
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["label"] == "예시 (팀 확정 전)"
+    assert body["label"] == "예시 가격(확정 전)"  # 2026-10-23 — '팀 확정 전' 같은 내부 말을 화면에서 뺐다
     assert body["testMode"] is True
     assert body["testNotice"] == "테스트 결제 — 실제 청구 없음"
     plans = {p["id"]: p for p in body["plans"]}

@@ -5,12 +5,15 @@
 ///   ③ 근거 카드의 [시세 입력하기]는 사진이 이 폰에 있을 때만 (누를 수 없는 버튼을 두지 않는다)
 ///   ④ 앱 어디에도 "곧 제공되는 기능" 문구가 없다
 ///   ⑤ 부스 모드 — 앱 버전 줄 7번 연속 탭으로 켜고 끔, 켜면 로그아웃·회원 탈퇴·기록 지우기를 숨긴다
+///   ⑥ '다시 뗀 등기부를 올려 주세요' 시트에서 막히지 않게 — [아직 안 뗐어요 — 떼는 법 보기] → 발급 가이드
 library;
 
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
@@ -18,6 +21,7 @@ import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/repositories/auth_repository.dart';
 import 'package:jeonse_ai/screens/my/account_section.dart';
 import 'package:jeonse_ai/screens/my/app_version_line.dart';
+import 'package:jeonse_ai/screens/journey/journey_actions.dart';
 import 'package:jeonse_ai/screens/my/my_screen.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:jeonse_ai/screens/report/report_share.dart';
@@ -163,12 +167,22 @@ void main() {
 
     testWidgets('공유 창을 못 열면 복사해 두고 그렇게 말한다', (tester) async {
       TextShare.debugOverride((text, {subject}) async => throw Exception('공유 창 없음 흉내'));
+      // 테스트에는 진짜 클립보드가 없다(부르면 답이 오지 않는다) — 복사한 글자를 붙잡는다
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+        return null;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null),
+      );
       await _pumpReport(tester, 'dummy-danger');
       await tester.tap(find.byTooltip('리포트 요약 보내기'));
       await tester.pumpAndSettle();
       await tester.tap(find.koText('공유 창 열기'));
       await tester.pumpAndSettle();
       expect(find.koTextContaining('복사해 뒀어요'), findsOneWidget);
+      expect(copied, startsWith('[전세AI프] 역삼동 오피스텔'));
     });
   });
 
@@ -385,6 +399,37 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byTooltip('삭제'), findsNothing);
     });
+  });
+
+  testWidgets('⑥ 사진 시트의 [아직 안 뗐어요 — 떼는 법 보기]는 발급 가이드로 간다 (사진은 고르지 않는다)', (tester) async {
+    List<String>? picked;
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) => Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async => picked = await pickRegistryPhotos(context),
+                child: const Text('사진 올리기'),
+              ),
+            ),
+          ),
+        ),
+        GoRoute(path: '/guide', builder: (_, _) => const Scaffold(body: Text('발급 가이드 화면'))),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp.router(theme: buildAppTheme(), routerConfig: router));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('사진 올리기'));
+    await tester.pumpAndSettle();
+
+    expect(find.koText(kNotIssuedYetLabel), findsOneWidget);
+    expect(kNotIssuedYetLabel, contains('700원'), reason: '앱에 이미 있는 금액(촬영 화면 발급 안내)만 쓴다');
+    await tester.tap(find.koText(kNotIssuedYetLabel));
+    await tester.pumpAndSettle();
+    expect(find.text('발급 가이드 화면'), findsOneWidget);
+    expect(picked, isEmpty);
   });
 }
 

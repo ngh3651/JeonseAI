@@ -23,7 +23,11 @@ const String kReminderPermissionReason =
     '돈 보내기 전에 등기부를 다시 떼 보라고 그날 알려 드릴게요.';
 
 /// 알림이 꺼져 있을 때의 한 줄 — 앱 안 배너가 무엇을 대신하는지 말한다.
-const String kReminderFallbackMessage = '알림이 꺼져 있어요. 그날 앱을 열면 맨 위 배너로 알려 드려요';
+/// 2026-10-23(서연 #8): "배너로 알려 드려요"는 앱을 안 열면 아무 일도 없다는 사실을 가렸다 — 그대로 말한다.
+const String kReminderFallbackMessage = '알림이 꺼져 있어요 — 잔금 날 앱을 직접 열어야 경고를 볼 수 있어요';
+
+/// 권한 시트의 거절 버튼 — 거절하면 무엇을 직접 해야 하는지 버튼에 적는다.
+const String kReminderDeclineLabel = '괜찮아요 (잔금 날 앱을 직접 열게요)';
 
 /// 알림 종류 → 사람이 읽는 때 (권한 안내 목록에 쓴다).
 String reminderMomentLabel(JourneyReminderKind kind) => switch (kind) {
@@ -175,7 +179,7 @@ Future<bool?> showReminderPermissionSheet(
             TextButton(
               onPressed: () => Navigator.of(sheetContext).pop(false),
               style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-              child: const AppText('괜찮아요 (앱 안 배너로만 볼게요)'),
+              child: const AppText(kReminderDeclineLabel),
             ),
           ],
         ),

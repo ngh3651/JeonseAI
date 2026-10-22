@@ -22,6 +22,9 @@ const int kCompareMaxPhotos = 10;
 const String kComparePhotoSheetTitle = '다시 뗀 등기부를 올려 주세요';
 const String kComparePhotoSheetSubtitle = '오늘 발급받은 등기부여야 지금 상태를 볼 수 있어요';
 
+/// 사진 시트 맨 아래 — 아직 다시 떼지 않은 사람을 발급 가이드로.
+const String kNotIssuedYetLabel = '아직 안 뗐어요 — 떼는 법 보기 (인터넷등기소 열람용 700원)';
+
 /// **이 화면의 핵심 행동**: 등기부를 다시 떼어 기준 서류와 맞춰본다.
 ///
 /// 기준이 없는 리포트(이 기능 이전 이력·예시)는 **사진을 받기 전에** 대조 화면으로
@@ -93,12 +96,24 @@ Future<List<String>> pickRegistryPhotos(
             title: const AppText('앨범에서 고르기', style: AppTypography.body),
             onTap: () => Navigator.of(sheetContext).pop(_PhotoSource.gallery),
           ),
+          // 다시 떼는 법을 몰라 여기서 막힌다(지수 리뷰 #10) — 발급 가이드로. 금액은 앱에 이미 있는 값
+          // (촬영 화면 '등기부등본 발급 방법': 인터넷등기소 열람용 700원)
+          ListTile(
+            leading: const Icon(Icons.help_outline, color: AppColors.textMuted),
+            title: const AppText(kNotIssuedYetLabel, style: AppTypography.body),
+            onTap: () => Navigator.of(sheetContext).pop(_PhotoSource.guide),
+          ),
           const SizedBox(height: AppSpacing.sm),
         ],
       ),
     ),
   );
   if (source == null || !context.mounted) return const [];
+
+  if (source == _PhotoSource.guide) {
+    context.push('/guide');
+    return const [];
+  }
 
   if (source == _PhotoSource.gallery) {
     try {
@@ -121,4 +136,4 @@ Future<List<String>> pickRegistryPhotos(
   return (result?.newPaths ?? const <String>[]).take(room).toList();
 }
 
-enum _PhotoSource { camera, gallery }
+enum _PhotoSource { camera, gallery, guide }

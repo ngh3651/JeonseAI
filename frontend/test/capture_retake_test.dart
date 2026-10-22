@@ -20,6 +20,7 @@ import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/compare_result.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
+import 'package:jeonse_ai/screens/compare/compare_screen.dart';
 import 'package:jeonse_ai/screens/loading/analysis_loading_screen.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:jeonse_ai/screens/search/capture_issue_panel.dart';
@@ -364,6 +365,55 @@ void main() {
     });
   });
 
+  group('대조 — 사진 품질로 거절되면 그 장만 다시 찍어 다시 대조', () {
+    testWidgets('몇 쪽이 왜인지 보여 주고, 바꾸면 그 장만 다른 사진으로 다시 보낸다', (tester) async {
+      tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+
+      final repo = _CompareRepository([
+        ApiException(_rejectMessage, statusCode: 400, captureCheck: _rejected),
+        const CompareResult(
+          outcome: CompareOutcome.changed,
+          headline: '달라진 점이 없어요',
+          baseline: CompareDoc(reportId: 'base'),
+          current: CompareDoc(),
+        ),
+      ]);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AnalysisRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: buildAppTheme(),
+            home: CompareScreen(
+              reportId: 'base',
+              request: CompareRequest(report: _report(id: 'base'), imagePaths: List.of(original)),
+              captureOne: () async => retakes[1],
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(find.koText('사진을 다시 찍어야 대조할 수 있어요'), findsOneWidget);
+      expect(find.koText('2쪽 · 흐림'), findsOneWidget);
+      expect(find.koTextContaining('크레딧이 들지 않았어요'), findsOneWidget);
+      expect(find.koText('대조를 끝내지 못했어요'), findsNothing, reason: '일반 실패 화면이 아니다');
+
+      await tester.tap(find.koText('2쪽 이 장만 다시 찍기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('이 사진으로 바꾸기'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent, hasLength(2));
+      expect(repo.sent.last, [original[0], retakes[1], original[2]]);
+      expect(find.byType(CaptureIssuePanel), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('리포트 — 가벼운 문제(확인 필요)', () {
     Future<void> pumpReport(WidgetTester tester, AnalysisReport report, {List<String>? photos}) async {
       tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
@@ -411,6 +461,34 @@ void main() {
       expect(find.byType(CaptureIssuePanel), findsNothing);
     });
   });
+}
+
+/// 대조를 부르면 정해진 순서로 답하는 가짜 저장소 — 받은 사진 목록을 기록한다.
+class _CompareRepository extends AnalysisRepository {
+  _CompareRepository(this.script);
+
+  final List<Object> script;
+  final List<List<String>> sent = [];
+
+  @override
+  Future<CompareResult> compareRegistry(String reportId, List<String> imagePaths) async {
+    sent.add(List.of(imagePaths));
+    final next = script.removeAt(0);
+    if (next is ApiException) throw next;
+    return next as CompareResult;
+  }
+
+  @override
+  Future<AnalysisReport> analyze(AnalysisRequest request) => throw UnimplementedError();
+
+  @override
+  Future<List<AnalysisReport>> getHistory() async => const [];
+
+  @override
+  Future<AnalysisReport?> getReport(String id) async => null;
+
+  @override
+  Future<void> deleteReport(String id) async {}
 }
 
 class _OneReport extends AnalysisRepository {

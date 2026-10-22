@@ -22,8 +22,10 @@ import 'package:jeonse_ai/screens/journey/journey_screen.dart';
 import 'package:jeonse_ai/services/journey_reminder_service.dart';
 import 'package:jeonse_ai/services/journey_reminders.dart';
 import 'package:jeonse_ai/services/local_notifications_platform.dart';
+import 'package:jeonse_ai/services/text_share.dart';
 import 'package:jeonse_ai/state/app_session.dart';
 import 'package:jeonse_ai/state/journey_schedule_store.dart';
+import 'package:jeonse_ai/utils/korean_date.dart';
 import 'package:jeonse_ai/utils/money_format.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -187,6 +189,35 @@ void main() {
         DateTime(_day(4).year, _day(4).month, _day(4).day, 9),
       );
       expect(find.koText('알림을 맞춰 뒀어요 · 첫 알림 $first'), findsOneWidget);
+    });
+
+    testWidgets('저장 뒤 [가족·배우자에게 보내기] — 별칭·잔금일·입주 다음 날 한 줄을 공유 창으로 (날짜는 서버로 안 감)', (tester) async {
+      platform = _FakePlatform(enabled: true);
+      svc.platformForTest = platform;
+      final shared = <String>[];
+      TextShare.debugOverride((text, {subject}) async => shared.add(text));
+      addTearDown(() => TextShare.debugOverride(null));
+
+      final schedule = _withBalance(5).copyWith(JourneyDateKey.moveIn, _day(6));
+      await _pumpSaver(tester, schedule);
+      expect(find.text(kShareScheduleLabel), findsOneWidget);
+
+      await tester.tap(find.text(kShareScheduleLabel));
+      await tester.pumpAndSettle();
+      expect(shared, [familyScheduleText('정자동 빌라', schedule)]);
+      expect(
+        shared.single,
+        '[전세AI프] 정자동 빌라 · 잔금일 ${formatMonthDayWeekday(_day(5))} · '
+        '입주 다음 날 ${formatMonthDayWeekday(_day(7))} · 그날 등기부를 다시 떼어 확인해요',
+      );
+    });
+
+    test('가족에게 보낼 일정 한 줄 — 날짜가 하나도 없으면 null', () {
+      expect(familyScheduleText('정자동 빌라', const JourneySchedule()), isNull);
+      expect(
+        familyScheduleText('', const JourneySchedule().copyWith(JourneyDateKey.balance, DateTime(2026, 11, 5))),
+        '[전세AI프] 우리 집 · 잔금일 ${formatMonthDayWeekday(DateTime(2026, 11, 5))} · 그날 등기부를 다시 떼어 확인해요',
+      );
     });
 
     testWidgets('걸 알림이 없으면(계약서 날짜만) 권한을 묻지 않는다', (tester) async {

@@ -12,9 +12,12 @@ import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../models/content_models.dart';
 import '../../services/journey_reminder_service.dart';
 import '../../services/journey_reminders.dart';
 import '../../state/journey_schedule_store.dart';
+import '../../utils/korean_date.dart';
+import '../common/share_feedback.dart';
 
 /// 알림 권한을 묻기 전에 말하는 이유 (2026-10-23 지수 #5·#6 · 서연 #5).
 const String kReminderPermissionReason =
@@ -28,6 +31,26 @@ const String kReminderFallbackMessage = '알림이 꺼져 있어요 — 잔금 �
 
 /// 권한 시트의 거절 버튼 — 거절하면 무엇을 직접 해야 하는지 버튼에 적는다.
 const String kReminderDeclineLabel = '괜찮아요 (잔금 날 앱을 직접 열게요)';
+
+/// 날짜를 저장한 뒤 [가족·배우자에게 보내기] — 별칭·잔금일·입주 다음 날 한 줄 (2026-10-23 서연 리뷰 #6·P2-17).
+///
+/// 날짜는 지금처럼 **이 폰에만** 저장한다 — 서버로 보내지 않고, 사용자가 고른 사람에게 공유 창으로만 나간다.
+/// 둘 다 없으면 null(버튼을 달지 않는다).
+String? familyScheduleText(String alias, JourneySchedule schedule) {
+  final DateTime? balance = schedule.balance;
+  final DateTime? moveInNext = schedule[JourneyDateKey.moveInNext];
+  if (balance == null && moveInNext == null) return null;
+  final name = alias.trim();
+  return [
+    name.isEmpty ? '[전세AI프] 우리 집' : '[전세AI프] $name',
+    if (balance != null) '잔금일 ${formatMonthDayWeekday(balance)}',
+    if (moveInNext != null) '입주 다음 날 ${formatMonthDayWeekday(moveInNext)}',
+    '그날 등기부를 다시 떼어 확인해요',
+  ].join(' · ');
+}
+
+/// 저장 뒤 안내의 [가족·배우자에게 보내기] 라벨.
+const String kShareScheduleLabel = '가족·배우자에게 보내기';
 
 /// 알림 종류 → 사람이 읽는 때 (권한 안내 목록에 쓴다).
 String reminderMomentLabel(JourneyReminderKind kind) => switch (kind) {
@@ -68,12 +91,23 @@ Future<void> applyJourneyReminders(
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
   messenger.hideCurrentSnackBar();
+  // [가족·배우자에게 보내기] — 날짜를 함께 아는 사람이 있으면 그날을 놓치지 않는다(서연 리뷰 #6)
+  final String? familyText = familyScheduleText(alias, schedule);
   if (enabled == true) {
     messenger.showSnackBar(
       SnackBar(
         content: AppText(
           '알림을 맞춰 뒀어요 · 첫 알림 ${describeReminderTime(plan.first.fireAt)}',
         ),
+        duration: const Duration(seconds: 6),
+        action: familyText == null
+            ? null
+            : SnackBarAction(
+                label: kShareScheduleLabel,
+                onPressed: () {
+                  if (context.mounted) shareWithFeedback(context, familyText);
+                },
+              ),
       ),
     );
   } else if (enabled == false) {
@@ -87,8 +121,16 @@ Future<void> applyJourneyReminders(
   } else {
     // 이 휴대폰에서 알림 기능 자체를 쓸 수 없다(초기화 실패 등) — 알림을 약속하지 않는다.
     messenger.showSnackBar(
-      const SnackBar(
-        content: AppText('이 휴대폰에서는 알림을 맞추지 못했어요. 그날 앱을 열면 맨 위 배너로 알려 드려요'),
+      SnackBar(
+        content: const AppText('이 휴대폰에서는 알림을 맞추지 못했어요. 그날 앱을 열면 맨 위 배너로 알려 드려요'),
+        action: familyText == null
+            ? null
+            : SnackBarAction(
+                label: kShareScheduleLabel,
+                onPressed: () {
+                  if (context.mounted) shareWithFeedback(context, familyText);
+                },
+              ),
       ),
     );
   }

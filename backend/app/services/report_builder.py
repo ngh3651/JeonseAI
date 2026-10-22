@@ -16,11 +16,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from ..schemas.contract import Evidence, Highlight, MarketPriceAlternative, Report
+from ..schemas.contract import CaptureCheck, Evidence, Highlight, MarketPriceAlternative, Report
 from ..schemas.internal import Grade, PriceProvenance, RegistryExtract, RuleVerdict
 from . import (
     artifacts,
     cancellation,
+    capture_check,
     compare,
     cross_check,
     document_parse,
@@ -374,11 +375,16 @@ def analyze(
     market_price: int | None,
     alias: str | None,
     device_id: str,
+    capture: CaptureCheck | None = None,
 ) -> Report:
     """업로드 이미지 → (IE ∥ OCR→구조화) → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)
 
     `device_id`: 이 분석을 요청한 기기(`dependencies.get_current_user`). 리포트·대조 기준이
     이 기기의 기록으로 저장된다 — 다른 기기에서는 보이지 않는다(2026-10-21).
+
+    `capture`: 라우터가 IE·OCR **전에** 돌린 촬영 검사 결과(2026-10-22). 심한 장이 있으면 라우터가 이미
+    거절했으므로 여기 오는 것은 '문제 없음' 또는 '가벼운 문제'뿐이다. OCR 뒤의 발견(쪽 번호 잘림)을 더해
+    `Report.captureCheck`에 싣는다 — **표시 전용**, 판정과 무관하다.
 
     **세 경로가 있고, 판정에 들어가는 것은 하나뿐이다** (2026-07-28):
 
@@ -539,6 +545,12 @@ def analyze(
     if mask_result is not None:
         report.privacyMasks = mask_result.masks
         report.privacyMasksReady = True
+    try:
+        # 촬영 검사 + OCR 뒤 발견(쪽 번호 안 보임 = 잘림 의심) — 표시 전용. 판정은 이미 끝났다.
+        report.captureCheck = capture_check.add_ocr_findings(capture, ocr_result.pages, len(images))
+    except Exception:  # noqa: BLE001 — 안내 한 줄 때문에 리포트를 잃지 않는다
+        _log.error("[촬영검사] ⚠ OCR 뒤 검사 실패 — 분석 전 검사 결과만 싣습니다", exc_info=True)
+        report.captureCheck = capture
     # ── 여기서부터 리포트는 **이미 완성됐다.** 아래는 기록·정리·로그뿐이다 ──────────
     # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
     # 2026-07-28 실기기 500이 정확히 이 모양이었다(리포트 완성 → 마지막 문장에서 사망).
@@ -614,6 +626,16 @@ def analyze(
                     ("선순위채권 합계", format_won(report.seniorDebtAmount)),
                     ("하이라이트", f"{len(report.highlights)}건"),
                     ("가림 상자", f"{len(report.privacyMasks)}개" if report.privacyMasksReady else "없음(실패)"),
+                    (
+                        "촬영 검사",
+                        "꺼짐"
+                        if report.captureCheck is None
+                        else "문제 없음"
+                        if report.captureCheck.ok
+                        else ", ".join(
+                            f"{p.index + 1}쪽 {'/'.join(p.issues)}" for p in report.captureCheck.pages
+                        ),
+                    ),
                     ("교차검증", _cross_note),
                 ],
             )

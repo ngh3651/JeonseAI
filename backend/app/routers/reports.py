@@ -22,11 +22,12 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse
 
 from .. import dummy_data, settings
 from ..dependencies import get_current_user, limit_analyze
-from ..schemas.contract import CaseMatch, CompareResult, QuestionGroup, Report
-from ..services import compare, patterns, questions, report_builder, store
+from ..schemas.contract import CaptureCheck, CaseMatch, CompareResult, QuestionGroup, Report
+from ..services import capture_check, compare, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
@@ -66,6 +67,27 @@ def _read_images(files: list[UploadFile], *, empty_detail: str) -> list[tuple[st
     return images
 
 
+def _capture_gate(images: list[tuple[str, bytes]]) -> tuple[CaptureCheck | None, JSONResponse | None]:
+    """촬영 검사(P1-1, 2026-10-22) — IE·OCR **전에** 사진 품질을 본다. (검사 결과, 거절 응답).
+
+    심하게 흐리거나 어두운 장이 있으면 **분석하지 않고** 400을 돌려준다(크레딧 0원). 분석 횟수는 1회 센다 —
+    라우터가 `limit_analyze` **뒤에** 부른다(검사도 서버 계산을 쓰므로 횟수로 묶어 둔다).
+    본문은 일관 에러 형식 그대로 `detail`(한국어 한 줄) + 덧붙인 `captureCheck`(장별 안내)다 —
+    옛 앱은 `detail`만 읽고, 새 앱은 `captureCheck`로 "그 장만 다시 찍기"를 그린다.
+    가벼운 문제는 통과시킨다(리포트의 `captureCheck`에 실린다).
+    """
+    check = capture_check.precheck(images)
+    if not capture_check.should_reject(check):
+        return check, None
+    assert check is not None
+    message = capture_check.rejection_message(check)
+    _log.info(f"[촬영검사] 분석 전 거절 — {message} (크레딧 0원)")
+    return check, JSONResponse(
+        status_code=400,
+        content={"detail": message, "captureCheck": check.model_dump()},
+    )
+
+
 @router.post("/analyze", response_model=Report)
 def analyze(
     request: Request,
@@ -84,10 +106,20 @@ def analyze(
     images = _read_images(files, empty_detail="등기부 사진을 1장 이상 올려 주세요")
     # 입력 검사를 모두 통과한 뒤에만 센다 — 형식이 틀린 요청은 분석 기회를 깎지 않는다
     limit_analyze(request, device_id)
+    # 사진 품질 — 심하면 여기서 끝(크레딧 0원). ⚠ 횟수는 **센 뒤**다: 검사 자체가 서버 계산(장당 0.2~0.4초)을
+    # 쓰므로, 안 세면 흐린 사진을 끝없이 보내 서버를 붙잡을 수 있다(decisions.md 2026-10-22 촬영 품질 검사).
+    capture, rejected = _capture_gate(images)
+    if rejected is not None:
+        return rejected
 
     try:
         return report_builder.analyze(
-            images, deposit=deposit, market_price=marketPrice, alias=alias, device_id=device_id
+            images,
+            deposit=deposit,
+            market_price=marketPrice,
+            alias=alias,
+            device_id=device_id,
+            capture=capture,
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
@@ -122,6 +154,10 @@ def compare_registry(
     images = _read_images(files, empty_detail="다시 뗀 등기부 사진을 1장 이상 올려 주세요")
     # 다시 분석하므로 분석과 같은 상한을 쓴다 — 검사를 통과한 뒤, 외부 호출 직전에 센다
     limit_analyze(request, device_id)
+    # 대조도 새 사진을 다시 분석한다 — 같은 촬영 검사(심하면 크레딧 0원으로 거절)
+    capture, rejected = _capture_gate(images)
+    if rejected is not None:
+        return rejected
 
     try:
         # ⚠ 보증금·시세는 **기준 분석과 같은 값**을 쓴다. 다른 값으로 계산하면 등급 차이가
@@ -132,6 +168,7 @@ def compare_registry(
             market_price=baseline.manual_market_price,
             alias=base_report.alias,
             device_id=device_id,
+            capture=capture,
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)

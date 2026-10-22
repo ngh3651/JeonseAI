@@ -134,6 +134,7 @@
 | `registryViewedAt` | string \| null | [표시] | 등기부 열람일시 `YYYY.MM.DD` — §9 |
 | `comparable` | boolean | [메타] | 이 분석을 **다음 등기부와 견줄 기준으로 쓸 수 있는가** — §2.9 (기본 `false`) |
 | `privacyMasks` · `privacyMasksReady` | `PrivacyMask[]` · boolean | [표시] | 사진 속 실명·주민번호 **자리**(글자 없음) — §9.8 (기본 `[]` · `false`) |
+| `captureCheck` | `CaptureCheck` \| null | [표시] | 촬영 품질 검사 — 장별 흐림·어두움·잘림 안내 §9.9 (기본 `null`). 심하면 분석 전 400 |
 
 - **홈/마이 이력 카드**가 쓰는 필드: `id, alias, address, analyzedAt, grade, deposit, topRiskSummary`.
 - **손실 시뮬레이터**가 쓰는 필드: `alias, deposit, marketPrice, seniorDebtAmount` + `evidences`에서 `insurance` 항목의 `grade`(보증보험 가입 미확인 경고 판단). **슬라이더·보험 토글 계산은 앱에서 로컬 수행**(서버 호출 없음). 계산식은 E-4에서 서버 이관 검토.
@@ -730,3 +731,25 @@ IE ↔ OCR이 어긋나도 **판정은 바뀌지 않고 표시만 보류**된다
 - **앱 규칙**: 가리기가 켜져 있으면 `privacyMasks` 전부 + 집주인 이름 하이라이트를 불투명 상자로 덮는다.
   `privacyMasksReady=false`인데 사진이 있으면(옛 기록) 사진을 **통째로** 덮는다 — 어디에 이름이 있는지 모르기 때문이다.
 - 개인정보: 응답·로그·기록 DB에 이름 글자를 싣지 않는다(로그는 개수만 — `[가리기] …`). 정본 코드: `backend/app/services/privacy_masks.py`.
+
+### 9.9 `captureCheck` — 촬영 품질 검사 (2026-10-22 추가, 선택 · P1-1)
+
+**판정이 아니라 사진 품질**이다. 등급·근거 카드·하이라이트를 바꾸지 않는다. 기준값의 근거: decisions.md [2026-10-22] 촬영 품질 검사.
+
+`CaptureCheck` = `{ok: boolean, pages: CapturePageIssue[]}` — 문제가 없는 장은 `pages`에 넣지 않는다.
+`CapturePageIssue` = `{index, issues: string[], severe: boolean, tip: string}`
+
+| 필드 | 설명 |
+|---|---|
+| `index` | 업로드한 사진 순서(0부터). 화면에는 `index+1`쪽 |
+| `issues` | `blurry`(흐림) · `too_dark`(어두움) · `too_bright`(빛 번짐·반사) · `low_contrast`(글자가 흐릿) · `no_text`(글자 없음) · `low_resolution`(너무 작음) · `cut_off`(맨 아래 쪽 번호가 안 보임 — OCR 뒤) |
+| `severe` | `true` = 분석하지 않고 거절한 장 |
+| `tip` | 이유 + 다시 찍는 법, 쉬운 말 두 문장 (예: `글자 테두리가 번져 있어요. 휴대폰을 종이와 나란히 들고 …`) |
+
+- **분석 전 거절** (`POST /api/analyze`·`POST /api/reports/{id}/compare`): 심한 장(`severe`)이 하나라도 있으면 IE·OCR을 부르지 않고(크레딧 0원)
+  **400** — 본문은 일관 에러 형식에 `captureCheck`를 덧붙인 것이다:
+  `{"detail": "2쪽이 흐려요 — 다시 찍어 주세요 (글자 테두리가 번져 있어요)", "captureCheck": {"ok": false, "pages": [...]}}`.
+  옛 앱은 `detail`만 읽어도 된다. 분석 횟수(§1.3 429)는 1회 센다(검사도 서버 계산).
+- **가벼운 문제**는 분석하고 `Report.captureCheck`에 싣는다(기본 `null` = 검사 안 한 옛 기록 또는 서버에서 끔). OCR 뒤 발견(`cut_off`, 글자 0개)도 여기 더한다.
+- 서버 변수 `CAPTURE_CHECK`: `on`(기본) · `warn`(거절 없이 알리기만 — 심한 장도 `severe:true`로 리포트에 실린다) · `off`(검사 안 함, `captureCheck: null`).
+- **앱 규칙**: 400에 `captureCheck`가 있으면 "그 장만 다시 찍기" 화면으로 간다. 리포트의 `captureCheck`에 문제가 있으면 그 장에 "확인 필요"를 붙이고 다시 찍기를 권한다.

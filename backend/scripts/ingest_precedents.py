@@ -25,7 +25,7 @@ from app.services.precedent.ingest import ingest  # noqa: E402
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="판례 청킹→임베딩→벡터DB 적재")
-    ap.add_argument("--backend", choices=["upstage", "local", "hash"], help="임베딩 백엔드")
+    ap.add_argument("--backend", choices=["upstage", "hash"], help="임베딩 백엔드")
     ap.add_argument("--no-full-text", action="store_true", help="판례 전문 청크 제외")
     args = ap.parse_args()
 

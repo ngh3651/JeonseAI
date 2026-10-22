@@ -1,10 +1,9 @@
-"""임베딩 백엔드 추상화 — Upstage API ↔ 로컬 GPU 오픈모델 ↔ 오프라인 해시.
+"""임베딩 백엔드 추상화 — Upstage API ↔ 오프라인 해시.
 
-교체 규칙 (미션 요건: "GPU 실행 지점을 코드에 명시"):
-- 개발·시연(현재): `UpstageEmbeddingBackend` — 국내 API, 소량(시드 수십 건) 임베딩.
-- **대량 배치(GPU 실행 지점)**: `LocalEmbeddingBackend` — 판례 수만 건을 대회 GPU에서
-  1회성으로 임베딩할 때 사용. sentence-transformers 설치 + `PRECEDENT_EMBEDDING_BACKEND=local`
-  환경변수만 바꾸면 파이프라인 나머지는 무변경. (상세 계획: docs/precedent-rag.md §GPU)
+- 서비스: `UpstageEmbeddingBackend` — 국내 AI 연계 기업(Upstage) API. **AI는 Upstage만**(2026-10-22 결정).
+  ⚠ 2026-10-23: 로컬 GPU 오픈모델 선택지(`LocalEmbeddingBackend`, 카카오 kanana)는 지웠다 — 대회 「국내 AI API
+  호출 로그 제출 가이드」는 프로젝트의 AI 모델이 **100% 국내 AI 연계 기업**(업스테이지·KT·SKT·LG AI 연구원·NC AI)의
+  모델이어야 한다고 못 박는다. 실제 서비스는 처음부터 Upstage만 썼다(기본값). 옛 코드는 git 기록에 있다.
 - 테스트·오프라인: `HashingEmbeddingBackend` — 결정적 문자 n-gram 해시. 네트워크·크레딧
   없이 파이프라인 전체(청킹→적재→검색→게이트)를 검증한다.
 
@@ -51,10 +50,6 @@ def upstage_passage_model() -> str:
 _UPSTAGE_BATCH_SIZE = 32  # 인프라 수치 — 요청당 입력 수 (문서 상한 100 이내 보수 운용)
 _REQUEST_TIMEOUT = 60
 
-# 로컬 GPU 백엔드 기본 모델 — 카카오 공식 배포(모델 사용 기준: decisions.md 2026-07-22).
-# 초기 후보 KURE-v1은 "개인·학계 외산 베이스 파인튜닝 배제" 기준에 따라 교체.
-# 주의: kanana 임베딩은 512토큰 권장 — 대량 배치 전 청킹 길이·평가셋 A/B 확인 (precedent-rag.md §3)
-DEFAULT_LOCAL_EMBEDDING_MODEL = "kakaocorp/kanana-nano-2.1b-embedding"
 
 
 class EmbeddingBackend(Protocol):
@@ -112,38 +107,6 @@ class UpstageEmbeddingBackend:
         return self._call(upstage_query_model(), [text])[0]
 
 
-class LocalEmbeddingBackend:
-    """로컬 오픈모델 (sentence-transformers) — **대량 임베딩 배치의 GPU 실행 지점**.
-
-    대회 GPU에서: `pip install sentence-transformers` 후
-    `PRECEDENT_EMBEDDING_BACKEND=local python scripts/ingest_precedents.py --reembed`
-    한 줄이면 전체 인덱스가 로컬 모델 벡터로 재구축된다.
-    """
-
-    def __init__(self, model_name: str | None = None) -> None:
-        model_name = model_name or _env("PRECEDENT_LOCAL_MODEL", DEFAULT_LOCAL_EMBEDDING_MODEL)
-        try:
-            from sentence_transformers import SentenceTransformer  # 선택 의존성
-        except ImportError as e:
-            raise RuntimeError(
-                "sentence-transformers가 설치되어 있지 않아요. 이 백엔드는 대량 임베딩용 "
-                "GPU 환경에서 쓰는 것이 기본입니다 (docs/precedent-rag.md §GPU 참고)"
-            ) from e
-        self._model_name = model_name
-        self._model = SentenceTransformer(model_name)
-
-    @property
-    def signature(self) -> str:
-        return f"local:{self._model_name}"
-
-    def embed_passages(self, texts: list[str]) -> list[list[float]]:
-        vecs = self._model.encode(texts, normalize_embeddings=True, batch_size=64)
-        return [list(map(float, v)) for v in vecs]
-
-    def embed_query(self, text: str) -> list[float]:
-        return self.embed_passages([text])[0]
-
-
 class HashingEmbeddingBackend:
     """결정적 오프라인 임베딩 — 문자 n-gram 해시 벡터 (테스트·개발 전용).
 
@@ -177,7 +140,7 @@ class HashingEmbeddingBackend:
 
 
 def get_backend(name: str | None = None) -> EmbeddingBackend:
-    """백엔드 선택 — 환경변수 `PRECEDENT_EMBEDDING_BACKEND` (upstage | local | hash).
+    """백엔드 선택 — 환경변수 `PRECEDENT_EMBEDDING_BACKEND` (upstage | hash).
 
     미지정 시: UPSTAGE_API_KEY가 있으면 upstage, 없으면 hash(오프라인)로 폴백.
     (conftest.py가 테스트에서 키를 비우므로 테스트는 자동으로 hash를 쓴다 — 크레딧 0.)
@@ -190,7 +153,9 @@ def get_backend(name: str | None = None) -> EmbeddingBackend:
     if name == "upstage":
         return UpstageEmbeddingBackend()
     if name == "local":
-        return LocalEmbeddingBackend()
+        raise ValueError(
+            "로컬 임베딩(local)은 지웠어요 — AI는 국내 AI 연계 기업(Upstage)만 씁니다 (2026-10-23). upstage 또는 hash"
+        )
     if name == "hash":
         return HashingEmbeddingBackend()
-    raise ValueError(f"알 수 없는 임베딩 백엔드: {name} (upstage | local | hash)")
+    raise ValueError(f"알 수 없는 임베딩 백엔드: {name} (upstage | hash)")

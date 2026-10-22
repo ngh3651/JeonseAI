@@ -18,6 +18,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../app/config.dart';
+import 'api_client.dart';
 
 /// 업로드 결과. 성공이면 [data]에 백엔드 JSON, 실패면 [errorMessage]에 한국어 안내.
 class UploadResult {
@@ -68,10 +69,13 @@ class RegistryUploadService {
   /// JPEG로 변환된 이미지를 백엔드(POST /api/upload)로 업로드합니다.
   ///
   /// 현재 백엔드 계약: 요청당 파일 1개 (멀티 이미지 계약은 Phase D data-contract.md에서 확정).
+  /// ⚠ 레거시 통신 검증용 — 지금 앱은 부르지 않는다(NOW.md "정리 대상"). 그래도 서버 앞문
+  ///   (`X-App-Key`·`X-Device-Id`)은 통과해야 하므로 공통 헤더는 [ApiClient.commonHeaders]에서 받는다.
   Future<UploadResult> uploadImage(File jpegImage) async {
     try {
-      final uri = Uri.parse('$baseUrl/api/upload');
+      final uri = Uri.parse('$apiBaseUrl/api/upload');
       final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(await ApiClient.commonHeaders())
         ..files.add(
           await http.MultipartFile.fromPath(
             'file',

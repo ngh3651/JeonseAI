@@ -55,6 +55,9 @@ class _CompareScreenState extends State<CompareScreen> {
   String? _errorMessage;
   int? _errorStatus;
 
+  /// 기기 정보(400)·앱 인증(401) — 다시 시도해도 풀리지 않는다(최신 앱 설치가 답).
+  bool _needsAppUpdate = false;
+
   /// 진행 항목이 하나씩 나타나는 연출 (시안 0 / 0.5 / 1.1 / 1.7초)
   int _shownSteps = 0;
   Timer? _stepTimer;
@@ -80,6 +83,7 @@ class _CompareScreenState extends State<CompareScreen> {
       _running = true;
       _errorMessage = null;
       _errorStatus = null;
+      _needsAppUpdate = false;
       _shownSteps = _imagePaths.isEmpty ? 4 : 0;
     });
     if (_imagePaths.isNotEmpty) _startStepChoreography();
@@ -100,6 +104,7 @@ class _CompareScreenState extends State<CompareScreen> {
         _running = false;
         _errorMessage = e.message;
         _errorStatus = e.statusCode;
+        _needsAppUpdate = e.needsAppUpdate;
       });
     } catch (_) {
       _stepTimer?.cancel();
@@ -108,6 +113,7 @@ class _CompareScreenState extends State<CompareScreen> {
         _running = false;
         _errorMessage = null;
         _errorStatus = null;
+        _needsAppUpdate = false;
       });
     }
   }
@@ -287,6 +293,7 @@ class _CompareScreenState extends State<CompareScreen> {
     final bool isInputProblem =
         _errorStatus == 400 || _errorStatus == 413 || _errorStatus == 415;
     final bool isQuotaProblem = _errorStatus == 402 || _errorStatus == 429;
+    final bool needsAppUpdate = _needsAppUpdate || _errorStatus == 401;
     final message =
         _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
 
@@ -317,7 +324,7 @@ class _CompareScreenState extends State<CompareScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.xxl),
-          if (!isInputProblem && !isQuotaProblem)
+          if (!isInputProblem && !isQuotaProblem && !needsAppUpdate)
             AppPrimaryButton(
               label: '다시 시도',
               icon: Icons.refresh,

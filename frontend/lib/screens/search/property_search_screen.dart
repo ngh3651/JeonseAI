@@ -23,6 +23,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../models/market_price_source.dart';
+import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import 'capture_loop_route.dart';
 import '../../design_system/text/app_text.dart';
@@ -292,7 +293,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   void _showPermissionSheet() => _showSheet(
     title: '카메라·사진 권한이 필요해요',
     body: '등기부등본을 찍거나 가져오려면 카메라·사진 권한이 필요해요. '
-        '사진은 분석에만 쓰고, 최근 분석 5건만 기기에 남아요.',
+        '${RegistryPhotoStore.retentionNotice}',
     cta: '확인',
     onCta: () {},
   );

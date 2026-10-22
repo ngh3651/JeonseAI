@@ -21,6 +21,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../models/registry_mark_kind.dart';
+import '../../state/privacy_settings.dart';
 import 'registry_document_layout.dart' show kFallbackPageAspect;
 import 'registry_mark_stripe.dart';
 import '../../design_system/text/app_text.dart';
@@ -143,11 +144,16 @@ class RegistryPreviewSource {
     required this.mark,
     required this.examineCount,
     required this.totalCount,
+    this.pageMarks = const [],
   });
 
   /// 그 표시가 있는 쪽의 **서버로 보낸 그 JPEG** 경로
   final String path;
   final RegistryHighlight mark;
+
+  /// 같은 쪽의 다른 표시들 — '사진 속 이름 가리기'가 켜졌을 때 스트립에 함께 비치는
+  /// 이름 칸(공동명의의 다른 집주인 등)까지 덮기 위해 받는다. 형광펜은 [mark] 하나에만 긋는다.
+  final List<RegistryHighlight> pageMarks;
 
   /// 뱃지에 적을 **따져볼 곳** 개수 (이름·주소 같은 '대조할 곳'은 빠진다)
   final int examineCount;
@@ -331,11 +337,16 @@ class _PreviewStripState extends State<_PreviewStrip> {
         }
         return SizedBox(
           height: kPreviewStripHeight,
-          child: LayoutBuilder(
-            builder: (context, constraints) => _strip(
-              context,
-              pageSize,
-              Size(constraints.maxWidth, kPreviewStripHeight),
+          // 마이 화면에서 '사진 속 이름 가리기'를 바꾸면 리포트로 돌아왔을 때 바로 반영된다.
+          child: ListenableBuilder(
+            listenable: PrivacySettings.instance,
+            builder: (context, _) => LayoutBuilder(
+              builder: (context, constraints) => _strip(
+                context,
+                pageSize,
+                Size(constraints.maxWidth, kPreviewStripHeight),
+                hideNames: PrivacySettings.instance.hideNamesInPhotos,
+              ),
             ),
           ),
         );
@@ -343,7 +354,12 @@ class _PreviewStripState extends State<_PreviewStrip> {
     );
   }
 
-  Widget _strip(BuildContext context, Size pageSize, Size strip) {
+  Widget _strip(
+    BuildContext context,
+    Size pageSize,
+    Size strip, {
+    required bool hideNames,
+  }) {
     final source = widget.source;
     final crop = previewCropFor(
       box: source.mark.box,
@@ -356,6 +372,15 @@ class _PreviewStripState extends State<_PreviewStrip> {
       (crop.imageSize.width * dpr).round(),
     );
     final markRect = crop.markRect(source.mark.box);
+    // 이름 가리기가 켜져 있으면 이 스트립에 비치는 **이름 칸 전부**를 덮는다
+    // (대표 표시 하나만 덮으면 공동명의의 옆 줄 이름이 그대로 보인다).
+    final redacted = hideNames
+        ? <RegistryHighlight>[
+            for (final m in {source.mark, ...source.pageMarks})
+              if (m.markKind.carriesPersonalName) m,
+          ]
+        : const <RegistryHighlight>[];
+    final markIsRedacted = redacted.contains(source.mark);
 
     return DecoratedBox(
       // ⚠ **foreground**여야 한다. 기본값(background)으로 두면 구분선을 먼저 그리고
@@ -383,10 +408,16 @@ class _PreviewStripState extends State<_PreviewStrip> {
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
             ),
-            Positioned.fromRect(
-              rect: markRect,
-              child: MarkStripe(tone: source.mark.markKind.tone),
-            ),
+            if (!markIsRedacted)
+              Positioned.fromRect(
+                rect: markRect,
+                child: MarkStripe(tone: source.mark.markKind.tone),
+              ),
+            for (final m in redacted)
+              Positioned.fromRect(
+                rect: crop.markRect(m.box),
+                child: const NameRedactionBox(),
+              ),
             Positioned(left: 10, top: 10, child: _badge(source)),
           ],
         ),

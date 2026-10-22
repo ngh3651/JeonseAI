@@ -47,6 +47,7 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../models/registry_mark_kind.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import 'registry_document_layout.dart';
 import 'registry_entry_card.dart' show previewMarkOf;
@@ -697,7 +698,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             const AppText(
-              '이 분석에 쓴 사진이 남아 있지 않아요.\n등기부 사진은 안전을 위해 저장하지 않아요.',
+              '이 분석에 쓴 사진이 남아 있지 않아요.\n${RegistryPhotoStore.retentionNotice}',
               textAlign: TextAlign.center,
               style: AppTypography.body,
             ),
@@ -916,19 +917,21 @@ class _RegistryPageState extends State<_RegistryPage> {
                 fit: StackFit.expand,
                 children: [
                   _image(context, display),
-                  // 확대 배율·선택·그어짐 세 가지 중 하나라도 바뀌면 다시 그린다.
+                  // 확대 배율·선택·그어짐·이름 가리기 중 하나라도 바뀌면 다시 그린다.
                   // 사진(Image)은 이 builder 밖에 있어 다시 디코딩되지 않는다.
                   AnimatedBuilder(
                     animation: Listenable.merge([
                       _transform,
                       widget.selected,
                       widget.draw,
+                      PrivacySettings.instance,
                     ]),
                     builder: (_, _) => RegistryHighlightOverlay(
                       highlights: widget.highlights,
                       selectedId: widget.selected.value,
                       drawProgress: widget.draw.value,
                       scale: _transform.value.getMaxScaleOnAxis(),
+                      hideNames: PrivacySettings.instance.hideNamesInPhotos,
                     ),
                   ),
                 ],
@@ -979,6 +982,7 @@ class RegistryHighlightOverlay extends StatelessWidget {
     this.selectedId,
     this.drawProgress = 1.0,
     this.scale = 1.0,
+    this.hideNames = false,
   });
 
   final List<RegistryHighlight> highlights;
@@ -992,6 +996,10 @@ class RegistryHighlightOverlay extends StatelessWidget {
   /// 현재 확대 배율 — 뱃지를 이 값으로 나눠 그려 **화면상 크기를 일정하게** 유지한다.
   final double scale;
 
+  /// '사진 속 이름 가리기'(마이 화면 스위치). 켜져 있으면 이름 칸([MarkKind.carriesPersonalName])을
+  /// 형광펜 대신 불투명한 상자로 덮는다.
+  final bool hideNames;
+
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
@@ -1000,6 +1008,7 @@ class RegistryHighlightOverlay extends StatelessWidget {
         selectedId: selectedId,
         drawProgress: drawProgress,
         scale: scale,
+        hideNames: hideNames,
       ),
       // 좌표가 없으면 아무것도 그리지 않는다 — 에러 문구 없이 사진만 보인다.
       child: const SizedBox.expand(),
@@ -1013,6 +1022,7 @@ class HighlightPainter extends CustomPainter {
     this.selectedId,
     this.drawProgress = 1.0,
     this.scale = 1.0,
+    this.hideNames = false,
   });
 
   final List<RegistryHighlight> highlights;
@@ -1020,14 +1030,26 @@ class HighlightPainter extends CustomPainter {
   final double drawProgress;
   final double scale;
 
+  /// '사진 속 이름 가리기' — 켜져 있으면 이름 칸은 형광펜 대신 불투명 상자다.
+  final bool hideNames;
+
+  /// 이 표시를 형광펜이 아니라 가림 상자로 그리는가.
+  bool redacts(RegistryHighlight h) =>
+      hideNames && h.markKind.carriesPersonalName;
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = scale <= 0 ? 1.0 : scale;
     final progress = drawProgress.clamp(0.0, 1.0);
     RegistryHighlight? selected;
+    final hidden = <RegistryHighlight>[];
     for (final h in highlights) {
       final isSelected = h.id == selectedId;
       if (isSelected) selected = h;
+      if (redacts(h)) {
+        hidden.add(h);
+        continue;
+      }
       _paintHighlighter(
         canvas,
         highlightRect(h.box, size),
@@ -1037,6 +1059,11 @@ class HighlightPainter extends CustomPainter {
         progress: isSelected ? progress : 1.0,
       );
     }
+    // 이름 가림 상자는 형광펜 **뒤에**, 그리고 **그어짐 없이 한 번에** 덮는다.
+    // 형광펜처럼 왼→오로 그으면 그 450ms 동안 이름 오른쪽이 그대로 보인다.
+    for (final h in hidden) {
+      paintNameRedaction(canvas, highlightRect(h.box, size));
+    }
     // 뱃지는 형광펜을 전부 그린 뒤에 — 아니면 뒤 항목의 형광펜이 뱃지를 덮는다.
     if (selected != null) {
       _paintBadge(
@@ -1045,7 +1072,8 @@ class HighlightPainter extends CustomPainter {
         selected,
         size,
         s,
-        progress,
+        // 가린 칸의 뱃지는 펜 끝을 따라오지 않는다 — 상자가 이미 다 덮여 있다.
+        redacts(selected) ? 1.0 : progress,
       );
     }
   }
@@ -1133,7 +1161,8 @@ class HighlightPainter extends CustomPainter {
       old.highlights != highlights ||
       old.selectedId != selectedId ||
       old.drawProgress != drawProgress ||
-      old.scale != scale;
+      old.scale != scale ||
+      old.hideNames != hideNames;
 }
 
 // ══════════════════════════════════════════════════════════════════════════

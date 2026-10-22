@@ -20,6 +20,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../state/registry_photo_store.dart';
 import '../../design_system/text/app_text.dart';
 
 /// 어두운 전면 화면들의 공통 시스템 UI 스타일 (상태바까지 어두워진다).
@@ -319,8 +320,8 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
           ),
           const SizedBox(height: AppSpacing.sm),
           AppText(
-            '등기부등본을 찍으려면 카메라 권한이 필요해요. 사진은 분석에만 쓰고, '
-            '최근 분석 5건만 기기에 남아요.',
+            '등기부등본을 찍으려면 카메라 권한이 필요해요. '
+            '${RegistryPhotoStore.retentionNotice}',
             textAlign: TextAlign.center,
             style: AppTypography.body.copyWith(
               color: Colors.white.withValues(alpha: 0.78),

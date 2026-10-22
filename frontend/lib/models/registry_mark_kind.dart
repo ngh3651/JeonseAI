@@ -54,7 +54,7 @@ enum MarkKind {
       shortNoun: '서류 종류', countNoun: '서류 종류', unit: '곳'),
   // ── 갑구 ────────────────────────────────────────────────────────────────
   owner('owner', MarkTone.verify, shortNoun: '이름', countNoun: '집주인 이름', unit: '곳',
-      weight: 20),
+      weight: 20, carriesPersonalName: true),
   provisionalSeizure('provisional_seizure', MarkTone.risk,
       shortNoun: '가압류', countNoun: '가압류', unit: '건', weight: 70),
   seizure('seizure', MarkTone.risk, shortNoun: '압류', countNoun: '압류', unit: '건',
@@ -93,7 +93,18 @@ enum MarkKind {
     required this.countNoun,
     required this.unit,
     this.weight = 0,
+    this.carriesPersonalName = false,
   });
+
+  /// 이 표시의 상자 안에 **사람 이름**이 찍혀 있는가 — '사진 속 이름 가리기'가 덮을 대상 (2026-10-22).
+  ///
+  /// 지금은 [owner](집주인 이름)뿐이다. 나머지는 서버(`highlight.py`)가 상자를 이름이 아닌 칸에 잡는다:
+  /// 근저당·전세권·임차권은 **순위번호 ~ 금액**, 압류·가압류·경매·신탁은 **순위번호 ~ 등기목적**,
+  /// 주소·면적·서류 종류·뗀 날은 이름이 없는 칸이다. 서버가 이름 칸을 새 종류로 보내기 시작하면
+  /// 그 종류에 `carriesPersonalName: true` 한 줄만 붙이면 뷰어·진입 카드가 함께 가린다.
+  ///
+  /// ⚠ 표시 전용이다. 가려도 판정·개수·범례는 그대로다.
+  final bool carriesPersonalName;
 
   /// **대표 1건을 고를 때의 무게** (클수록 먼저). 표시 전용이다.
   ///

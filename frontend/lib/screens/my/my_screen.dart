@@ -2,6 +2,7 @@
 ///
 /// 회원: 프로필 + 분석 이력 전체(재열람·삭제) + 로그아웃.
 /// 비회원: [로그인하고 이력 저장하기]. 이력은 기기 로컬 단일 저장(계정 구분 없음).
+/// 공통: **개인정보** — '사진 속 이름 가리기' 스위치 + 사진을 어디에 남기는지 한 줄 (2026-10-22).
 library;
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,8 @@ import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
 import '../../state/app_session.dart';
+import '../../state/privacy_settings.dart';
+import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
 import '../../design_system/text/app_text.dart';
@@ -97,6 +100,10 @@ class _MyScreenState extends State<MyScreen> {
           const SizedBox(height: AppSpacing.md),
           _historyList(),
           const SizedBox(height: AppSpacing.xxl),
+          AppText('개인정보', style: AppTypography.title),
+          const SizedBox(height: AppSpacing.md),
+          const PrivacySettingsCard(),
+          const SizedBox(height: AppSpacing.xxl),
           if (!session.isGuest)
             AppSecondaryButton(
               label: '로그아웃',
@@ -157,7 +164,11 @@ class _MyScreenState extends State<MyScreen> {
               children: [
                 const AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
                 const SizedBox(height: AppSpacing.xs),
-                AppText('서버 연결을 확인해 주세요', style: AppTypography.caption),
+                AppText(
+                  apiErrorHint(snapshot.error, fallback: '서버 연결을 확인해 주세요'),
+                  textAlign: TextAlign.center,
+                  style: AppTypography.caption,
+                ),
                 const SizedBox(height: AppSpacing.lg),
                 AppCompactButton(
                   label: '다시 시도',
@@ -232,6 +243,46 @@ class _MyScreenState extends State<MyScreen> {
             tooltip: '삭제',
             onPressed: () => _delete(report),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 마이 화면의 '개인정보' 카드 — 위젯 테스트에서 단독으로 띄울 수 있게 뺐다.
+///
+/// - **사진 속 이름 가리기** (기본 꺼짐): 켜면 '내가 올린 사진에서 보기'와 리포트 미리보기에서
+///   집주인 이름 칸을 상자로 덮는다. 부스 시연·화면 공유 전에 켠다.
+///   꺼 두는 것이 기본인 이유: 내 폰의 내 등기부에서는 그 이름을 계약 상대 신분증과 **대조하는 것**이 목적이다.
+/// - 아래 한 줄은 사진을 어디에 남기는지([RegistryPhotoStore.retentionNotice]) — 앱 전체가 같은 문장을 쓴다.
+class PrivacySettingsCard extends StatelessWidget {
+  const PrivacySettingsCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = PrivacySettings.instance;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListenableBuilder(
+            listenable: settings,
+            builder: (context, _) => SwitchListTile(
+              value: settings.hideNamesInPhotos,
+              onChanged: settings.setHideNamesInPhotos,
+              title: const AppText('사진 속 이름 가리기', style: AppTypography.bodyStrong),
+              // 약속을 넘지 않는다 — 앱이 위치를 아는 칸(집주인 이름)만 덮는다. 사진의 다른 글자
+              // (채무자·이전 소유자 이름 등)는 그대로 보이므로 "이름이 전부 가려진다"고 쓰지 않는다.
+              subtitle: AppText(
+                '다른 사람에게 화면을 보여 줄 때 켜 두세요. '
+                '등기부 사진에서 집주인 이름 칸을 상자로 덮어요(사진의 다른 글자는 그대로예요).',
+                style: AppTypography.caption,
+              ),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          const AppText(RegistryPhotoStore.retentionNotice, style: AppTypography.caption),
         ],
       ),
     );

@@ -23,6 +23,7 @@ import '../../models/analysis_report.dart';
 import '../../models/content_models.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
+import '../../services/api_client.dart';
 import '../../design_system/text/app_text.dart';
 
 /// 위험 태그(백엔드 `RISK_TAGS` 어휘) → 화면 라벨.
@@ -90,7 +91,7 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return _error(context, retryable: true);
+            return _error(context, retryable: true, error: snapshot.error);
           }
           final (report, cases) = snapshot.data!;
           if (report == null) {
@@ -383,13 +384,16 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
     return TextSpan(style: base, children: children);
   }
 
-  Widget _error(BuildContext context, {bool retryable = false}) {
+  Widget _error(BuildContext context, {bool retryable = false, Object? error}) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           AppText(
-            retryable ? '데이터를 불러오지 못했어요\n서버 연결을 확인해 주세요' : '리포트를 불러올 수 없어요',
+            retryable
+                ? '데이터를 불러오지 못했어요\n'
+                      '${apiErrorHint(error, fallback: '서버 연결을 확인해 주세요')}'
+                : '리포트를 불러올 수 없어요',
             style: AppTypography.body,
             textAlign: TextAlign.center,
           ),

@@ -178,7 +178,7 @@ class _ReportScreenState extends State<ReportScreen> {
       child: RegistryEntryCard(
         subtitle: hasPhotos
             ? _registryViewedLine(report)
-            : '등기부 사진은 안전을 위해 저장하지 않아요. 다시 보려면 새로 분석해 주세요.',
+            : '${RegistryPhotoStore.retentionNotice} 다시 보려면 새로 분석해 주세요.',
         onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
         preview: preview == null
             ? null
@@ -189,6 +189,11 @@ class _ReportScreenState extends State<ReportScreen> {
                 // 대조할 곳이라, 전체 개수를 적으면 사실과 다른 말이 된다.
                 examineCount: MarkLegend.examineCount(marks.map((m) => m.markKind)),
                 totalCount: marks.length,
+                // '사진 속 이름 가리기'가 켜지면 스트립에 함께 비치는 이름 칸도 덮는다.
+                pageMarks: [
+                  for (final m in marks)
+                    if (m.page == preview.page) m,
+                ],
               ),
       ),
     );

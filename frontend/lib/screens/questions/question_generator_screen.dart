@@ -16,6 +16,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/content_models.dart';
 import '../../repositories/content_repository.dart';
+import '../../services/api_client.dart';
 import '../../design_system/text/app_text.dart';
 
 class QuestionGeneratorScreen extends StatefulWidget {
@@ -57,8 +58,9 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const AppText(
-                    '질문을 불러오지 못했어요\n서버 연결을 확인해 주세요',
+                  AppText(
+                    '질문을 불러오지 못했어요\n'
+                    '${apiErrorHint(snapshot.error, fallback: '서버 연결을 확인해 주세요')}',
                     style: AppTypography.body,
                     textAlign: TextAlign.center,
                   ),

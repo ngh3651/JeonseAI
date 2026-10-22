@@ -97,3 +97,31 @@ class GuardianPassEntry extends StatelessWidget {
     );
   }
 }
+
+/// "예시 가격 · 예시 (팀 확정 전)" 꼬리표 — 가격 바로 밑에 붙는다.
+///
+/// 알약([AppPill])은 줄바꿈이 안 돼 서버가 긴 label을 주면 넘친다 → 줄바꿈 되는 꼬리표로 그린다.
+class ExamplePriceTag extends StatelessWidget {
+  const ExamplePriceTag({super.key, required this.label});
+
+  /// 서버가 준 label ("예시 (팀 확정 전)")
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.cautionSoft,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: AppText(
+        '예시 가격 · $label',
+        style: AppTypography.label.copyWith(color: AppColors.caution),
+      ),
+    );
+  }
+}

@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import settings
 from ..dependencies import get_pass_owner
 from ..schemas.contract import PassStatus, PaymentConfirmRequest, PaymentConfirmResponse, Pricing
-from ..services import payments, store
+from ..services import payments
 
 _log = logging.getLogger("jeonseai")
 
@@ -44,7 +44,7 @@ def confirm_payment(
         raise HTTPException(status_code=400, detail="결제 금액이 요금제 가격과 달라요. 결제를 승인하지 않았어요")
 
     # 같은 주문을 다시 보내면(응답이 끊겨 앱이 재시도) 토스를 다시 부르지 않고 같은 패스를 돌려준다.
-    existing = store.pass_by_order(body.orderId)
+    existing = payments.pass_by_order(body.orderId)
     if existing is not None:
         if existing["owner_key"] != owner:
             raise HTTPException(status_code=409, detail="이미 다른 곳에서 쓴 주문번호예요")
@@ -72,7 +72,7 @@ def confirm_payment(
             status_code=502, detail="결제를 확인하지 못했어요. 잠시 후 다시 시도해 주세요"
         ) from e
 
-    store.add_pass(
+    payments.add_pass(
         owner_key=owner,
         order_id=approved.order_id,
         plan_id=plan.id,
@@ -82,7 +82,7 @@ def confirm_payment(
         approved_at=approved.approved_at,
         test_mode=True,
     )
-    record = store.pass_by_order(approved.order_id)
+    record = payments.pass_by_order(approved.order_id)
     _log.info(f"[결제] 테스트 결제 승인 — {plan.name} {approved.amount:,}원 (실제 청구 없음)")
     return PaymentConfirmResponse(guardianPass=payments.to_guardian_pass(record))
 
@@ -90,7 +90,7 @@ def confirm_payment(
 @router.get("/me/pass", response_model=PassStatus, response_model_by_alias=True)
 def my_pass(owner: str = Depends(get_pass_owner)) -> PassStatus:
     """이 주인의 가장 최근 패스. 없으면 `active=false`. 패스가 없어도 기능은 막지 않는다(표시만)."""
-    record = store.latest_pass(owner)
+    record = payments.latest_pass(owner)
     if record is None:
         return PassStatus(active=False)
     return PassStatus(active=True, guardianPass=payments.to_guardian_pass(record))

@@ -12,7 +12,6 @@ import 'package:provider/provider.dart';
 
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_card.dart';
-import '../../design_system/components/app_pill.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
@@ -21,6 +20,7 @@ import '../../models/pricing.dart';
 import '../../repositories/payment_repository.dart';
 import '../../services/api_client.dart';
 import '../../state/pass_store.dart';
+import 'guardian_pass_widgets.dart';
 
 class PricingScreen extends StatefulWidget {
   const PricingScreen({super.key});
@@ -189,11 +189,7 @@ class _PricingScreenState extends State<PricingScreen> {
           // 가격이 있는 요금제(0원 포함)에는 가격 바로 밑에 '예시' — 확정 가격처럼 읽히지 않게
           if (plan.price != null) ...[
             const SizedBox(height: AppSpacing.sm),
-            AppPill(
-              label: '예시 가격 · ${pricing.label}',
-              color: AppColors.caution,
-              background: AppColors.cautionSoft,
-            ),
+            ExamplePriceTag(label: pricing.label),
           ],
           const SizedBox(height: AppSpacing.md),
           for (final feature in plan.features) ...[
@@ -228,11 +224,33 @@ class _PricingScreenState extends State<PricingScreen> {
       listenable: PassStore.instance,
       builder: (context, _) {
         if (PassStore.instance.active) {
-          return const AppPill(
-            label: '패스가 있어요 · $kTestPaymentNotice',
-            icon: Icons.verified_user_outlined,
-            color: AppColors.primary,
-            background: AppColors.primarySoft,
+          // 알약(AppPill)은 줄바꿈이 안 돼 긴 문장이 넘친다 — 줄바꿈 되는 띠로
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.verified_user_outlined,
+                  size: AppSize.iconSm,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: AppText(
+                    '패스가 있어요 · $kTestPaymentNotice',
+                    style: AppTypography.bodyStrong.copyWith(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           );
         }
         return AppPrimaryButton(

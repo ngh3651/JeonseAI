@@ -18,7 +18,7 @@ import json
 import pytest
 
 from app import dependencies, settings
-from app.services import payments, store
+from app.services import payments
 
 PHONE_A = {"X-Device-Id": "phone-aaaa-0001"}
 PHONE_B = {"X-Device-Id": "phone-bbbb-0002"}
@@ -217,7 +217,7 @@ def test_카드_번호와_영수증_주소는_어디에도_남기지_않는다(c
     resp = _confirm(client)
     text = resp.text + client.get("/api/me/pass", headers=PHONE_A).text
     assert "4330" not in text and "receipt" not in text
-    rows = store._db().execute("SELECT * FROM passes")
+    rows = payments.all_rows_for_test()
     assert "4330" not in repr(rows) and "dashboard.tosspayments.com" not in repr(rows)
 
 
@@ -282,4 +282,4 @@ def test_이미_승인된_결제면_조회해서_같은_주문이면_패스를_�
 
 def test_패스의_주인_키는_기기_id에서_나온다():
     assert dependencies.get_pass_owner("phone-aaaa-0001") == "device:phone-aaaa-0001"
-    assert store.latest_pass("device:phone-aaaa-0001") is None
+    assert payments.latest_pass("device:phone-aaaa-0001") is None

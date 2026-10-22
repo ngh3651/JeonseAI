@@ -18,7 +18,6 @@ import 'package:provider/provider.dart';
 import '../../app/config.dart';
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_card.dart';
-import '../../design_system/components/app_pill.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
@@ -32,6 +31,7 @@ import '../../services/toss_payment_gateway.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../state/pass_store.dart';
 import '../../utils/money_format.dart';
+import 'guardian_pass_widgets.dart';
 
 /// 토스 주문번호 — 영문·숫자·`-_` 6~64자. 추측할 수 없게 `Random.secure()`.
 String newOrderId([Random? random]) {
@@ -238,11 +238,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(height: AppSpacing.sm),
               AppText(plan.priceText, style: AppTypography.headline),
               const SizedBox(height: AppSpacing.xs),
-              AppPill(
-                label: '예시 가격 · $_priceLabel',
-                color: AppColors.caution,
-                background: AppColors.cautionSoft,
-              ),
+              ExamplePriceTag(label: _priceLabel),
             ],
           ),
         ),

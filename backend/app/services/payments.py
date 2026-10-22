@@ -10,6 +10,10 @@
 - **테스트 키만** 쓴다. `test_`로 시작하지 않는 키(실제 키 `live_…`)가 들어오면 승인하지 않는다.
 - 토스 응답에서 **필요한 것만** 남긴다(주문번호·금액·결제수단·승인 시각). 카드 번호·영수증 주소는 버린다.
 - 토스 호출은 이 파일의 `_post`/`_get` 두 곳뿐이다 — 테스트는 이 둘을 바꿔 끼운다(실제 호출 0회).
+
+저장: 기록 DB(`app.db`)의 `passes` 표 — 이 모듈이 따로 연다(`store.db_path()` — 같은 파일, analysis_cache와 같은 방식).
+`store.py`의 표 정의는 건드리지 않는다(다른 작업과 충돌 줄이기). 주인은 `owner_key` —
+**`dependencies.get_pass_owner` 한 곳에서만** 정한다(지금은 `device:<기기 id>`, 카카오 로그인이 붙으면 그 함수만 바꾼다).
 """
 
 from __future__ import annotations
@@ -17,13 +21,17 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import sqlite3
+import threading
+from contextlib import closing
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 
-from .. import settings
 from ..schemas.contract import GuardianPass, Pricing, PricingPlan
+from . import store
 
 _log = logging.getLogger("jeonseai")
 
@@ -196,3 +204,86 @@ def to_guardian_pass(record: dict) -> GuardianPass:
         approvedAt=record.get("approved_at"),
         testMode=bool(record.get("test_mode", True)),
     )
+
+
+# ── 패스 = 결제 기록 (기록 DB의 passes 표) ──────────────────────────────────────
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS passes (
+    owner_key   TEXT NOT NULL,
+    order_id    TEXT NOT NULL PRIMARY KEY,
+    plan_id     TEXT NOT NULL,
+    payment_key TEXT NOT NULL,
+    amount      INTEGER NOT NULL,
+    method      TEXT,
+    approved_at TEXT,
+    test_mode   INTEGER NOT NULL,
+    created_at  TEXT NOT NULL
+)
+"""
+
+_COLUMNS = "owner_key, order_id, plan_id, payment_key, amount, method, approved_at, test_mode"
+
+_db_lock = threading.Lock()
+
+
+def _execute(sql: str, params: tuple = ()) -> list[tuple]:
+    path = store.db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _db_lock, closing(sqlite3.connect(path, timeout=10)) as conn, conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(_SCHEMA)
+        return conn.execute(sql, params).fetchall()
+
+
+def _row(row: tuple) -> dict:
+    owner_key, order_id, plan_id, payment_key, amount, method, approved_at, test_mode = row
+    return {
+        "owner_key": owner_key,
+        "order_id": order_id,
+        "plan_id": plan_id,
+        "payment_key": payment_key,
+        "amount": int(amount),
+        "method": method,
+        "approved_at": approved_at,
+        "test_mode": bool(test_mode),
+    }
+
+
+def add_pass(
+    *,
+    owner_key: str,
+    order_id: str,
+    plan_id: str,
+    payment_key: str,
+    amount: int,
+    method: str | None,
+    approved_at: str | None,
+    test_mode: bool,
+) -> None:
+    """승인된 결제 한 건을 남긴다. 같은 주문번호는 한 번만 들어간다(두 번째는 무시)."""
+    created = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    _execute(
+        f"INSERT OR IGNORE INTO passes ({_COLUMNS}, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (owner_key, order_id, plan_id, payment_key, amount, method, approved_at, int(test_mode), created),
+    )
+
+
+def pass_by_order(order_id: str) -> dict | None:
+    """주문번호로 찾은 결제 기록(주인과 상관없이). 없으면 None."""
+    rows = _execute(f"SELECT {_COLUMNS} FROM passes WHERE order_id = ?", (order_id,))
+    return _row(rows[0]) if rows else None
+
+
+def latest_pass(owner_key: str) -> dict | None:
+    """이 주인의 가장 최근 결제 기록. 없으면 None."""
+    rows = _execute(
+        f"SELECT {_COLUMNS} FROM passes WHERE owner_key = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        (owner_key,),
+    )
+    return _row(rows[0]) if rows else None
+
+
+def all_rows_for_test() -> list[tuple]:
+    """테스트용 — 표에 실제로 무엇이 남았는지(카드 번호·영수증 주소가 없는지) 본다."""
+    return _execute("SELECT * FROM passes")

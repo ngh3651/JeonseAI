@@ -48,6 +48,15 @@ val releaseApiBaseUrl = dartDefines["API_BASE_URL"].orEmpty().trim()
 val releaseAllowsCleartext =
     releaseApiBaseUrl.isEmpty() || releaseApiBaseUrl.startsWith("http://", ignoreCase = true)
 
+// ── 카카오 로그인 리다이렉트 스킴 (2026-10-22) ─────────────────────────────────
+// 카카오계정 로그인이 끝나면 `kakao{네이티브 앱 키}://oauth`로 앱이 다시 열린다 → AndroidManifest의 `${kakaoScheme}` 자리.
+// 키는 빌드 때 넣은 `--dart-define=KAKAO_NATIVE_APP_KEY=…`에서 읽는다(앱 코드 config.dart와 같은 값·같은 형식 검사).
+// 키가 없거나 형식이 틀리면 아무 앱도 열지 않는 자리 이름 — 앱도 그때는 카카오 버튼을 그리지 않는다.
+val kakaoNativeAppKey = dartDefines["KAKAO_NATIVE_APP_KEY"].orEmpty().trim()
+val kakaoScheme =
+    if (Regex("^[0-9A-Za-z]{8,64}$").matches(kakaoNativeAppKey)) "kakao$kakaoNativeAppKey"
+    else "jeonseai.kakao.unset"
+
 android {
     namespace = "com.jeonseai.jeonse_ai"
     compileSdk = flutter.compileSdkVersion
@@ -75,6 +84,8 @@ android {
         versionName = flutter.versionName
         // AndroidManifest.xml의 `${usesCleartextTraffic}` 자리. 개발 빌드는 허용(위 설명).
         manifestPlaceholders["usesCleartextTraffic"] = "true"
+        // AndroidManifest.xml의 `${kakaoScheme}` 자리 (카카오 로그인 — 위 설명)
+        manifestPlaceholders["kakaoScheme"] = kakaoScheme
     }
 
     signingConfigs {

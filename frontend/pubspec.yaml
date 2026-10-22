@@ -57,6 +57,11 @@ dependencies:
   tosspayments_widget_sdk_flutter: ^2.2.0
   # 결제 주인 키(토스 customerKey)를 기기 id에서 만들 때 SHA-256 — 기기 id를 결제사에 그대로 넘기지 않는다.
   crypto: ^3.0.6
+  # 카카오 로그인 (2026-10-22, P2-1) — 카카오 공식 Flutter SDK(2026-08-31 배포 2.0.1, 버전 고정).
+  # 부르는 곳은 services/kakao_sdk_login_gateway.dart 한 곳뿐이다. 카카오에서는 액세스 토큰만 받는다(회원번호는 서버가 확인).
+  kakao_flutter_sdk_user: 2.0.1
+  # 로그인 세션 토큰을 안드로이드 키스토어로 암호화해 남긴다(2026-09-16 배포 11.2.0, 버전 고정) — services/session_storage.dart 한 곳.
+  flutter_secure_storage: 11.2.0
 
 dev_dependencies:
   flutter_test:

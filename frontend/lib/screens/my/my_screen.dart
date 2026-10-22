@@ -1,7 +1,7 @@
 /// S-13 마이/설정 (탭) — IA.md §6.
 ///
-/// 회원: 프로필 + 분석 이력 전체(재열람·삭제) + 로그아웃.
-/// 비회원: [로그인하고 이력 저장하기]. 이력은 기기 로컬 단일 저장(계정 구분 없음).
+/// 맨 위 **계정** 칸(2026-10-22 카카오 로그인 — `account_section.dart`): 로그인 상태 · 로그아웃 · 회원 탈퇴 · 개인정보 처리방침.
+/// 분석 이력(재열람·삭제) — 로그인했으면 계정의 기록, 아니면 이 기기의 기록(서버가 가른다).
 /// 공통: **개인정보** — '사진 속 이름 가리기' 스위치 + 사진을 어디에 남기는지 한 줄 (2026-10-22).
 library;
 
@@ -11,7 +11,6 @@ import 'package:provider/provider.dart';
 
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_card.dart';
-import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/components/risk_badge.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -24,6 +23,7 @@ import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
 import '../pricing/guardian_pass_widgets.dart';
+import 'account_section.dart';
 import '../../design_system/text/app_text.dart';
 
 class MyScreen extends StatefulWidget {
@@ -86,16 +86,24 @@ class _MyScreenState extends State<MyScreen> {
     if (mounted) setState(_reload);
   }
 
+  /// 마지막으로 그린 로그인 상태 — 로그인·로그아웃·탈퇴로 바뀌면 이력을 다시 읽는다
+  /// (로그인하면 이 기기의 기록이 계정으로 옮겨지고, 로그아웃하면 기기 쪽 기록만 보인다).
+  bool? _shownLoggedIn;
+
   @override
   Widget build(BuildContext context) {
     final session = context.watch<AppSession>();
+    if (_shownLoggedIn != null && _shownLoggedIn != session.isLoggedIn) {
+      _reload();
+    }
+    _shownLoggedIn = session.isLoggedIn;
 
     return Scaffold(
       appBar: AppBar(title: const AppText('마이'), automaticallyImplyLeading: false),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
-          _profile(session),
+          const AccountSection(),
           const SizedBox(height: AppSpacing.xxl),
           AppText('분석 이력', style: AppTypography.title),
           const SizedBox(height: AppSpacing.md),
@@ -109,44 +117,7 @@ class _MyScreenState extends State<MyScreen> {
           AppText('개인정보', style: AppTypography.title),
           const SizedBox(height: AppSpacing.md),
           const PrivacySettingsCard(),
-          const SizedBox(height: AppSpacing.xxl),
-          if (!session.isGuest)
-            AppSecondaryButton(
-              label: '로그아웃',
-              onPressed: () {
-                context.read<AppSession>().signOut();
-                context.go('/start');
-              },
-            ),
           const SizedBox(height: AppSpacing.xxxl),
-        ],
-      ),
-    );
-  }
-
-  Widget _profile(AppSession session) {
-    return AppCard(
-      child: Row(
-        children: [
-          const MascotSafe(size: 48, state: MascotState.home),
-          const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: session.isGuest
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const AppText('비회원으로 이용 중', style: AppTypography.bodyStrong),
-                      const SizedBox(height: AppSpacing.xs),
-                      AppText('로그인하면 분석 이력이 저장돼요', style: AppTypography.caption),
-                    ],
-                  )
-                : AppText('${session.greetingName}님', style: AppTypography.title),
-          ),
-          if (session.isGuest)
-            AppCompactButton(
-              label: '로그인',
-              onPressed: () => context.push('/login?mode=login'),
-            ),
         ],
       ),
     );

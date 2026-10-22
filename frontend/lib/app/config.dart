@@ -64,13 +64,31 @@ const String tossClientKey = _definedTossClientKey == ''
 /// 결선은 테스트 결제만 한다(서버도 실제 키를 거부한다).
 bool isTossTestKey(String key) => key.startsWith('test_');
 
-/// 개발용 자동 로그인 (팀 테스트 편의).
+/// 카카오 **네이티브 앱 키** — 빌드 때 `--dart-define=KAKAO_NATIVE_APP_KEY=…`로 넣는다 (2026-10-22, P2-1 카카오 로그인).
 ///
-/// true면 앱이 `AppSession`의 `kDemoUserName` 회원으로 시작해 분석 진입 게이트(로그인 유도 바텀시트)를
-/// 매번 통과하지 않아도 된다. 게이트·로그인 화면 로직 자체는 그대로 살아 있어서
-/// 이 값을 false로 바꾸면 비회원 흐름을 언제든 다시 확인할 수 있다.
-/// 실 로그인 도입 시 제거 — docs/cleanup-tracker.md 등록.
-const bool devAutoLogin = true;
+/// 카카오 개발자 콘솔 → 내 애플리케이션 → 앱 키의 '네이티브 앱 키'. APK 안에 들어가는 **공개 값**이다
+/// (CI는 저장소 **변수** `KAKAO_NATIVE_APP_KEY`에서 넣는다). 안드로이드 쪽 리다이렉트 스킴(`kakao{키}`)도
+/// 같은 값으로 `android/app/build.gradle.kts`가 채운다.
+/// ⚠ 안 넣으면 카카오 버튼을 **아예 그리지 않는다**(가짜 버튼 금지) — '로그인 없이 둘러보기'만 남는다.
+const String _definedKakaoNativeAppKey = String.fromEnvironment(
+  'KAKAO_NATIVE_APP_KEY',
+);
+
+/// 앞뒤 공백을 걷어 낸 키. 영문·숫자가 아니면(붙여넣기 실수) 없는 것으로 본다 — Gradle도 같은 규칙이다.
+String get kakaoNativeAppKey {
+  final key = _definedKakaoNativeAppKey.trim();
+  return RegExp(r'^[0-9A-Za-z]{8,64}$').hasMatch(key) ? key : '';
+}
+
+/// 카카오 로그인을 보여 줄 수 있는가 — 빌드 때 앱 키를 넣었을 때만.
+bool get kakaoLoginAvailable => kakaoNativeAppKey.isNotEmpty;
+
+/// 개인정보 처리방침 화면의 **서버 지역** (예: `싱가포르`) — Railway 배포 때 정해진다.
+/// 비어 있으면 그 줄을 빼고 보여 준다(지어내지 않는다). 사람 할 일: NOW.md "Railway 지역 확인 후 상수 채우기".
+const String kServerRegion = '';
+
+/// 개인정보 처리방침 화면의 **문의처** (예: 팀 이메일) — 팀이 정하면 채운다. 비어 있으면 그 줄을 뺀다.
+const String kPrivacyContact = '';
 
 /// 개발용 등기부 사진·리포트 로컬 보관 (팀 테스트 편의).
 ///

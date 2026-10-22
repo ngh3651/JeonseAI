@@ -15,6 +15,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'app/router.dart';
+import 'design_system/text/app_text.dart';
 import 'design_system/theme.dart';
 import 'repositories/analysis_repository.dart';
 import 'repositories/api_analysis_repository.dart';
@@ -22,6 +23,7 @@ import 'repositories/api_content_repository.dart';
 import 'repositories/content_repository.dart';
 import 'repositories/payment_repository.dart';
 import 'state/app_session.dart';
+import 'services/api_client.dart';
 import 'services/device_id.dart';
 import 'services/journey_reminder_service.dart';
 import 'state/journey_schedule_store.dart';
@@ -43,6 +45,11 @@ Future<void> main() async {
   await PrivacySettings.instance.restore();
   // 기기 id를 미리 만들어 둔다 — 첫 서버 요청이 저장소를 기다리지 않게. 실패해도 요청 때 다시 만든다.
   await DeviceId.instance.get();
+  // 카카오 로그인 세션(2026-10-22) — 폰의 보안 저장소에 남긴 세션을 올린다(만료면 지운다).
+  // 서버 확인(GET /api/me)은 아래에서 뒤로 돌린다 — 끝난 세션이면 401 → 지우고 "다시 로그인해 주세요".
+  final session = AppSession.instance;
+  await session.restore();
+  session.onSessionExpired = _showSessionExpired;
   // 계약 지킴이 알림 (P1-2) — 알림을 누르면 그 집의 여정 화면으로 간다.
   // 권한은 여기서 묻지 않는다(잔금일·이사일을 저장하는 순간 이유와 함께 묻는다).
   final reminders = JourneyReminderService.instance;
@@ -51,7 +58,13 @@ Future<void> main() async {
   final String? launchedFrom = await reminders.launchPayload();
   // 앱을 강제 종료하면 안드로이드가 걸어 둔 알림을 지운다 → 켤 때마다 저장된 일정으로 다시 건다.
   // 계약 지킴이 패스(P2-1)를 먼저 물어 알림에도 '지킴이 패스' 표시를 붙인다(표시만 — 기능은 막지 않는다).
+  // 로그인·로그아웃·탈퇴로 주인이 바뀌면 패스 표시와 알림 머리줄을 다시 맞춘다(패스가 계정으로 옮겨 간다).
+  session.onAccountChanged = () async {
+    await PassStore.instance.refresh(ApiPaymentRepository());
+    await reminders.resyncAll(JourneyScheduleStore.instance);
+  };
   unawaited(() async {
+    await session.verify();
     await PassStore.instance.refresh(ApiPaymentRepository());
     await reminders.resyncAll(JourneyScheduleStore.instance);
   }());
@@ -64,12 +77,33 @@ Future<void> main() async {
   }
 }
 
+/// 앱 어디서나 한 줄 안내를 띄우는 자리 — 세션이 서버에서 끝났을 때(401) 어느 화면에 있든 알린다.
+final GlobalKey<ScaffoldMessengerState> rootMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
+/// 세션이 끝났다(만료·다른 폰에서 탈퇴 등) — 세션은 이미 지워졌다. 다시 로그인하거나 둘러보기로 계속한다.
+void _showSessionExpired() {
+  rootMessengerKey.currentState
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: const AppText(kSessionExpiredMessage),
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: '로그인',
+          onPressed: () => appRouter.push('/login'),
+        ),
+      ),
+    );
+}
+
 class JeonseSafeApp extends StatelessWidget {
   const JeonseSafeApp({
     super.key,
     this.analysisRepository,
     this.contentRepository,
     this.paymentRepository,
+    this.appSession,
   });
 
   /// 테스트 전용 오버라이드 (null이면 서버 구현 사용). 프로덕션은 항상 Api*.
@@ -77,12 +111,17 @@ class JeonseSafeApp extends StatelessWidget {
   final ContentRepository? contentRepository;
   final PaymentRepository? paymentRepository;
 
+  /// 테스트 전용 — 가짜 카카오·저장소를 넣은 세션. null이면 앱 전체 세션([AppSession.instance]).
+  final AppSession? appSession;
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // 세션(회원/비회원) — 앱 생애 동안 유지
-        ChangeNotifierProvider(create: (_) => AppSession()),
+        // 세션(카카오 로그인 / 로그인 없이 둘러보기) — 앱 생애 동안 유지 (main이 restore한 그 세션)
+        ChangeNotifierProvider<AppSession>.value(
+          value: appSession ?? AppSession.instance,
+        ),
         // 저장소 주입 — 서버 구현 (docs/api-contract.md 계약을 호출)
         // 이력 변화(분석·삭제)를 홈이 구독하도록 ChangeNotifierProvider 사용
         ChangeNotifierProvider<AnalysisRepository>(
@@ -102,6 +141,7 @@ class JeonseSafeApp extends StatelessWidget {
       ],
       child: MaterialApp.router(
         title: '전세AI프',
+        scaffoldMessengerKey: rootMessengerKey,
         theme: buildAppTheme(),
         routerConfig: appRouter,
         debugShowCheckedModeBanner: false,

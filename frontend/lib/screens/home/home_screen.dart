@@ -161,9 +161,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _greeting(BuildContext context) {
     final session = context.watch<AppSession>();
-    final String hello = session.isGuest
-        ? '안녕하세요'
-        : '${session.greetingName}님, 안녕하세요';
+    // 카카오에서 이름을 받지 않는다(회원번호만) — 인사말에 이름을 쓰지 않는다 (2026-10-22).
+    final String hello = session.isGuest ? '안녕하세요' : '반가워요';
 
     return Row(
       children: [
@@ -184,10 +183,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        // 비회원엔 상단 로그인 진입점 (user-scenario C1)
-        if (session.isGuest)
+        // 둘러보는 중엔 상단 로그인 진입점 (user-scenario C1) — 카카오 키가 있는 빌드에서만(가짜 버튼 금지)
+        if (session.isGuest && session.kakaoAvailable)
           TextButton(
-            onPressed: () => context.push('/login?mode=login'),
+            onPressed: () => context.push('/login'),
             child: const AppText('로그인'),
           ),
       ],

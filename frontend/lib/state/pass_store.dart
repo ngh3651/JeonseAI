@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import '../models/pricing.dart';
 import '../repositories/payment_repository.dart';
 import '../services/device_id.dart';
+import '../services/session_credentials.dart';
 
 class PassStore extends ChangeNotifier {
   PassStore._();
@@ -52,13 +53,21 @@ class PassStore extends ChangeNotifier {
   }
 }
 
-/// 결제의 **주인 키** — 앱에서는 이 함수 **한 곳에서만** 정한다 (2026-10-22, P2-1).
+/// 결제의 **주인 키** — 앱에서는 이 함수 **한 곳에서만** 정한다 (2026-10-22, P2-1 → 같은 날 카카오 로그인).
 ///
-/// 토스 결제위젯의 `customerKey`로 쓴다. 지금은 **기기 id**에서 만든다(서버 주인 키 `device:<기기 id>`와 같은 주인).
-/// 기기 id를 그대로 넘기지 않고 SHA-256으로 바꿔 넘긴다 — 기기 id는 서버에서 내 기록을 여는 열쇠라
-/// 결제사에도 보여 주지 않는다. 카카오 로그인이 붙으면 **여기만** 계정 키로 바꾼다.
-Future<String> passOwnerKey() async =>
-    passOwnerKeyFor(await DeviceId.instance.get());
+/// 토스 결제위젯의 `customerKey`로 쓴다. 서버의 패스 주인과 같은 주인이어야 한다:
+/// - **카카오로 로그인했으면 계정** — 서버가 계정에서 만들어 준 값(`acct_…`, 회원번호와 무관 — [SessionCredentials.customerKey]).
+/// - 아니면 **기기 id**에서 만든다(서버 주인 키 `device:<기기 id>`와 같은 주인). 기기 id를 그대로 넘기지 않고 SHA-256으로
+///   바꿔 넘긴다 — 기기 id는 서버에서 내 기록을 여는 열쇠라 결제사에도 보여 주지 않는다.
+Future<String> passOwnerKey() async {
+  final account = SessionCredentials.instance.customerKey;
+  if (SessionCredentials.instance.hasSession &&
+      account != null &&
+      account.isNotEmpty) {
+    return account;
+  }
+  return passOwnerKeyFor(await DeviceId.instance.get());
+}
 
 /// 토스 `customerKey` 규칙: 2~50자, 영문·숫자·`-_=.@`. → `device_` + 해시 40자 = 47자.
 @visibleForTesting

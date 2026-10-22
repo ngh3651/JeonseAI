@@ -14,7 +14,7 @@ import 'package:jeonse_ai/repositories/content_repository.dart';
 import 'support/ko_finders.dart';
 
 void main() {
-  testWidgets('더미 주입: 온보딩 → 시작 → 비회원 시작 → 홈 대시보드 진입', (tester) async {
+  testWidgets('더미 주입: 온보딩 → 시작 → 로그인 없이 둘러보기 → 홈 대시보드 진입', (tester) async {
     await tester.pumpWidget(
       JeonseSafeApp(
         analysisRepository: DummyAnalysisRepository(),
@@ -29,10 +29,12 @@ void main() {
     // 건너뛰기 → 시작(S-02)
     await tester.tap(find.koText('건너뛰기'));
     await tester.pumpAndSettle();
-    expect(find.koText('비회원으로 시작하기'), findsOneWidget);
+    expect(find.koText('로그인 없이 둘러보기'), findsOneWidget);
+    // 카카오 키 없이 빌드한 앱(flutter test) — 카카오 버튼은 아예 없다(가짜 버튼 금지)
+    expect(find.koText('카카오로 시작하기'), findsNothing);
 
-    // 비회원 시작 → 홈
-    await tester.tap(find.koText('비회원으로 시작하기'));
+    // 로그인 없이 둘러보기 → 홈
+    await tester.tap(find.koText('로그인 없이 둘러보기'));
     await tester.pumpAndSettle();
     expect(find.koText('매물 분석 시작하기'), findsWidgets);
     // 더미 이력 2건 중 최신

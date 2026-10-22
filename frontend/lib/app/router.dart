@@ -21,6 +21,7 @@ import '../screens/home/home_screen.dart';
 import '../screens/journey/journey_screen.dart';
 import '../screens/loading/analysis_loading_screen.dart';
 import '../screens/my/my_screen.dart';
+import '../screens/my/privacy_policy_screen.dart';
 import '../screens/onboarding/onboarding_screen.dart';
 import '../screens/pricing/checkout_screen.dart';
 import '../screens/pricing/pricing_screen.dart';
@@ -37,12 +38,16 @@ final appRouter = GoRouter(
   routes: [
     GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
     GoRoute(path: '/start', builder: (_, _) => const StartScreen()),
+    // 카카오 로그인 (2026-10-22) — next가 있으면 끝난 뒤 그 경로로 이어 간다
     GoRoute(
       path: '/login',
-      builder: (_, state) => LoginScreen(
-        signup: state.uri.queryParameters['mode'] == 'signup',
-        next: state.uri.queryParameters['next'],
-      ),
+      builder: (_, state) =>
+          LoginScreen(next: state.uri.queryParameters['next']),
+    ),
+    // 개인정보 처리방침 (시작·로그인·마이에서 push)
+    GoRoute(
+      path: '/privacy',
+      builder: (_, _) => const PrivacyPolicyScreen(),
     ),
     GoRoute(path: '/guide', builder: (_, _) => const RegistryGuideScreen()),
 

@@ -67,6 +67,8 @@ class CaptureLoopRoute extends StatefulWidget {
     required this.alreadyTaken,
     required this.maxPhotos,
     this.captureOne = defaultCaptureOne,
+    this.replacePage,
+    this.replaceTip,
   });
 
   /// 들어올 때 이미 갖고 있던 장수 — 뱃지의 "n장째" 계산과 상한 판정에 쓴다.
@@ -75,6 +77,17 @@ class CaptureLoopRoute extends StatefulWidget {
 
   /// 사진 한 장을 가져오는 방법 (테스트에서 교체)
   final CaptureOne captureOne;
+
+  /// **그 장만 다시 찍기** (2026-10-22, P1-1) — 서버가 흐리다·어둡다고 한 장(0부터)을 바꿀 때.
+  ///
+  /// 이 값이 있으면 루프가 **한 장만** 찍는다: 확인 화면의 주 버튼이 `이 사진으로 바꾸기`가 되고,
+  /// [다음 장 찍기]는 없다. 돌려주는 [CaptureLoopResult.newPaths]는 0장 또는 1장이다.
+  final int? replacePage;
+
+  /// 바꾸는 장의 안내(서버가 쓴 "이유 + 다시 찍는 법") — 확인 화면 위에 그대로 보여 준다.
+  final String? replaceTip;
+
+  bool get isReplace => replacePage != null;
 
   @override
   State<CaptureLoopRoute> createState() => _CaptureLoopRouteState();
@@ -92,6 +105,9 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
 
   int get _total => widget.alreadyTaken + _taken.length;
 
+  /// 화면 제목·뱃지에 쓸 쪽 번호 — 바꾸기 모드면 바꾸는 그 쪽, 아니면 지금까지 찍은 장수.
+  int get _pageLabel => widget.isReplace ? widget.replacePage! + 1 : _total;
+
   @override
   void initState() {
     super.initState();
@@ -106,7 +122,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
 
   Future<void> _shoot() async {
     if (_busy) return;
-    if (_total >= widget.maxPhotos) {
+    if (!widget.isReplace && _total >= widget.maxPhotos) {
       setState(() => _hitLimit = true);
       _finish();
       return;
@@ -156,7 +172,11 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) _finish(); // 뒤로가기 = 지금까지 찍은 것을 들고 form 복귀
+          if (didPop) return;
+          // 뒤로가기 = 지금까지 찍은 것을 들고 form 복귀.
+          // 단 **바꾸기 모드**에서는 [이 사진으로 바꾸기]를 누르지 않았으니 바꾸지 않는다(원래 사진 유지).
+          if (widget.isReplace) _taken.clear();
+          _finish();
         },
         child: Scaffold(
           backgroundColor: AppColors.cameraBackdrop,
@@ -178,7 +198,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
         _darkAppBar(
           leading: Icons.close,
           onLeading: _finish,
-          title: '${_total + 1}장째',
+          title: widget.isReplace ? '$_pageLabel쪽 다시 찍기' : '${_total + 1}장째',
           trailing: Icons.flash_off,
         ),
         const Expanded(
@@ -213,13 +233,30 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
             borderRadius: BorderRadius.circular(AppRadius.pill),
           ),
           child: AppText(
-            '$_total장째 찍었어요',
+            widget.isReplace ? '$_pageLabel쪽을 새로 찍었어요' : '$_total장째 찍었어요',
             style: AppTypography.caption.copyWith(
               color: AppColors.primaryBright,
               fontWeight: FontWeight.w700,
             ),
           ),
         ),
+        // 바꾸는 장이면 서버가 말한 "왜 문제였는지 + 어떻게 찍는지"를 그대로 다시 보여 준다.
+        if (widget.isReplace && (widget.replaceTip ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding,
+              AppSpacing.sm,
+              AppSpacing.screenPadding,
+              0,
+            ),
+            child: AppText(
+              widget.replaceTip!,
+              textAlign: TextAlign.center,
+              style: AppTypography.caption.copyWith(
+                color: Colors.white.withValues(alpha: 0.78),
+              ),
+            ),
+          ),
         Expanded(
           child: Center(
             child: Padding(
@@ -261,25 +298,18 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
               ),
               const SizedBox(height: AppSpacing.md),
               // 주 버튼이 [다음 장 찍기]인 것이 이 안의 핵심이다.
-              SizedBox(
-                height: AppSize.buttonHeight,
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _busy ? null : _shoot,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.button),
+              // 바꾸기 모드에서는 **한 장만** 바꾸므로 주 버튼이 [이 사진으로 바꾸기]다.
+              widget.isReplace
+                  ? _primaryButton(
+                      label: '이 사진으로 바꾸기',
+                      icon: Icons.check,
+                      onPressed: _busy ? null : _finish,
+                    )
+                  : _primaryButton(
+                      label: '다음 장 찍기',
+                      icon: Icons.photo_camera,
+                      onPressed: _busy ? null : _shoot,
                     ),
-                    textStyle: AppTypography.button.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  icon: const Icon(Icons.photo_camera, size: 22),
-                  label: const AppText('다음 장 찍기'),
-                ),
-              ),
               const SizedBox(height: AppSpacing.sm),
               Row(
                 children: [
@@ -292,10 +322,19 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
                   ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
-                    child: _darkButton(
-                      label: '완료 · $_total장',
-                      onPressed: _finish,
-                    ),
+                    child: widget.isReplace
+                        // 바꾸지 않고 돌아가기 — 방금 찍은 장을 버린다(원래 사진이 그대로 남는다)
+                        ? _darkButton(
+                            label: '바꾸지 않기',
+                            onPressed: () {
+                              setState(() => _taken.clear());
+                              _finish();
+                            },
+                          )
+                        : _darkButton(
+                            label: '완료 · $_total장',
+                            onPressed: _finish,
+                          ),
                   ),
                 ],
               ),
@@ -338,6 +377,30 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
   }
 
   // ── 공통 조각 ─────────────────────────────────────────────────────────────
+
+  Widget _primaryButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      height: AppSize.buttonHeight,
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.button),
+          ),
+          textStyle: AppTypography.button.copyWith(fontWeight: FontWeight.w700),
+        ),
+        icon: Icon(icon, size: 22),
+        label: AppText(label),
+      ),
+    );
+  }
 
   Widget _darkAppBar({
     required IconData leading,

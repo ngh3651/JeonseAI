@@ -30,6 +30,7 @@ import '../../models/market_price_source.dart' show MarketPriceSource;
 import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import '../search/capture_issue_panel.dart';
@@ -91,12 +92,19 @@ class _ReportScreenState extends State<ReportScreen> {
     _reportFuture = context.read<AnalysisRepository>().getReport(reportId);
   }
 
+  /// '사진 속 이름 가리기'가 바뀌면 글자 속 이름도 **바로** 다시 가린다. 가리기는 모델을 만들 때 한 곳에서 하고
+  /// (`AnalysisReport.fromJson`), 여기서는 지금 스위치 값의 모델로 바꿔 끼우기만 한다([AnalysisReport.withCurrentPrivacy]).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: PrivacySettings.instance,
+    builder: (context, _) => _buildReport(context),
+  );
+
+  Widget _buildReport(BuildContext context) {
     return FutureBuilder<AnalysisReport?>(
       future: _reportFuture,
       builder: (context, snapshot) {
-        final AnalysisReport? report = snapshot.data;
+        final AnalysisReport? report = snapshot.data?.withCurrentPrivacy();
 
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(

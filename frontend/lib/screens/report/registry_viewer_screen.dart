@@ -459,8 +459,15 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
     _scroll.jumpTo(target);
   }
 
+  /// '사진 속 이름 가리기'가 바뀌면 사진의 상자뿐 아니라 **글자**(별칭·표시 제목 속 이름)도 바로 다시 가린다 —
+  /// 리포트를 다시 읽지 않고 지금 스위치 값의 모델로 바꿔 끼운다(가리기 자체는 `AnalysisReport.fromJson` 한 곳).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: PrivacySettings.instance,
+    builder: (context, _) => _buildViewer(context),
+  );
+
+  Widget _buildViewer(BuildContext context) {
     return FutureBuilder<_ViewerData>(
       future: _dataFuture,
       builder: (context, snapshot) {
@@ -472,7 +479,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        final data = snapshot.data;
+        final data = snapshot.data?.withCurrentPrivacy();
         if (data?.report == null || _paths.isEmpty) return _emptyScaffold();
 
         final report = data!.report!;
@@ -770,6 +777,19 @@ class _ViewerData {
 
   final AnalysisReport? report;
   final List<Size> sizes;
+
+  /// 지금 '사진 속 이름 가리기' 값에 맞춘 데이터(사진 크기는 그대로). 같으면 자기 자신.
+  _ViewerData withCurrentPrivacy() {
+    final current = report;
+    if (current == null) return this;
+    final shown = current.withCurrentPrivacy();
+    if (identical(shown, current)) return this;
+    final cached = _privacyVariant;
+    if (cached != null && identical(cached.report, shown)) return cached;
+    return _privacyVariant = _ViewerData(report: shown, sizes: sizes);
+  }
+
+  _ViewerData? _privacyVariant;
 
   /// 실제로 그릴 수 있는 표시들. 번호(badge)는 **서버가 매긴 것을 그대로 쓴다** —
   /// 앱이 다시 매기면 리포트·시트에 적힌 번호와 어긋난다.

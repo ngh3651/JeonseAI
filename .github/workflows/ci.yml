@@ -140,13 +140,18 @@ jobs:
       #   --dart-define=KAKAO_NATIVE_APP_KEY=${{ vars.KAKAO_NATIVE_APP_KEY }}
       # 값은 위 env로 받아 따옴표로 넘긴다 — 값에 특수문자가 있어도 명령이 깨지지 않게.
       # 비어 있으면 앱이 기본값(주소 http://127.0.0.1:8000 · 앱 키 없음 · 카카오 버튼 없음)으로 되돌린다(config.dart).
+      # 실패하면 Gradle·Dart가 말한 원인 줄을 annotation으로도 남긴다 — PR 화면(Checks)에서 로그를 열지 않아도 원인이 보이게.
       - name: APK 빌드 (release)
-        run: >-
-          flutter build apk --release
-          --build-number=${{ github.run_number }}
-          --dart-define="API_BASE_URL=$API_BASE_URL"
-          --dart-define="APP_KEY=$APP_KEY"
-          --dart-define="KAKAO_NATIVE_APP_KEY=$KAKAO_NATIVE_APP_KEY"
+        run: |
+          if ! flutter build apk --release \
+              --build-number=${{ github.run_number }} \
+              --dart-define="API_BASE_URL=$API_BASE_URL" \
+              --dart-define="APP_KEY=$APP_KEY" \
+              --dart-define="KAKAO_NATIVE_APP_KEY=$KAKAO_NATIVE_APP_KEY" 2>&1 | tee build-apk.log; then
+            { grep -A6 "What went wrong" build-apk.log; grep -E "^e: |error:|ERROR:|Missing class|Duplicate class" build-apk.log; } \
+              | head -n 20 | while IFS= read -r line; do echo "::error title=APK 빌드 실패::${line}"; done
+            exit 1
+          fi
       - name: 서명 키 지우기
         if: always()
         run: rm -f android/key.properties android/app/upload-keystore.jks

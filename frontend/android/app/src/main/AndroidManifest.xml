@@ -50,9 +50,10 @@
             </intent-filter>
         </receiver>
         <!-- 카카오 로그인 (2026-10-22): 카카오계정(브라우저) 로그인이 끝나면 카카오가 kakao{네이티브 앱 키}://oauth 로
-             이 앱을 다시 연다 — 카카오 공식 Flutter SDK 예제(example/android)와 같은 선언이다.
-             스킴은 빌드 때 넣은 --dart-define=KAKAO_NATIVE_APP_KEY 로 app/build.gradle.kts가 채운다(${kakaoScheme}).
-             키가 없으면 아무도 쓰지 않는 자리 이름이 들어간다 — 그때 앱은 카카오 버튼을 그리지 않는다. -->
+             이 앱을 다시 연다. 카카오 공식 Flutter SDK 예제(example/android)와 같은 선언이다.
+             스킴은 빌드 때 넣은 dart-define 값 KAKAO_NATIVE_APP_KEY로 app/build.gradle.kts가 채운다(kakaoScheme 자리).
+             키가 없으면 아무도 쓰지 않는 자리 이름이 들어간다. 그때 앱은 카카오 버튼을 그리지 않는다.
+             주의: XML 주석 안에는 하이픈 두 개를 이어 쓰지 않는다(매니페스트를 읽지 못해 빌드가 깨진다). -->
         <activity
             android:name="com.kakao.sdk.flutter.auth.AuthCodeHandlerActivity"
             android:exported="true">

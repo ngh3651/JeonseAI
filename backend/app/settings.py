@@ -98,6 +98,15 @@ def rate_limit_global_per_hour() -> int:
     return env_int("RATE_LIMIT_GLOBAL_PER_HOUR", 300)
 
 
+def docs_disabled() -> bool:
+    """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
+    return env_flag("DISABLE_DOCS")
+
+
+#: 분석·대조 1회에 올릴 수 있는 사진 장수 상한. 앱은 10장까지 보내므로 넉넉하다.
+MAX_PHOTOS_PER_REQUEST = 20
+
+
 #: 토스페이먼츠 개발자 문서에 **공개된 테스트용** 결제위젯 시크릿 키 (2026-10-22, P2-1).
 #: 이 키로 승인한 결제는 실제로 청구되지 않는다. 문서 공개 값이라 비밀이 아니다.
 TOSS_DOCS_TEST_SECRET_KEY = "test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6"
@@ -109,15 +118,6 @@ def toss_secret_key() -> str:
     ⚠ `test_`로 시작하지 않는 키(실제 키 `live_…`)는 결제 라우터가 **거부**한다 — 결선은 테스트 결제만.
     """
     return env_str("TOSS_SECRET_KEY") or TOSS_DOCS_TEST_SECRET_KEY
-
-
-def docs_disabled() -> bool:
-    """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
-    return env_flag("DISABLE_DOCS")
-
-
-#: 분석·대조 1회에 올릴 수 있는 사진 장수 상한. 앱은 10장까지 보내므로 넉넉하다.
-MAX_PHOTOS_PER_REQUEST = 20
 
 
 # ── 데이터 위치 (클라우드에서는 영구 볼륨 `/data` 아래로) ───────────────────────

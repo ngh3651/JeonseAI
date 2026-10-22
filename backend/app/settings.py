@@ -98,6 +98,16 @@ def rate_limit_global_per_hour() -> int:
     return env_int("RATE_LIMIT_GLOBAL_PER_HOUR", 300)
 
 
+def rate_limit_global_per_day() -> int:
+    """서버 전체 분석 상한(최근 24시간) — **하루 크레딧 지출의 뚜껑** (2026-10-22).
+
+    APK가 공개 링크로 나가면 앱 키는 누구나 꺼낼 수 있다. 시간 상한만으로는 하루 최대 300×24회까지
+    열려 있어서, 하루 전체에 한 번 더 뚜껑을 씌운다. 기본 500 = 부스 폰 2대의 하루 시연·실측을
+    넉넉히 덮는 값(운영 상한이지 위험 판정 수치가 아니다). 0 이하면 끈다.
+    """
+    return env_int("RATE_LIMIT_GLOBAL_PER_DAY", 500)
+
+
 def docs_disabled() -> bool:
     """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
     return env_flag("DISABLE_DOCS")

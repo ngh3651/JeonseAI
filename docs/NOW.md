@@ -8,7 +8,7 @@
 
 서버는 **클라우드에 올릴 준비가 됐다**(기기별 기록·영구 저장·앱 키·속도 제한·실명 마스킹·Dockerfile — 아래 "Railway 배포 방법").
 앱도 **배포용 APK를 만들 준비가 됐다**(서버 주소·앱 키를 빌드 때 넣기 · 모든 요청에 기기 id · 쉬운 말 에러 · 릴리스 서명 자리 · 사진 속 이름 가리기 · CI가 APK 자동 빌드).
-남은 것은 **사람이 할 일**: Railway에 올리기 → 저장소 변수 `API_BASE_URL` → 서명 키 결정 → APK 설치. 가짜 로그인·종이 촬영본 미검증은 그대로.
+남은 것은 **사람이 할 일**: Railway에 올리기 → 저장소 변수 `API_BASE_URL` → 서명 비밀값 1개(`ANDROID_SIGNING_BUNDLE`) 넣기 → 고정 링크에서 APK 설치(아래 6-2). 가짜 로그인·종이 촬영본 미검증은 그대로.
 **계약 지킴이**(P1-2)가 실물이 됐다: 잔금 하루 전·당일·입주 다음 날 **폰 알림** + 대조 결과 맨 위 **지금 할 일** 카드. **요금제 + 토스 테스트 결제**(P2-1)도
 끝까지 돈다(가격은 예시, 실제 청구 없음, 패스는 표시만). 카카오 로그인은 다른 작업.
 
@@ -20,10 +20,10 @@
 | 같은 사진 재현성 | 같은 사진 5회 → IE 결과 거의 같음(가압류 `cause` 글자만 흔들림, 7/28 실측) | 결과가 매번 다른 원인은 **사진이 매번 달라서**다 | 보관 브랜치 `ie-reproducibility-2026-07-28*.md` |
 | 촬영 | 시스템 카메라(`image_picker`), 미리보기·가이드 없음. ✅ **서버 촬영 검사**(P1-1, 2026-10-22): IE·OCR **전에** 장마다 흐림·어두움·빛 번짐·글자 없음·해상도(Pillow+numpy, AI 아님, 장당 0.15~0.4초) — 심하면 **분석 전 거절**(400, 크레딧 0원, "2쪽이 흐려요 — 다시 찍어 주세요 (이유)"), 가벼우면 분석하고 리포트에 `captureCheck`. OCR 뒤 쪽 번호(N/M) 안 보이면 '잘림 의심'. 비상 스위치 `CAPTURE_CHECK=warn/off`. ✅ 앱: 거절되면 촬영 화면으로 돌아가 **몇 쪽이 왜** + **그 장만 다시 찍어 바꾸기**(나머지 장 그대로) → 다시 보내기. 리포트에도 '확인 필요' 장 안내 + [다시 찍어 새로 분석]. ✅ **같은 사진 = 같은 결과**: 같은 기기·같은 사진 묶음(순서 포함)·같은 보증금·시세면 24시간 동안 같은 리포트를 크레딧 없이(`ANALYSIS_CACHE_HOURS`) — 새로 배포하면(커밋이 바뀌면) 저절로 빗나감 | 기준값은 **합성 사진으로만** 정했다 — **종이 촬영본은 아직 한 번도 검증 안 함**(아래 할 일의 측정 도구로 잰다). 기울기·원근 보정 없음 | `backend/app/services/capture_check.py`, `analysis_cache.py`, `frontend/lib/screens/search/capture_issue_panel.dart` |
 | 서버 주소 | ✅ **빌드 때** 넣는다: `--dart-define=API_BASE_URL=https://…`(안 넣으면 `http://127.0.0.1:8000` + `adb reverse`). 앱 키도 `--dart-define=APP_KEY=…`(있을 때만 `X-App-Key`). CI 'APK 빌드'가 저장소 변수 `API_BASE_URL`·비밀값 `APP_KEY`로 release APK를 만든다 | 변수 `API_BASE_URL`이 아직 없다(Railway 주소가 나와야 넣는다) → 지금 CI APK는 USB용 기본 주소 | `frontend/lib/app/config.dart`, `.github/workflows/ci.yml` |
-| 앱 서명 | ✅ `android/key.properties`가 있으면 릴리스 키, 없으면 **디버그 키로 되돌아감**(CI·다른 PC도 빌드됨). CI는 비밀값 4개(`ANDROID_KEYSTORE_BASE64`·`ANDROID_KEYSTORE_PASSWORD`·`ANDROID_KEY_ALIAS`·`ANDROID_KEY_PASSWORD`)가 다 있을 때만 그 키. 평문(http) 통신은 개발 빌드·http 주소 APK에서만 | 서명 키를 아직 안 정함 → 지금 APK는 디버그 키. 디버그↔릴리스 키 APK는 서로 덮어 설치가 안 된다(지우고 다시 → 기록이 끊김) | `frontend/android/app/build.gradle.kts` |
+| 앱 서명·배포 | ✅ **고정 키**(2026-10-22): CI는 비밀값 **`ANDROID_SIGNING_BUNDLE` 하나**(키 파일 + key.properties 묶음)로 서명한다(예전 방식 비밀값 4개도 됨). 없으면 디버그 키로 되돌아감. versionCode = CI 실행 번호 → 새 APK는 늘 업데이트로 깔린다. **main에 합칠 때마다** 고정 링크(`…/releases/download/app-latest/jeonseai.apk`)에 최신 APK가 올라간다(고정 키일 때만). 평문(http) 통신은 개발 빌드·http 주소 APK에서만 | 비밀값을 넣기 전까지는 디버그 키 APK(Actions Artifacts에만). 고정 키 APK로 처음 바꿀 때 한 번은 예전 앱을 지우고 설치 | `frontend/android/app/build.gradle.kts`, `.github/workflows/ci.yml` |
 | 분석 기록 | ✅ **기기별**(`X-Device-Id`) + **SQLite 영구 저장**(`${DATA_DIR}/app.db`, 리포트·대조 기준). 다른 기기 기록은 404. 판례 카드 캐시만 메모리(재시작 뒤 다시 만듦). 기록 DB를 못 열어도 목록은 예시 리포트를 돌려줌. ✅ 앱(PR #4)이 처음 실행 때 UUID를 한 번 만들어(`device_id_v1`) **모든 요청**에 싣는다 | 옛 APK(8/14 코드)는 여전히 공용 `legacy-device`를 쓴다 → 새 APK로 바꿔 설치. 앱을 지우면 새 id(예전 기록과 끊김) | `backend/app/services/store.py`, `dependencies.py`, `frontend/lib/services/device_id.dart` |
 | 배포 설정 | ✅ 저장소 맨 위 `Dockerfile`·`railway.json`, `0.0.0.0:$PORT`, 시작 준비 `prepare_runtime.py`(시세 DB 내려받기·판례 인덱스). `DEV_MODE_AUTH` 없앰 → 원응답 저장은 `SAVE_RAW_RESPONSES`(기본 꺼짐) | Railway에 아직 안 올림(사람이 클릭 — 아래 배포 방법). 시세 DB 파일을 올릴 곳(`PRICE_DB_URLS`) 미정 | `Dockerfile`, `backend/scripts/prepare_runtime.py` |
-| 보안 | ✅ `APP_KEY` 설정 시 `/api/*`는 `X-App-Key` 필요(401). 분석·대조는 최근 1시간 **세 겹** 상한(429) — 기기×IP 30회 · IP 60회 · 서버 전체 300회(`RATE_LIMIT_*_PER_HOUR`, PR #3 e8365a4). 1회 사진 20장 초과는 400. `DISABLE_DOCS=1`이면 API 문서 끔 · 접근 로그 끔(챗봇 질문이 로그에 안 남게). ✅ 앱은 빌드 때 넣은 `APP_KEY`를 `X-App-Key`로 보내고, 401·400(기기 정보)·429를 "최신 앱을 설치해 주세요 / 잠시 후 다시"로 보여 준다 | Railway `APP_KEY`와 GitHub 비밀값 `APP_KEY`가 **같은 값**이어야 한다 — 서버에 먼저 켜면 키 없는 APK가 401로 막힌다 | `backend/app/main.py`, `frontend/lib/services/api_client.dart` |
+| 보안 | ✅ `APP_KEY` 설정 시 `/api/*`는 `X-App-Key` 필요(401). 분석·대조는 최근 1시간 **세 겹** 상한(429) — 기기×IP 30회 · IP 60회 · 서버 전체 300회(`RATE_LIMIT_*_PER_HOUR`, PR #3 e8365a4) + **서버 전체 하루 500회**(`RATE_LIMIT_GLOBAL_PER_DAY`, 2026-10-22 — APK가 공개 링크로 나가 앱 키를 누구나 꺼낼 수 있어서). 1회 사진 20장 초과는 400. `DISABLE_DOCS=1`이면 API 문서 끔 · 접근 로그 끔(챗봇 질문이 로그에 안 남게). ✅ 앱은 빌드 때 넣은 `APP_KEY`를 `X-App-Key`로 보내고, 401·400(기기 정보)·429를 "최신 앱을 설치해 주세요 / 잠시 후 다시"로 보여 준다 | Railway `APP_KEY`와 GitHub 비밀값 `APP_KEY`가 **같은 값**이어야 한다 — 서버에 먼저 켜면 키 없는 APK가 401로 막힌다 | `backend/app/main.py`, `frontend/lib/services/api_client.dart` |
 | 개인정보 | 서버 ✅: 원응답 저장 기본 꺼짐, 하이라이트 제목·명단 일치 문장은 `홍○○`, 개인 근저당권자도 가려서 Solar에 보냄, 챗봇 로그에 질문 원문 없음 — DB·로그·저장 JSON 실명 0건 자동 테스트(`test_pii_persistence.py`). 원본 사진은 서버에 저장 안 함. ✅ **사진 속 실명·주민번호 자리**(P0-2b, 2026-10-22): 서버가 OCR에서 이름 칸(소유자·공유자·이전 소유자·채무자·개인 근저당권자·전세권자·임차권자·개인 채권자)과 주민·법인번호의 **좌표만** `privacyMasks`로 보낸다(글자 없음, 은행·회사·관공서는 제외, 말소된 줄도 포함). 앱(마이 → '개인정보' → **'사진 속 이름 가리기'**, 기본 꺼짐): 켜면 뷰어·리포트 미리보기에서 그 자리 **전부** + 집주인 이름을 불투명 상자로 덮는다(빚·압류 형광펜은 그대로). 이름 자리를 모르는 쪽(옛 기록·OCR 실패)은 **쪽 전체**를 덮고 이유를 말한다. 사진 문구는 앱 전체가 한 문장: "사진은 분석에만 쓰고 서버에는 저장하지 않아요. 이 휴대폰에만 최근 분석 5건의 사진이 남아요." | 분석 **전** 화면(촬영 확인·사진 트레이·크게 보기)은 위치를 몰라 가리지 못한다(스위치 설명에도 적었다 — 부스에서는 찍는 장면만 미러링 화면에서 피한다). 기록 목록·공유 화면 이름 마스킹도 아직(공유 버튼은 준비 중 안내뿐). 스위치를 끄면(기본) 이름이 보인다 — 부스에서는 켠다. 실제 종이 촬영본으로 가림 상자를 눈으로 확인한 적 없음(합성 OCR로만 시험) | `privacy_masks.py`, `registry_viewer_screen.dart`, `privacy_settings.dart`, `registry_photo_store.dart` |
 | 계약 여정 | 9단계, 날짜 4종(폰에만 저장), 다시 찍어 대조 → 바뀜/그대로/일부/기준 없음/다른 집. ✅ **폰 알림 3번**(2026-10-22): 잔금 하루 전 오전 9시 · 당일 오전 8시 · 입주 다음 날 오전 9시 — 날짜를 바꾸면 다시 걸고 지우면 취소, 권한은 날짜를 저장하는 순간 이유와 함께(거절하면 같은 세 날 배너), 알림을 누르면 그 집 여정. ✅ 대조 결과 맨 위 **지금 할 일**(위험 줄 → "잔금 보내기 전에 멈추세요" + 중개사 문자 복사 · 그대로 → 입금 전 체크리스트 · 일부 → 다시 찍기) | 알림은 몇 분 늦을 수 있다(정확한 알람 권한 안 씀). 실기기에서 폰을 꺼 둔 채 울리는지는 **사람이 확인**(아래 10절) | `journey_reminders.dart`, `journey_reminder_service.dart`, `compare_next_step.dart` |
 | 로그인 | 가짜(아무 값이나 통과), 자동 로그인 "영호" | 비즈니스 껍데기 없음 | `config.dart` `devAutoLogin` |
@@ -49,7 +49,7 @@
 
 | 순서 | 일 | 완료 조건 (이게 돼야 끝) | 목표일 |
 |---|---|---|---|
-| **P0-1** | **배포 (Railway)** — 서버 ✅(2026-10-22, PR #3): `DEV_MODE_AUTH` 분리 · `0.0.0.0:$PORT` · Dockerfile · 볼륨(`/data`)에 기록 DB·판례 인덱스 · 시세 DB 내려받기(`PRICE_DB_URLS`) · 앱 키 + 속도 제한 · **기기별 기록 분리** · 기록 영구 저장. 앱 ✅(2026-10-22, PR #4): 서버 주소·앱 키 빌드 설정화 · `X-Device-Id`·`X-App-Key` 보내기 · 릴리스 서명 자리(키 없으면 디버그 키) · CI APK 자동 빌드(`jeonseai-apk`). 남은 것(사람): Railway에 올리기 · 시세 DB 파일 올리기(GitHub Release 등) · 저장소 변수 `API_BASE_URL` + 비밀값 `APP_KEY` · 서명 키 결정 · 설치 QR(아래 "APK 받는 법") | USB 없이 LTE 폰에서 설치 → 분석 → 리포트. 서버 재시작 뒤에도 기록 유지. 다른 폰에서 내 기록 안 보임 | 10/23 |
+| **P0-1** | **배포 (Railway)** — 서버 ✅(2026-10-22, PR #3): `DEV_MODE_AUTH` 분리 · `0.0.0.0:$PORT` · Dockerfile · 볼륨(`/data`)에 기록 DB·판례 인덱스 · 시세 DB 내려받기(`PRICE_DB_URLS`) · 앱 키 + 속도 제한 · **기기별 기록 분리** · 기록 영구 저장. 앱 ✅(2026-10-22, PR #4): 서버 주소·앱 키 빌드 설정화 · `X-Device-Id`·`X-App-Key` 보내기 · 릴리스 서명 자리(키 없으면 디버그 키) · CI APK 자동 빌드(`jeonseai-apk`). 남은 것(사람): Railway에 올리기 · 시세 DB 파일 올리기(GitHub Release 등) · 저장소 변수 `API_BASE_URL` + 비밀값 `APP_KEY` · 서명 비밀값 `ANDROID_SIGNING_BUNDLE` 1개(키는 2026-10-22에 만듦 — 아래 6-2) · 고정 링크로 설치 | USB 없이 LTE 폰에서 설치 → 분석 → 리포트. 서버 재시작 뒤에도 기록 유지. 다른 폰에서 내 기록 안 보임 | 10/23 |
 | **P0-2** | **개인정보** — 서버는 원본 사진·실명을 저장·기록하지 않음(로그 마스킹) ✅(2026-10-22, 자동 테스트 `test_pii_persistence.py`) · 사진의 이름 칸 **가리기 스위치** ✅(2026-10-22, PR #4 — 마이 → 개인정보, 부스 시연에선 켬 — 내 폰의 내 등기부에선 집주인 이름 대조 기능 유지) · "저장 안 함" 문구와 실제 동작 일치 ✅(PR #4) · 사진의 **다른 이름·주민번호 칸**(채무자·이전 소유자 등) ✅(2026-10-22, `feat/p1-capture-privacy` — 서버 `privacyMasks` + 앱이 전부 덮음, 모르는 쪽은 통째로) · 남은 것: 분석 전 화면(촬영 확인·트레이) 가리기 · 기록 목록·공유 화면 이름 마스킹(홍*동) | 서버 저장소·로그에 실명 0건(자동 테스트) · 가리기 켜면 화면에 실명 0건 | 10/23 |
 | **P1-1** | **촬영 안정화** — 장별 흐림·어두움·잘림(꼬리말 페이지 표식) 검사 → 그 장만 다시 찍기 안내 ✅ · 같은 사진 = 같은 결과(해시 캐시) ✅ · 일관성 측정 도구 ✅(`measure_consistency.py`) (2026-10-22, `feat/p1-capture-privacy`) · 남은 것: **종이 촬영본으로 실제 측정**(아래 할 일) · 기울기·원근 보정(OpenCV, AI 아님) · IE와 OCR이 다른 칸은 "확인 필요" | 같은 종이 등기부를 10번 찍어 판정 일치 9회 이상, 나머지는 반드시 재촬영 안내 (전후 수치 기록) | 10/25 |
 | **P1-2** | **차별화 = 계약 지킴이** — 진짜 알림 ✅(2026-10-22 — 잔금 하루 전·당일·입주 다음 날, 로컬 알림) · 대조 결과 → "지금 할 일" 카드 ✅ · 남은 것: 실기기에서 폰을 꺼 둔 채 울리는지 확인(사람) · (발표용) 등기가 실제로 바뀐 이력이 있는 등기부를 찾으면 그 기록으로 재현 | 폰을 꺼 둬도 알림이 울림 + 시연 대본 한 바퀴가 막힘 없이 돈다 | 10/28 |
@@ -93,7 +93,7 @@
      새 앱(`X-Device-Id`를 보내는 앱)이 나오면 **바로 1로**
    - `DISABLE_DOCS=1` — 공개 주소에서 API 문서(`/docs`·`/openapi.json`)를 끈다
    - 속도 제한(선택, 기본값이 있다): `RATE_LIMIT_ANALYZE_PER_HOUR=30`(기기×IP) · `RATE_LIMIT_IP_PER_HOUR=60` ·
-     `RATE_LIMIT_GLOBAL_PER_HOUR=300`. ⚠ **결선 날**에는 부스 폰들이 같은 와이파이(같은 IP)를 쓰므로 IP·전체 상한을 올려 둔다
+     `RATE_LIMIT_GLOBAL_PER_HOUR=300` · `RATE_LIMIT_GLOBAL_PER_DAY=500`(서버 전체·하루). ⚠ **결선 날**에는 부스 폰들이 같은 와이파이(같은 IP)를 쓰므로 IP·전체 상한을 올려 둔다
    - `RAILWAY_RUN_UID=0` — 볼륨에 쓰기 위해 필요(Railway 볼륨은 root 소유로 붙는다)
    - `SAVE_RAW_RESPONSES`는 **넣지 않는다**(실명 원응답 저장 — 로컬 디버깅 전용)
    - (선택) `CAPTURE_CHECK` — 기본 `on`(심하게 흐리거나 어두운 사진은 분석 전 거절). 멀쩡한 사진이 거절되면 `warn` · `ANALYSIS_CACHE_HOURS` — 기본 24(같은 사진 재분석 시 크레딧 0원)
@@ -106,18 +106,25 @@
 
 ## 6-2. APK 받는 법 (앱)
 
-- **APK 받는 법**: GitHub 저장소 → **Actions → 최신 실행**(main 또는 PR) → 맨 아래 **Artifacts의 `jeonseai-apk`** → 압축을 풀면 `app-release.apk` → 폰에 옮겨 설치(출처를 알 수 없는 앱 허용). 30일 보관.
-- APK가 Railway 서버를 보게 하려면 먼저(한 번만): 저장소 **Settings → Secrets and variables → Actions**
+- **가장 쉬운 길 = 고정 링크** (2026-10-22): main에 합쳐질 때마다 CI가 최신 APK를 올린다 — 폰에서 열면 바로 받는다.
+  <https://github.com/ngh3651/JeonseAI/releases/download/app-latest/jeonseai.apk>
+  - **처음 한 번만**: 서명이 다른 예전 앱(USB로 깐 개발용·디버그 키 APK)을 지우고 설치한다(출처를 알 수 없는 앱 허용).
+  - **그다음부터는 덮어 설치 = 업데이트**. 기기 id·폰에 저장된 날짜·사진이 그대로 남는다(같은 고정 키 + versionCode가 늘 커짐).
+  - 고정 키 비밀값이 없으면 링크에 올리지 않는다(디버그 키 APK는 덮어 설치가 끊길 수 있어서) — CI 로그에 "건너뛴 이유"가 찍힌다.
+  - ⚠ 링크는 **공개**다(저장소가 공개). APK를 풀면 앱 키가 보이므로 서버의 하루 상한(`RATE_LIMIT_GLOBAL_PER_DAY`)이 크레딧을 한 번 더 막는다.
+- PR에서 만든 APK: GitHub → **Actions → 그 실행** → 맨 아래 **Artifacts의 `jeonseai-apk`** → 압축을 풀면 `app-release.apk`. 30일 보관.
+- 저장소 **Settings → Secrets and variables → Actions** (한 번만):
   - **Variables**: `API_BASE_URL` = Railway 주소(`https://….up.railway.app`, 끝의 `/` 없어도 됨)
   - **Secrets**: `APP_KEY` = Railway Variables의 `APP_KEY`와 **같은 값**(값은 채팅·커밋에 쓰지 않는다)
-    ⚠ 저장소가 **공개**라 GitHub에 로그인한 누구나 Actions의 APK를 받을 수 있고, APK를 풀면 앱 키가 보인다 —
-    앱 키는 "주소만 알고 두드리는 사람"을 막는 정문일 뿐이다(크레딧은 서버 속도 제한이 한 번 더 막는다). 결선 기간에 저장소를 비공개로 돌릴지 정한다.
-  - 서명(선택): `ANDROID_KEYSTORE_BASE64`(키스토어 파일을 base64로) · `ANDROID_KEYSTORE_PASSWORD` · `ANDROID_KEY_ALIAS` · `ANDROID_KEY_PASSWORD` — 넷 다 있을 때만 릴리스 키로 서명, 아니면 디버그 키
+  - **Secrets**: `ANDROID_SIGNING_BUNDLE` = 고정 서명 키 묶음(키 파일 + key.properties를 base64 한 줄로). 2026-10-22에 만들어
+    규혁에게 파일로 전달 — **그 파일이 키의 유일한 사본**이니 드라이브 등에 따로 보관한다(잃어버리면 새 키 → 모든 폰에서 한 번 지우고 다시 설치).
+    예전 방식 비밀값 4개(`ANDROID_KEYSTORE_BASE64`·`ANDROID_KEYSTORE_PASSWORD`·`ANDROID_KEY_ALIAS`·`ANDROID_KEY_PASSWORD`)도 된다.
   - 넣은 뒤 Actions에서 CI를 다시 돌리면(**Re-run** 또는 `workflow_dispatch`) 그 값으로 새 APK가 나온다.
-- 변수가 없으면 APK는 `http://127.0.0.1:8000`(USB + `adb reverse`)을 본다 — CI 로그의 '빌드 설정 확인' 줄에 어느 쪽인지 찍힌다.
+- 변수가 없으면 APK는 `http://127.0.0.1:8000`(USB + `adb reverse`)을 본다 — CI 로그의 '빌드 설정 확인' 줄에 주소 유무·서명 종류·빌드 번호가 찍힌다(값은 안 찍힌다).
 - 로컬에서 직접: `cd frontend && flutter build apk --release --dart-define=API_BASE_URL=https://<주소> --dart-define=APP_KEY=<키>`
-- ⚠ 키를 정하기 전(디버그 키)과 뒤(릴리스 키) APK는 서로 덮어 설치되지 않는다 → 지우고 다시 설치하면 **새 기기 id**라 그 폰의 예전 기록이 안 보인다. 부스 폰에는 키를 정한 뒤 설치한다.
-  (CI의 디버그 키는 캐시에 두어 실행마다 바뀌지 않게 했지만, 캐시는 브랜치별이고 7일 안 쓰면 지워진다 — 오래 쓸 APK는 서명 비밀값으로 만든다.)
+  (고정 키로 서명하려면 묶음을 `frontend/android`에 풀어 둔다: `base64 -d 묶음파일 | tar -xz -C frontend/android` — 커밋 금지, `.gitignore`가 막는다)
+- 카카오 로그인용 **키 해시**(고정 키 기준): `IGUD29cSPI5wE4xw+utVjaQXR+A=` · 패키지명 `com.jeonseai.jeonse_ai`
+  (카카오 개발자 콘솔 → 내 애플리케이션 → 플랫폼 → Android에 넣는다. 키 해시는 APK에서 누구나 읽을 수 있는 공개 값이다)
 
 ## 7. 부스 준비물 (팀)
 

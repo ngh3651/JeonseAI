@@ -28,6 +28,7 @@ os.environ["APP_KEY"] = ""
 os.environ["REQUIRE_DEVICE_ID"] = ""
 os.environ["SAVE_RAW_RESPONSES"] = ""
 os.environ["RATE_LIMIT_ANALYZE_PER_HOUR"] = ""
+os.environ["RATE_LIMIT_GLOBAL_PER_DAY"] = ""
 
 import pytest  # noqa: E402
 

@@ -258,6 +258,23 @@ def test_키에는_서버_코드_버전이_들어간다(monkeypatch):
     assert len({local, deploy_a, deploy_b}) == 3
 
 
+def test_시세_DB가_뜨기_전_결과는_DB가_뜬_뒤에_다시_쓰지_않는다(client, no_network, monkeypatch):
+    """배포 직후 시세 DB를 내려받는 몇 분 동안 만든 '시세 없음' 리포트가 24시간 나가면 안 된다.
+    DB를 끝내 안 올린 서버에서도 캐시는 그대로 돈다(키에 '준비 여부'만 넣었다)."""
+    ready = {"value": False}
+    monkeypatch.setattr(analysis_cache, "price_db_ready", lambda: ready["value"])
+    calls = no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))] * 2)
+    first = _analyze(client, [_photo()]).json()
+    assert _analyze(client, [_photo()]).json()["id"] == first["id"]  # DB 없음끼리는 적중
+    assert _ie_calls(calls) == 1
+
+    ready["value"] = True  # 뒤에서 내려받기가 끝났다
+    second = _analyze(client, [_photo()])
+    assert second.status_code == 200, second.text
+    assert second.json()["id"] != first["id"]
+    assert _ie_calls(calls) == 2
+
+
 def test_새로_배포하면_같은_사진도_처음부터_분석한다(client, no_network, monkeypatch):
     """규칙을 고쳐 배포했는데 24시간 동안 옛 판정을 돌려주면 안 된다."""
     monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "aaaa1111aaaa1111")

@@ -249,6 +249,12 @@ class _MyScreenState extends State<MyScreen> {
   }
 }
 
+/// '사진 속 이름 가리기' 스위치 설명 — **실제로 덮는 범위 그대로** (테스트가 문장을 함께 본다).
+const String kHideNamesSwitchDescription =
+    '다른 사람에게 화면을 보여 줄 때 켜 두세요. '
+    '분석한 등기부 사진에서 이름과 주민번호 칸을 전부 상자로 덮어요(집주인·채무자·이전 소유자 등). '
+    '찍는 중이거나 분석 전인 사진은 아직 가리지 못해요.';
+
 /// 마이 화면의 '개인정보' 카드 — 위젯 테스트에서 단독으로 띄울 수 있게 뺐다.
 ///
 /// - **사진 속 이름 가리기** (기본 꺼짐): 켜면 '내가 올린 사진에서 보기'와 리포트 미리보기에서
@@ -257,12 +263,6 @@ class _MyScreenState extends State<MyScreen> {
 ///   ⚠ 분석 **전** 사진(촬영 확인 화면·사진 트레이)은 아직 위치를 몰라 가리지 못한다 — 문구에 그대로 적는다.
 ///   꺼 두는 것이 기본인 이유: 내 폰의 내 등기부에서는 그 이름을 계약 상대 신분증과 **대조하는 것**이 목적이다.
 /// - 아래 한 줄은 사진을 어디에 남기는지([RegistryPhotoStore.retentionNotice]) — 앱 전체가 같은 문장을 쓴다.
-/// '사진 속 이름 가리기' 스위치 설명 — **실제로 덮는 범위 그대로** (테스트가 문장을 함께 본다).
-const String kHideNamesSwitchDescription =
-    '다른 사람에게 화면을 보여 줄 때 켜 두세요. '
-    '분석한 등기부 사진에서 이름과 주민번호 칸을 전부 상자로 덮어요(집주인·채무자·이전 소유자 등). '
-    '찍는 중이거나 분석 전인 사진은 아직 가리지 못해요.';
-
 class PrivacySettingsCard extends StatelessWidget {
   const PrivacySettingsCard({super.key});
 

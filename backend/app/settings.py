@@ -146,3 +146,40 @@ def price_db_dir() -> Path:
 def precedent_index_dir() -> Path:
     """판례 벡터 인덱스(Chroma가 여기에 쓴다 → 쓰기 가능한 볼륨이어야 한다)."""
     return env_path("PRECEDENT_INDEX_DIR", BACKEND_ROOT / "data" / "precedents" / "index")
+
+
+# ── 카카오 로그인 (2026-10-22, P2-1) ─────────────────────────────────────────
+# 둘 다 있어야 `POST /api/auth/kakao`가 열린다. 하나라도 없으면 503 "카카오 로그인이 아직 준비되지 않았어요".
+
+#: 계정 키 비밀의 최소 길이 — `secrets.token_urlsafe(32)`(43자)로 만든 값을 넣는다(NOW.md 사람 할 일).
+#: 짧은 비밀은 HMAC을 약하게 만든다 → 이보다 짧으면 넣지 않은 것으로 본다.
+ACCOUNT_HASH_SECRET_MIN_LENGTH = 32
+
+
+def kakao_app_id() -> str:
+    """카카오 개발자 콘솔의 **앱 ID**(숫자) — `KAKAO_APP_ID`. 받은 토큰이 **우리 앱의 토큰인지** 견준다.
+
+    비밀이 아니다(앱 키 화면에 보이는 번호). 다른 앱에서 받은 카카오 토큰으로 우리 서버에 들어오는 것을 막는다.
+    """
+    return env_str("KAKAO_APP_ID")
+
+
+def account_hash_secret() -> str:
+    """계정 키를 만드는 비밀 — `ACCOUNT_HASH_SECRET`. 회원번호 원문 대신 HMAC 값만 남기려고 쓴다.
+
+    ⚠ 한 번 정하면 **바꾸지 않는다** — 바꾸면 모든 계정 키가 달라져 기존 회원의 기록이 안 보인다.
+    """
+    return env_str("ACCOUNT_HASH_SECRET")
+
+
+def kakao_login_ready() -> bool:
+    """카카오 로그인을 받을 준비가 됐는가 — 앱 ID + 충분히 긴 계정 키 비밀."""
+    return bool(kakao_app_id()) and len(account_hash_secret()) >= ACCOUNT_HASH_SECRET_MIN_LENGTH
+
+
+def session_days() -> int:
+    """로그인 세션이 살아 있는 날 수 — `SESSION_DAYS`(기본 30). 1보다 작게 넣으면 1일.
+
+    운영 설정이지 위험 판정 수치가 아니다. 지나면 앱이 401을 받고 다시 로그인을 안내한다.
+    """
+    return max(1, env_int("SESSION_DAYS", 30))

@@ -13,7 +13,8 @@
 
 저장: 기록 DB(`app.db`)의 `passes` 표 — 이 모듈이 따로 연다(`store.db_path()` — 같은 파일, analysis_cache와 같은 방식).
 `store.py`의 표 정의는 건드리지 않는다(다른 작업과 충돌 줄이기). 주인은 `owner_key` —
-**`dependencies.get_pass_owner` 한 곳에서만** 정한다(지금은 `device:<기기 id>`, 카카오 로그인이 붙으면 그 함수만 바꾼다).
+**`dependencies.get_pass_owner` 한 곳에서만** 정한다(로그인했으면 `account:acct-…`, 아니면 `device:<기기 id>` —
+모양은 `accounts.pass_owner_key`. 로그인하는 순간 기기의 패스는 계정으로 옮겨진다).
 """
 
 from __future__ import annotations
@@ -287,3 +288,25 @@ def latest_pass(owner_key: str) -> dict | None:
 def all_rows_for_test() -> list[tuple]:
     """테스트용 — 표에 실제로 무엇이 남았는지(카드 번호·영수증 주소가 없는지) 본다."""
     return _execute("SELECT * FROM passes")
+
+
+# ── 주인 바꾸기·지우기 (카카오 로그인 — 2026-10-22, P2-1) ─────────────────────────
+# 주인 키 모양(`device:…` · `account:…`)은 `accounts.pass_owner_key` 한 곳에서 정한다 — 여기는 받은 키만 쓴다.
+
+
+def move_owner(from_key: str, to_key: str) -> int:
+    """로그인한 순간 — 그 기기의 패스를 계정으로 옮긴다. 옮긴 건수."""
+    if not from_key or from_key == to_key:
+        return 0
+    moved = _execute("SELECT COUNT(*) FROM passes WHERE owner_key = ?", (from_key,))[0][0]
+    _execute("UPDATE passes SET owner_key = ? WHERE owner_key = ?", (to_key, from_key))
+    return int(moved)
+
+
+def delete_owner(owner_key: str) -> int:
+    """회원 탈퇴 — 그 계정의 패스(결제 기록)를 전부 지운다. 지운 건수."""
+    if not owner_key:
+        return 0
+    deleted = _execute("SELECT COUNT(*) FROM passes WHERE owner_key = ?", (owner_key,))[0][0]
+    _execute("DELETE FROM passes WHERE owner_key = ?", (owner_key,))
+    return int(deleted)

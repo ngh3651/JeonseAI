@@ -4,7 +4,7 @@
 - POST /api/payments/confirm   토스 결제위젯 결과 → 금액 검사 → 토스 승인(테스트 키만) → 패스 기록
 - GET  /api/me/pass            이 주인의 패스가 있는가
 
-주인 키는 `dependencies.get_pass_owner` 한 곳에서만 정한다(지금은 기기 id).
+주인 키는 `dependencies.get_pass_owner` 한 곳에서만 정한다(로그인했으면 계정, 아니면 기기 id — 2026-10-22 카카오 로그인).
 ⚠ 동기(def) 핸들러다 — 토스 승인 호출이 몇 초 걸릴 수 있어 스레드풀에서 돌게 한다.
 """
 

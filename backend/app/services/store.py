@@ -305,3 +305,43 @@ def put_cases(report_id: str, cases: list[CaseMatch], *, device_id: str) -> None
 
 def clear_cases(report_id: str, *, device_id: str) -> None:
     _cases_cache.pop(_cases_key(report_id, device_id), None)
+
+
+# ── 주인 바꾸기·지우기 (카카오 로그인 — 2026-10-22, P2-1) ─────────────────────────
+# 로그인하는 순간 그 기기의 기록을 계정으로 옮기고(`accounts.claim_device_records`),
+# 회원 탈퇴하면 그 계정의 기록을 전부 지운다(`accounts.delete_account`). 이 파일의 표(리포트·대조 기준)와
+# 메모리의 판례 카드 캐시만 다룬다 — 캐시 쪽지·패스는 각자의 모듈이 옮긴다.
+
+
+def move_owner(from_owner: str, to_owner: str) -> int:
+    """`from_owner`의 리포트·대조 기준·판례 캐시를 `to_owner`로 옮긴다. 옮긴 리포트 수를 돌려준다.
+
+    같은 리포트 id가 이미 `to_owner`에 있으면 옮겨 오는 쪽이 이긴다(`UPDATE OR REPLACE`).
+    예시 리포트는 저장돼 있지 않으므로 옮길 것이 없다. 여러 번 불러도 같다(두 번째는 0건).
+    """
+    if not from_owner or from_owner == to_owner:
+        return 0
+    db = _db()
+    moved = db.execute("SELECT COUNT(*) FROM reports WHERE device_id = ?", (from_owner,))[0][0]
+    db.execute(
+        "UPDATE OR REPLACE reports SET device_id = ? WHERE device_id = ?", (to_owner, from_owner)
+    )
+    db.execute(
+        "UPDATE OR REPLACE snapshots SET device_id = ? WHERE device_id = ?", (to_owner, from_owner)
+    )
+    for key in [k for k in _cases_cache if k[0] == from_owner]:
+        _cases_cache[(to_owner, key[1])] = _cases_cache.pop(key)
+    return int(moved)
+
+
+def delete_owner(owner: str) -> int:
+    """`owner`의 리포트·대조 기준·판례 캐시를 **전부** 지운다(회원 탈퇴). 지운 리포트 수를 돌려준다."""
+    if not owner:
+        return 0
+    db = _db()
+    deleted = db.execute("SELECT COUNT(*) FROM reports WHERE device_id = ?", (owner,))[0][0]
+    db.execute("DELETE FROM reports WHERE device_id = ?", (owner,))
+    db.execute("DELETE FROM snapshots WHERE device_id = ?", (owner,))
+    for key in [k for k in _cases_cache if k[0] == owner]:
+        _cases_cache.pop(key, None)
+    return int(deleted)

@@ -449,9 +449,11 @@ class _BubbleHeader extends StatelessWidget {
       size: 22,
       color: color,
     );
+    // 글자를 크게 키운 폰에서 이름이 폭을 넘으면 줄을 바꾼다(넘쳐서 잘리지 않게) — Flexible
+    final label = Flexible(child: text);
     final children = alignEnd
-        ? [chevron, const SizedBox(width: 4), text, const SizedBox(width: 8), circle]
-        : [circle, const SizedBox(width: 8), text, const SizedBox(width: 4), chevron];
+        ? [chevron, const SizedBox(width: 4), label, const SizedBox(width: 8), circle]
+        : [circle, const SizedBox(width: 8), label, const SizedBox(width: 4), chevron];
 
     return Align(
       alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,

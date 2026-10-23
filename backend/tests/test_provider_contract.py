@@ -13,8 +13,8 @@
 전부 진짜 코드를 태운다. 크레딧은 1원도 쓰지 않는다.
 
 `PROVIDER_CLASSES`를 순회하므로 **새 provider를 등록하면 자동으로 이 계약에 포함된다** —
-그것이 이 파일의 핵심이다(A.X처럼 키가 없어도 검사된다. 키 유무는 `available`의 문제이지
-페이로드가 올바른지와는 별개다).
+그것이 이 파일의 핵심이다(키가 없어도 검사된다. 키 유무는 `available`의 문제이지
+페이로드가 올바른지와는 별개다). 2026-10-22부터 등록된 provider는 Upstage 하나다.
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ PROVIDER_IDS = [name for name, _ in ALL_PROVIDERS]
 def keyed_provider(monkeypatch):
     """provider를 만들되 `.env`와 무관하게 **항상 키가 있는 상태**로 만든다.
 
-    키 유무로 검사가 건너뛰어지면 안 된다 — 오늘 깨진 것은 키가 있던 upstage였고,
-    키가 없는 A.X도 키가 도착하는 순간 같은 경로를 탄다.
+    키 유무로 검사가 건너뛰어지면 안 된다 — 오늘 깨진 것은 키가 있던 upstage였다(키가 없는
+    개발 PC·CI에서도 같은 경로를 검사해야 한다).
     """
 
     def _make(cls):
@@ -129,7 +129,7 @@ def test_temperature가_전선까지_간다(name, cls, keyed_provider, captured_
 
 @pytest.mark.parametrize(("name", "cls"), ALL_PROVIDERS, ids=PROVIDER_IDS)
 def test_추론모델_보정이_max_tokens에_더해진다(name, cls, keyed_provider, captured_post):
-    """`extra_max_tokens`는 '사고에 예산을 쓰는 모델' 보정이다(EXAONE 실측 근거).
+    """`extra_max_tokens`는 '사고에 예산을 쓰는 모델' 보정이다(2026-07 추론 모델 실측 근거).
 
     이 값이 본문에서 빠지면 응답 `content`가 빈 문자열로 돌아온다 — 조용한 실패다.
     """
@@ -147,10 +147,6 @@ def test_provider별_고유_튜닝이_실제로_실린다(keyed_provider, captur
     upstage = keyed_provider(PROVIDER_CLASSES["upstage"])
     upstage.chat("시스템", "사용자", max_tokens=100)
     assert captured_post[-1]["body"]["reasoning_effort"] == "low"
-
-    exaone = keyed_provider(PROVIDER_CLASSES["exaone"])
-    exaone.chat("시스템", "사용자", max_tokens=100)
-    assert captured_post[-1]["body"]["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -233,8 +229,8 @@ def test_all_providers가_레지스트리_전체를_돌려준다():
 
 
 def test_키가_없으면_부르지_않고_LlmError를_낸다(monkeypatch, captured_post):
-    """키 없는 provider가 **네트워크를 건드리기 전에** 멈추는지 — A.X의 현재 상태다."""
-    provider = PROVIDER_CLASSES["ax"]()
+    """키 없는 provider가 **네트워크를 건드리기 전에** 멈추는지 — 키 없는 개발 PC·CI의 상태다."""
+    provider = PROVIDER_CLASSES["upstage"]()
     monkeypatch.setattr(provider, "_key", "", raising=False)
     assert provider.available is False
     with pytest.raises(llm.LlmError):

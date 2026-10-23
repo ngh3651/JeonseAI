@@ -167,53 +167,13 @@ def test_실거래가_키_오류는_HTTP_200이어도_키가_틀림이다(ck, mo
     assert result.status == "키가 틀림"
 
 
-# ── EXAONE ───────────────────────────────────────────────────────────────────
-
-
-def test_EXAONE_키가_없으면_설정_안_됨이고_부르지_않는다(ck, monkeypatch):
-    monkeypatch.setenv("EXAONE_API_KEY", "")
-    calls: list[str] = []
-    result = ck.check_exaone(http_get=_http({}, calls), http_post=_http({}, calls))
-    assert result.status == "설정 안 됨" and result.note == "서비스에서 안 씀"
-    assert calls == []
-
-
-def test_EXAONE은_FriendliAI_모델_목록으로_확인한다(ck, monkeypatch):
-    monkeypatch.setenv("EXAONE_API_KEY", "flp_test_key_value")
-    monkeypatch.delenv("EXAONE_BASE_URL", raising=False)
-    calls: list[str] = []
-    result = ck.check_exaone(
-        http_get=_http({"/serverless/v1/models": _Resp(403)}, calls), http_post=_http({}, calls)
-    )
-    assert result.status == "키가 틀림"
-    assert calls == ["https://api.friendli.ai/serverless/v1/models"]
-
-
-def test_EXAONE_모델_목록이_없으면_기본_모델로_1토큰_채팅(ck, monkeypatch):
-    from app.services.llm.providers import ExaoneProvider
-
-    monkeypatch.setenv("EXAONE_API_KEY", "flp_test_key_value")
-    monkeypatch.delenv("EXAONE_MODEL", raising=False)
-    posted: list[dict] = []
-
-    def post(url, **kwargs):
-        assert url.endswith("/serverless/v1/chat/completions")
-        posted.append(kwargs["json"])
-        return _Resp(429)
-
-    result = ck.check_exaone(http_get=lambda url, **k: _Resp(404), http_post=post)
-    assert result.status == "크레딧·한도 문제"
-    assert posted[0]["model"] == ExaoneProvider.default_model and posted[0]["max_tokens"] == 1
-
-
 # ── 전체 실행 · 종료 코드 · 출력 ────────────────────────────────────────────────
 
 
 def _all_ok_http():
     calls: list[str] = []
     get = _http(
-        {"/v1/models": _Resp(200), "apis.data.go.kr": _Resp(200, MOLIT_OK),
-         "/serverless/v1/models": _Resp(200)},
+        {"/v1/models": _Resp(200), "apis.data.go.kr": _Resp(200, MOLIT_OK)},
         calls,
     )
     return get, _http({}, calls)
@@ -222,7 +182,6 @@ def _all_ok_http():
 def test_설정된_키가_모두_정상이면_종료_코드_0(ck, monkeypatch):
     monkeypatch.setenv("UPSTAGE_API_KEY", "up_test_key_value")
     monkeypatch.setenv("MOLIT_API_KEY", "molit_test_key_value")
-    monkeypatch.setenv("EXAONE_API_KEY", "")  # 선택 키는 없어도 된다
     get, post = _all_ok_http()
     _, code = ck.run(http_get=get, http_post=post)
     assert code == 0
@@ -231,7 +190,6 @@ def test_설정된_키가_모두_정상이면_종료_코드_0(ck, monkeypatch):
 def test_하나라도_틀리면_종료_코드_1(ck, monkeypatch):
     monkeypatch.setenv("UPSTAGE_API_KEY", "up_test_key_value")
     monkeypatch.setenv("MOLIT_API_KEY", "molit_test_key_value")
-    monkeypatch.setenv("EXAONE_API_KEY", "")
     get = _http({"/v1/models": _Resp(200), "apis.data.go.kr": _Resp(200, MOLIT_BAD_KEY)}, [])
     _, code = ck.run(http_get=get, http_post=_http({}, []))
     assert code == 1
@@ -240,7 +198,6 @@ def test_하나라도_틀리면_종료_코드_1(ck, monkeypatch):
 def test_Upstage_키가_없으면_종료_코드_1(ck, monkeypatch):
     monkeypatch.setenv("UPSTAGE_API_KEY", "")
     monkeypatch.setenv("MOLIT_API_KEY", "")
-    monkeypatch.setenv("EXAONE_API_KEY", "")
     results, code = ck.run(http_get=_http({}, []), http_post=_http({}, []))
     assert code == 1
     assert results[0].status == "설정 안 됨"
@@ -250,7 +207,6 @@ def test_출력에_키_값과_응답_본문이_없다(ck, monkeypatch, capsys):
     keys = {
         "UPSTAGE_API_KEY": "up_SUPER_SECRET_upstage_123",
         "MOLIT_API_KEY": "molit%2BSUPER%2FSECRET%3D%3D",
-        "EXAONE_API_KEY": "flp_SUPER_SECRET_exaone_456",
     }
     for k, v in keys.items():
         monkeypatch.setenv(k, v)

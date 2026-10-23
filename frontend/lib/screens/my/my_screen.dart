@@ -35,15 +35,29 @@ class MyScreen extends StatefulWidget {
 
 class _MyScreenState extends State<MyScreen> {
   late Future<List<AnalysisReport>> _historyFuture;
+  late final AnalysisRepository _repo;
 
   @override
   void initState() {
     super.initState();
+    _repo = context.read<AnalysisRepository>()..addListener(_onRepositoryChanged);
     _reload();
   }
 
+  @override
+  void dispose() {
+    _repo.removeListener(_onRepositoryChanged);
+    super.dispose();
+  }
+
   void _reload() {
-    _historyFuture = context.read<AnalysisRepository>().getHistory();
+    _historyFuture = _repo.getHistory();
+  }
+
+  /// 분석·삭제, 그리고 '사진 속 이름 가리기'를 바꿨을 때(저장소가 알린다) 목록을 다시 읽는다 —
+  /// 이 화면이 그 스위치가 있는 곳이라, 켜는 순간 아래 목록의 이름도 바로 가려져야 한다.
+  void _onRepositoryChanged() {
+    if (mounted) setState(_reload);
   }
 
   Future<void> _delete(AnalysisReport report) async {
@@ -255,11 +269,15 @@ class _MyScreenState extends State<MyScreen> {
   }
 }
 
-/// '사진 속 이름 가리기' 스위치 설명 — **실제로 덮는 범위 그대로** (테스트가 문장을 함께 본다).
+/// '사진 속 이름 가리기' 스위치 설명 — **실제로 가리는 범위 그대로** (테스트가 문장을 함께 본다).
+///
+/// 2026-10-22: 사진의 이름·주민번호 칸(서버 `privacyMasks`)에 더해 **리포트 글자 속 사람 이름**(`personNames`)도 가린다.
+/// 기본은 꺼짐 — 내 폰의 내 등기부에서는 실명을 계약 상대와 대조하는 것이 목적이다. 남의 진짜 이름이
+/// 큰 화면·포스터·영상에 나올 때(부스 시연·화면 캡처)만 켠다.
 const String kHideNamesSwitchDescription =
-    '다른 사람에게 화면을 보여 줄 때 켜 두세요. '
-    '분석한 등기부 사진에서 이름과 주민번호 칸을 전부 상자로 덮어요(집주인·채무자·이전 소유자 등). '
-    '찍는 중이거나 분석 전인 사진은 아직 가리지 못해요.';
+    '부스 시연·화면 캡처처럼 남이 볼 때만 켜 두세요. '
+    '켜면 분석한 등기부 사진과 리포트 글자 속 사람 이름을 가려요(주민번호 칸 포함). '
+    '회사·은행 이름은 그대로예요. 찍는 중이거나 분석 전인 사진은 아직 가리지 못해요.';
 
 /// 마이 화면의 '개인정보' 카드 — 위젯 테스트에서 단독으로 띄울 수 있게 뺐다.
 ///

@@ -840,7 +840,7 @@ void main() {
         ['/tmp/없는_1.jpg'],
         reportJson: '{"id":"r2"}',
       );
-      expect(await RegistryPhotoStore.instance.cachedReportJson('r2'), isNull);
+      expect(await RegistryPhotoStore.instance.originalReport('r2'), isNull);
     });
 
     test('보관 실패와 무관하게 세션 등록은 그대로 남는다', () async {

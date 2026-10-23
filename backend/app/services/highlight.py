@@ -982,9 +982,10 @@ def build_highlights(
                 kind="owner",
                 page=page_index,
                 box=norm,
-                # ⚠ 응답·기록 DB에 실명을 남기지 않는다(2026-10-21). 전체 이름은
-                #   사용자의 사진 위 그 자리에 그대로 보인다 — 칠한 곳이 바로 그 이름이다.
-                title=f"집주인 이름 · {mask_name(name)}",
+                # 화면엔 실명 (2026-10-22 규혁 결정) — 실제 만난 계약자와 이름을 맞춰 보는 칸이다.
+                # ⚠ 서버 기록에는 가린 사본만 남는다(`store.add` → `name_privacy.mask_report_for_storage`),
+                #   로그에는 위처럼 `mask_name`만 쓴다. 앱 가리기 스위치는 `Report.personNames`로 이 글자를 가린다.
+                title=f"집주인 이름 · {name}",
                 body=_OWNER_BODY_CORP if is_corp else _OWNER_BODY,
                 caution=shared_note,
                 source=_OWNER_SOURCE,

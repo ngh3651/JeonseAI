@@ -6,6 +6,8 @@
 /// 여기 담기는 더미 값은 전부 "예시"다.
 library;
 
+import '../state/privacy_settings.dart';
+import '../utils/name_mask.dart';
 import 'market_price_source.dart';
 import 'registry_mark_kind.dart';
 import 'risk_grade.dart';
@@ -327,6 +329,9 @@ class AnalysisReport {
     this.privacyMasks = const [],
     this.privacyMasksReady = false,
     this.captureCheck,
+    this.personNames = const [],
+    this.sourceJson,
+    this.namesHidden = false,
     this.marketPriceSource = MarketPriceSource.unknown,
     this.marketPriceAsOf,
     this.marketPriceSampleCount,
@@ -415,6 +420,29 @@ class AnalysisReport {
   /// 문제가 있으면 리포트가 "몇 쪽이 왜 — 그 장만 다시 찍기"를 권한다(판정은 그대로).
   final CaptureCheck? captureCheck;
 
+  /// 이 등기부의 **사람 이름** 목록 (api-contract.md §9.11 — 2026-10-22). 분석 응답·폰 원본에는 실명,
+  /// 서버 기록 사본에는 가린 꼴(`홍○○`)이다. '사진 속 이름 가리기'가 켜지면 [AnalysisReport.fromJson]이
+  /// 이 이름들을 화면의 **모든 글자**에서 가린다(회사·은행 이름은 서버가 넣지 않는다 — 그대로 보인다).
+  final List<String> personNames;
+
+  /// 이 모델을 만든 **원본 JSON**(가리기 전). 스위치가 바뀌면 [withCurrentPrivacy]가 이것으로 다시 만든다.
+  /// 서버 JSON에서 만들지 않은 모델(더미·테스트)은 null.
+  final Map<String, dynamic>? sourceJson;
+
+  /// 만들 때 이름을 가렸는가 — 그때의 '사진 속 이름 가리기' 값.
+  final bool namesHidden;
+
+  /// 지금 스위치 값에 맞춘 모델. 같으면 자기 자신, 다르면 [sourceJson]으로 **같은 한 곳**([AnalysisReport.fromJson])을
+  /// 다시 거쳐 만든다 — 열려 있는 화면이 스위치 리스너에서 부른다(화면마다 따로 가리지 않는다).
+  AnalysisReport withCurrentPrivacy() {
+    final source = sourceJson;
+    if (source == null || PrivacySettings.instance.hideNamesInPhotos == namesHidden) return this;
+    return _otherVariant[this] ??= AnalysisReport.fromJson(source);
+  }
+
+  /// 반대쪽 스위치 값으로 만든 모델을 한 번만 만들어 둔다(다시 그릴 때마다 JSON을 새로 읽지 않게).
+  static final Expando<AnalysisReport> _otherVariant = Expando('namesHiddenVariant');
+
   /// 이 쪽에서 가릴 상자들 (쪽 전체 상자는 빼고 — 그건 [namesUnlocatedOn]이 따로 말한다).
   List<HighlightBox> privacyBoxesOn(int page) => [
     for (final m in privacyMasks)
@@ -441,7 +469,23 @@ class AnalysisReport {
   final List<MarketPriceAlternative> marketPriceAlternatives;
 
   /// 서버 JSON(api-contract.md §2.1 Report) → 모델.
-  factory AnalysisReport.fromJson(Map<String, dynamic> json) => AnalysisReport(
+  ///
+  /// ★ '사진 속 이름 가리기'가 켜져 있으면 **여기 한 곳에서** `personNames`를 모든 글자에서 가린다
+  /// (서버와 같은 규칙 — `utils/name_mask.dart`). 화면마다 따로 가리지 않는다(2026-10-22).
+  factory AnalysisReport.fromJson(Map<String, dynamic> json) {
+    final hide = PrivacySettings.instance.hideNamesInPhotos;
+    return AnalysisReport._fromWire(
+      hide ? maskNamesInReportJson(json) : json,
+      source: json,
+      namesHidden: hide,
+    );
+  }
+
+  factory AnalysisReport._fromWire(
+    Map<String, dynamic> json, {
+    required Map<String, dynamic> source,
+    required bool namesHidden,
+  }) => AnalysisReport(
     id: json['id'] as String,
     alias: json['alias'] as String,
     address: json['address'] as String,
@@ -492,6 +536,13 @@ class AnalysisReport {
       for (final a in (json['marketPriceAlternatives'] as List? ?? const []))
         MarketPriceAlternative.fromJson(a as Map<String, dynamic>),
     ],
+    // 사람 이름 목록 (§9.11). 옛 서버·옛 기록이면 없음 → 빈 목록(글자 가리기 없음 — 그때는 서버가 이미 가렸다).
+    personNames: [
+      for (final n in (json['personNames'] as List? ?? const []))
+        if (n is String) n,
+    ],
+    sourceJson: source,
+    namesHidden: namesHidden,
   );
 
   /// 위험/확인 필요 등급인 근거의 패턴 라벨 — 판례 매칭·질문 생성기 입력.

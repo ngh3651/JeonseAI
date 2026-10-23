@@ -419,8 +419,8 @@ void main() {
     });
   });
 
-  group('스위치 설명 — 실제로 덮는 범위 그대로', () {
-    testWidgets('분석한 사진의 이름·주민번호 전부 + 분석 전 사진은 못 가린다는 한계를 말한다', (tester) async {
+  group('스위치 설명 — 실제로 가리는 범위 그대로', () {
+    testWidgets('사진과 글자 속 사람 이름 + 부스·캡처용 + 회사·은행은 그대로 + 분석 전 사진은 못 가린다', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(body: SingleChildScrollView(child: PrivacySettingsCard())),
@@ -428,7 +428,10 @@ void main() {
       );
       expect(find.koText(kHideNamesSwitchDescription), findsOneWidget);
       expect(kHideNamesSwitchDescription, contains('주민번호'));
-      expect(kHideNamesSwitchDescription, contains('채무자'));
+      // 2026-10-22: 사진뿐 아니라 리포트 글자 속 이름도 가린다 — 켜는 때는 남이 볼 때만(기본 꺼짐)
+      expect(kHideNamesSwitchDescription, contains('글자 속 사람 이름'));
+      expect(kHideNamesSwitchDescription, contains('부스 시연·화면 캡처'));
+      expect(kHideNamesSwitchDescription, contains('회사·은행 이름은 그대로'));
       expect(kHideNamesSwitchDescription, contains('분석 전'));
       // 예전 문구("집주인 이름 칸을 … 다른 글자는 그대로")는 이제 사실이 아니다
       expect(kHideNamesSwitchDescription, isNot(contains('다른 글자는 그대로')));

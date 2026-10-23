@@ -11,9 +11,9 @@
 - 판례 카드 캐시는 **메모리에만** 둔다(기기·리포트 단위). 재시작하면 첫 조회 때 다시 만든다 —
   판례 인덱스를 다시 만든 뒤 옛 카드가 영원히 남는 일을 막기 위해서다(decisions.md 2026-10-21).
 
-개인정보: 여기에 들어오는 리포트·스냅샷에는 **집주인 실명이 없다** — 하이라이트 제목은
-마스킹되고(`highlight.py`), 스냅샷은 이름 대신 해시만 든다(`compare.py`).
-`tests/test_pii_persistence.py`가 DB·로그·저장 JSON에 실명이 0건인지 확인한다.
+개인정보: 여기에 **남는** 리포트·스냅샷에는 실명이 없다. 분석 응답은 실명이지만(2026-10-22 — 화면엔 실명),
+`add`가 저장 직전에 `name_privacy.mask_report_for_storage`로 **가린 사본**을 만들어 그것만 쓴다.
+스냅샷은 이름 대신 해시만 든다(`compare.py`). `tests/test_pii_persistence.py`가 DB·로그·저장 JSON에 실명이 0건인지 확인한다.
 
 ⚠ 예시 시드는 **첫 조회 때 만든다** (2026-08-14 D13). 예시가 규칙 엔진 산출물이라
   `dummy_data → report_builder → store` 순환에 걸리지 않게, 모듈을 읽는 시점에는 만들지 않는다.
@@ -33,6 +33,7 @@ from pathlib import Path
 
 from .. import dummy_data, settings
 from ..schemas.contract import CaseMatch, Report
+from . import name_privacy
 from .compare import Fingerprint, RegistrySnapshot
 
 _log = logging.getLogger("jeonseai")
@@ -231,10 +232,11 @@ def get(report_id: str, *, device_id: str) -> Report | None:
 
 
 def add(report: Report, *, device_id: str) -> None:
-    """새 분석 결과를 이 기기의 이력에 넣는다."""
+    """새 분석 결과를 이 기기의 이력에 넣는다 — **가린 사본만** 남긴다(사람 이름 → `홍○○`, 2026-10-22)."""
+    stored = name_privacy.mask_report_for_storage(report)
     _db().execute(
         "INSERT OR REPLACE INTO reports (device_id, id, created_at, report_json) VALUES (?, ?, ?, ?)",
-        (device_id, report.id, _now_iso(), report.model_dump_json()),
+        (device_id, report.id, _now_iso(), stored.model_dump_json()),
     )
 
 

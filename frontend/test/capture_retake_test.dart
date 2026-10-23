@@ -412,6 +412,70 @@ void main() {
       expect(find.byType(CaptureIssuePanel), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('두 장 중 한 장만 바꾸면 안내가 "바꾼 장 · 아직 다시 찍을 장"으로 바뀐다 (옛 쪽 번호를 또 말하지 않는다)', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+
+      const twoBad = CaptureCheck(
+        ok: false,
+        pages: [
+          CapturePageIssue(index: 1, issues: ['blurry'], severe: true, tip: '글자 테두리가 번져 있어요. 다시 찍어 주세요.'),
+          CapturePageIssue(index: 2, issues: ['too_dark'], severe: true, tip: '종이가 어두워요. 밝은 곳에서 찍어 주세요.'),
+        ],
+      );
+      const twoBadMessage = '2쪽이 흐려요 · 3쪽이 너무 어두워요 — 그 장만 다시 찍어 주세요';
+      final repo = _CompareRepository([
+        ApiException(twoBadMessage, statusCode: 400, captureCheck: twoBad),
+        const CompareResult(
+          outcome: CompareOutcome.changed,
+          headline: '달라진 점이 없어요',
+          baseline: CompareDoc(reportId: 'base'),
+          current: CompareDoc(),
+        ),
+      ]);
+      var shots = 0;
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AnalysisRepository>.value(
+          value: repo,
+          child: MaterialApp(
+            theme: buildAppTheme(),
+            home: CompareScreen(
+              reportId: 'base',
+              request: CompareRequest(report: _report(id: 'base'), imagePaths: List.of(original)),
+              captureOne: () async => retakes[1 + shots++],
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.koTextContaining(twoBadMessage), findsOneWidget);
+
+      await tester.tap(find.koText('2쪽 이 장만 다시 찍기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('이 사진으로 바꾸기'));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent, hasLength(1), reason: '아직 심한 장이 남아 있어 다시 보내지 않는다');
+      expect(find.koTextContaining(twoBadMessage), findsNothing, reason: '이미 바꾼 2쪽을 또 찍으라고 하지 않는다');
+      expect(find.koTextContaining('바꾼 장: 2쪽 · 아직 다시 찍을 장: 3쪽'), findsOneWidget);
+      expect(find.koText('2쪽 이 장만 다시 찍기'), findsNothing);
+
+      await tester.tap(find.koText('3쪽 이 장만 다시 찍기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('이 사진으로 바꾸기'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(repo.sent, hasLength(2));
+      expect(repo.sent.last, [original[0], retakes[1], retakes[2]]);
+      expect(find.byType(CaptureIssuePanel), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('리포트 — 가벼운 문제(확인 필요)', () {

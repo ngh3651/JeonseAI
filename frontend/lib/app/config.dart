@@ -72,19 +72,16 @@ bool isTossTestKey(String key) => key.startsWith('test_');
 /// 실 로그인 도입 시 제거 — docs/cleanup-tracker.md 등록.
 const bool devAutoLogin = true;
 
-/// 개발용 등기부 사진·리포트 로컬 보관 (팀 테스트 편의).
+/// **폰 원본 보관** — "폰엔 원본, 서버엔 가린 사본" (2026-10-22 규혁 결정).
 ///
-/// true면 분석에 **실제로 전송한 JPEG**와 리포트 JSON을 앱 영구 저장소에 복사해 둔다.
-/// 앱을 껐다 켜도, 백엔드를 재시작해도 '내가 올린 사진에서 보기'가 계속 열린다 —
-/// 테스트할 때마다 재분석하며 Upstage 크레딧을 태우지 않아도 된다.
+/// true(기본)면 분석에 **실제로 전송한 JPEG**와 **원본 리포트**(실명이 보이는 분석 응답 JSON)를
+/// 이 폰의 앱 저장소에 최근 [RegistryPhotoStore.keepRecentReports]건 남긴다. 서버 기록에는 이름을 가린 사본만
+/// 있으므로, 리포트를 다시 열 때(기록 목록·같은 사진 캐시 포함) **이 폰의 원본을 먼저** 쓴다 — 그래야 실제 만난
+/// 계약자와 이름을 맞춰 볼 수 있다. 기록을 지우면 폰 사본도 함께 지운다. 오래된 것부터 자동으로 지운다.
 ///
-/// false면 예전처럼 **메모리 전용**이다: 복사·SharedPreferences 기록·복원이 전부
-/// 건너뛰어지고, 앱을 껐다 켜면 사진이 사라져 뷰어 진입점도 함께 사라진다.
-/// 제출·배포 때는 이 한 줄만 false로 바꾼다.
+/// false면 **아무것도 남기지 않는다**(메모리 전용): 앱을 껐다 켜면 사진이 사라져 '내가 올린 사진에서 보기'도 사라지고,
+/// 리포트는 서버의 가린 사본(`홍○○`)으로 보인다. 켰다가 끄면 다음 실행 때 남겨 둔 것까지 지운다.
 ///
-/// ⚠ 등기부 사진에는 소유자 실명·주소가 들어 있다. 그래서 켜 두더라도 최근
-/// [RegistryPhotoStore.keepRecentReports]건만 남기고 오래된 것은 지운다.
 /// 사진은 **서버에 저장하지 않는다** — 화면 문구는 `RegistryPhotoStore.retentionNotice` 한 곳에서
 /// 이 값에 맞춰 만든다(문구와 동작이 어긋나지 않게).
-/// 실 배포 시 제거 — docs/cleanup-tracker.md 등록.
-const bool devKeepRegistryPhotos = true;
+const bool keepOriginalsOnPhone = true;

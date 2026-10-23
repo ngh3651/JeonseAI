@@ -3,7 +3,7 @@
 왜 provider 추상화를 두나 (2026-07-28):
 지금까지 LLM은 Solar Pro 하나였고 `explanation.py`가 직접 HTTP를 불렀다. 여기에
 두 번째 경로(OCR 텍스트 → 구조화)를 붙이면서, 그리고 대회 규정상 쓸 수 있는 국내 모델이
-셋(Upstage Solar · LG EXAONE · SKT A.X)이라, **같은 입력으로 셋을 나란히 재려면**
+여럿이라(2026-10-22부터는 Upstage Solar 하나), **같은 입력으로 나란히 재려면**
 호출부를 인터페이스 뒤로 밀어야 한다. 재는 것이 목적이지 갈아끼우는 것이 목적이 아니다.
 
 ⚠ **이 계층은 판정을 만들지 않는다.** 두 작업 모두 등급·점수와 통로가 없다:
@@ -35,7 +35,7 @@ _log = logging.getLogger("jeonseai")
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 # 인프라 수치 (판정 임계값 아님)
-REQUEST_TIMEOUT_SECONDS = 120  # 추론 모델은 사고에 시간을 쓴다 (실측 EXAONE 20~60초)
+REQUEST_TIMEOUT_SECONDS = 120  # 추론 모델은 사고에 시간을 쓴다 (2026-07 실측 20~60초)
 MAX_ATTEMPTS = 3  # 최초 1회 + 재시도 2회 (serverless 429 대비)
 RATE_LIMIT_BACKOFF_SECONDS = 8
 
@@ -93,7 +93,7 @@ class LlmResponse:
 class LlmProvider(ABC):
     """국내 LLM 하나. 키가 없으면 `available=False`로 **조용히 빠진다.**
 
-    조용히 빠지는 것이 중요하다 — 키가 아직 없는 provider(SKT A.X) 때문에 분석이
+    조용히 빠지는 것이 중요하다 — 키가 없는 provider 때문에 분석이
     실패하면 안 되고, 키가 도착했을 때는 `.env`에 값만 넣으면 비교 대상에 자동으로
     합류해야 한다(코드 수정 없이).
     """
@@ -109,7 +109,7 @@ class LlmProvider(ABC):
     #: OpenAI 호환 base_url (뒤에 `/chat/completions`를 붙인다)
     base_url: str = ""
     #: **추론(reasoning) 모델 보정.** 사고 과정이 `max_tokens` 예산을 함께 쓰는 모델은
-    #: 요청 토큰이 부족하면 `content`가 **빈 문자열로** 돌아온다(실측: EXAONE에
+    #: 요청 토큰이 부족하면 `content`가 **빈 문자열로** 돌아온다(2026-07 실측: 추론 모델에
     #: max_tokens=200을 주니 사고 2,721자만 나오고 답이 비었다). 그만큼 더 얹는다.
     extra_max_tokens: int = 0
 

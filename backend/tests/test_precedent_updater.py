@@ -137,3 +137,48 @@ def test_health_summary_plain_words(data_dir):
     updater.run_update(collect=lambda k: [], now=datetime(2026, 10, 25, tzinfo=updater.KST))
     pu = TestClient(app).get("/").json()["precedentUpdate"]
     assert pu["ok"] is True and pu["error"] is None and pu["added"] == 0
+
+
+def test_backfill_pages_through_and_marks_done(data_dir):
+    """몰아 받기: 검색어마다 여러 쪽을 훑고, 끝나면 표시를 남긴다(다음엔 매주 업데이트만)."""
+    calls = []
+
+    def search(oc, q, page=1, display=100):
+        calls.append((q, page))
+        if q != "임대차보증금" or page > 2:
+            return []
+        return [{"판례일련번호": f"{page}{i:03d}"} for i in range(100 if page == 1 else 3)]
+
+    got = updater.collect_new(
+        "test", set(), search=search, fetch=lambda pid: _detail(pid, f"2026다{pid}"), backfill=True
+    )
+    assert len(got) == 103
+    assert ("임대차보증금", 2) in calls and ("임대차보증금", 3) not in calls  # 마지막 쪽에서 멈춤
+    assert len({q for q, _ in calls}) == len(updater.BACKFILL_QUERIES)
+
+    assert not updater.backfill_done()
+    updater.run_update(collect=lambda k: [], backfill=True, now=datetime(2026, 10, 24, tzinfo=updater.KST))
+    assert updater.backfill_done()
+
+
+def test_failed_backfill_is_retried(data_dir):
+    def boom(_):
+        raise RuntimeError("법제처 막힘")
+
+    updater.run_update(collect=boom, backfill=True, now=datetime(2026, 10, 24, tzinfo=updater.KST))
+    assert not updater.backfill_done()  # 실패하면 표시를 남기지 않아 다음에 다시 한다
+
+
+def test_rebuild_is_retried_after_failure(data_dir):
+    """원문은 받았는데 창고 만들기가 실패하면, 다음 번에 새 원문이 없어도 다시 만든다."""
+    def fail():
+        raise RuntimeError("임베딩 끊김")
+
+    raw = [updater._to_raw(_detail("777", "2026다777"))]
+    updater.run_update(collect=lambda k: raw, rebuild=fail, now=datetime(2026, 10, 24, tzinfo=updater.KST))
+    rebuilt = []
+    st = updater.run_update(
+        collect=lambda k: [], rebuild=lambda: rebuilt.append(1) or 41,
+        now=datetime(2026, 10, 25, tzinfo=updater.KST),
+    )
+    assert rebuilt == [1] and st["needsRebuild"] is False and st["docCount"] == 41

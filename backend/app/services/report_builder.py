@@ -37,6 +37,7 @@ from . import (
     price_lookup,
     price_resolver,
     privacy_masks,
+    registry_facts,
     rule_engine,
     store,
     terms,
@@ -236,6 +237,7 @@ def _build(
         highlightNotice=highlight_notice,  # [표시 전용] 사진 묶음 안내 (없으면 None)
         checkedNotes=checked_notes or [],  # [표시 전용] 무엇을 찾아봤는지 요약
         registryViewedAt=registry_viewed_at,  # [표시 전용] 등기부 열람일시 (없으면 None)
+        riskFacts=registry_facts.build(extract),  # [판례 설명 재료] 판정·화면에 쓰지 않음, 이름 없음
     )
     return report, explanation_result
 

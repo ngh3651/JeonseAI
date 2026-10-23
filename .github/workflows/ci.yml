@@ -53,20 +53,27 @@ jobs:
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
 
-  # 결선 부스용 APK — PR마다, 그리고 main에 합쳐질 때마다 만든다 (2026-10-22, 앱 1단계).
-  # 받는 법: Actions → 최신 실행 → 아래 Artifacts의 `jeonseai-apk` → 압축을 풀면 app-release.apk.
+  # 결선 부스용 APK — PR마다, 그리고 main에 합쳐질 때마다 만든다 (2026-10-22 앱 1단계 → 같은 날 서명·배포 고정).
+  # 받는 법(가장 쉬움): main에 합쳐질 때마다 **고정 링크**에 최신 APK가 올라간다(고정 서명 키가 있을 때만).
+  #   https://github.com/ngh3651/JeonseAI/releases/download/app-latest/jeonseai.apk
+  # PR의 APK는 Actions → 그 실행 → Artifacts의 `jeonseai-apk`(압축을 풀면 app-release.apk).
   # 서버 주소는 저장소 변수 API_BASE_URL, 앱 키는 비밀값 APP_KEY에서 넣는다(없으면 기본값으로 빌드).
-  # 서명 비밀값 4개가 다 있으면 그 키로, 하나라도 없으면 디버그 키로 서명한다(설치·시연은 둘 다 된다).
+  # 서명: 비밀값 `ANDROID_SIGNING_BUNDLE` **하나**(키 파일 + key.properties 묶음을 base64 한 줄로)면 고정 키로 서명한다.
+  #       예전 방식(비밀값 4개 `ANDROID_KEYSTORE_*`)도 그대로 된다. 둘 다 없으면 디버그 키(설치·시연은 된다).
+  # versionCode = 이 워크플로의 실행 번호 → 새 APK가 늘 "더 새 버전"이라 같은 키끼리는 덮어 설치(업데이트)가 된다.
   # ⚠ 다른 저장소에서 온(fork) PR에는 비밀값이 주어지지 않는다 → 그때는 디버그 키 + 기본 주소로 빌드된다.
   apk:
     name: APK 빌드
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # main에서 고정 링크(app-latest 릴리스)에 APK를 올릴 때만 쓴다
     defaults:
       run:
         working-directory: frontend
     env:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       APP_KEY: ${{ secrets.APP_KEY }}
+      ANDROID_SIGNING_BUNDLE: ${{ secrets.ANDROID_SIGNING_BUNDLE }}
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -89,9 +96,19 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: android-debug-keystore-v1
-      - name: 서명 키 준비 (비밀값이 다 있을 때만)
+      - name: 서명 키 준비
+        id: signing
         run: |
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] \
+          if [ -n "$ANDROID_SIGNING_BUNDLE" ]; then
+            # 묶음 = tar.gz(key.properties + app/upload-keystore.jks) → base64 한 줄. 붙여넣다 섞인 공백·줄바꿈은 걸러 낸다.
+            printf '%s' "$ANDROID_SIGNING_BUNDLE" | tr -d ' \r\n\t' | base64 --decode | tar -xz -C android
+            if [ ! -f android/key.properties ] || [ ! -f android/app/upload-keystore.jks ]; then
+              echo "::error::서명 묶음(ANDROID_SIGNING_BUNDLE)을 풀지 못했어요 — 비밀값을 처음 받은 그대로 다시 넣어 주세요."
+              exit 1
+            fi
+            echo "kind=release" >> "$GITHUB_OUTPUT"
+            echo "고정 키(묶음 비밀값)로 서명합니다."
+          elif [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] \
              && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
             echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
             {
@@ -100,8 +117,10 @@ jobs:
               echo "keyAlias=$ANDROID_KEY_ALIAS"
               echo "keyPassword=$ANDROID_KEY_PASSWORD"
             } > android/key.properties
-            echo "릴리스 키로 서명합니다."
+            echo "kind=release" >> "$GITHUB_OUTPUT"
+            echo "릴리스 키(비밀값 4개)로 서명합니다."
           else
+            echo "kind=debug" >> "$GITHUB_OUTPUT"
             echo "서명 비밀값이 없어 디버그 키로 서명합니다(설치·시연은 됩니다)."
           fi
       # ⚠ 이 저장소는 공개라 실행 로그도 공개다 — 주소·키 값은 찍지 않고 '있다/없다'와 https 여부만 남긴다.
@@ -113,12 +132,14 @@ jobs:
             *) echo "서버 주소: 있음 (https 아님 — 평문 통신을 허용한 APK가 됩니다)" ;;
           esac
           if [ -n "$APP_KEY" ]; then echo "앱 키: 있음"; else echo "앱 키: 없음(X-App-Key를 보내지 않는 APK)"; fi
+          echo "서명: ${{ steps.signing.outputs.kind }} · 빌드 번호(versionCode): ${{ github.run_number }}"
       # = flutter build apk --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} --dart-define=APP_KEY=${{ secrets.APP_KEY }}
       # 값은 위 env로 받아 따옴표로 넘긴다 — 값에 특수문자가 있어도 명령이 깨지지 않게.
       # 비어 있으면 앱이 기본값(주소 http://127.0.0.1:8000 · 앱 키 없음)으로 되돌린다(config.dart).
       - name: APK 빌드 (release)
         run: >-
           flutter build apk --release
+          --build-number=${{ github.run_number }}
           --dart-define="API_BASE_URL=$API_BASE_URL"
           --dart-define="APP_KEY=$APP_KEY"
       - name: 서명 키 지우기
@@ -130,3 +151,26 @@ jobs:
           path: frontend/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 30
+      # 고정 링크 = app-latest 릴리스의 jeonseai.apk. 디버그 키 APK는 올리지 않는다(덮어 설치가 끊기므로).
+      - name: 최신 APK를 고정 링크에 올리기 (main + 고정 키일 때만)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.signing.outputs.kind == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk jeonseai.apk
+          NOTES=$(printf '%s\n' \
+            "폰에서 아래 jeonseai.apk를 눌러 받고 설치하세요(출처를 알 수 없는 앱 허용)." \
+            "처음 한 번만: 서명이 다른 예전 앱을 지우고 설치. 그다음부터는 덮어 설치하면 기록이 그대로 남아요." \
+            "" \
+            "빌드 ${GITHUB_RUN_NUMBER} · main ${GITHUB_SHA::7} · $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M') KST")
+          if gh release view app-latest -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload app-latest jeonseai.apk --clobber -R "$GITHUB_REPOSITORY"
+            gh release edit app-latest --notes "$NOTES" -R "$GITHUB_REPOSITORY"
+          else
+            gh release create app-latest jeonseai.apk --prerelease --target "$GITHUB_SHA" \
+              --title "전세AI프 최신 앱 (자동)" --notes "$NOTES" -R "$GITHUB_REPOSITORY"
+          fi
+          echo "올렸어요: https://github.com/${GITHUB_REPOSITORY}/releases/download/app-latest/jeonseai.apk"
+      - name: 고정 링크를 건너뛴 이유
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.signing.outputs.kind != 'release'
+        run: echo "::notice::고정 서명 키 비밀값(ANDROID_SIGNING_BUNDLE)이 없어 고정 링크에 올리지 않았어요 — 이번 APK는 Artifacts에만 있어요."

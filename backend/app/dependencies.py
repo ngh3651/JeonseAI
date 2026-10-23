@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import re
 import threading
 import time
@@ -26,6 +27,8 @@ from . import settings
 
 #: 앱이 처음 실행될 때 만들어 폰에 저장하는 기기 id 형식 (UUID 등).
 _DEVICE_ID_RE = re.compile(r"[A-Za-z0-9-]{8,64}")
+
+_log = logging.getLogger("jeonseai")
 
 
 def get_current_user(
@@ -65,7 +68,7 @@ def app_key_ok(sent: Optional[str]) -> bool:
     return hmac.compare_digest((sent or "").encode("utf-8"), expected.encode("utf-8"))
 
 
-# ── 속도 제한 (최근 1시간, 세 겹) ────────────────────────────────────────────────
+# ── 속도 제한 (최근 1시간 세 겹 + 하루 한 겹) ─────────────────────────────────────
 # 외부 라이브러리 없이 메모리에 둔다. 서버가 재시작되면 초기화된다 — 크레딧을 지키는
 # **과속 방지턱**이지 보안 장치가 아니다(정문은 APP_KEY).
 #
@@ -74,6 +77,8 @@ def app_key_ok(sent: Optional[str]) -> bool:
 #   ① 기기 id × IP   `RATE_LIMIT_ANALYZE_PER_HOUR`(기본 30)    — 한 사람
 #   ② IP 하나        `RATE_LIMIT_IP_PER_HOUR`(기본 60)         — id를 바꿔도 같은 주소면 함께 센다
 #   ③ 서버 전체      `RATE_LIMIT_GLOBAL_PER_HOUR`(기본 300)    — 주소까지 바꿔도 크레딧 상한은 남는다
+#   ④ 서버 전체·하루 `RATE_LIMIT_GLOBAL_PER_DAY`(기본 500)     — 최근 24시간. 앱 키가 새어 나가도 하루 지출에 뚜껑
+#                                                                (2026-10-22, APK를 공개 링크로 내보내면서 추가)
 # 0 이하로 둔 겹은 끈다.
 # ⚠ 부스 폰들이 **같은 와이파이(같은 IP)**를 쓰면 ②를 함께 쓴다 → 결선 날에는 ②③을 올려 둔다(NOW.md).
 #
@@ -82,9 +87,16 @@ def app_key_ok(sent: Optional[str]) -> bool:
 # 일을 하지 않은 대조는 세지 않는다. 일을 시작한 뒤의 실패(IE 오류 등)는 크레딧을 썼으므로 센다.
 
 _WINDOW_SECONDS = 3600.0
+_DAY_SECONDS = 86400.0
 #: 기억하는 칸의 최대 개수 — 넘으면 마지막 호출이 가장 오래된 칸부터 버린다(메모리 상한).
 _MAX_BUCKETS = 20_000
 _GLOBAL = ("*", "*")
+_GLOBAL_DAY = ("*", "day")
+#: 청소(_cleanup)가 절대 버리지 않는 칸 — 서버 전체 칸들.
+_PINNED = (_GLOBAL, _GLOBAL_DAY)
+
+_MSG_HOUR = "분석을 너무 자주 했어요. 한 시간쯤 뒤에 다시 시도해 주세요"
+_MSG_DAY = "오늘은 서버의 하루 분석 횟수를 다 썼어요. 내일 다시 시도해 주세요"
 
 _hits: dict[tuple[str, str], deque[float]] = {}
 _hits_lock = threading.Lock()
@@ -108,51 +120,55 @@ def reset_rate_limit() -> None:
         _hits.clear()
 
 
-def _trim(bucket: deque[float], now: float) -> None:
-    while bucket and now - bucket[0] >= _WINDOW_SECONDS:
+def _trim(bucket: deque[float], now: float, window: float = _WINDOW_SECONDS) -> None:
+    while bucket and now - bucket[0] >= window:
         bucket.popleft()
 
 
 def _cleanup(now: float) -> None:
     """마지막 호출이 1시간보다 오래된 칸은 버리고, 그래도 많으면 가장 오래 조용했던 칸부터 버린다.
 
-    ⚠ `_hits_lock`을 쥔 채로 부른다. 서버 전체 칸(`_GLOBAL`)은 버리지 않는다.
+    ⚠ `_hits_lock`을 쥔 채로 부른다. 서버 전체 칸(`_PINNED` — 시간·하루)은 버리지 않는다.
     """
-    stale = [k for k, b in _hits.items() if k != _GLOBAL and (not b or now - b[-1] >= _WINDOW_SECONDS)]
+    stale = [k for k, b in _hits.items() if k not in _PINNED and (not b or now - b[-1] >= _WINDOW_SECONDS)]
     for key in stale:
         _hits.pop(key, None)
     overflow = len(_hits) - _MAX_BUCKETS
     if overflow > 0:
-        quietest = sorted((k for k in _hits if k != _GLOBAL), key=lambda k: _hits[k][-1])
+        quietest = sorted((k for k in _hits if k not in _PINNED), key=lambda k: _hits[k][-1])
         for key in quietest[:overflow]:
             _hits.pop(key, None)
 
 
 def limit_analyze(request: Request, device_id: str) -> None:
-    """분석·대조 1건을 센다. 세 겹 중 하나라도 상한에 닿아 있으면 **세지 않고** 429.
+    """분석·대조 1건을 센다. 네 겹 중 하나라도 상한에 닿아 있으면 **세지 않고** 429.
 
     라우터가 입력 검사를 마친 뒤, 외부 API를 부르기 직전에 부른다(위 '언제 세나').
     확인과 기록을 한 잠금 안에서 하므로, 동시에 몰려 와도 상한을 넘겨 통과하지 못한다.
     """
     ip = client_ip(request)
     limits = [
-        ((device_id, ip), settings.rate_limit_analyze_per_hour()),
-        (("ip", ip), settings.rate_limit_ip_per_hour()),
-        (_GLOBAL, settings.rate_limit_global_per_hour()),
+        ((device_id, ip), settings.rate_limit_analyze_per_hour(), _WINDOW_SECONDS),
+        (("ip", ip), settings.rate_limit_ip_per_hour(), _WINDOW_SECONDS),
+        (_GLOBAL, settings.rate_limit_global_per_hour(), _WINDOW_SECONDS),
+        (_GLOBAL_DAY, settings.rate_limit_global_per_day(), _DAY_SECONDS),
     ]
-    limits = [(key, limit) for key, limit in limits if limit > 0]
+    limits = [(key, limit, window) for key, limit, window in limits if limit > 0]
     now = time.monotonic()
     with _hits_lock:
-        for key, limit in limits:
+        for key, limit, window in limits:
             bucket = _hits.get(key)
             if bucket is not None:
-                _trim(bucket, now)
+                _trim(bucket, now, window)
                 if len(bucket) >= limit:
+                    if key == _GLOBAL_DAY:
+                        # 운영자가 Railway 로그에서 바로 알아보게 남긴다(결선 날이면 상한을 올린다).
+                        _log.warning(f"[속도 제한] 서버 하루 상한 {limit}회에 닿음 — RATE_LIMIT_GLOBAL_PER_DAY")
                     raise HTTPException(
                         status_code=429,
-                        detail="분석을 너무 자주 했어요. 한 시간쯤 뒤에 다시 시도해 주세요",
+                        detail=_MSG_DAY if key == _GLOBAL_DAY else _MSG_HOUR,
                     )
-        for key, _ in limits:
+        for key, _, _ in limits:
             _hits.setdefault(key, deque()).append(now)
         if len(_hits) > _MAX_BUCKETS:
             _cleanup(now)

@@ -455,6 +455,10 @@ class _FakeKakao implements KakaoLoginGateway {
 
 class _FakeAuth implements AuthRepository {
   @override
+  Future<MeStatus> setDisplayName(String name) async =>
+      MeStatus(loggedIn: true, displayName: name.trim().isEmpty ? null : name.trim());
+
+  @override
   Future<SavedSession> loginWithKakao(String kakaoAccessToken) async => SavedSession(
     token: 'session-token-booth',
     expiresAt: DateTime.utc(2099, 1, 1),

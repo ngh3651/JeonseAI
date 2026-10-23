@@ -9,17 +9,26 @@ import '../services/session_storage.dart';
 
 /// `GET /api/me` — 지금 로그인 상태.
 class MeStatus {
-  const MeStatus({required this.loggedIn, this.provider, this.customerKey});
+  const MeStatus({
+    required this.loggedIn,
+    this.provider,
+    this.customerKey,
+    this.displayName,
+  });
 
   factory MeStatus.fromJson(Map<String, dynamic> json) => MeStatus(
     loggedIn: json['loggedIn'] == true,
     provider: json['provider'] as String?,
     customerKey: json['customerKey'] as String?,
+    displayName: json['displayName'] as String?,
   );
 
   final bool loggedIn;
   final String? provider;
   final String? customerKey;
+
+  /// 사용자가 앱에서 정한 이름(2026-10-24) — 홈 인사말 "○○님 안녕하세요". 없으면 null.
+  final String? displayName;
 }
 
 abstract class AuthRepository {
@@ -35,6 +44,9 @@ abstract class AuthRepository {
 
   /// 회원 탈퇴 — 그 계정의 기록·세션·패스를 서버에서 전부 지운다(되돌릴 수 없다).
   Future<void> deleteAccount();
+
+  /// 표시 이름 정하기(빈 값이면 지우기) → 바뀐 상태 (계약 `POST /api/me/name`, 2026-10-24).
+  Future<MeStatus> setDisplayName(String name);
 }
 
 class ApiAuthRepository implements AuthRepository {
@@ -72,4 +84,9 @@ class ApiAuthRepository implements AuthRepository {
 
   @override
   Future<void> deleteAccount() => _api.delete('/api/me');
+
+  @override
+  Future<MeStatus> setDisplayName(String name) async => MeStatus.fromJson(
+    await _api.postJson('/api/me/name', {'displayName': name}) as Map<String, dynamic>,
+  );
 }

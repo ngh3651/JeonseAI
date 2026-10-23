@@ -82,6 +82,28 @@ class AccountSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.md),
+          // 이름 정하기 (2026-10-24) — 홈 인사말 "○○님 안녕하세요". 카카오에서 이름을 받지 않으니 여기서 직접 정한다.
+          if (session.isLoggedIn) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: AppText(
+                    session.displayName == null
+                        ? '이름을 정하면 홈에서 "○○님 안녕하세요"로 불러요'
+                        : '이름 · ${session.displayName}',
+                    style: session.displayName == null
+                        ? AppTypography.caption
+                        : AppTypography.bodyStrong,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => editDisplayName(context),
+                  child: AppText(session.displayName == null ? '이름 정하기' : '바꾸기'),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
           if (session.isLoggedIn && booth)
             // 부스 모드 — 로그아웃·회원 탈퇴를 숨긴 이유를 한 줄로(버튼이 '사라진' 게 아니라 '숨긴' 것이다)
             AppText(
@@ -164,4 +186,47 @@ Future<void> confirmAndDeleteAccount(BuildContext context) async {
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: AppText(message)));
+}
+
+/// 이름 정하기 창 — 12자까지, 비우면 이름을 지운다. 결과를 한 줄로 알린다.
+Future<void> editDisplayName(BuildContext context) async {
+  final session = context.read<AppSession>();
+  final messenger = ScaffoldMessenger.of(context);
+  final controller = TextEditingController(text: session.displayName ?? '');
+  final name = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const AppText('이름 정하기'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        maxLength: 12,
+        decoration: const InputDecoration(hintText: '예: 동크크 1'),
+        onSubmitted: (v) => Navigator.pop(ctx, v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const AppText('취소'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, controller.text),
+          child: const AppText('저장'),
+        ),
+      ],
+    ),
+  );
+  controller.dispose();
+  if (name == null) return;
+  final error = await session.setDisplayName(name);
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: AppText(
+          error ??
+              (name.trim().isEmpty ? '이름을 지웠어요' : '이제 "${name.trim()}님"으로 불러요'),
+        ),
+      ),
+    );
 }

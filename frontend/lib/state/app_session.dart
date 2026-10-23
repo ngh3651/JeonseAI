@@ -87,6 +87,10 @@ class AppSession extends ChangeNotifier {
 
   SavedSession? _session;
   bool _busy = false;
+  String? _displayName;
+
+  /// 사용자가 정한 이름(로그인했을 때만) — 홈 인사말 "○○님 안녕하세요" (2026-10-24).
+  String? get displayName => _session == null ? null : _displayName;
 
   bool get isLoggedIn => _session != null;
 
@@ -128,6 +132,9 @@ class AppSession extends ChangeNotifier {
       final me = await _auth.me();
       if (!me.loggedIn) {
         await _clearLocal();
+      } else if (me.displayName != _displayName) {
+        _displayName = me.displayName;
+        notifyListeners();
       }
     } catch (e) {
       debugPrint('[로그인] 세션을 확인하지 못했어요 (${e.runtimeType}) — 그대로 둡니다');
@@ -167,8 +174,26 @@ class AppSession extends ChangeNotifier {
     }
     _busy = false;
     notifyListeners();
-    if (outcome.ok) await _accountChanged();
+    if (outcome.ok) {
+      await verify(); // 이 계정에 정해 둔 이름을 받아 온다
+      await _accountChanged();
+    }
     return outcome;
+  }
+
+  /// 표시 이름 정하기 → 실패하면 사용자에게 보일 한 줄, 성공하면 null.
+  Future<String?> setDisplayName(String name) async {
+    if (_session == null) return '로그인한 뒤에 이름을 정할 수 있어요';
+    try {
+      final me = await _auth.setDisplayName(name);
+      _displayName = me.displayName;
+      notifyListeners();
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return '이름을 저장하지 못했어요. 잠시 후 다시 시도해 주세요';
+    }
   }
 
   /// 로그인 없이 둘러보기 — 기기 id로 쓴다(세션이 있었다면 그대로 둔다: 화면에서 고른 것뿐).
@@ -236,6 +261,7 @@ class AppSession extends ChangeNotifier {
 
   Future<void> _clearLocal() async {
     _apply(null);
+    _displayName = null;
     notifyListeners();
     await _storage.clear();
   }

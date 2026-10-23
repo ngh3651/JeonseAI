@@ -87,22 +87,19 @@ void main() {
     expect(stages.any((s) => s.dateKey == JourneyDateKey.balance), isTrue);
   });
 
-  test('용어: 목록 조회 / 사전 직격 / 판정 요구 거절 (2026-08-14 S-12)', () async {
+  test('챗봇: 용어 목록 / 대화 답 / 판정 요구는 판단 없이 (2026-10-24)', () async {
     final terms = await content.glossaryTerms();
     expect(terms, isNotEmpty);
     expect(terms.map((t) => t.term), contains('신탁등기'));
 
-    // ① 사전에 있는 용어 → 검수된 문장 그대로 (LLM 호출 0회)
-    final found = await content.askGlossary('신탁등기가 뭐예요?');
-    expect(found.term, '신탁등기');
-    expect(found.outOfScope, isFalse);
-    expect(found.source, '검수된 용어 사전');
+    // ① 아무 말이나 — 늘 답이 온다(AI 답 또는 기본 문장)
+    final hi = await content.chat(const [ChatTurn.user('안녕')]);
+    expect(hi.answer, isNotEmpty);
 
-    // ② 판정 요구 → **200 + 거절**(404 아님). LLM에 닿기 전에 규칙이 막는다.
-    final refused = await content.askGlossary('이 집 계약해도 돼요?');
-    expect(refused.outOfScope, isTrue);
-    expect(refused.term, isNull);
-    expect(refused.answer, contains('안전도 리포트'));
+    // ② 판정 요구 → 규칙이 알아채 조심 모드(또는 기본 문장). 판정 문장은 나가지 않는다.
+    final careful = await content.chat(const [ChatTurn.user('이 집 계약해도 돼요?')]);
+    expect(['careful', 'fallback'], contains(careful.mode));
+    expect(careful.answer, isNot(contains('계약해도 돼요.')));
   });
 
   test('예시 리포트 삭제 → 403 ApiException (계약 §3.4)', () async {

@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -265,6 +265,29 @@ class GlossaryAnswer(BaseModel):
     # 옛 앱 호환용 거울 필드 — 옛 앱은 `{term, description}`을 기대한다.
     # 새 앱은 `answer`만 읽는다. 두 값은 항상 같다.
     description: str = ""
+
+
+# ── 챗봇 (§2.11 / §3.21 — 2026-10-24 대화형) ────────────────────────────────
+class ChatMessage(BaseModel):
+    """대화 한 줄. 앱이 최근 대화를 통째로 보낸다(서버는 대화를 저장하지 않는다)."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    """`POST /api/chat` — 마지막 줄이 이번 질문(`user`)이어야 한다. 앞의 것은 맥락."""
+
+    messages: list[ChatMessage] = Field(min_length=1, max_length=20)
+
+
+class ChatResponse(BaseModel):
+    """챗봇 답 하나. **등급·점수·금액 칸이 없다** — 판정은 리포트(규칙 엔진)만 한다."""
+
+    answer: str  # 화면에 그릴 글. `**굵게**` 표시(최대 3곳)와 줄바꿈(\n)이 들어 있다
+    # normal = AI 답 / careful = 규칙이 판정 요구를 알아채 '판단 없이' 답함 / fallback = AI 대신 기본 문장
+    mode: str = "normal"
+    model: str = ""  # 답을 쓴 모델(예: solar-pro2). 기본 문장이면 ""
 
 
 # ── 계약 여정 (§2.6 JourneyStage / JourneyItem) ────────────────────────────

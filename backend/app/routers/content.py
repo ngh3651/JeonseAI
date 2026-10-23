@@ -2,7 +2,8 @@
 
 - GET /api/journey-stages          계약 여정 단계 (비회원 허용)
 - GET /api/glossary                용어 목록/추천 칩 (비회원 허용)
-- GET /api/glossary/lookup?q=      용어 조회 (비회원 허용, 못 찾으면 404=범위 밖)
+- GET /api/glossary/lookup?q=      옛 앱용 질문 하나 → 답 하나 (2026-10-24부터 새 챗봇 엔진에 연결)
+- POST /api/chat                   챗봇 — 최근 대화 → 답 (비회원 허용, 2026-10-24)
 - GET /api/precedents/status       판례 창고 판례 수 · 마지막 업데이트 날짜 (2026-10-24)
 
 더미 응답은 app/dummy_data.py(앱 더미 그대로 이식)에서 온다. 실데이터는 Phase E.
@@ -10,10 +11,20 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Header, HTTPException, Request
 
 from .. import dummy_data
-from ..schemas.contract import GlossaryAnswer, GlossaryTerm, JourneyStage, PrecedentStatus
+from ..dependencies import checked_device_id, limit_chat
+from ..schemas.contract import (
+    ChatRequest,
+    ChatResponse,
+    GlossaryAnswer,
+    GlossaryTerm,
+    JourneyStage,
+    PrecedentStatus,
+)
 from ..services import chat, journey
 
 router = APIRouter(prefix="/api", tags=["content"])
@@ -35,33 +46,42 @@ async def glossary() -> list[GlossaryTerm]:
     return dummy_data.glossary_terms()
 
 
+@router.post("/chat", response_model=ChatResponse)
+def chat_reply(
+    body: ChatRequest,
+    request: Request,
+    x_device_id: Optional[str] = Header(default=None, alias="X-Device-Id"),
+) -> ChatResponse:
+    """챗봇 (계약 §3.21 · 2026-10-24). 최근 대화 → 답 하나. **항상 200**(AI가 못 답하면 기본 문장).
+
+    ⚠ 동기(def) 핸들러 — Solar 호출이 수 초 걸려 스레드풀에서 돌게 한다.
+    ⚠ 질문 글은 로그에 남기지 않는다(`chat.py`). 대화는 저장하지 않는다 — 앱이 매번 보낸다.
+    """
+    last = body.messages[-1]
+    if last.role != "user" or not last.content.strip():
+        raise HTTPException(status_code=400, detail="마지막 메시지가 질문이 아니에요")
+    if len(last.content.strip()) > chat.MAX_USER_CHARS:
+        raise HTTPException(status_code=400, detail=f"질문은 {chat.MAX_USER_CHARS}자까지 보낼 수 있어요")
+    limit_chat(request, checked_device_id(x_device_id) or "no-device")
+    r = chat.reply([m.model_dump() for m in body.messages])
+    return ChatResponse(answer=r.answer, mode=r.mode, model=r.model)
+
+
 @router.get("/glossary/lookup", response_model=GlossaryAnswer)
-def glossary_lookup(q: str) -> GlossaryAnswer:
-    """질문 하나 → 답 하나 (계약 §3.9 · 2026-08-14 S-12).
+def glossary_lookup(q: str, request: Request) -> GlossaryAnswer:
+    """**옛 앱용** 질문 하나 → 답 하나 (계약 §3.9). 2026-10-24부터 새 챗봇 엔진(`chat.reply`)에 연결.
 
-    **항상 200이다.** 예전에는 사전에 없으면 404였고 앱이 거절 문구를 하드코딩했다.
-    이제 거절도 서버가 문장으로 준다(`outOfScope=true`) — 그래야 문구를 서버가 정하고,
-    LLM 답과 거절을 한 경로에서 다룰 수 있다.
-
-    답이 어디서 오는지는 `source`에 그대로 적힌다:
-      · `"검수된 용어 사전"` — data/terms.json 문장 그대로 (LLM 호출 0회)
-      · 실제 모델 문자열      — Solar가 쓴 문장 (검증 통과분만)
-      · `"준비된 문구"`       — 판정 요구 차단·범위 밖·LLM 실패
-
-    ⚠ 동기(def) 핸들러다 — LLM 호출이 수 초 걸릴 수 있어 스레드풀에서 돌게 한다.
-    ⚠ 404 분기는 **일부러 남겨 둔다**(아래 방어선). 질문이 비어 있는 것은 클라이언트
-      오류이고, 옛 앱이 404를 '범위 밖'으로 다루던 동작과도 어긋나지 않는다.
+    옛 앱은 굵게 표시(`**`)를 그리지 못해 빼서 보내고, 범위 밖 유도 버튼(`outOfScope`)은 더 쓰지 않는다.
     """
     if not (q or "").strip():
         raise HTTPException(status_code=404, detail="질문이 비어 있어요")
-    reply = chat.answer(q)
+    limit_chat(request, "legacy-lookup")
+    reply = chat.answer(q[: chat.MAX_USER_CHARS])
     return GlossaryAnswer(
-        answer=reply.answer,
-        outOfScope=reply.out_of_scope,
-        source=reply.source,
-        termGlossary=reply.term_glossary,
-        term=reply.term,
-        description=reply.answer,  # 옛 앱 호환 거울 필드
+        answer=reply.plain,
+        outOfScope=False,
+        source=reply.model,
+        description=reply.plain,  # 옛 앱 호환 거울 필드
     )
 
 

@@ -1,51 +1,55 @@
-"""용어 챗봇 가드레일 (S-12, 2026-08-14) — **규칙이 LLM보다 먼저**임을 못 박는다.
+"""챗봇 (2026-10-24 대화형) — **AI가 답하되, 판정은 규칙이 막는다**를 못 박는다.
 
-이 파일이 지키는 것은 순서다. 판정 요구("이 집 계약해도 돼요?")를 LLM에게 거절시키면
-프롬프트가 흔들릴 때마다 새 나가고, 그 사실은 **촬영 중에야** 드러난다. 그래서
-차단은 정규식이 하고, 테스트는 **LLM이 불렸는지 자체를** 검사한다(답이 무엇인지가 아니라).
+지키는 것:
+- 인사·잡담·장난·"더 쉽게"도 **AI가 답한다**(예전엔 낱말 검사에서 '준비된 문구'로 막혔다).
+- 판정 요구는 규칙이 먼저 알아채 **조심 모드 지시**를 붙인다 — 막지는 않는다.
+- 나가는 답은 검사를 통과해야 한다: 판정 문장·근거 없는 숫자·주소·금지 표현이면 한 번 고쳐 쓰게 하고,
+  그래도 안 되면 기본 문장.
+- 앞 대화가 AI에 그대로 간다(최근 8개). 주민번호·전화번호 꼴은 가린다. 로그에 질문 글이 없다.
 
 ⚠ 실호출 금지. provider는 전부 가짜다 — 크레딧을 쓰지 않는다.
 """
 
 from __future__ import annotations
 
-import json
-
 import pytest
+from fastapi.testclient import TestClient
 
-from app.services import chat, terms, text_guard
+from app.services import chat, terms, text_guard, thresholds
+from app.services.llm import LlmError
 
 
 class _FakeResponse:
-    def __init__(self) -> None:
+    def __init__(self, text: str = "{}") -> None:
         self.elapsed = 0.2
         self.total_tokens = 100
+        self.model = "fake-model-1"
+        self.text = text
 
 
 class _FakeProvider:
-    """가짜 provider — **호출 횟수를 센다.** 이 파일의 핵심 계측기다."""
+    """가짜 provider — 받은 지시·대화를 기록하고, 정해 둔 답을 차례로 돌려준다."""
 
     name = "fake"
     model = "fake-model-1"
 
-    def __init__(self, payload: dict | Exception | None = None, *, available: bool = True):
-        self.payload = payload if payload is not None else {"answer": "", "out_of_scope": True}
+    def __init__(self, payloads, *, available: bool = True):
+        self.payloads = list(payloads)
         self.available = available
-        self.calls = 0
+        self.calls: list[dict] = []
 
     def chat_json(self, system, user, **kwargs):  # noqa: ANN001, ANN003
-        self.calls += 1
-        if isinstance(self.payload, Exception):
-            raise self.payload
-        return self.payload, _FakeResponse()
+        self.calls.append({"system": system, "user": user, "history": kwargs.get("history") or []})
+        p = self.payloads[min(len(self.calls) - 1, len(self.payloads) - 1)]
+        if isinstance(p, Exception):
+            raise p
+        return p, _FakeResponse(str(p))
 
 
 @pytest.fixture
 def fake_llm(monkeypatch):
-    """provider를 가짜로 갈아 끼우고, 그 가짜를 돌려준다."""
-
-    def _install(payload=None, *, available: bool = True) -> _FakeProvider:
-        provider = _FakeProvider(payload, available=available)
+    def _install(*payloads, available: bool = True) -> _FakeProvider:
+        provider = _FakeProvider(payloads or [{"answer": "안녕하세요!"}], available=available)
         monkeypatch.setattr(chat.llm, "chat_provider", lambda: provider)
         monkeypatch.setenv("CHATBOT_LLM", "on")
         return provider
@@ -53,385 +57,327 @@ def fake_llm(monkeypatch):
     return _install
 
 
-def _answer_payload(text: str) -> dict:
-    return {"answer": text, "out_of_scope": False, "terms_used": []}
+def _a(text: str, kind: str = "real_estate") -> dict:
+    return {"answer": text, "kind": kind}
+
+
+def _u(text: str) -> dict:
+    return {"role": "user", "content": text}
+
+
+def _b(text: str) -> dict:
+    return {"role": "assistant", "content": text}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# L1. 판정 요구 차단 — **LLM 호출 0회**여야 한다
+# AI가 답한다 — 잡담·장난·짧은 말·사전 낱말도
 # ══════════════════════════════════════════════════════════════════════════════
 
-JUDGMENT_QUESTIONS = [
+
+@pytest.mark.parametrize("q", ["안녕", "ㄹ", "바보야", "집 너무 비싸 ㅜ", "더 쉬운말로 어려워", "등기부", "뭐해"])
+def test_모든_말을_AI가_읽고_답한다(fake_llm, q):
+    p = fake_llm(_a("안녕하세요!\n전세 이야기라면 편하게 물어보세요.", "small_talk"))
+    r = chat.answer(q)
+    assert len(p.calls) == 1
+    assert r.mode == chat.MODE_NORMAL and r.model == "fake-model-1"
+    assert "준비된 문구" not in r.answer and "용어를 쉽게 설명해 드리는 도우미" not in r.answer
+
+
+def test_사전_낱말도_사전_문장을_그대로_내지_않고_AI가_푼다(fake_llm):
+    p = fake_llm(_a("등기부등본은 **집의 이력서**예요."))
+    r = chat.answer("등기부")
+    assert r.answer == "등기부등본은 **집의 이력서**예요."
+    # 검수된 풀이는 AI의 '참고 자료'로 들어간다
+    desc = terms.lookup("등기부등본").description
+    assert desc in p.calls[0]["system"]
+
+
+def test_검수_대기_용어는_참고_자료에_넣지_않는다():
+    unverified = [t for t in terms.load_all() if not t.verified]
+    block = chat.glossary_block()
+    for t in unverified:
+        assert t.description not in block
+
+
+def test_판정_기준은_코드_상수에서_읽는다():
+    block = chat.criteria_block()
+    assert f"{thresholds.JEONSE_RATIO_DANGER_PCT}%" in block
+    assert f"{thresholds.SENIOR_DEBT_RATIO_DANGER_PCT}%" in block
+    assert f"{round(thresholds.PUBLIC_PRICE_TO_HOUSE_PRICE_RATIO * 100)}%" in block
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 앞 대화 — "더 쉽게"가 무엇을 쉽게인지 안다
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_앞_대화가_AI에_간다(fake_llm):
+    p = fake_llm(_a("가압류는 **돈 받을 사람이 집을 잠깐 묶어 둔 것**이에요."))
+    chat.reply([_u("가압류 알려줘"), _b("가압류는 채권자가 재산을 묶어 두는 절차예요."), _u("더 쉽게")])
+    call = p.calls[0]
+    assert call["user"] == "더 쉽게"
+    assert call["history"] == [
+        {"role": "user", "content": "가압류 알려줘"},
+        {"role": "assistant", "content": "가압류는 채권자가 재산을 묶어 두는 절차예요."},
+    ]
+
+
+def test_앞_대화는_최근_8개까지_답으로_시작하지_않게(fake_llm):
+    p = fake_llm(_a("네!"))
+    msgs = []
+    for i in range(10):
+        msgs += [_u(f"질문{i}"), _b(f"답{i}")]
+    msgs.append(_u("마지막"))
+    chat.reply(msgs)
+    hist = p.calls[0]["history"]
+    assert len(hist) <= chat.MAX_TURNS - 1
+    assert hist[0]["role"] == "user"
+
+
+def test_주민번호_전화번호_꼴은_AI에_보내기_전에_가린다(fake_llm):
+    p = fake_llm(_a("네, 알겠어요."))
+    chat.reply([_u("집주인 900101-1234567 연락처 010-1234-5678 이에요")])
+    sent = p.calls[0]["user"]
+    assert "1234567" not in sent and "5678" not in sent
+    assert "[주민번호 가림]" in sent and "[전화번호 가림]" in sent
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 규칙: 판정 요구 → 조심 모드 (막지 않는다)
+# ══════════════════════════════════════════════════════════════════════════════
+
+VERDICT_QUESTIONS = [
     "이 집 계약해도 돼요?",
     "여기 들어가도 괜찮을까요?",
     "근저당 잡힌 집인데 안전한가요?",
-]
-PRICE_QUESTIONS = [
     "보증금 얼마면 적당해요?",
-    "집주인한테 얼마가 적정한지 물어볼까요?",
     "전세금 좀 깎아도 될까요?",
-]
-TARGET_QUESTIONS = [
-    "이 집 등기부 어떻게 봐요?",
-    "우리 집 전세 괜찮은 편인가요?",
-    "이 매물 등기부에 근저당이 있어요",
-]
-LEGAL_QUESTIONS = [
     "집주인 상대로 소송하면 이길까요?",
-    "변호사를 선임해야 하나요?",
-    "내용증명을 보내면 되나요?",
+    "이거 사기야?",
+    "이 집 위험해?",
 ]
+
+
+@pytest.mark.parametrize("q", VERDICT_QUESTIONS)
+def test_판정_요구는_규칙이_알아채고_조심_지시를_붙인다(fake_llm, q):
+    p = fake_llm(_a("그건 제가 대신 정해 드릴 수 없어요.\n등기부의 빚을 먼저 확인해 보세요.", "verdict"))
+    r = chat.answer(q)
+    assert chat.verdict_request_hit(q) is not None
+    assert len(p.calls) == 1  # 막지 않고 AI가 답한다
+    assert "이번 질문은 판단을 요구하는 질문" in p.calls[0]["system"]
+    assert r.mode == chat.MODE_CAREFUL
 
 
 @pytest.mark.parametrize(
-    "question",
-    JUDGMENT_QUESTIONS + PRICE_QUESTIONS + TARGET_QUESTIONS + LEGAL_QUESTIONS,
+    "q",
+    [
+        "지금 우리집에 가압류가 3억이 걸려 있다는데 부동산에 가서 어떻게 물어보는게 좋을까",
+        "이 집 등기부 어떻게 봐요?",
+        "전세금이 집값보다 높으면?",
+        "확정일자가 뭐예요",
+        "안녕",
+    ],
 )
-def test_L1_판정요구는_LLM에_닿기_전에_막힌다(question, fake_llm):
-    provider = fake_llm(_answer_payload("이 답이 나가면 안 된다"))
-
-    reply = chat.answer(question)
-
-    assert provider.calls == 0, f"판정 요구가 LLM까지 갔다: {question!r}"
-    assert reply.out_of_scope is True
-    assert reply.answer == chat.OUT_OF_SCOPE_ANSWER
-    assert reply.source == chat.FALLBACK_SOURCE
-    assert reply.layer.startswith("L1-")
+def test_우리_집만_들어간_정당한_질문은_보통_모드(fake_llm, q):
+    p = fake_llm(_a("좋은 질문이에요."))
+    r = chat.answer(q)
+    assert chat.verdict_request_hit(q) is None
+    assert "이번 질문은 판단을 요구하는 질문" not in p.calls[0]["system"]
+    assert r.mode == chat.MODE_NORMAL
 
 
-def test_L1은_사전에_있는_말이_섞여_있어도_막는다(fake_llm):
-    """'근저당 잡힌 이 집, 계약해도 돼요?' — 사전에도 걸리고 도메인도 통과하는 질문이다.
-
-    L1이 뒤에 있으면 이게 그대로 새 나간다. 순서가 설계의 전부인 이유.
-    """
-    provider = fake_llm()
-
-    reply = chat.answer("근저당 잡힌 이 집, 계약해도 돼요?")
-
-    assert provider.calls == 0
-    assert reply.out_of_scope is True
-    assert reply.layer.startswith("L1-")
+def test_사용자가_말한_숫자는_답에_써도_된다(fake_llm):
+    fake_llm(_a("**3억** 가압류라면 중개사에게 언제 풀리는지 꼭 물어보세요."))
+    r = chat.answer("우리집에 가압류가 3억 걸렸대요 어떻게 물어봐요")
+    assert r.mode == chat.MODE_NORMAL and "3억" in r.answer
 
 
-def test_조사_이가_붙은_정상_질문은_지시대상으로_오인하지_않는다(fake_llm):
-    """'전세금이 집값보다 높으면?' 에는 '이 집'이 없다 — 공백만 지우면 걸린다."""
-    provider = fake_llm(_answer_payload("보증금이 집값보다 높으면 돌려받기 어려울 수 있어요."))
-
-    reply = chat.answer("전세금이 집값보다 높으면 어떻게 되나요?")
-
-    assert reply.out_of_scope is False, "정상 질문이 L1에 걸렸다"
-    assert provider.calls == 1
+def test_판정_기준_숫자는_써도_된다(fake_llm):
+    text = f"이 앱은 전세가율이 {thresholds.JEONSE_RATIO_DANGER_PCT}%를 넘으면 위험 신호로 봐요."
+    fake_llm(_a(text))
+    assert chat.answer("전세가율 기준이 뭐야").answer == text
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# L2. 사전 직격 — 검수된 문장 그대로, LLM 호출 0회
+# 검사 → 한 번 고쳐 쓰기 → 기본 문장
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def test_L2_사전에_있으면_검수된_문장을_그대로_쓴다(fake_llm):
-    provider = fake_llm(_answer_payload("LLM이 다시 쓴 문장"))
-
-    reply = chat.answer("근저당권")
-
-    assert provider.calls == 0, "검수된 문장을 LLM이 고쳐 쓰면 검수가 무의미해진다"
-    assert reply.source == chat.DICTIONARY_SOURCE
-    assert reply.term == "근저당권"
-    assert reply.answer == next(t for t in terms.load() if t.term == "근저당권").description
+def test_판정_문장은_고쳐_쓰게_하고_고친_답을_낸다(fake_llm):
+    p = fake_llm(_a("네, 이 집 계약해도 돼요."), _a("그건 제가 정해 드릴 수 없어요.\n등기부를 확인해 보세요."))
+    r = chat.answer("이 집 계약해도 돼요?")
+    assert len(p.calls) == 2
+    assert "보여 줄 수 없어요" in p.calls[1]["user"]  # 이유를 알려 준다
+    assert p.calls[1]["history"][-1]["role"] == "assistant"  # 방금 답을 대화에 넣는다
+    assert r.answer.startswith("그건 제가 정해 드릴 수 없어요") and r.layer == "AI-고쳐씀"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# L3. 도메인 게이트
-# ══════════════════════════════════════════════════════════════════════════════
-
-#: **사전에 없는** 자연어 질문 — 여기서만 LLM이 실제로 답한다(이번 작업의 합격선).
-#: 사전에 있는 표기가 섞인 질문은 L2에서 끝나므로 이 목록에 두지 않는다.
-IN_DOMAIN = [
-    "집주인이 빚이 많으면 세입자는 어떻게 되나요?",
-    "보증금을 못 돌려받으면 어떻게 해야 하나요?",
-    "계약 전에 뭘 확인해야 하나요?",
-    "집주인이 바뀌면 저는 어떻게 되나요?",
-    "월세랑 전세는 뭐가 다른가요?",
-]
-OUT_OF_DOMAIN = [
-    "오늘 날씨 어떤지 알려줘",
-    "파이썬으로 크롤러 만드는 법 알려줘",
-    "점심 메뉴 추천",
-    "주식 지금 사도 될까",
-    "여자친구 선물 뭐가 좋을까",
-]
+def test_두_번_다_걸리면_조심_모드_기본_문장(fake_llm):
+    p = fake_llm(_a("계약하셔도 될 것 같아요."))
+    r = chat.answer("이 집 계약해도 돼요?")
+    assert len(p.calls) == 2
+    assert r.answer == chat.CAREFUL_FALLBACK and r.mode == chat.MODE_FALLBACK
 
 
-@pytest.mark.parametrize("question", IN_DOMAIN)
-def test_L3_부동산_질문은_통과한다(question, fake_llm):
-    provider = fake_llm(_answer_payload("보증금을 지키는 방법을 알려드릴게요."))
-
-    reply = chat.answer(question)
-
-    assert provider.calls == 1, f"도메인 질문이 LLM까지 못 갔다: {question!r}"
-    assert reply.out_of_scope is False
+def test_지어낸_숫자는_고쳐_쓰게_한다(fake_llm):
+    p = fake_llm(_a("보통 계약은 2년이에요."), _a("보통 계약 기간은 법으로 정해져 있어요."))
+    r = chat.answer("전세 계약 기간이 얼마나 돼?")
+    assert len(p.calls) == 2 and "숫자 '2'" in p.calls[1]["user"]
+    assert r.answer == "보통 계약 기간은 법으로 정해져 있어요."
 
 
-@pytest.mark.parametrize("question", OUT_OF_DOMAIN)
-def test_L3_범위_밖은_LLM을_부르지_않는다(question, fake_llm):
-    provider = fake_llm(_answer_payload("무슨 답이든"))
-
-    reply = chat.answer(question)
-
-    assert provider.calls == 0, f"범위 밖 질문에 크레딧을 썼다: {question!r}"
-    assert reply.out_of_scope is True
-    assert reply.layer == "L3-범위밖"
+def test_보통_질문이_두_번_걸리면_용어_풀이로_떨어진다(fake_llm):
+    fake_llm(_a("www.iros.go.kr 에서 떼요"))
+    r = chat.answer("등기부등본 어디서 떼?")
+    assert r.mode == chat.MODE_FALLBACK
+    assert r.answer == terms.lookup("등기부등본").description
 
 
-def test_도메인_키워드는_terms_json에서_생성된다():
-    """하드코딩 목록을 새로 만들면 용어가 늘어날 때 둘이 갈라진다."""
-    keywords = chat.domain_keywords()
+def test_스키마에_없는_칸은_고쳐_쓰게_한다(fake_llm):
+    p = fake_llm({"answer": "괜찮아요", "grade": "GOOD"}, _a("확인할 것을 알려 드릴게요."))
+    r = chat.answer("근저당이 뭐야")
+    assert len(p.calls) == 2 and r.answer == "확인할 것을 알려 드릴게요."
 
-    assert "근저당권" in keywords
-    assert "전세가율" in keywords
-    # 검수 대기 용어도 **키워드로는** 쓴다 — 설명이 아니라 '부동산 얘기인가' 판별이라서.
-    assert "대항력" in keywords
-    assert "전세" in keywords  # 수동 목록
+
+def test_굵게_표시가_짝이_안_맞으면_뺀다(fake_llm):
+    fake_llm(_a("근저당은 **빚 표시예요."))
+    assert chat.answer("근저당").answer == "근저당은 빚 표시예요."
+
+
+def test_마크다운_나열은_점으로(fake_llm):
+    fake_llm(_a("확인할 것:\n- 갑구\n- 을구"))
+    assert chat.answer("등기부 뭐 봐").answer == "확인할 것:\n· 갑구\n· 을구"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# L4. 검증 — 하나라도 걸리면 답변을 **버리고** 거절로 떨어진다
+# AI가 없을 때 — 화면은 산다
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def test_숫자가_들어간_답변은_폐기된다(fake_llm):
-    """챗봇에는 재료가 없다 — '전세가율 80%가 기준'을 지어내면 판정 계층과 충돌한다."""
-    provider = fake_llm(_answer_payload("보증금이 집값의 80%를 넘으면 주의해야 해요."))
-
-    reply = chat.answer("집주인이 빚이 많으면 세입자는 어떻게 되나요?")
-
-    assert provider.calls == 1
-    assert reply.out_of_scope is True
-    assert reply.answer == chat.OUT_OF_SCOPE_ANSWER
-    assert reply.source == chat.FALLBACK_SOURCE
+def test_키가_없으면_용어_풀이_아니면_안내(fake_llm):
+    fake_llm(available=False)
+    assert chat.answer("근저당권이 뭐야").answer == terms.lookup("근저당권").description
+    assert chat.answer("안녕").answer == chat.OFFLINE_FALLBACK
 
 
-def test_한글_수사는_허용한다():
-    assert text_guard.check_chat("확인해야 할 것이 한두 가지 있어요.") is None
-    assert text_guard.check_chat("보증금을 지키는 방법은 두 가지예요.") is None
+def test_호출_실패도_같은_자리로(fake_llm):
+    fake_llm(LlmError("연결 실패"))
+    r = chat.answer("안녕")
+    assert r.answer == chat.OFFLINE_FALLBACK and r.mode == chat.MODE_FALLBACK
 
 
-def test_길이_상한을_넘으면_자르지_않고_버린다(fake_llm):
-    long_answer = "보증금을 지키는 방법을 알려드릴게요. " * 20
-    provider = fake_llm(_answer_payload(long_answer))
-
-    reply = chat.answer("보증금은 어떻게 지키나요?")
-
-    assert provider.calls == 1
-    assert reply.out_of_scope is True
-    assert len(reply.answer) < 200
-
-
-def test_모델이_범위밖이라고_하면_answer가_있어도_버린다(fake_llm):
-    provider = fake_llm(
-        {"answer": "그 집은 계약해도 괜찮아 보여요", "out_of_scope": True, "terms_used": []}
-    )
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert provider.calls == 1
-    assert reply.answer == chat.OUT_OF_SCOPE_ANSWER
-
-
-def test_금지_표현이_있으면_폐기된다(fake_llm):
-    provider = fake_llm(_answer_payload("이런 경우라면 안전합니다."))
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert provider.calls == 1
-    assert reply.out_of_scope is True
-    assert reply.source == chat.FALLBACK_SOURCE
-
-
-def test_등급_단어가_있으면_폐기된다(fake_llm):
-    fake_llm(_answer_payload("이 경우는 보통 확인 필요로 봐요."))
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert reply.out_of_scope is True
-
-
-def test_스키마에_없는_필드를_실어_보내면_폐기된다(fake_llm):
-    """등급·점수 필드가 오면 `extra='forbid'`가 잡는다 — 리포트와 같은 경계."""
-    provider = fake_llm(
-        {"answer": "설명이에요.", "out_of_scope": False, "terms_used": [], "grade": "위험"}
-    )
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert provider.calls == 1
-    assert reply.out_of_scope is True
-    assert reply.layer == "L4-스키마"
-
-
-def test_호출이_실패해도_화면은_답을_받는다(fake_llm):
-    from app.services.llm import LlmError
-
-    provider = fake_llm(LlmError("타임아웃 (테스트에서 일부러 냄)"))
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert provider.calls == 1
-    assert reply.answer == chat.OUT_OF_SCOPE_ANSWER
-    assert reply.source == chat.FALLBACK_SOURCE
-
-
-def test_API_키가_없으면_조용히_준비된_문구로_간다(fake_llm):
-    provider = fake_llm(_answer_payload("나오면 안 되는 답"), available=False)
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert provider.calls == 0
-    assert reply.source == chat.FALLBACK_SOURCE
-
-
-def test_통과한_답변에는_실제_모델명이_라벨로_붙는다(fake_llm):
-    fake_llm(_answer_payload("보증금을 지키려면 전입신고를 서둘러 하세요."))
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert reply.source == "fake-model-1", "'AI 생성'처럼 뭉뚱그리지 않는다(D26)"
-    assert reply.out_of_scope is False
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# L5. 용어 툴팁 — 세 경로가 합류한 뒤 한 곳에서 붙는다
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-def test_LLM_답변에도_용어_툴팁이_붙는다(fake_llm):
-    fake_llm(_answer_payload("전입신고를 하면 대항력을 갖출 준비가 돼요."))
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert "전입신고" in reply.term_glossary
-
-
-def test_모델이_용어를_띄어_써도_툴팁이_붙는다(fake_llm):
-    """실측(2026-08-14): Solar가 `근저당 권`처럼 띄어 쓰면 예전 매칭은 조용히 빠뜨렸다.
-
-    화면에는 어려운 말이 그대로 남고 밑줄만 없어서, 사용자는 뜻을 알 길이 없었다.
-    키는 **본문에 나타난 그 형태**여야 앱이 `indexOf`로 찾는다.
-    """
-    fake_llm(_answer_payload("집에 근저당 권이 잡혀 있으면 순위가 밀릴 수 있어요."))
-
-    reply = chat.answer("보증금 지키는 방법 알려줘")
-
-    assert "근저당 권" in reply.term_glossary
-    assert "근저당 권" in reply.answer, "키가 본문에 없으면 앱이 밑줄을 못 붙인다"
-
-
-def test_줄바꿈을_건너뛰며_용어를_잇지_않는다():
-    """문단이 갈린 곳에서 글자를 이어 붙이면 엉뚱한 자리에 밑줄이 붙는다."""
-    assert "근저당권" not in terms.attach("근저당\n권리관계를 확인하세요")
-
-
-def test_사전_답변에도_툴팁이_붙는다(fake_llm):
-    """검수된 문장 속 어려운 말에도 밑줄이 붙는다 — 붙이는 곳이 한 군데라서 가능하다."""
-    fake_llm()
-
-    reply = chat.answer("을구")
-
-    assert reply.layer == "L2-사전"
-    assert "근저당권" in reply.term_glossary, "사전 경로에서 툴팁이 빠졌다"
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 스위치 — 최악의 경우에도 '오늘 이전'으로 돌아갈 뿐
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-def test_CHATBOT_LLM_off면_예전과_똑같이_동작한다(fake_llm, monkeypatch):
-    """사전 직격은 그대로 되고, 자연어 질문은 거절된다 = 이 작업 이전의 동작."""
-    provider = fake_llm(_answer_payload("나오면 안 되는 답"))
+def test_비상_스위치_끄면_AI_안_부른다(fake_llm, monkeypatch):
+    p = fake_llm(_a("안녕"))
     monkeypatch.setenv("CHATBOT_LLM", "off")
-
-    natural = chat.answer("집주인이 빚이 많으면 세입자는 어떻게 되나요?")
-    dictionary = chat.answer("확정일자")
-
-    assert provider.calls == 0, "off인데 LLM을 불렀다"
-    assert natural.out_of_scope is True
-    assert natural.layer == "L4-꺼짐"
-    assert dictionary.out_of_scope is False
-    assert dictionary.source == chat.DICTIONARY_SOURCE
+    r = chat.answer("이 집 계약해도 돼요?")
+    assert p.calls == [] and r.answer == chat.CAREFUL_FALLBACK
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 엔드포인트 — 404가 아니라 200으로 나간다
+# 검사 그물 (text_guard.check_chat_reply)
+# ══════════════════════════════════════════════════════════════════════════════
+
+ALLOWED = text_guard.chat_allowed_numbers(["보증금 2억"], chat.criteria_numbers())
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "이 집 계약해도 돼요.",
+        "계약하셔도 될 것 같아요.",
+        "이 집은 계약하지 마세요.",
+        "이 집은 사기 같아요.",
+        "그 매물은 위험해요.",
+        "적당한 가격이에요.",
+        "안전합니다.",
+        "걱정 마세요.",
+        "양호한 편이에요.",
+        "보통 2년이에요.",
+        "www.iros.go.kr",
+        "제3조에 따라",
+    ],
+)
+def test_막히는_답(text):
+    assert text_guard.check_chat_reply(text, allowed=ALLOWED) is not None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "계약해도 되는지는 제가 정해 드릴 수 없어요.",
+        "보증금 **2억**이라면 등기부의 빚을 먼저 보세요.",
+        "1순위 근저당이 먼저 받아 가요.",
+        "확인할 것은 세 가지예요.",
+        "전세가율이 90%를 넘으면 위험 신호로 봐요.",
+        "괜찮아요, 천천히 물어보세요.",
+        "안녕하세요! 전세 이야기라면 편하게 물어보세요.",
+    ],
+)
+def test_통과하는_답(text):
+    assert text_guard.check_chat_reply(text, allowed=ALLOWED) is None
+
+
+def test_조심_모드에서는_권유_안심도_막는다():
+    assert text_guard.check_chat_reply("괜찮아요.", allowed=ALLOWED, careful=True) is not None
+    assert text_guard.check_chat_reply("추천해요.", allowed=ALLOWED, careful=True) is not None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 엔드포인트
 # ══════════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
 def client():
-    from fastapi.testclient import TestClient
-
+    from app.dependencies import reset_rate_limit
     from app.main import app
 
+    reset_rate_limit()
     return TestClient(app)
 
 
-def test_범위_밖_질문도_200으로_나간다(client, monkeypatch):
-    monkeypatch.setenv("CHATBOT_LLM", "off")
-
-    resp = client.get("/api/glossary/lookup", params={"q": "오늘 날씨 어때?"})
-
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["outOfScope"] is True
-    assert body["answer"] == chat.OUT_OF_SCOPE_ANSWER
-    assert body["source"] == chat.FALLBACK_SOURCE
-    assert body["term"] is None
+def test_POST_chat_모양(client, fake_llm):
+    fake_llm(_a("안녕하세요!\n**전세** 이야기라면 물어보세요.", "small_talk"))
+    r = client.post("/api/chat", json={"messages": [_u("안녕")]}, headers={"X-Device-Id": "dev-test-1"})
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {"answer", "mode", "model"}
+    assert body["mode"] == "normal" and "**전세**" in body["answer"]
 
 
-def test_사전_직격은_용어명과_출처를_함께_준다(client):
-    resp = client.get("/api/glossary/lookup", params={"q": "근저당권이 뭐예요?"})
-
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["term"] == "근저당권"
-    assert body["source"] == chat.DICTIONARY_SOURCE
-    assert body["outOfScope"] is False
-    # 옛 앱 호환 거울 필드
-    assert body["description"] == body["answer"]
+@pytest.mark.parametrize(
+    "messages",
+    [[_b("답만")], [_u("   ")], [_u("가" * (chat.MAX_USER_CHARS + 1))]],
+)
+def test_POST_chat_잘못된_요청은_400(client, fake_llm, messages):
+    fake_llm()
+    assert client.post("/api/chat", json={"messages": messages}).status_code == 400
 
 
-def test_빈_질문은_404_그대로다(client):
-    """옛 앱이 404를 '범위 밖'으로 다루던 동작과 어긋나지 않는 유일한 분기."""
-    assert client.get("/api/glossary/lookup", params={"q": "  "}).status_code == 404
+def test_POST_chat_횟수_상한(client, fake_llm, monkeypatch):
+    fake_llm()
+    monkeypatch.setenv("RATE_LIMIT_CHAT_PER_HOUR", "2")
+    h = {"X-Device-Id": "dev-test-2"}
+    codes = [client.post("/api/chat", json={"messages": [_u("안녕")]}, headers=h).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
 
 
-def test_추천_칩은_검수된_것만_나간다(client):
-    resp = client.get("/api/glossary")
-
-    assert resp.status_code == 200
-    chips = {c["term"] for c in resp.json()}
-    assert "근저당권" in chips
-    assert "대항력" not in chips, "검수 대기 용어가 응답에 나갔다(terms-review-queue.md)"
-
-
-def test_응답_스키마에_등급_점수_필드가_없다():
-    """리포트와 같은 경계 — 챗봇 응답에는 판정 필드가 존재하지 않는다."""
-    from app.schemas.contract import GlossaryAnswer
-
-    forbidden = {"grade", "score", "gauge", "probability", "risk", "amount"}
-    assert forbidden.isdisjoint(GlossaryAnswer.model_fields)
-    assert forbidden.isdisjoint(chat.ChatAnswer.model_fields)
+def test_옛_주소는_새_엔진에_굵게_빼고(client, fake_llm):
+    fake_llm(_a("근저당권은 **빚 표시**예요."))
+    r = client.get("/api/glossary/lookup", params={"q": "근저당권"})
+    body = r.json()
+    assert r.status_code == 200
+    assert body["answer"] == body["description"] == "근저당권은 빚 표시예요."
+    assert body["outOfScope"] is False and body["source"] == "fake-model-1"
+    assert client.get("/api/glossary/lookup", params={"q": " "}).status_code == 404
 
 
-def test_챗봇_평가셋이_계약대로_구성돼_있다():
-    """비교 하네스가 쓰는 고정 질문 10개 — 구성이 바뀌면 표가 비교 불가능해진다."""
-    from pathlib import Path
-
-    path = Path(__file__).resolve().parents[1] / "data" / "chat_eval.json"
-    data = json.loads(path.read_text(encoding="utf-8"))
-    kinds = [q["kind"] for q in data["questions"]]
-
-    assert len(kinds) == 10
-    assert kinds.count("dictionary") == 3
-    assert kinds.count("domain") == 4
-    assert kinds.count("verdict") == 2
-    assert kinds.count("off_topic") == 1
+def test_로그에_질문_글이_없다(fake_llm, caplog):
+    fake_llm(_a("네!"))
+    with caplog.at_level("INFO", logger="jeonseai"):
+        chat.answer("홍길동 집주인 이 집 계약해도 돼요")
+        chat.answer("오늘 점심 메뉴 추천해줘 김영희")
+    joined = "\n".join(r.getMessage() for r in caplog.records)
+    assert "[챗봇" in joined
+    for word in ("홍길동", "김영희", "점심"):
+        assert word not in joined

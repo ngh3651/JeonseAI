@@ -155,6 +155,7 @@ class LlmProvider(ABC):
         json_mode: bool = True,
         timeout: float | None = None,
         temperature: float = STRUCTURE_TEMPERATURE,
+        history: list[dict] | None = None,
     ) -> LlmResponse:
         """1회 호출. 실패하면 `LlmError`. **429(요청 제한)만** 짧게 물러섰다 다시 시도한다.
 
@@ -164,7 +165,12 @@ class LlmProvider(ABC):
         """
         if not self.available:
             raise LlmError(f"{self.name}: API 키 없음 ({self.key_env})")
-        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        # history: 앞선 대화(챗봇 여러 턴, 2026-10-24) — system과 이번 user 사이에 끼운다.
+        messages = [
+            {"role": "system", "content": system},
+            *(history or []),
+            {"role": "user", "content": user},
+        ]
 
         last_error = "알 수 없음"
         for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -218,11 +224,12 @@ class LlmProvider(ABC):
 
     def chat_json(
         self, system: str, user: str, *, max_tokens: int = 3000, timeout: float | None = None,
-        temperature: float = STRUCTURE_TEMPERATURE,
+        temperature: float = STRUCTURE_TEMPERATURE, history: list[dict] | None = None,
     ) -> tuple[dict, LlmResponse]:
         """JSON 응답을 dict로. 코드펜스(```json)로 감싸 오는 모델도 받아낸다."""
         resp = self.chat(
-            system, user, max_tokens=max_tokens, timeout=timeout, temperature=temperature
+            system, user, max_tokens=max_tokens, timeout=timeout, temperature=temperature,
+            history=history,
         )
         try:
             return _loads_lenient(resp.text), resp

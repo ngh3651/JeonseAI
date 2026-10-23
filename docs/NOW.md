@@ -233,6 +233,7 @@ iOS · 월세·반전세 · 계약서 교차검증(보류 확정) · 소액임�
 - `frontend/lib/repositories/`의 `Dummy*Repository` — 테스트 전용. test/로 옮기거나 지운다
 - `frontend/lib/repositories/price_source.dart` — 배선 안 된 확장점(배선하거나 지운다)
 - `frontend/lib/design_system/gallery/` (`/gallery`) — 개발용 카탈로그. 유지할지 결정
+- `frontend/lib/design_system/tokens/app_typography_next.dart` — **새 글자 크기·색 체계(시범, 2026-10-24)**. 지금은 판례 매칭 화면만 쓴다. 괜찮으면 값을 `AppTypography`·`AppColors`로 옮기고 지운다
 - `frontend/lib/screens/loading/loading_preview_screen.dart` (`/dev/loading`, `kDevTools`) — 개발용 로딩 화면 미리보기. 시연용 APK엔 진입 버튼 없음
 - 법제처 `OC=test` 폴백(`collect_precedents.py`) — 정식 `LAW_API_OC` 발급 시 경고만 사라짐
 - 개발 도구 스크립트: `run_rules.py` · `test_extract.py` · `demo_precedent.py` · `test_ocr_coords.py` · `probe_document_parse.py` ·

@@ -1,21 +1,18 @@
-/// S-12 용어 챗봇 화면 — 추천 칩 레이아웃 + 답변/거절이 그려지는 방식.
+/// S-12 챗봇 화면 (2026-10-24 대화형) — 추천 칩 + 대화가 그려지는 방식.
 ///
-/// 배경: 용어 사전이 6개 → 18개로 늘면서(terms.json 일원화) 칩 줄이 깨질 수 있다는
-/// 우려가 인계 문서에 남아 있었다. 2026-08-14 재설계에서 **빈 상태 2열 그리드 + [더 보기]**로
-/// 정리했고, 이 파일이 그 결정을 고정한다.
-///
-/// 함께 못 박는 것 (2026-08-14 AI 연결):
-///   · 답변 아래 **출처 라벨**이 항상 보인다(검수된 사전 / 모델명 / 준비된 문구)
-///   · 거절이 **실패처럼 보이지 않는다** — 경고색·에러 아이콘 없이 유도 버튼만
-///   · 답변 속 어려운 말에 **점선 밑줄**(TermText)이 붙는다
+/// 못 박는 것:
+///   · 빈 화면: 인사 + **AI 안내 한 줄** + 추천 칩 6개 + [더 보기]
+///   · 말풍선 밑 **출처 라벨·'내 리포트 보기' 버튼·용어 밑줄이 없다**(규혁: "여기선 딱 챗봇만")
+///   · `**굵게**`는 굵게, 표시 기호는 안 보인다
+///   · **앞 대화를 통째로 보낸다**("더 쉽게"가 이어지게)
+///   · 말풍선 폭이 화면의 75%를 넘지 않는다
+///   · [새 대화]로 지운다
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jeonse_ai/design_system/components/term_tooltip_sheet.dart';
 import 'package:jeonse_ai/design_system/text/app_text.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
-import 'package:jeonse_ai/design_system/tokens/app_colors.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/compare_result.dart';
 import 'package:jeonse_ai/models/content_models.dart';
@@ -38,8 +35,11 @@ const _serverTerms = <String>[
 class _FakeContentRepo implements ContentRepository {
   _FakeContentRepo({this.reply});
 
-  /// null이면 사전 답을 흉내 낸다.
-  final GlossaryAnswer? reply;
+  /// null이면 질문을 되풀이한 답을 준다.
+  final ChatReply? reply;
+
+  /// 화면이 보낸 대화들(호출마다 한 묶음)
+  final List<List<ChatTurn>> sent = [];
 
   @override
   Future<List<GlossaryTerm>> glossaryTerms() async => [
@@ -47,13 +47,10 @@ class _FakeContentRepo implements ContentRepository {
   ];
 
   @override
-  Future<GlossaryAnswer> askGlossary(String query) async =>
-      reply ??
-      GlossaryAnswer(
-        answer: '$query 설명이에요.',
-        source: '검수된 용어 사전',
-        term: query,
-      );
+  Future<ChatReply> chat(List<ChatTurn> messages) async {
+    sent.add(List.of(messages));
+    return reply ?? ChatReply(answer: '${messages.last.content} 설명이에요.', model: 'solar-pro2');
+  }
 
   @override
   Future<List<CaseMatch>> matchedCases(String reportId) async => const [];
@@ -91,12 +88,13 @@ class _EmptyAnalysisRepo extends AnalysisRepository {
       );
 }
 
-Future<void> _pump(
+Future<_FakeContentRepo> _pump(
   WidgetTester tester, {
-  GlossaryAnswer? reply,
+  ChatReply? reply,
   double textScale = 1.0,
   double width = 360,
 }) async {
+  final repo = _FakeContentRepo(reply: reply);
   tester.view.physicalSize = Size(width * 3, 800 * 3);
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
@@ -108,7 +106,7 @@ Future<void> _pump(
         ChangeNotifierProvider<AnalysisRepository>(
           create: (_) => _EmptyAnalysisRepo(),
         ),
-        Provider<ContentRepository>(create: (_) => _FakeContentRepo(reply: reply)),
+        Provider<ContentRepository>.value(value: repo),
       ],
       child: MaterialApp(
         theme: buildAppTheme(),
@@ -120,15 +118,23 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  return repo;
+}
+
+Future<void> _send(WidgetTester tester, String text) async {
+  await tester.enterText(find.byType(TextField), text);
+  await tester.testTextInput.receiveAction(TextInputAction.send);
+  await tester.pumpAndSettle();
 }
 
 void main() {
   group('빈 상태', () {
-    testWidgets('인사 두 줄 + 추천 칩 6개 + [더 보기]', (tester) async {
+    testWidgets('인사 + AI 안내 한 줄 + 추천 칩 6개 + [더 보기]', (tester) async {
       await _pump(tester);
 
-      expect(find.koText('어려운 부동산 말,\n제가 쉽게 풀어드릴게요'), findsOneWidget);
-      expect(find.koText('궁금한 걸 눌러보거나 직접 물어보세요'), findsOneWidget);
+      expect(find.koText('챗봇'), findsOneWidget);
+      expect(find.koText('전세·부동산,\n뭐든 물어보세요'), findsOneWidget);
+      expect(find.koText(kChatAiNotice), findsOneWidget);
       expect(find.byType(ActionChip), findsNWidgets(kFeaturedChipCount));
       expect(find.koTextContaining('더 보기'), findsOneWidget);
     });
@@ -166,7 +172,7 @@ void main() {
   });
 
   group('대화', () {
-    testWidgets('칩을 누르면 질문과 답, 그리고 출처 라벨이 보인다', (tester) async {
+    testWidgets('칩을 누르면 질문과 답 — 출처 라벨·유도 버튼·밑줄이 없다', (tester) async {
       await _pump(tester);
 
       await tester.tap(find.koText('근저당권'));
@@ -174,47 +180,59 @@ void main() {
 
       expect(find.koText('근저당권'), findsOneWidget); // 사용자 말풍선
       expect(find.koText('근저당권 설명이에요.'), findsOneWidget);
-      // 출처를 숨기지 않는다 (D26과 같은 정직성 원칙)
-      expect(find.koText('검수된 용어 사전'), findsOneWidget);
+      for (final gone in ['검수된 용어 사전', '준비된 문구', 'solar-pro2', '내 리포트 보기', '매물 분석하러 가기']) {
+        expect(find.koText(gone), findsNothing, reason: '$gone 이 보여요');
+      }
     });
 
-    testWidgets('LLM 답변에는 모델명이 출처로 붙고 어려운 말에 밑줄이 붙는다', (tester) async {
-      await _pump(
-        tester,
-        reply: const GlossaryAnswer(
-          answer: '집주인의 빚이 많으면 보증금을 돌려받기 어려울 수 있어요.',
-          source: 'solar-pro2',
-          termGlossary: {'보증금': '집을 빌리며 맡기는 돈이에요.'},
-        ),
-      );
+    testWidgets('**굵게**는 굵게 그리고 표시 기호는 안 보인다', (tester) async {
+      await _pump(tester, reply: const ChatReply(answer: '가압류는 **집을 잠깐 묶어 두는 것**이에요.\n쉽죠?'));
+      await _send(tester, '가압류 쉽게');
 
-      await tester.enterText(find.byType(TextField), '집주인이 빚이 많으면 어떻게 되나요?');
-      await tester.testTextInput.receiveAction(TextInputAction.send);
-      await tester.pumpAndSettle();
-
-      expect(find.koText('solar-pro2'), findsOneWidget);
-      expect(find.byType(TermText), findsOneWidget);
+      expect(find.koTextContaining('**'), findsNothing);
+      final rich = tester
+          .widgetList<RichText>(find.byType(RichText))
+          .firstWhere((r) => r.text.toPlainText().contains('묶어'));
+      final spans = <TextSpan>[];
+      rich.text.visitChildren((s) {
+        if (s is TextSpan && (s.text ?? '').contains('묶어')) spans.add(s);
+        return true;
+      });
+      expect(spans.any((s) => s.style?.fontWeight == FontWeight.w700), isTrue);
     });
 
-    testWidgets('거절은 실패처럼 보이지 않는다 — 경고색 없이 유도 버튼만', (tester) async {
-      await _pump(tester, reply: GlossaryAnswer.fallback);
+    testWidgets('앞 대화를 통째로 보낸다 — "더 쉽게"가 이어진다', (tester) async {
+      final repo = await _pump(tester);
+      await _send(tester, '가압류 알려줘');
+      await _send(tester, '더 쉽게');
 
-      await tester.enterText(find.byType(TextField), '이 집 계약해도 돼요?');
-      await tester.testTextInput.receiveAction(TextInputAction.send);
+      final last = repo.sent.last;
+      expect(last.map((t) => t.isUser).toList(), [true, false, true]);
+      expect(last.first.content, '가압류 알려줘');
+      expect(last[1].content, '가압류 알려줘 설명이에요.');
+      expect(last.last.content, '더 쉽게');
+    });
+
+    testWidgets('말풍선은 화면 폭의 75%를 넘지 않는다', (tester) async {
+      final long = '아주 긴 질문이에요 ' * 30;
+      await _pump(tester, reply: ChatReply(answer: '아주 긴 답이에요 ' * 30));
+      await _send(tester, long);
+
+      const limit = 360.0 * kBubbleWidthFactor;
+      // 글자 덩어리의 폭 = 말풍선 안쪽 폭 → 말풍선 폭(75%)보다 작아야 한다
+      expect(tester.getSize(find.koTextContaining('아주 긴 질문')).width, lessThanOrEqualTo(limit));
+      expect(tester.getSize(find.koTextContaining('아주 긴 답')).width, lessThanOrEqualTo(limit));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('[새 대화]를 누르면 처음 화면으로', (tester) async {
+      await _pump(tester);
+      await _send(tester, '안녕');
+      expect(find.koText(kChatAiNotice), findsNothing);
+
+      await tester.tap(find.byTooltip('새 대화'));
       await tester.pumpAndSettle();
-
-      expect(find.koTextContaining('안전도 리포트'), findsOneWidget);
-      expect(find.koText('매물 분석하러 가기'), findsOneWidget);
-      expect(find.koText('준비된 문구'), findsOneWidget);
-      // 빨강·경고 아이콘을 쓰지 않는다
-      expect(find.byIcon(Icons.error), findsNothing);
-      expect(find.byIcon(Icons.warning_amber), findsNothing);
-      final texts = tester.widgetList<Text>(find.byType(Text));
-      expect(
-        texts.any((t) => t.style?.color == AppColors.danger),
-        isFalse,
-        reason: '거절 문구에 경고색이 쓰였어요',
-      );
+      expect(find.koText(kChatAiNotice), findsOneWidget);
     });
   });
 }

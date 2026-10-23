@@ -307,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _shortcutCard(
           context,
           Icons.chat_bubble_outline,
-          '용어 챗봇',
+          '챗봇',
           () => context.go('/chatbot'),
         ),
       ],

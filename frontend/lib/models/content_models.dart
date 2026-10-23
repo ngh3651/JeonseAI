@@ -180,53 +180,41 @@ class GlossaryTerm {
   );
 }
 
-/// 챗봇 답 하나 (계약 §3.9 — 2026-08-14 S-12).
+/// 챗봇 대화 한 줄 (계약 §3.21 — 2026-10-24).
 ///
-/// **거절도 답이다.** 예전에는 서버가 404를 주고 앱이 거절 문구를 하드코딩했는데,
-/// 이제 사전 답·LLM 답·거절이 **같은 모양**으로 온다. 앱이 하는 일은 `outOfScope`를
-/// 보고 유도 버튼을 붙일지 정하는 것뿐이다.
-class GlossaryAnswer {
-  const GlossaryAnswer({
-    required this.answer,
-    this.outOfScope = false,
-    this.source = '',
-    this.termGlossary = const {},
-    this.term,
-  });
+/// 서버는 대화를 저장하지 않는다 — 앱이 최근 대화를 통째로 보내야 "더 쉽게" 같은 이어 묻기가 된다.
+class ChatTurn {
+  const ChatTurn.user(this.content) : isUser = true;
+  const ChatTurn.bot(this.content) : isUser = false;
 
-  /// 화면에 그대로 그릴 문장 — 앱이 고쳐 쓰지 않는다.
+  final bool isUser;
+  final String content;
+
+  Map<String, dynamic> toJson() => {
+    'role': isUser ? 'user' : 'assistant',
+    'content': content,
+  };
+}
+
+/// 챗봇 답 하나 (계약 §3.21 `ChatResponse`).
+///
+/// `answer`에는 줄바꿈과 `**굵게**` 표시가 들어 있다 — 화면이 굵게 그린다. 출처 라벨·유도 버튼은 없다
+/// (2026-10-24 규혁: "여기선 딱 챗봇만"). 판정 칸도 없다 — 판정은 리포트만 한다.
+class ChatReply {
+  const ChatReply({required this.answer, this.mode = 'normal', this.model = ''});
+
   final String answer;
 
-  /// true면 답변 아래에 유도 버튼(리포트/분석)을 붙인다. **경고색은 쓰지 않는다.**
-  final bool outOfScope;
+  /// normal(AI 답) · careful(판정 요구라 판단 없이 답함) · fallback(AI 대신 기본 문장)
+  final String mode;
 
-  /// 이 문장을 누가 썼는가 — "검수된 용어 사전" | 실제 모델명 | "준비된 문구".
-  /// 말풍선 아래 회색 한 줄로 그대로 보여준다(2026-08-14 D26과 같은 정직성 원칙).
-  final String source;
+  /// 답을 쓴 모델(예: solar-pro2). 기본 문장이면 빈 문자열.
+  final String model;
 
-  /// 답변에 등장한 어려운 말 → 쉬운 설명. 근거 카드·판례와 **같은 메커니즘**.
-  final Map<String, String> termGlossary;
-
-  /// 사전 직격일 때만 그 용어명. 자연어 답변·거절이면 null.
-  final String? term;
-
-  /// 서버에 닿지 못했을 때(옛 서버의 404 포함) 쓰는 기본 거절 — 문구는 서버 것과 같다.
-  static const GlossaryAnswer fallback = GlossaryAnswer(
-    answer:
-        '저는 부동산 용어를 쉽게 설명해 드리는 도우미예요. '
-        '이 집이 안전한지는 안전도 리포트가 분석해 드려요.',
-    outOfScope: true,
-    source: '준비된 문구',
-  );
-
-  factory GlossaryAnswer.fromJson(Map<String, dynamic> json) => GlossaryAnswer(
-    // 옛 서버는 `answer`가 없고 `description`만 준다 — 그때도 화면이 살아야 한다.
-    answer: (json['answer'] as String?) ?? (json['description'] as String? ?? ''),
-    outOfScope: json['outOfScope'] as bool? ?? false,
-    source: json['source'] as String? ?? '',
-    termGlossary: (json['termGlossary'] as Map<String, dynamic>? ?? const {})
-        .map((k, v) => MapEntry(k, v as String)),
-    term: json['term'] as String?,
+  factory ChatReply.fromJson(Map<String, dynamic> json) => ChatReply(
+    answer: json['answer'] as String? ?? '',
+    mode: json['mode'] as String? ?? 'normal',
+    model: json['model'] as String? ?? '',
   );
 }
 

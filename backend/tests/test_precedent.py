@@ -774,3 +774,16 @@ def test_jeonse_ratio_query_uses_case_vocabulary():
     q = QUERY_TEMPLATES["전세가율"]
     assert "배당" in q
     assert any(k in q for k in ("소액임차인", "선순위 임차인"))
+
+
+def test_이_집_숫자는_값으로_비교한다_날짜_조각에_걸리지_않게():
+    """2026-10-24 심사 리뷰: 글자 조각 비교라 "4"가 날짜에 걸려 통과했다 → 값 비교."""
+    from app.services.precedent import explainer
+
+    prop = '{"등기_항목": ["가압류 4억원 (2024.03.05 접수)"], "보증금": "2억원"}'
+    assert explainer._mentions_property("이 집에도 **4억원** 가압류가 있어요.", prop)
+    assert explainer._mentions_property("이 집에도 400,000,000원 가압류가 있어요.", prop)
+    assert not explainer._mentions_property("2024년 4월에 판결이 났어요.", prop)
+    assert explainer._numbers_grounded("가압류 4억원", prop)
+    assert not explainer._numbers_grounded("가압류 5억원", prop)
+    assert not explainer._field_ok("common_point", "이 집은 양호한 편이에요. 4억원", prop)

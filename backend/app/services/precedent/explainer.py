@@ -164,11 +164,17 @@ def split_bold(text: str) -> tuple[str, list[str]]:
 
 
 def _mentions_property(text: str, property_text: str) -> bool:
-    """공통점이 **이 집의 숫자**를 하나라도 짚었나 — '이_매물'에 있는 숫자가 글에 있어야 한다."""
-    src = _digits_only(property_text)
-    for raw in re.findall(r"\d[\d,\.]*", text):
-        n = raw.replace(",", "").rstrip(".")
-        if n and n in src:
+    """공통점이 **이 집의 숫자**를 하나라도 짚었나 — '이_매물'의 금액(값으로 비교) 또는 건수.
+
+    2026-10-24 심사 리뷰: 예전엔 숫자를 **글자 조각**으로 견줘 "4"가 날짜 어디에든 걸려 통과했다.
+    이제 `text_guard`와 같은 방식으로 **값**을 읽어 금액(만 원 이상)이나 'N건'이 이 집 재료와 같아야 한다.
+    """
+    prop = text_guard.collect_allowed(property_text) - {0.0}
+    for chunk, value in text_guard.extract_numbers(text):
+        if re.search(r"\d", chunk) and value >= 10_000 and text_guard._supported(value, prop):
+            return True
+    for m in re.finditer(r"(\d+)\s*건", text):
+        if float(m.group(1)) in prop:
             return True
     return False
 
@@ -184,13 +190,14 @@ def _digits_only(s: str) -> str:
 
 
 def _numbers_grounded(text: str, source: str) -> bool:
-    """글 속 숫자(1,000 · 3.5 · 2024 …)가 전부 입력(source)에 있는가 — 지어낸 금액·비율 차단."""
-    src = _digits_only(source)
-    for raw in re.findall(r"\d[\d,\.]*", text):
-        n = raw.replace(",", "").rstrip(".")
-        if n and n not in src:
-            return False
-    return True
+    """글 속 숫자가 전부 입력(source)에 있는가 — 지어낸 금액·비율 차단.
+
+    2026-10-24: 글자 조각 비교 → **값 비교**(`text_guard`와 같은 그물). `4억원`과 `400,000,000`이 같은 수로 읽히고,
+    날짜 속 "4"에 우연히 걸려 통과하지 않는다. 한글 수사("두 건")는 보지 않는다.
+    """
+    allowed = text_guard.collect_allowed(source)
+    bad = [c for c in text_guard.unsupported_numbers(text, allowed) if re.search(r"\d", c)]
+    return not bad
 
 
 def _field_ok(kind: str, text: str, source: str = "") -> bool:
@@ -199,6 +206,8 @@ def _field_ok(kind: str, text: str, source: str = "") -> bool:
     if len(text) > _MAX_LEN[kind]:
         return False
     if text_guard.banned_hit(text) is not None:
+        return False
+    if text_guard.grade_word_hit(text) is not None:  # 등급 이름은 리포트 뱃지가 말한다(2026-10-24)
         return False
     return _numbers_grounded(text, source)
 

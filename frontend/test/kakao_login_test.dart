@@ -66,6 +66,10 @@ class _FakeKakao implements KakaoLoginGateway {
 }
 
 class _FakeAuth implements AuthRepository {
+  @override
+  Future<MeStatus> setDisplayName(String name) async =>
+      MeStatus(loggedIn: true, displayName: name.trim().isEmpty ? null : name.trim());
+
   final List<String> kakaoTokens = [];
   final List<String> loggedOut = [];
   int deletes = 0;
@@ -585,6 +589,32 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.koText('받는 것'), findsOneWidget);
       expect(find.koTextContaining('카카오 회원번호'), findsOneWidget);
+    });
+  });
+
+  group('이름 정하기 (2026-10-24) — "동크크 1님 안녕하세요"', () {
+    test('로그인 전엔 정할 수 없고, 로그인 뒤 정하면 이름이 바뀌고, 로그아웃하면 사라진다', () async {
+      final session = newSession();
+      expect(await session.setDisplayName('동크크 1'), isNotNull);
+      expect((await session.signInWithKakao()).ok, isTrue);
+      expect(await session.setDisplayName(' 동크크 1 '), isNull);
+      expect(session.displayName, '동크크 1');
+      await session.signOut();
+      expect(session.displayName, isNull);
+    });
+
+    testWidgets('마이 계정 칸에서 이름을 정하면 그 이름이 보인다', (tester) async {
+      final session = newSession();
+      await session.signInWithKakao();
+      await tester.pumpWidget(_app(session, initial: '/my'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('이름 정하기'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '동크크 2');
+      await tester.tap(find.koText('저장'));
+      await tester.pumpAndSettle();
+      expect(find.koText('이름 · 동크크 2'), findsOneWidget);
+      expect(session.displayName, '동크크 2');
     });
   });
 }

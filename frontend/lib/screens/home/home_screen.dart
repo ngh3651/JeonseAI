@@ -165,8 +165,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _greeting(BuildContext context) {
     final session = context.watch<AppSession>();
-    // 카카오에서 이름을 받지 않는다(회원번호만) — 인사말에 이름을 쓰지 않는다 (2026-10-22).
-    final String hello = session.isGuest ? '안녕하세요' : '반가워요';
+    // 카카오에서 이름을 받지 않는다(회원번호만). 사용자가 마이에서 **직접 정한** 이름만 쓴다 (2026-10-24).
+    final String? name = session.displayName;
+    final String hello = session.isGuest
+        ? '안녕하세요'
+        : (name != null && name.isNotEmpty ? '$name님 안녕하세요' : '반가워요');
 
     return Row(
       children: [

@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from .. import settings
 from ..dependencies import checked_device_id, get_current_user
-from ..schemas.contract import KakaoLoginRequest, MeResponse, SessionResponse
+from ..schemas.contract import DisplayNameRequest, KakaoLoginRequest, MeResponse, SessionResponse
 from ..services import accounts
 
 _log = logging.getLogger("jeonseai")
@@ -73,9 +73,24 @@ def me(user: str = Depends(get_current_user)) -> MeResponse:
     """지금 로그인 상태. 세션이 틀리거나 만료됐으면 401(`get_current_user`) — 앱은 세션을 지운다."""
     if accounts.is_account_owner(user):
         return MeResponse(
-            loggedIn=True, provider=accounts.PROVIDER_KAKAO, customerKey=accounts.customer_key(user)
+            loggedIn=True,
+            provider=accounts.PROVIDER_KAKAO,
+            customerKey=accounts.customer_key(user),
+            displayName=accounts.display_name(user),
         )
     return MeResponse(loggedIn=False)
+
+
+@router.post("/me/name", response_model=MeResponse)
+def set_my_name(body: DisplayNameRequest, user: str = Depends(get_current_user)) -> MeResponse:
+    """표시 이름 정하기 (2026-10-24) — 홈 인사말 "○○님 안녕하세요". 로그인했을 때만. 빈 값이면 지운다."""
+    if not accounts.is_account_owner(user):
+        raise HTTPException(status_code=401, detail="로그인한 뒤에 이름을 정할 수 있어요")
+    try:
+        accounts.set_display_name(user, body.displayName)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return me(user)
 
 
 @router.delete("/me", status_code=204)

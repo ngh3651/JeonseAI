@@ -50,6 +50,13 @@ async def _lifespan(_app: FastAPI):
             _load_prepare_runtime().start_background()
         except Exception as e:  # noqa: BLE001 — 준비가 서버 시작을 막지 않는다
             logger.info(f"[준비] ⚠ 시작 준비를 띄우지 못함 — 서버는 그대로 시작 ({type(e).__name__})")
+        # 판례 자동 업데이트 알람시계 (2026-10-24) — 법제처에서 새 판례를 PRECEDENT_UPDATE_DAYS(기본 7)일마다
+        try:
+            from .services.precedent import updater
+
+            updater.start_background()
+        except Exception as e:  # noqa: BLE001
+            logger.info(f"[판례 업데이트] ⚠ 알람시계를 띄우지 못함 ({type(e).__name__})")
     yield
 
 

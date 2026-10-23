@@ -13,6 +13,18 @@ class ApiContentRepository implements ContentRepository {
 
   final ApiClient _api;
 
+  /// 판례 창고 상태 — 실패(옛 서버 404·연결 끊김)해도 화면을 막지 않고 null(날짜만 빠진다).
+  @override
+  Future<PrecedentStatus?> precedentStatus() async {
+    try {
+      final json = await _api.getJson('/api/precedents/status', onNotFound: () => null);
+      if (json == null) return null;
+      return PrecedentStatus.fromJson(json as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Future<List<CaseMatch>> matchedCases(String reportId) async {
     final json = await _api.getJson('/api/reports/$reportId/cases') as List;

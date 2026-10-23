@@ -100,6 +100,29 @@ class CaseMatch {
   );
 }
 
+/// 판례 창고 상태 (계약 §3.19 — 2026-10-24 판례 자동 업데이트).
+class PrecedentStatus {
+  const PrecedentStatus({this.docCount, this.updatedAt});
+
+  /// 창고에 든 판례 수
+  final int? docCount;
+
+  /// 마지막 업데이트 날짜 "YYYY-MM-DD" (모르면 null)
+  final String? updatedAt;
+
+  /// 화면 표기 "2026.10.24 기준" — 날짜를 모르면 null(지어내지 않는다).
+  String? get asOfLabel {
+    final d = updatedAt;
+    if (d == null || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(d)) return null;
+    return '${d.replaceAll('-', '.')} 기준';
+  }
+
+  factory PrecedentStatus.fromJson(Map<String, dynamic> json) => PrecedentStatus(
+    docCount: (json['docCount'] as num?)?.toInt(),
+    updatedAt: json['updatedAt'] as String?,
+  );
+}
+
 /// S-10 질문 생성기 — 위험 요소별 질문 + 답변 판별 가이드.
 class QuestionItem {
   const QuestionItem({

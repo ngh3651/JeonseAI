@@ -149,6 +149,11 @@ def reset() -> None:
     _cases_cache.clear()
 
 
+def clear_all_cases() -> None:
+    """판례 카드 캐시를 전부 비운다 — 판례 창고가 새로 바뀌었을 때(자동 업데이트, 2026-10-24)."""
+    _cases_cache.clear()
+
+
 def name_salt() -> bytes:
     """이름 해시용 소금 (compare._name_key가 쓴다)."""
     return _db().name_salt

@@ -143,6 +143,28 @@ def price_db_dir() -> Path:
     return env_path("PRICE_DB_DIR", BACKEND_ROOT / "data" / "price")
 
 
+def precedent_update_dir() -> Path:
+    """법제처에서 **자동으로 더 받은** 판례 원문·업데이트 기록이 사는 곳 (2026-10-24) — `${DATA_DIR}/precedents`.
+
+    레포에 든 원문(`backend/data/precedents/raw`)은 배포 때마다 이미지에 다시 실리지만, 자동으로 받은 것은
+    영구 볼륨에 남아야 다음 배포 뒤에도 그대로다.
+    """
+    return data_dir() / "precedents"
+
+
+def precedent_update_days() -> int:
+    """판례 자동 업데이트 간격(일) — `PRECEDENT_UPDATE_DAYS`, 기본 7. 0이면 끈다."""
+    try:
+        return max(0, int(env_str("PRECEDENT_UPDATE_DAYS") or 7))
+    except ValueError:
+        return 7
+
+
+def law_api_oc() -> str:
+    """법제처 Open API 인증값 — `LAW_API_OC`. 없으면 가이드 샘플 값 `test`(언제 막힐지 모름)."""
+    return env_str("LAW_API_OC") or "test"
+
+
 def precedent_index_dir() -> Path:
     """판례 벡터 인덱스(Chroma가 여기에 쓴다 → 쓰기 가능한 볼륨이어야 한다)."""
     return env_path("PRECEDENT_INDEX_DIR", BACKEND_ROOT / "data" / "precedents" / "index")

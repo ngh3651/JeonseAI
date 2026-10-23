@@ -59,6 +59,9 @@ class _FakeContentRepo implements ContentRepository {
   Future<List<CaseMatch>> matchedCases(String reportId) async => const [];
 
   @override
+  Future<PrecedentStatus?> precedentStatus() async => null;
+
+  @override
   Future<List<QuestionGroup>> questionGroups(String reportId) async => const [];
 
   @override

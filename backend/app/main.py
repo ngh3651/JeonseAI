@@ -159,7 +159,15 @@ def health_check():
         "precedentIndex": (current_index_dir() / "meta.json").is_file(),
         "upstageKey": bool(settings.env_str("UPSTAGE_API_KEY")),
         "molitKey": bool(settings.env_str("MOLIT_API_KEY")),
+        "lawOc": bool(settings.env_str("LAW_API_OC")),
     }
+    # 판례 자동 업데이트 결과 (2026-10-24) — 로그를 열지 않고 "법제처에서 받아 왔나"를 본다. 날짜·성공 여부·실패 종류만.
+    try:
+        from .services.precedent import updater
+
+        body["precedentUpdate"] = updater.health_summary()
+    except Exception:  # noqa: BLE001 — 헬스체크는 절대 실패하지 않는다
+        pass
     commit = settings.env_str("RAILWAY_GIT_COMMIT_SHA")
     if commit:
         body["version"] = commit[:7]

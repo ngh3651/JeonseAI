@@ -174,6 +174,30 @@ class ApiClient {
     return jsonDecode(utf8.decode(res.bodyBytes));
   }
 
+  /// JSON POST → 디코딩된 JSON. (결제 승인 — 계약 §3.13, 2026-10-22)
+  ///
+  /// [timeout]: 결제 승인은 서버가 토스를 기다리므로(최대 30초) 기본 15초보다 길게 준다.
+  Future<dynamic> postJson(
+    String path,
+    Map<String, dynamic> body, {
+    Duration? timeout,
+  }) async {
+    final headers = {
+      ...await commonHeaders(),
+      'Content-Type': 'application/json',
+    };
+    final http.Response res;
+    try {
+      res = await _client
+          .post(_uri(path), headers: headers, body: jsonEncode(body))
+          .timeout(timeout ?? _timeout);
+    } catch (_) {
+      throw const ApiException('서버에 연결하지 못했어요. 네트워크를 확인해 주세요');
+    }
+    _ensureOk(res);
+    return jsonDecode(utf8.decode(res.bodyBytes));
+  }
+
   /// DELETE → 204 기대.
   Future<void> delete(String path) async {
     final headers = await commonHeaders();

@@ -45,6 +45,25 @@ String get apiBaseUrl =>
 ///   사람을 막는 **정문**이다. 화면·로그에 절대 찍지 않는다.
 const String appKey = String.fromEnvironment('APP_KEY');
 
+/// 토스페이먼츠 개발자 문서에 **공개된 테스트용** 결제위젯 클라이언트 키 (2026-10-22, P2-1).
+/// 이 키로 하는 결제는 실제로 청구되지 않는다. 문서 공개 값이라 비밀이 아니다.
+const String kTossDocsTestClientKey = 'test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm';
+
+/// 빌드 때 받은 토스 클라이언트 키 — `--dart-define=TOSS_CLIENT_KEY=test_gck_…`. 안 넣으면 문서 공개 테스트 키.
+const String _definedTossClientKey = String.fromEnvironment(
+  'TOSS_CLIENT_KEY',
+  defaultValue: kTossDocsTestClientKey,
+);
+
+/// 토스 결제위젯 클라이언트 키. 빈 값(`--dart-define=TOSS_CLIENT_KEY=`)이면 문서 공개 테스트 키로 되돌린다.
+const String tossClientKey = _definedTossClientKey == ''
+    ? kTossDocsTestClientKey
+    : _definedTossClientKey;
+
+/// 테스트 키인가 — `test_`로 시작해야 한다. 아니면(실제 키 `live_…`) 결제 화면이 결제를 열지 않는다.
+/// 결선은 테스트 결제만 한다(서버도 실제 키를 거부한다).
+bool isTossTestKey(String key) => key.startsWith('test_');
+
 /// 개발용 자동 로그인 (팀 테스트 편의).
 ///
 /// true면 앱이 `AppSession`의 `kDemoUserName` 회원으로 시작해 분석 진입 게이트(로그인 유도 바텀시트)를

@@ -20,7 +20,6 @@ import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
 import '../../state/app_session.dart';
 import '../../state/journey_schedule_store.dart';
-import '../../utils/korean_date.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
 import '../journey/balance_due_banner.dart';
@@ -114,12 +113,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final key = journeyPropertyKey(report.address);
       if (!seen.add(key)) continue; // 같은 집의 옛 분석은 건너뛴다(최신 1건만)
       final schedule = store.scheduleFor(key);
-      if (!schedule.isBalanceTomorrow) continue;
+      // 잔금 하루 전·당일·입주 다음 날 — 휴대폰 알림과 같은 세 날 (2026-10-22)
+      final banner = journeyBannerFor(schedule);
+      if (banner == null) continue;
       banners.add(
         BalanceDueBanner(
-          title:
-              '${report.alias} · 잔금일이 내일이에요 · '
-              '${formatMonthDay(schedule.balance!)}',
+          title: '${report.alias} · ${banner.title}',
+          message: banner.message,
           note: '잔금 직전 확인이 이 앱에서 가장 중요한 단계예요',
           onCompare: () => startRegistryCompare(context, report),
         ),

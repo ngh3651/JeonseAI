@@ -456,6 +456,31 @@ MarketPriceAlternative {
 - **스위치**: `.env`의 `CHATBOT_LLM=off`면 L4를 통째로 건너뛴다 = AI 연결 이전과 완전히 같은 동작(사전 + 거절). 키 없음·타임아웃·JSON 깨짐·검증 실패도 전부 같은 자리로 떨어진다.
 - **모델**: `LLM_CHAT_PROVIDER`(없으면 `LLM_EXPLAIN_PROVIDER` 상속, 기본 `upstage`) · temperature **0.3**(설명 생성 0.6보다 낮다 — 재료가 없어 창작 여지를 줄인다) · max_tokens 400.
 
+### 3.12 `GET /api/pricing` — 요금제 · **비회원 허용** (2026-10-22 추가 · P2-1)
+- **목적**: 요금제 화면. 정본 `backend/data/pricing.json`.
+- **응답 200**: `Pricing` = `{label, currency, testMode, testNotice, plans: PricingPlan[]}`
+  - `label` = `"예시 (팀 확정 전)"` — **가격 옆 어디에나** 붙인다(가격은 팀이 확정하기 전까지 예시 — NOW.md 6절 #5).
+  - `testMode: true` · `testNotice: "테스트 결제 — 실제 청구 없음"` — 결제 화면·영수증 어디에나 붙인다.
+  - `PricingPlan` = `{id, name, tagline, price: int|null, priceText, period: string|null, purchasable, contact, features: string[]}`.
+    `id`: `free`(무료 — 분석) · `guardian_pass`(계약 지킴이 패스 — 알림·재대조) · `institution`(기관용 — `price: null`, `priceText: "문의"`, `contact: true`).
+    `purchasable: false`면 결제 버튼을 붙이지 않는다.
+
+### 3.13 `POST /api/payments/confirm` — 테스트 결제 승인 · **기기 id 필요** (2026-10-22 추가 · P2-1)
+- **목적**: 토스페이먼츠 결제위젯이 성공으로 돌려준 값을 서버가 **승인**한다(토스 `POST /v1/payments/confirm`).
+- **요청** `application/json`: `{planId, orderId, paymentKey, amount}` — `orderId`는 `[A-Za-z0-9_-]{6,64}`(토스 규칙, 어긋나면 **422**).
+- **금액은 서버가 정한다**: `amount`가 `pricing.json`의 그 요금제 `price`와 다르면 토스를 부르지 않고 **400**. 토스에는 앱 금액이 아니라 **요금제 가격**을 보낸다.
+- **키**: 서버 변수 `TOSS_SECRET_KEY`(비우면 토스 문서 공개 **테스트** 키). `test_`로 시작하지 않으면(실제 키 `live_…`) **503** — 결선은 테스트 결제만.
+- **응답 200**: `{testMode: true, notice: "테스트 결제 — 실제 청구 없음", pass: GuardianPass}`
+  - `GuardianPass` = `{planId, planName, orderId, amount, method: string|null, approvedAt: string|null, testMode}` — 카드 번호·영수증 주소는 **없다**(서버가 버린다).
+- **같은 주문 재전송**: 이미 승인해 둔 `orderId`면 토스를 다시 부르지 않고 같은 `pass`(앱의 [다시 확인하기]가 안전한 이유). 남의 주문번호면 **409**.
+  토스가 "이미 처리된 결제"라고 하면 결제를 조회해 같은 주문·금액일 때만 패스를 되살린다.
+- **에러**: **400** 결제할 수 없는 요금제 · 금액 불일치 · 토스 거절(토스의 한국어 문구 그대로 `detail`) / **409** 남의 주문 / **502** 토스에 닿지 못함·응답 불일치("잠시 후 다시") / **503** 실제 키.
+- **주인 키**: 서버는 `dependencies.get_pass_owner` **한 곳**에서 정한다 — 지금은 `device:<X-Device-Id>`. 카카오 로그인이 붙으면 그 함수만 계정 키로 바꾼다.
+
+### 3.14 `GET /api/me/pass` — 내 계약 지킴이 패스 · **기기 id 필요** (2026-10-22 추가 · P2-1)
+- **응답 200**: `{active: boolean, testMode: true, notice, pass: GuardianPass|null}` — 이 주인(지금은 이 기기)의 가장 최근 패스. 다른 기기의 패스는 안 보인다.
+- **앱 규칙**: 패스가 있으면 알림·재대조에 "지킴이 패스" **표시만** 붙인다. 패스가 없어도 알림·재대조는 막지 않는다(시연에서 막히면 안 된다).
+
 ---
 
 ## 4. 화면 ↔ 엔드포인트 매핑
@@ -474,6 +499,9 @@ MarketPriceAlternative {
 | S-11 등기부 대조 (로딩·결과 4갈래) | `POST /api/reports/{id}/compare` | **인증 필요** |
 | S-12 용어 챗봇 (칩 + 자연어 질문) | `GET /api/glossary`, `GET /api/glossary/lookup?q=` | 비회원 허용 |
 | S-13 마이/설정 | `GET /api/reports`, `DELETE /api/reports/{id}` | 조회=비회원 허용 / 삭제=인증 필요 |
+| 요금제 (마이·계약 여정에서 진입, 2026-10-22) | `GET /api/pricing` | 비회원 허용 |
+| 테스트 결제 → 영수증 | `POST /api/payments/confirm` (토스 결제위젯 결과) | 기기 id |
+| 지킴이 패스 표시 (알림 배너·다시 대조·마이) | `GET /api/me/pass` (앱 시작 때 1회 + 결제 직후) | 기기 id |
 
 **인증 필요는 `POST /api/analyze`와 `DELETE /api/reports/{id}` 둘.** 나머지는 전부 비회원 허용.
 (개발 모드에서는 두 인증 모두 `get_current_user`가 항상 통과시킨다 — §1.2.)

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 릴리스 빌드가 '안 쓰는 자원'으로 보고 지우지 않게 남긴다 (알림 플러그인 안내서의 방법).
+     알림 아이콘은 Dart 코드에서 이름으로만 부르므로 빌드 도구가 쓰임새를 못 본다. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_journey" />

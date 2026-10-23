@@ -6,8 +6,9 @@
 /// - **다른 집이면 숫자를 아예 그리지 않는다.** 다른 집끼리 비교한 값은 틀린 결론으로
 ///   이어지고, 그 결론이 잔금을 보내게 만든다.
 ///
-/// 문구는 서버(규칙 기반)가 준 것을 그대로 쓴다. 앱이 덧붙이는 문장은 딱 하나 —
-/// 기기에 저장된 계약 일정과 접수일을 견준 "계약서 쓴 다음 날이에요"뿐이다.
+/// 문구는 서버(규칙 기반)가 준 것을 그대로 쓴다. 앱이 덧붙이는 것은 둘 —
+/// 기기에 저장된 계약 일정과 접수일을 견준 "계약서 쓴 다음 날이에요", 그리고 맨 위
+/// **지금 할 일** 카드(compare_next_step.dart — 서버 결과의 갈래만 옮기고 새 판정은 없다).
 library;
 
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ import '../../models/compare_result.dart';
 import '../../models/content_models.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
+import 'compare_next_step.dart';
 
 class CompareResultView extends StatelessWidget {
   const CompareResultView({
@@ -94,9 +96,22 @@ class CompareResultView extends StatelessWidget {
         ? AppColors.dangerSoft
         : AppColors.primarySoft;
 
+    // 지금 할 일 (2026-10-22, P1-2) — 결과를 읽고 멈추지 않게 맨 위에 하나. 판정은 서버 결과 그대로.
+    final CompareNextStep? next = compareNextStepFor(result);
+
     return ListView(
       padding: _pagePadding,
       children: [
+        if (next != null) ...[
+          CompareNextStepCard(
+            step: next,
+            result: result,
+            reportId: result.newReportId ?? baselineReportId,
+            onRecapture: onRecapture,
+            onBackToJourney: onBackToJourney,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         _headerCard(tone: tone, soft: soft),
         const SizedBox(height: AppSpacing.lg),
         for (final row in result.rows) ...[

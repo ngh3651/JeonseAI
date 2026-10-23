@@ -21,7 +21,7 @@ import time
 from collections import deque
 from typing import Optional
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 
 from . import settings
 
@@ -53,6 +53,16 @@ def get_current_user(
     if raw == settings.LEGACY_DEVICE_ID or not _DEVICE_ID_RE.fullmatch(raw):
         raise HTTPException(status_code=400, detail="기기 정보 형식이 올바르지 않아요")
     return raw
+
+
+def get_pass_owner(user: str = Depends(get_current_user)) -> str:
+    """계약 지킴이 패스(결제 기록)의 **주인 키** — 이 함수 **한 곳에서만** 정한다 (2026-10-22, P2-1).
+
+    지금은 기기 id에 붙인다: `device:<기기 id>`. 카카오 로그인이 붙으면 여기만 계정 키
+    (예: `kakao:<회원번호>`)를 돌려주게 바꾸면 된다 — 결제 라우터와 저장소는 이 값만 쓴다.
+    앞머리(`device:`)를 붙여 두는 이유: 나중에 기기 패스를 계정으로 옮길 때 어느 쪽 키인지 가린다.
+    """
+    return f"device:{user}"
 
 
 # ── 앱 키 (크레딧 보호의 정문) ─────────────────────────────────────────────────

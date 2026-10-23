@@ -75,7 +75,10 @@ def test_헬스체크는_키_값을_절대_내보내지_않는다(client, tmp_pa
         assert secret not in resp.text
     # 값의 종류도 못 박는다 — 참/거짓과 짧은 버전 문자열, 판례 업데이트 요약(날짜·수·성공 여부·실패 종류)뿐
     assert {k for k, v in body.items() if not isinstance(v, bool)} == {"status", "version", "precedentUpdate"}
-    assert set(body["precedentUpdate"]) == {"lastCheckAt", "lastSuccessAt", "added", "ok", "error"}
+    assert set(body["precedentUpdate"]) == {
+        "lastCheckAt", "lastSuccessAt", "added", "ok", "error",
+        "running", "startedAt", "docCount", "extraRaw", "backfillDone",  # 진행 보기 (2026-10-24)
+    }
 
 
 def test_헬스체크는_외부를_부르지_않는다(client, monkeypatch):

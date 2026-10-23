@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../app/config.dart' show kDevTools;
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_card.dart';
 import '../../design_system/components/risk_badge.dart';
@@ -137,6 +138,12 @@ class _MyScreenState extends State<MyScreen> {
           const SizedBox(height: AppSpacing.xxl),
           // 앱 버전 — 부스에서 최신 APK인지 확인. 7번 연속 누르면 부스 모드(state/booth_mode.dart)
           const AppVersionLine(),
+          // 개발 도구(`--dart-define=DEV_TOOLS=true`일 때만) — 서버 없이 로딩 화면만 띄워 핫 리로드로 다듬는다
+          if (kDevTools)
+            TextButton(
+              onPressed: () => context.push('/dev/loading'),
+              child: const AppText('개발: 로딩 화면 미리보기'),
+            ),
           const SizedBox(height: AppSpacing.xl),
         ],
       ),

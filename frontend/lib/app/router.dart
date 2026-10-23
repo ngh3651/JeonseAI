@@ -20,6 +20,7 @@ import '../screens/guide/registry_guide_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/journey/journey_screen.dart';
 import '../screens/loading/analysis_loading_screen.dart';
+import '../screens/loading/loading_preview_screen.dart';
 import '../screens/my/my_screen.dart';
 import '../screens/my/privacy_policy_screen.dart';
 import '../screens/onboarding/onboarding_screen.dart';
@@ -149,6 +150,11 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/gallery',
       builder: (_, _) => const ComponentGalleryScreen(),
+    ),
+    // 개발용 로딩 화면 미리보기 (2026-10-23) — 진입 버튼은 `kDevTools`일 때만(마이 맨 아래)
+    GoRoute(
+      path: '/dev/loading',
+      builder: (_, _) => const LoadingPreviewScreen(),
     ),
   ],
 );

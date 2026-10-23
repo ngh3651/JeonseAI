@@ -139,6 +139,10 @@
 - 변수가 없으면 APK는 `http://127.0.0.1:8000`(USB + `adb reverse`)을 본다 — CI 로그의 '빌드 설정 확인' 줄에 주소 유무·서명 종류·빌드 번호가 찍힌다(값은 안 찍힌다).
 - 로컬에서 직접: `cd frontend && flutter build apk --release --dart-define=API_BASE_URL=https://<주소> --dart-define=APP_KEY=<키>`
   (고정 키로 서명하려면 묶음을 `frontend/android`에 풀어 둔다: `base64 -d 묶음파일 | tar -xz -C frontend/android` — 커밋 금지, `.gitignore`가 막는다)
+- **화면 빨리 고쳐 보기**(2026-10-23, 개발용): `flutter run`으로 까는 앱은 **'전세AI프 개발'**(패키지 `….jeonse_ai.dev`)이라 시연용 앱과 한 폰에 **나란히** 깔린다.
+  폰과 컴퓨터를 같은 와이파이(학교 망이면 폰 핫스팟)에 두고 무선 디버깅으로 연결 →
+  `cd frontend && flutter run --dart-define=API_BASE_URL=<Railway 주소> --dart-define=APP_KEY=<키> --dart-define=DEV_TOOLS=true` →
+  코드를 받으면(`git pull`) 터미널에서 **`r`**(핫 리로드). 마이 맨 아래 **'개발: 로딩 화면 미리보기'**는 서버를 부르지 않는다(크레딧 0원). 개발 앱에선 카카오 로그인이 안 된다
 - 카카오 로그인용 **키 해시**(고정 키 기준): `IGUD29cSPI5wE4xw+utVjaQXR+A=` · 패키지명 `com.jeonseai.jeonse_ai`
   (카카오 개발자 콘솔 → 내 애플리케이션 → 플랫폼 → Android에 넣는다. 키 해시는 APK에서 누구나 읽을 수 있는 공개 값이다)
 
@@ -229,6 +233,7 @@ iOS · 월세·반전세 · 계약서 교차검증(보류 확정) · 소액임�
 - `frontend/lib/repositories/`의 `Dummy*Repository` — 테스트 전용. test/로 옮기거나 지운다
 - `frontend/lib/repositories/price_source.dart` — 배선 안 된 확장점(배선하거나 지운다)
 - `frontend/lib/design_system/gallery/` (`/gallery`) — 개발용 카탈로그. 유지할지 결정
+- `frontend/lib/screens/loading/loading_preview_screen.dart` (`/dev/loading`, `kDevTools`) — 개발용 로딩 화면 미리보기. 시연용 APK엔 진입 버튼 없음
 - 법제처 `OC=test` 폴백(`collect_precedents.py`) — 정식 `LAW_API_OC` 발급 시 경고만 사라짐
 - 개발 도구 스크립트: `run_rules.py` · `test_extract.py` · `demo_precedent.py` · `test_ocr_coords.py` · `probe_document_parse.py` ·
   `backend/tools/chat_ab.py`(+`data/chat_eval.json`) — 유지할지 결정

@@ -1,6 +1,7 @@
 # NOW — 지금 상태와 할 일
 
-> **마지막 확인: 2026-10-22** · 서버 1단계 `feat/p0-backend-deploy`(PR #3) + 앱 1단계 `feat/p0-app-deploy`(PR #4 — PR #3 다음에 머지) + 촬영·개인정보 `feat/p1-capture-privacy`(PR #5) 반영
+> **마지막 확인: 2026-10-24 밤** — 챗봇 대화형(#23·#24) · 판례 몰아 받기 이어 받기(#22) · 시세 DB 올리기 한 줄(#25) · 심사·디자인 리뷰 반영(#27·#28) · 글자 크기 전체 미리보기(#26, **머지 안 함**)
+> 이전: 2026-10-22 · 서버 1단계 `feat/p0-backend-deploy`(PR #3) + 앱 1단계 `feat/p0-app-deploy`(PR #4 — PR #3 다음에 머지) + 촬영·개인정보 `feat/p1-capture-privacy`(PR #5) 반영
 > · 계약 지킴이 알림·지금 할 일·요금제·테스트 결제 = `feat/p1-journey-business`(PR #5 다음에 머지)
 > · 카카오 로그인·회원 탈퇴·개인정보 처리방침 = `feat/p2-kakao-login`(PR #5 → #6 → #7 다음에 머지)
 > · 실명 화면·가린 사본·LG 제거 = `feat/p1-privacy-names`(PR #8 — 합치는 순서 #5 → #6 → #7 → #8)
@@ -8,6 +9,15 @@
 > **이 파일이 현재 상태의 유일한 정본이다.** 작업이 끝날 때마다 고친다. 코드와 다르면 코드가 맞다.
 
 ## 1. 한 줄 상태
+
+**2026-10-24 밤 (자동 작업)**
+- **챗봇 = 대화형**: '용어 챗봇' → '챗봇'. 모든 말(인사·장난·'더 쉽게')을 Solar가 최근 대화 8개를 보고 답한다. 판정 요구는 규칙이 먼저 알아채 '조심 모드',
+  나가는 답은 검사(판정 문장·근거 없는 숫자·주소·단정) → 한 번 고쳐 쓰기 → 기본 문장. 말풍선 밑 라벨·'내 리포트 보기'·밑줄 없음, **굵게**, 말풍선 폭 75%, [새 대화].
+  ⚠ **실제 Solar 답은 아직 아무도 안 봤다** → `cd backend && python tools/try_chat.py` (질문 14묶음).
+- **판례 창고 155건**(전 40건) — 몰아 받기 600건 끝(`backfillDone`). 오류가 아니라 오래 걸린 것이었다. 다만 배포가 끼면 받은 게 통째로 날아가는 구조라
+  한 건씩 바로 저장·이어 받기로 고쳤고(#22), 창고를 바꿔 끼워도 옛 창고로 검색하던 Chroma 버그도 고쳤다. 진행은 `GET /`의 `precedentUpdate`(running·docCount·extraRaw).
+- **시세 DB**: 서버엔 아직 없다(`priceDb:false`) → 규혁 PC에서 `cd backend && python scripts/upload_price_db.py` 한 줄 → 나온 `PRICE_DB_URLS`를 Railway에.
+
 
 서버는 **클라우드에 올릴 준비가 됐다**(기기별 기록·영구 저장·앱 키·속도 제한·실명 마스킹·Dockerfile — 아래 "Railway 배포 방법").
 앱도 **배포용 APK를 만들 준비가 됐다**(서버 주소·앱 키를 빌드 때 넣기 · 모든 요청에 기기 id · 쉬운 말 에러 · 릴리스 서명 자리 · 사진 속 이름 가리기 · CI가 APK 자동 빌드).
@@ -32,9 +42,10 @@
 | 계약 여정 | 9단계, 날짜 4종(폰에만 저장), 다시 찍어 대조 → 바뀜/그대로/일부/기준 없음/다른 집. ✅ **폰 알림 3번**(2026-10-22): 잔금 하루 전 오전 9시 · 당일 오전 8시 · 입주 다음 날 오전 9시 — 날짜를 바꾸면 다시 걸고 지우면 취소, 권한은 날짜를 저장하는 순간 이유와 함께(거절하면 같은 세 날 배너), 알림을 누르면 그 집 여정. ✅ 대조 결과 **지금 할 일**(결론 헤더 바로 아래 — 위험 줄 → "잔금 보내기 전에 멈추세요" + 달라진 점 한 줄 + [중개사에게 보내기](공유 창 + 복사)·[가족·배우자에게 보내기](요약판) · 그대로 → 입금 전 체크리스트 · 일부 → **빠진 쪽만 더 찍기**(먼저 찍은 장 뒤에 덧붙여 다시 대조 — 2026-10-23)). 폰에 저장된 잔금일이 지났으면 문구만 "새로 생긴 빚을 오늘 바로 확인하세요"·"입주 뒤 확인 끝". 결과 맨 위에 '별칭 · 주소 앞부분 · 두 서류 날짜' 한 줄. 날짜를 저장하면 [가족·배우자에게 보내기](공유 창) | 알림은 몇 분 늦을 수 있다(정확한 알람 권한 안 씀). 실기기에서 폰을 꺼 둔 채 울리는지는 **사람이 확인**(아래 10절) | `journey_reminders.dart`, `journey_reminder_service.dart`, `compare_next_step.dart` |
 | 로그인 | ✅ **카카오 로그인 실동작**(2026-10-22, P2-1): 앱 카카오 SDK(톡 있으면 톡, 없으면 카카오계정) → 서버가 카카오 토큰 정보로 **앱 ID가 우리 앱일 때만** 통과 → 세션(30일, DB엔 SHA-256만) → 모든 요청에 `Authorization: Bearer`. 카카오에서는 **회원번호만**(HMAC 계정 키로만 저장 — 원문 0). 로그인하는 순간 그 기기의 리포트·대조 기준·캐시·패스가 계정으로. 로그아웃 · **회원 탈퇴**(서버 기록·세션·패스 전부 삭제 → 카카오 연결 끊기) · 앱 안 **개인정보 처리방침**. **로그인 없이 둘러보기**(기기 id)도 그대로 — 분석 게이트는 로그인을 권하지만 막지 않는다. 가짜 자동 로그인 '영호' 없앰(인사말에 이름 없음) | 카카오 개발자 앱 등록 전이라 **키가 없다** → APK에 카카오 버튼이 없고 둘러보기만(가짜 버튼 금지). 실기기 로그인 한 바퀴는 아직(사람 — 아래 6-3) | `backend/app/services/accounts.py`, `routers/auth.py`, `dependencies.py`, `frontend/lib/state/app_session.dart`, `services/kakao_sdk_login_gateway.dart` |
 | 결제 | ✅ (2026-10-22) 요금제 화면(마이·여정 맨 아래) — 무료 · 계약 지킴이 패스 · 기관용(문의), 가격은 `pricing.json`의 **예시**(2026-10-23: 맨 위 첫 줄 "지금은 돈을 내지 않아도 알림·다시 대조를 모두 쓸 수 있어요", label `예시 가격(확정 전)`, '예시'는 한 번씩만). 토스 공식 결제위젯 SDK로 **테스트 결제** → 서버가 요금제 가격으로 금액 검사 후 승인(테스트 키만, `live_` 거부) → 패스(로그인했으면 계정, 아니면 기기) → 영수증 "테스트 결제 — 실제 청구 없음". 패스가 있으면 알림 배너·다시 대조·폰 알림에 "지킴이 패스" **표시만** | 가격 미확정(6절 #5). 로그인하지 않으면 패스는 기기에 붙어 앱을 지우면 안 보인다 — 로그인하면 계정으로 옮겨진다(주인 키는 서버 `get_pass_owner`→`accounts.pass_owner_key`·앱 `passOwnerKey` 한 곳) | `payments.py`, `pricing.json`, `checkout_screen.dart` |
+| 챗봇 | ✅ **대화형**(2026-10-24, #23·#24·#27): `POST /api/chat` — 앱이 최근 대화(최대 8개)를 보내고 서버는 저장 안 함. Solar가 검수된 용어 풀이(검수분만)·판정 기준(`thresholds.py` 상수)을 참고해 답. 판정·금액·법률 판단 요구는 규칙(정규식)이 알아채 조심 모드 지시. 출력 검사 `text_guard.check_chat_reply` → 한 번 고쳐 쓰기 → 기본 문장(검수 용어가 있으면 그 풀이). 숫자는 사용자 숫자 + 판정 기준 + 작은 세는 수만. 주민번호·전화번호 꼴은 AI 전에 가림. 질문 횟수 상한(분석과 따로). 옛 `GET /api/glossary/lookup`은 옛 APK용으로 새 엔진에 연결. 비상 스위치 `CHATBOT_LLM=off` | 실제 Solar 답 미확인(`tools/try_chat.py`). 리포트 내용은 모른다(일반론으로 답함) | `backend/app/services/chat.py`, `text_guard.py`, `llm/prompts.py`, `frontend/lib/screens/chatbot/glossary_chatbot_screen.dart` |
 | 웹 버전 | 없음 (`web/` 폴더 없음). 만들려면 사진 처리 8~10개 파일 수정, 1~3일 | 아이폰 심사위원은 체험 불가 | — |
-| 시세 | 실거래가 → 공시가격×1.40 → 기준시가 3단 조회, DB 1,807만 행(로컬 전용) | 배포 서버로 DB 파일을 옮겨야 함 | `price_resolver.py`, `.gitignore` |
-| 테스트 | 서버 **944 통과·7 건너뜀**(키 없이, 2026-10-22, PR #5~#9를 모두 합친 `feat/p2-kakao-login` 기준 — #7까지 918 + 카카오 로그인 39 + #8 실명·가린 사본·캐시 4 − LG·A.X 공급자 17. 건너뜀 7 = 실명 원본 파일이 있어야 도는 것. #10 부스 다듬기는 서버 문구만 바꿔 수 그대로) / 앱 **375건**(테스트 선언 수 — #9까지 353 + #10 부스 다듬기 22) | — | `.github/workflows/ci.yml` (문서·서버·앱·**APK 빌드** 4개 작업 — 앱 테스트가 깨지면 실패한 테스트 이름·메시지가 annotation으로 뜬다) |
+| 시세 | 실거래가 → 공시가격×1.40 → 기준시가 3단 조회, DB 1,807만 행(로컬 전용). 올리기 도구 `scripts/upload_price_db.py`(2026-10-24 — 압축 → GitHub 릴리스 → `PRICE_DB_URLS` 값 출력) | 배포 서버엔 아직 없음(`priceDb:false`) — 규혁 PC에서 한 줄 | `price_resolver.py`, `.gitignore` |
+| 테스트 | (2026-10-24 밤 main: 서버 **1013 통과·7 건너뜀**) 서버 **944 통과·7 건너뜀**(키 없이, 2026-10-22, PR #5~#9를 모두 합친 `feat/p2-kakao-login` 기준 — #7까지 918 + 카카오 로그인 39 + #8 실명·가린 사본·캐시 4 − LG·A.X 공급자 17. 건너뜀 7 = 실명 원본 파일이 있어야 도는 것. #10 부스 다듬기는 서버 문구만 바꿔 수 그대로) / 앱 **375건**(테스트 선언 수 — #9까지 353 + #10 부스 다듬기 22) | — | `.github/workflows/ci.yml` (문서·서버·앱·**APK 빌드** 4개 작업 — 앱 테스트가 깨지면 실패한 테스트 이름·메시지가 annotation으로 뜬다) |
 
 ## 3. 결선 사실
 
@@ -114,6 +125,7 @@
    - `DISABLE_DOCS=1` — 공개 주소에서 API 문서(`/docs`·`/openapi.json`)를 끈다
    - 속도 제한(선택, 기본값이 있다): `RATE_LIMIT_ANALYZE_PER_HOUR=30`(기기×IP) · `RATE_LIMIT_IP_PER_HOUR=60` ·
      `RATE_LIMIT_GLOBAL_PER_HOUR=300` · `RATE_LIMIT_GLOBAL_PER_DAY=500`(서버 전체·하루). ⚠ **결선 날**에는 부스 폰들이 같은 와이파이(같은 IP)를 쓰므로 IP·전체 상한을 올려 둔다
+   - 챗봇 질문 상한(선택, 2026-10-24): `RATE_LIMIT_CHAT_PER_HOUR=60`(기기×IP) · `RATE_LIMIT_CHAT_IP_PER_HOUR=300` · `RATE_LIMIT_CHAT_GLOBAL_PER_DAY=3000`. 챗봇이 이상하면 `CHATBOT_LLM=off`(AI 끄고 용어 풀이·안내 문장만)
    - `RAILWAY_RUN_UID=0` — 볼륨에 쓰기 위해 필요(Railway 볼륨은 root 소유로 붙는다)
    - `SAVE_RAW_RESPONSES`는 **넣지 않는다**(실명 원응답 저장 — 로컬 디버깅 전용)
    - (선택) `CAPTURE_CHECK` — 기본 `on`(심하게 흐리거나 어두운 사진은 분석 전 거절). 멀쩡한 사진이 거절되면 `warn` · `ANALYSIS_CACHE_HOURS` — 기본 24(같은 사진 재분석 시 크레딧 0원)
@@ -226,6 +238,10 @@ iOS · 월세·반전세 · 계약서 교차검증(보류 확정) · 소액임�
   - 회원 탈퇴는 **서버**의 기록·세션·패스를 지운다. 이 폰에 남은 사진·계약 날짜는 그대로다(앱을 지우면 함께 지워진다 — 확인 대화상자에 그렇게 적었다).
   - 처리방침 화면의 서버 지역·문의처는 **비어 있어 줄이 빠진다**(6-3).
 
+- **챗봇**(2026-10-24 대화형): 가짜 provider 테스트로만 확인 — **실제 Solar 답은 아직 아무도 안 봤다**(`python tools/try_chat.py`). 판정 요구는 정규식이 알아채고 출력은 검사하지만
+  지어낸 일반 상식(예: 절차 설명의 틀린 말)은 숫자·판정만 막을 뿐 다 잡지 못한다. 리포트 내용을 모른다 — "내 리포트 왜 위험이야?"에는 일반론으로 답한다.
+  최종 보고서의 "'이 집 계약해도 돼요?'는 LLM에 닿기 전에 거절" 문장과 다르다(감수 — decisions.md 2026-10-24).
+
 ## 11. 정리 대상 (임시·더미 — 때가 되면 지운다)
 
 옛 정리 트래커(`archive-2026-10-21:docs/cleanup-tracker.md`)에서 아직 열린 것만 옮겼다.
@@ -240,11 +256,11 @@ iOS · 월세·반전세 · 계약서 교차검증(보류 확정) · 소액임�
 - `frontend/lib/repositories/`의 `Dummy*Repository` — 테스트 전용. test/로 옮기거나 지운다
 - `frontend/lib/repositories/price_source.dart` — 배선 안 된 확장점(배선하거나 지운다)
 - `frontend/lib/design_system/gallery/` (`/gallery`) — 개발용 카탈로그. 유지할지 결정
-- `frontend/lib/design_system/tokens/app_typography_next.dart` — **새 글자 크기·색 체계(시범, 2026-10-24)**. 지금은 판례 매칭 화면만 쓴다. 괜찮으면 값을 `AppTypography`·`AppColors`로 옮기고 지운다
+- `frontend/lib/design_system/tokens/app_typography_next.dart` — **새 글자 크기·색 체계(시범, 2026-10-24)**. 지금은 판례 매칭 화면만 쓴다. 앱 전체 적용 미리보기 = PR #26(머지 안 함) — 괜찮으면 머지하고 이 파일을 지운다
 - `frontend/lib/screens/loading/loading_preview_screen.dart` (`/dev/loading`, `kDevTools`) — 개발용 로딩 화면 미리보기. 시연용 APK엔 진입 버튼 없음
 - 법제처 `OC=test` 폴백(`collect_precedents.py`) — 정식 `LAW_API_OC` 발급 시 경고만 사라짐
 - 개발 도구 스크립트: `run_rules.py` · `test_extract.py` · `demo_precedent.py` · `test_ocr_coords.py` · `probe_document_parse.py` ·
-  `backend/tools/chat_ab.py`(+`data/chat_eval.json`) — 유지할지 결정
+  (`backend/tools/chat_ab.py`·`data/chat_eval.json`은 2026-10-24 삭제 — `tools/try_chat.py`로 대체)
 - `compare_llm_backends.py` — `compare_llm.py`와 중복. 판례 역할을 옮긴 뒤 삭제
 - `backend/app/services/document_parse.py` — `LAYOUT_SOURCE=document_parse`일 때만 동작. 안 쓰기로 정하면 삭제
 - 원응답 저장 코드(`artifacts.py` · IE/OCR `_save_raw_*`) — 이제 `SAVE_RAW_RESPONSES=1`일 때만 저장. 진단이 끝나면 삭제

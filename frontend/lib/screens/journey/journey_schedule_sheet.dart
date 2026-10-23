@@ -213,7 +213,10 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        // 글자가 커지면 뱃지가 다음 줄로 내려간다(한 줄 Row는 넘쳤다 — 글자 크기 미리보기에서 발견)
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          runSpacing: 4,
           children: [
             AppText(
               JourneyDateKey.balance.label,

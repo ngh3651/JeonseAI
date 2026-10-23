@@ -51,7 +51,20 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
-      - run: flutter test
+      # 실패하면 실패한 테스트 이름과 그 아래 메시지를 annotation으로도 남긴다 — PR 화면(Checks)에서
+      # 로그 파일을 열지 않아도(또는 열 수 없는 곳에서도) 어느 테스트가 왜 깨졌는지 보이게 (2026-10-23).
+      - name: flutter test
+        run: |
+          set -o pipefail
+          if ! flutter test 2>&1 | tee flutter-test.log; then
+            # 보통 리포터는 실패한 테스트 줄 끝에 [E], GitHub 리포터(Actions에서 저절로 켜진다)는 줄 앞에 ❌를 붙인다
+            sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g; s/^::(group|endgroup)::/  /' flutter-test.log > flutter-test.clean.log
+            grep -E '\[E\]|❌' flutter-test.clean.log | sort -u | head -n 10 \
+              | while IFS= read -r line; do echo "::error title=실패한 테스트::${line}"; done
+            awk '/\[E\]|❌/{n=40} n>0{print; n--}' flutter-test.clean.log | head -n 400 \
+              | python3 -c "import sys; t=sys.stdin.read(); print('::error title=실패 내용::' + t.replace('%','%25').replace('\r','').replace('\n','%0A'))"
+            exit 1
+          fi
 
   # 결선 부스용 APK — PR마다, 그리고 main에 합쳐질 때마다 만든다 (2026-10-22 앱 1단계 → 같은 날 서명·배포 고정).
   # 받는 법(가장 쉬움): main에 합쳐질 때마다 **고정 링크**에 최신 APK가 올라간다(고정 서명 키가 있을 때만).

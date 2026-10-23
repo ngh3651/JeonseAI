@@ -271,21 +271,21 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
 
   /// 넣은 날짜를 지우는 자리 — 시안에 없지만 "비워 두셔도 돼요"를 되돌릴 길이 필요하다.
   /// (값이 있을 때만 나타나므로 빈 칸의 모양은 시안 그대로다)
+  ///
+  /// D10(2026-10-23): 예전 터치 영역은 24dp라 빗나가면 바로 옆 날짜 칸(달력)이 열렸다 → 48dp IconButton.
   Widget _clearButton(JourneyDateKey key) {
-    return Semantics(
-      button: true,
-      label: '${key.label} 지우기',
-      child: InkWell(
-        onTap: () => _clear(key),
-        customBorder: const CircleBorder(),
-        child: const Padding(
-          padding: EdgeInsets.all(AppSpacing.xs),
-          child: Icon(
-            Icons.close,
-            size: AppSize.iconXs + 2,
-            color: AppColors.textMuted,
-          ),
-        ),
+    return IconButton(
+      onPressed: () => _clear(key),
+      tooltip: '${key.label} 지우기',
+      constraints: const BoxConstraints(
+        minWidth: AppSize.minTouchTarget,
+        minHeight: AppSize.minTouchTarget,
+      ),
+      padding: EdgeInsets.zero,
+      icon: const Icon(
+        Icons.close,
+        size: AppSize.iconXs + 2,
+        color: AppColors.textMuted,
       ),
     );
   }

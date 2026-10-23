@@ -355,7 +355,7 @@ class PricingPlan(BaseModel):
 
 
 class Pricing(BaseModel):
-    label: str  # "예시 (팀 확정 전)" — 가격 옆 어디에나 붙인다
+    label: str  # "예시 가격(확정 전)" — 결제 화면 가격 밑에 붙인다(요금제 화면은 짧게 "예시 가격")
     currency: str = "KRW"
     testMode: bool = True  # 결제가 테스트 결제인가 (실제 청구 없음)
     testNotice: str = "테스트 결제 — 실제 청구 없음"

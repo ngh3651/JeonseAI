@@ -170,6 +170,12 @@ class RegistryPreviewSource {
   final int totalCount;
 }
 
+/// 이름 자리를 몰라 스트립을 통째로 덮었을 때 가운데에 쓰는 말 (2026-10-23 — 고장처럼 보이지 않게).
+const String kWholePageCoverLabel = '이름 가리기 켜짐 · 이 쪽은 통째로 가렸어요';
+
+/// '사진 속 이름 가리기'가 켜져 있을 때 진입 카드 부제 끝에 붙는 말 — 어디서 끄는지까지.
+const String kNamesHiddenSuffix = '이름 가림 켜짐 (마이에서 끄기)';
+
 class RegistryEntryCard extends StatelessWidget {
   const RegistryEntryCard({
     super.key,
@@ -434,11 +440,27 @@ class _PreviewStripState extends State<_PreviewStrip> {
                 rect: crop.markRect(b),
                 child: const NameRedactionBox(),
               ),
-            // 이름 자리를 모르는 쪽 — 스트립 사진을 통째로 덮는다(어디에 이름이 비칠지 모른다)
+            // 이름 자리를 모르는 쪽 — 스트립 사진을 통째로 덮는다(어디에 이름이 비칠지 모른다).
+            // 까만 띠만 있으면 "사진이 깨졌다"로 읽힌다(서연 리뷰 #10) — 왜 덮었는지 가운데에 흰 글씨로.
             if (coverAll)
-              const Positioned.fill(
-                key: ValueKey('preview-whole-cover'),
-                child: ColoredBox(color: AppColors.markRedaction),
+              Positioned.fill(
+                key: const ValueKey('preview-whole-cover'),
+                child: ColoredBox(
+                  color: AppColors.markRedaction,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                      child: AppText(
+                        kWholePageCoverLabel,
+                        textAlign: TextAlign.center,
+                        style: AppTypography.caption.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             Positioned(left: 10, top: 10, child: _badge(source)),
           ],

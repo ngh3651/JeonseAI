@@ -240,7 +240,9 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
             ),
           ),
         ),
-        // 바꾸는 장이면 서버가 말한 "왜 문제였는지 + 어떻게 찍는지"를 그대로 다시 보여 준다.
+        // 바꾸는 장이면 서버가 말한 "왜 문제였는지 + 어떻게 찍는지"를 다시 보여 준다.
+        // ⚠ 그건 **아까 사진**의 문제다 — 앞에 '아까 사진:'을 붙인다. 안 붙이면 방금 찍은 새 사진도
+        //   문제라고 읽혀 멀쩡한 사진을 또 다시 찍는다(지수 리뷰 #3).
         if (widget.isReplace && (widget.replaceTip ?? '').isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(
@@ -250,7 +252,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
               0,
             ),
             child: AppText(
-              widget.replaceTip!,
+              '아까 사진: ${widget.replaceTip!}',
               textAlign: TextAlign.center,
               style: AppTypography.caption.copyWith(
                 color: Colors.white.withValues(alpha: 0.78),
@@ -290,7 +292,9 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
           child: Column(
             children: [
               AppText(
-                '글자가 흐리거나 잘렸으면 다시 찍어 주세요',
+                widget.isReplace
+                    ? '이번 사진 글자가 또렷하면 [이 사진으로 바꾸기]를 눌러 주세요'
+                    : '글자가 흐리거나 잘렸으면 다시 찍어 주세요',
                 textAlign: TextAlign.center,
                 style: AppTypography.body.copyWith(
                   color: Colors.white.withValues(alpha: 0.78),
@@ -485,13 +489,16 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
 
 /// 뷰어에서 사용자가 한 일 — 호출한 화면이 목록을 고친다(상태는 한 곳에만).
 class PhotoViewerResult {
-  const PhotoViewerResult({required this.paths, this.wantsRetake = false});
+  const PhotoViewerResult({required this.paths, this.retakeIndex});
 
   /// 삭제·순서 변경이 반영된 최종 목록
   final List<String> paths;
 
-  /// [다시 찍기]를 눌렀나 — 호출한 화면이 촬영 루프를 연다
-  final bool wantsRetake;
+  /// [이 장 다시 찍기]를 누른 장(0부터, [paths] 기준). 호출한 화면이 **그 장을 바꿔 끼우는**
+  /// 촬영 루프(`CaptureLoopRoute.replacePage`)를 연다 — 맨 뒤에 새 장을 붙이지 않는다(지수 리뷰 #1).
+  final int? retakeIndex;
+
+  bool get wantsRetake => retakeIndex != null;
 }
 
 class PhotoViewerRoute extends StatefulWidget {
@@ -512,8 +519,8 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
   late final List<String> _paths = List.of(widget.paths);
   late int _index = widget.initialIndex.clamp(0, widget.paths.length - 1);
 
-  void _close({bool retake = false}) => Navigator.of(context).pop(
-    PhotoViewerResult(paths: List.of(_paths), wantsRetake: retake),
+  void _close({int? retakeIndex}) => Navigator.of(context).pop(
+    PhotoViewerResult(paths: List.of(_paths), retakeIndex: retakeIndex),
   );
 
   void _delete() {
@@ -586,17 +593,19 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
                   ),
                   child: Row(
                     children: [
+                      // '앞으로/뒤로'만 있으면 '이전 장 보기'로 읽혔다 → 무엇을 옮기는지(순서) 붙인다.
                       Expanded(
-                        child: _flat('앞으로', _index > 0 ? () => _reorder(-1) : null),
+                        child: _flat('순서 앞으로', _index > 0 ? () => _reorder(-1) : null),
                       ),
                       const SizedBox(width: AppSpacing.sm),
+                      // 이 장을 **그 자리에서** 바꾼다(맨 뒤에 붙이지 않는다).
                       Expanded(
-                        child: _flat('다시 찍기', () => _close(retake: true)),
+                        child: _flat('이 장 다시 찍기', () => _close(retakeIndex: _index)),
                       ),
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: _flat(
-                          '뒤로',
+                          '순서 뒤로',
                           _index < _paths.length - 1 ? () => _reorder(1) : null,
                         ),
                       ),

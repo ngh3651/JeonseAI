@@ -250,8 +250,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
         _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxxl),
+      child: _Scrollable(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -306,13 +305,12 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     } else if (secondsLeft >= 1) {
       timeText = '약 $secondsLeft초 남았어요';
     } else {
-      timeText = '조금 더 걸리고 있어요 · 거의 다 됐어요';
+      timeText = '조금 더 걸리고 있어요'; // '거의 다 됐어요'는 사실이 아닐 수 있다(가짜 완료 없음)
     }
     final tipIndex =
         (_tipStart + elapsed.inMilliseconds ~/ _tipEvery.inMilliseconds) % kLoadingTips.length;
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xxxl),
+    return _Scrollable(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -420,6 +418,29 @@ class _TipCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// 글자 배율 2.0·작은 폰에서도 넘치지 않게 — 넘칠 때만 스크롤, 아니면 가운데 정렬 그대로 (디자인 리뷰 2026-10-24).
+class _Scrollable extends StatelessWidget {
+  const _Scrollable({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.xxxl),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: (box.maxHeight - AppSpacing.xxxl * 2).clamp(0.0, double.infinity).toDouble(),
+          ),
+          child: child,
+        ),
       ),
     );
   }

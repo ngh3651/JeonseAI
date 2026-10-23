@@ -235,9 +235,18 @@ CHAT_MAX_LEN = 450
 _CHAT_VERDICT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("계약-허락", re.compile(r"계약(을)?(해도|하셔도|하시면)(돼|됩|되겠|될것같|괜찮|좋)(?!는지|을지|는가|나요|ㄹ지)")),
     ("계약-말림", re.compile(r"계약(은|을)?(하지마|하지않는게좋|안하는게좋|피하는게좋|피하세요|미루세요|포기하)")),
-    ("사기-단정", re.compile(r"(이집|그집|이건|이매물|그매물)(은|는)?.{0,6}사기(예요|에요|입니다|가맞|인것같|같아요|일가능성이높)")),
-    ("집-단정", re.compile(r"(이집|그집|이매물|그매물)(은|는|이|가)?.{0,8}(위험해요|위험합니다|위험한집|괜찮아요|괜찮습니다|괜찮은집|좋은집|나쁜집)")),
     ("가격-단정", re.compile(r"(적정|적당|합리적인|싼|비싼)(한)?(가격|편|금액)(이에요|이예요|입니다|이네요)")),
+    # 기준에 **대어 본** 말 — "80%라 주의 기준에 해당해요"는 숫자로 내린 판정이다(2026-10-24 심사 리뷰).
+    # "90%를 넘으면 위험 신호로 봐요"(조건)는 통과한다.
+    ("기준-적용", re.compile(r"(주의|위험|확인)(신호|구간|기준|수준|범위)?(에|에요|이에요)?(해당|들어가|들어와|속해|속합|속하)")),
+    ("기준-넘음", re.compile(r"(넘어서|넘었|넘어요|넘습니다|넘네요|넘는군요)(?!면)")),
+    ("단정-완곡", re.compile(r"(안전한편|괜찮은편이|걱정할필요(가|는)?없|걱정하지않으셔도|문제될게없)")),
+)
+
+#: '이 집'·'그 매물'을 주어로 한 판정 — **원문**에 댄다(공백을 지우면 "빚**이 집**값"이 '이집'으로 읽힌다).
+_CHAT_VERDICT_RAW_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("사기-단정", re.compile(r"(?<![가-힣])(이|그)\s*(집|매물|건)(은|는)?\s*.{0,6}사기\s*(예요|에요|입니다|가\s*맞|인\s*것\s*같|같아요|일\s*가능성이\s*높)")),
+    ("집-단정", re.compile(r"(?<![가-힣])(이|그)\s*(집|매물)(은|는|이|가)?\s*.{0,8}(위험해요|위험합니다|위험한\s*집|괜찮아요|괜찮습니다|괜찮은\s*집|좋은\s*집|나쁜\s*집)")),
 )
 
 #: 조심 모드(규칙이 판정 요구를 알아챈 질문)에서만 더 막는 말 — 권유·안심 표현.
@@ -251,7 +260,7 @@ _URL_RE = re.compile(r"https?://|www\.|[a-z0-9-]+\.(?:go\.kr|or\.kr|co\.kr|com|n
 
 #: 세는 말이 붙은 작은 수(1~10)는 사실을 말하지 않는다 — `1순위`, `3가지`, `2단계`.
 _COUNTER_SMALL_RE = re.compile(
-    r"(?<![\d.,])(10|[1-9])\s*(순위|가지|단계|번째|번|개|곳|명|장|쪽|층|차)"
+    r"(?<![\d.,])(10|[1-9])\s*(순위|가지|단계|번째|번|개|곳|명|장|쪽|층|차|년|개월)"
 )
 
 
@@ -282,9 +291,13 @@ def check_chat_reply(text: str, *, allowed: set[float], careful: bool = False) -
     if hit:
         return (f"등급단어-{hit}", "'양호·확인 필요·위험 등급' 같은 등급 이름은 쓸 수 없어요")
     squeezed = _squeeze(text)
+    verdict_msg = "집이나 계약, 가격이 괜찮은지 판단하는 말은 할 수 없어요. 판단 없이 확인할 방법만 알려 주세요"
     for name, pattern in _CHAT_VERDICT_PATTERNS + (_CHAT_CAREFUL_PATTERNS if careful else ()):
         if pattern.search(squeezed):
-            return (name, "집이나 계약, 가격이 괜찮은지 판단하는 말은 할 수 없어요. 판단 없이 확인할 방법만 알려 주세요")
+            return (name, verdict_msg)
+    for name, pattern in _CHAT_VERDICT_RAW_PATTERNS:
+        if pattern.search(text):
+            return (name, verdict_msg)
     if _URL_RE.search(text):
         return ("주소", "인터넷 주소는 쓸 수 없어요. 기관 이름만 말로 써 주세요")
     bare = _COUNTER_SMALL_RE.sub("", text)

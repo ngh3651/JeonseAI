@@ -20,11 +20,10 @@ abstract class ContentRepository {
   /// 챗봇 추천 용어 칩.
   Future<List<GlossaryTerm>> glossaryTerms();
 
-  /// 챗봇 질문 하나 → 답 하나 (계약 §3.9).
+  /// 챗봇 — 최근 대화(마지막 = 이번 질문) → 답 하나 (계약 §3.21 · 2026-10-24).
   ///
-  /// **거절도 답으로 돌아온다**(`outOfScope=true`) — 예전처럼 null을 받아 앱이 문구를
-  /// 지어내지 않는다. 판정 요구 차단·범위 밖 판별·LLM 생성은 전부 서버 쪽 일이다.
-  Future<GlossaryAnswer> askGlossary(String query);
+  /// 판정 요구 알아채기·AI 답·검사·기본 문장은 전부 서버 쪽 일이다. 앱은 그리기만 한다.
+  Future<ChatReply> chat(List<ChatTurn> messages);
 
   /// 계약 여정 단계.
   Future<List<JourneyStage>> journeyStages();
@@ -171,21 +170,16 @@ class DummyContentRepository implements ContentRepository {
     ),
   ];
 
-  /// 서버 규칙(L1~L4)의 **아주 얇은 흉내** — 위젯 테스트가 서버 없이 두 갈래
-  /// (사전 답 / 거절)를 그릴 수 있을 만큼만이다. 실제 판별은 전부 서버가 한다.
+  /// 서버 챗봇의 **아주 얇은 흉내** — 위젯 테스트가 서버 없이 대화를 그릴 수 있을 만큼만.
   @override
-  Future<GlossaryAnswer> askGlossary(String query) async {
-    final q = query.trim();
+  Future<ChatReply> chat(List<ChatTurn> messages) async {
+    final q = messages.isEmpty ? '' : messages.last.content.trim();
     for (final t in await glossaryTerms()) {
       if (q.contains(t.term)) {
-        return GlossaryAnswer(
-          answer: t.description,
-          source: '검수된 용어 사전',
-          term: t.term,
-        );
+        return ChatReply(answer: '**${t.term}**은 ${t.description}');
       }
     }
-    return GlossaryAnswer.fallback;
+    return const ChatReply(answer: '안녕하세요!\n전세 이야기라면 편하게 물어보세요.');
   }
 
   /// 계약 여정 9단계 — **정본은 서버의 `backend/data/journey_stages.json`이다.**

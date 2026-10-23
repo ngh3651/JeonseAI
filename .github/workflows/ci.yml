@@ -50,7 +50,15 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze --no-fatal-infos
+      # 분석기(analyze)가 깨지면 그 줄을 annotation으로 남긴다 — 로그를 못 여는 곳에서도 보이게 (2026-10-24)
+      - name: flutter analyze
+        run: |
+          set -o pipefail
+          if ! flutter analyze --no-fatal-infos 2>&1 | tee analyze.log; then
+            grep -E "^\s*(warning|error) " analyze.log | head -n 20 \
+              | while IFS= read -r line; do echo "::error title=analyze::${line}"; done
+            exit 1
+          fi
       # 실패하면 실패한 테스트 이름과 그 아래 메시지를 annotation으로도 남긴다 — PR 화면(Checks)에서
       # 로그 파일을 열지 않아도(또는 열 수 없는 곳에서도) 어느 테스트가 왜 깨졌는지 보이게 (2026-10-23).
       - name: flutter test

@@ -12,6 +12,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/design_system/text/app_text.dart';
+import 'package:jeonse_ai/design_system/text/keep_all.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/compare_result.dart';
@@ -190,15 +191,17 @@ void main() {
       await _send(tester, '가압류 쉽게');
 
       expect(find.koTextContaining('**'), findsNothing);
-      final rich = tester
-          .widgetList<RichText>(find.byType(RichText))
-          .firstWhere((r) => r.text.toPlainText().contains('묶어'));
-      final spans = <TextSpan>[];
-      rich.text.visitChildren((s) {
-        if (s is TextSpan && (s.text ?? '').contains('묶어')) spans.add(s);
-        return true;
-      });
-      expect(spans.any((s) => s.style?.fontWeight == FontWeight.w700), isTrue);
+      // 어절 줄바꿈 부호가 끼어 조각이 나뉠 수 있다 — 굵은 조각들의 글자를 모아 본다
+      final boldText = StringBuffer();
+      for (final r in tester.widgetList<RichText>(find.byType(RichText))) {
+        r.text.visitChildren((s) {
+          if (s is TextSpan && s.style?.fontWeight == FontWeight.w700) {
+            boldText.write(stripWordJoiner(s.text ?? ''));
+          }
+          return true;
+        });
+      }
+      expect(boldText.toString(), contains('집을 잠깐 묶어 두는 것'));
     });
 
     testWidgets('앞 대화를 통째로 보낸다 — "더 쉽게"가 이어진다', (tester) async {

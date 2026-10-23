@@ -87,6 +87,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
 
   bool _sending = false;
   bool _showAllChips = false;
+
+  /// 키보드 높이 — 키보드가 올라오면 마지막 답이 가려지지 않게 맨 아래로 내린다(디자인 리뷰 2026-10-24).
+  double _lastInset = 0;
   List<GlossaryTerm> _terms = const [];
 
   @override
@@ -198,6 +201,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    if (inset > _lastInset && _messages.isNotEmpty) _scrollToBottom();
+    _lastInset = inset;
     return Scaffold(
       appBar: AppBar(
         title: const AppText('챗봇'),
@@ -299,7 +305,13 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
         final m = _messages[i];
         if (m.isUser) return _userBubble(m.text);
         if (m.isLoading) return _botRow(_bubbleText(kChatLoadingMessage, muted: true));
-        if (m.reply != null) return _botRow(_answerText(m.reply!.answer));
+        if (m.reply != null) {
+          // 새 답이 오면 스크린리더가 읽어 준다
+          return Semantics(
+            liveRegion: i == _messages.length - 1,
+            child: _botRow(_answerText(m.reply!.answer)),
+          );
+        }
         return _failedRow(m);
       },
     );
@@ -436,6 +448,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
             // 전송 중에는 잠근다 — 두 번 눌러 두 번 묻는 일이 없게.
             Semantics(
               button: true,
+              enabled: !_sending,
               label: _sending ? '답을 기다리는 중' : '질문 보내기',
               child: Material(
                 color: _sending ? AppColors.buttonDisabledBg : AppColors.primary,

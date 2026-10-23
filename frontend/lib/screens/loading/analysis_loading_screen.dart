@@ -1,12 +1,15 @@
 /// S-06 분석 로딩 — IA.md §6.
 ///
-/// 단계 표시(판정 주체 구분) + 추출 항목 실시간 노출로 "AI가 일하는 순간"을 보여준다.
+/// 2026-10-23 다시 짬: **예상 시간 막대(%·남은 초)** + **"알고 계셨나요?" 꿀팁**(게임 로딩처럼 몇 초마다 바뀜).
+/// 막대·단계 문장은 서버 진행과 이어지지 않은 **예상 시간 기준**이다 — 그래서 끝나기 전엔 98%를 넘지 않고,
+/// 서버가 답을 줘야 100%가 된다. 예상보다 길면 남은 초 대신 "조금 더 걸리고 있어요"라고 말한다(가짜 완료 없음 — D1).
 /// 완료되면 홈으로 리셋 후 리포트를 push (분석 직후 리포트 백=홈 — IA §7).
 /// 로딩 중 시스템 백은 취소 확인 다이얼로그. 실단계(E-1)에서는 여기서
 /// 업로드→Information Extract→규칙 엔진을 호출한다.
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -22,9 +25,21 @@ import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
 import '../search/capture_issue_panel.dart' show CaptureRejection;
 import '../../design_system/text/app_text.dart';
+import 'loading_tips.dart';
 
-/// 분석·대조가 보통 걸리는 시간 — 실측(NOW.md 2절: 21~31초)에 맞춘 말.
-const String kAnalysisTypicalWait = '보통 30초쯤 걸려요';
+/// 분석·대조가 보통 걸리는 시간(초) — 실측(NOW.md 2절: 21~31초). 배포 서버에서 다시 재면 **이 숫자 하나만** 고친다
+/// (로딩 막대의 %·남은 초와 아래 문장이 함께 바뀐다).
+const int kAnalysisExpectedSeconds = 30;
+
+/// 분석·대조가 보통 걸리는 시간 — 화면에 쓰는 말.
+const String kAnalysisTypicalWait = '보통 $kAnalysisExpectedSeconds초쯤 걸려요';
+
+/// 예상 시간 기준 진행률(0~0.98). 예상 시간까지 90%, 그 뒤로는 98%에 천천히 다가간다 — 100%는 서버가 답했을 때만.
+double estimatedProgress(Duration elapsed) {
+  final t = elapsed.inMilliseconds / (kAnalysisExpectedSeconds * 1000);
+  if (t <= 1) return 0.9 * t;
+  return 0.9 + 0.08 * (1 - math.exp(-(t - 1) * 2));
+}
 
 /// 로딩 화면의 한 줄 — 흐린 점(지난 줄) 또는 작은 스피너(지금 줄). **체크(완료) 표시는 쓰지 않는다**(D1).
 class LoadingStepLine extends StatelessWidget {
@@ -87,38 +102,20 @@ class AnalysisLoadingScreen extends StatefulWidget {
 }
 
 class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
-  // 단계 문구 — 지수 리뷰 반영: '규칙' 같은 내부 용어 대신 쉬운 말.
-  // (판정/설명 주체 구분은 리포트 근거 카드의 라벨이 담당 — judge-reviewer 요구도 그쪽에서 충족)
+  // 단계 문장 — **예상 시간 비율**에 맞춰 바뀐다(서버 진행과 연결 안 됨 → 진행형으로만). 지수 리뷰: 쉬운 말.
   static const _stages = [
-    '사진을 올리고 있어요',
-    '등기부등본을 읽는 중이에요', // B3: 정식 명칭
-    '위험한 부분을 하나씩 확인하는 중이에요',
-    '쉬운 말로 정리하는 중이에요',
+    (until: 0.1, text: '사진을 보내고 있어요'),
+    (until: 0.5, text: 'AI가 등기부등본을 읽고 있어요'), // B3: 정식 명칭
+    (until: 0.8, text: '위험한 부분을 하나씩 확인하고 있어요'),
+    (until: double.infinity, text: '쉬운 말로 정리하고 있어요'),
   ];
 
-  // G3: 마지막(가장 긴) 단계에서 대기가 길어질 때 순환하는 보조 멘트.
-  // 진행 단계 문구는 그대로 두고, 아래에 세이프 멘트를 돌려 지루함을 던다.
-  static const _waitingMents = [
-    '세이프가 집을 지키는 중입니다',
-    '꼼꼼히 살펴보는 중이에요',
-    '거의 다 됐어요, 조금만 기다려 주세요',
-  ];
+  /// 꿀팁이 바뀌는 간격
+  static const _tipEvery = Duration(seconds: 6);
 
-  // 살펴보는 항목이 하나씩 나타나는 연출 — 용어 대신 쉬운 말 (지수 리뷰).
-  //
-  // ⚠ **진행형으로만 쓴다**(2026-10-23 D1). 이 목록은 서버 진행과 이어져 있지 않은 타이머 연출이라,
-  //   예전처럼 '…읽었어요 ✓'로 쓰면 사진이 거절될 때도 ✓가 다 찬 뒤 "분석하지 않았어요"가 나왔다(가짜 완료).
-  //   그래서 체크 표시 없이 흐린 점, 맨 아래 줄만 작은 스피너를 둔다.
-  static const _extracted = [
-    '집에 걸린 빚을 찾고 있어요',
-    '소유권을 확인하고 있어요',
-    '집주인을 확인하고 있어요',
-  ];
-
-  int _stage = 0;
-  final List<String> _found = [];
-  int _mentIndex = 0; // G3: 마지막 단계 순환 멘트 인덱스
-  int _lastStageTicks = 0; // 마지막 단계에서 흐른 타이머 틱 수
+  final Stopwatch _clock = Stopwatch();
+  bool _done = false; // 서버가 답했다 → 100%
+  int _tipStart = 0; // 매번 다른 꿀팁부터
   Timer? _timer;
   bool _navigated = false;
   bool _failed = false; // 서버 연결·분석 실패 (user-scenario §4 S-06 네트워크 오류)
@@ -135,29 +132,16 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   Future<void> _run() async {
     setState(() {
       _failed = false;
-      _stage = 0;
-      _found.clear();
-      _mentIndex = 0;
-      _lastStageTicks = 0;
+      _done = false;
+      _tipStart = math.Random().nextInt(kLoadingTips.length);
     });
-
-    // 단계 진행 연출 (더미). 실단계에선 실제 파이프라인 진행에 연동.
-    _timer = Timer.periodic(const Duration(milliseconds: 700), (t) {
-      if (!mounted) return;
-      setState(() {
-        if (_stage < _stages.length - 1) {
-          _stage++;
-        } else {
-          // G3: 마지막 단계에선 약 2.1초(3틱)마다 순환 멘트 교체
-          _lastStageTicks++;
-          if (_lastStageTicks % 3 == 0) {
-            _mentIndex = (_mentIndex + 1) % _waitingMents.length;
-          }
-        }
-        if (_found.length < _extracted.length) {
-          _found.add(_extracted[_found.length]);
-        }
-      });
+    _clock
+      ..reset()
+      ..start();
+    _timer?.cancel();
+    // 막대·남은 초·꿀팁을 다시 그리는 시계 (서버 진행과는 무관 — 예상 시간 기준)
+    _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (mounted) setState(() {});
     });
 
     final repo = context.read<AnalysisRepository>();
@@ -204,6 +188,11 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     }
 
     _timer?.cancel();
+    _clock.stop();
+    if (!mounted || _navigated) return;
+    // 서버가 답했다 → 막대를 100%로 채워 보여 주고 넘어간다(진짜 완료라서 괜찮다)
+    setState(() => _done = true);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     if (!mounted || _navigated) return;
     _navigated = true;
     // 분석 직후 리포트에서 뒤로가기 = 홈 (검색 폼·로딩으로 되돌아가지 않음 — IA §7).
@@ -215,6 +204,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _clock.stop();
     super.dispose();
   }
 
@@ -303,6 +293,74 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     );
   }
 
+  /// 로딩 중 화면 — 세이프 · 단계 문장 · 예상 시간 막대(% · 남은 초) · 꿀팁 카드
+  Widget _loadingBody() {
+    final elapsed = _clock.elapsed;
+    final progress = _done ? 1.0 : estimatedProgress(elapsed);
+    final fraction = elapsed.inMilliseconds / (kAnalysisExpectedSeconds * 1000);
+    final stage = _stages.firstWhere((s) => fraction < s.until).text;
+    final secondsLeft = (kAnalysisExpectedSeconds - elapsed.inMilliseconds / 1000).ceil();
+    final String timeText;
+    if (_done) {
+      timeText = '다 됐어요';
+    } else if (secondsLeft >= 1) {
+      timeText = '약 $secondsLeft초 남았어요';
+    } else {
+      timeText = '조금 더 걸리고 있어요 · 거의 다 됐어요';
+    }
+    final tipIndex =
+        (_tipStart + elapsed.inMilliseconds ~/ _tipEvery.inMilliseconds) % kLoadingTips.length;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.xxxl),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Center(child: MascotSafe(size: 96, state: MascotState.loading)),
+          const SizedBox(height: AppSpacing.xl),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: AppText(
+              _done ? '리포트를 열고 있어요' : stage,
+              key: ValueKey(_done ? 'done' : stage),
+              style: AppTypography.title,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          // 예상 시간 막대 — 퍼센트와 남은 초로 '언제 끝나는지' 가늠하게 한다
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: AppSpacing.sm,
+              backgroundColor: AppColors.line,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: AppText(
+                  timeText,
+                  style: AppTypography.caption,
+                ),
+              ),
+              AppText(
+                '${(progress * 100).floor()}%',
+                style: AppTypography.bodyStrong.copyWith(color: AppColors.primary),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xxxl),
+          _TipCard(tip: kLoadingTips[tipIndex], index: tipIndex),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -313,70 +371,56 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
       },
       child: _failed
           ? Scaffold(body: _failedBody())
-          : Scaffold(
-              body: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.xxxl),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Center(
-                        child: MascotSafe(size: 96, state: MascotState.loading),
-                      ),
-                      const SizedBox(height: AppSpacing.xl),
-                      AppText(
-                        _stages[_stage],
-                        style: AppTypography.title,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      // 실측 21~31초(NOW.md 2절) — '1~2분'은 실제보다 길게 말했다(D1). 배포 서버에서 다시 잰다(NOW.md 사람 할 일)
-                      AppText(
-                        kAnalysisTypicalWait,
-                        style: AppTypography.caption,
-                        textAlign: TextAlign.center,
-                      ),
-                      // G3: 마지막 단계에서만 순환 세이프 멘트
-                      if (_stage >= _stages.length - 1) ...[
-                        const SizedBox(height: AppSpacing.xs),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: AppText(
-                            _waitingMents[_mentIndex],
-                            key: ValueKey(_mentIndex),
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.primary,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: AppSpacing.xl),
-                      // 마지막 단계는 실제 서버 응답(최대 3분)을 기다리므로
-                      // 확정형 100%로 멈춰 보이지 않게 물결(indeterminate)로 전환
-                      LinearProgressIndicator(
-                        value: _stage >= _stages.length - 1
-                            ? null
-                            : (_stage + 1) / _stages.length,
-                        backgroundColor: AppColors.line,
-                        color: AppColors.primary,
-                      ),
-                      const SizedBox(height: AppSpacing.xxl),
-                      // 살펴보는 항목 — 완료(✓)를 말하지 않는다. 지난 줄은 흐린 점, 맨 아래 줄만 작은 스피너(D1)
-                      for (int i = 0; i < _found.length; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                          child: LoadingStepLine(
-                            text: _found[i],
-                            active: i == _found.length - 1,
-                          ),
-                        ),
-                    ],
-                  ),
+          : Scaffold(body: SafeArea(child: _loadingBody())),
+    );
+  }
+}
+
+/// "알고 계셨나요?" 꿀팁 카드 — 문장이 바뀔 때 부드럽게 겹쳐 바뀐다.
+class _TipCard extends StatelessWidget {
+  const _TipCard({required this.tip, required this.index});
+
+  final String tip;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.cardPadH,
+        vertical: AppSpacing.cardPadV,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lightbulb_outline, size: AppSize.iconSm, color: AppColors.primary),
+              const SizedBox(width: AppSpacing.xs),
+              AppText(
+                '알고 계셨나요?',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            child: AppText(
+              tip,
+              key: ValueKey(index),
+              style: AppTypography.body.copyWith(color: AppColors.textBody),
             ),
+          ),
+        ],
+      ),
     );
   }
 }

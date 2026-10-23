@@ -305,7 +305,7 @@ def test_explanation_source_labels_are_honest(retriever: HybridRetriever, monkey
     # LLM 성공 경로
     ok = json.dumps(
         {"cases": [{"case_id": "prec-trust", "easy_summary": "법원이 이렇게 판단했어요",
-                    "common_point": "신탁등기 신호가 같아요"}]},
+                    "common_point": "이 집에도 신탁등기가 1건 있어요"}]},
         ensure_ascii=False,
     )
     monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
@@ -363,7 +363,7 @@ def test_explainer_no_key_uses_fallback(retriever: HybridRetriever):
 
 def _solar_reply(**fields) -> str:
     case = {"case_id": "prec-trust", "easy_summary": "법원이 이렇게 판단했어요",
-            "common_point": "신탁등기 신호가 같아요"}
+            "common_point": "이 집에도 신탁등기가 1건 있어요"}
     case.update(fields)
     return json.dumps({"cases": [case]}, ensure_ascii=False)
 
@@ -399,6 +399,37 @@ def test_ai_common_point_with_made_up_number_falls_back(retriever: HybridRetriev
     assert section.cases[0]["summary"] == "신탁등기 관련 쉬운 요약이에요"
 
 
+def test_common_point_without_this_house_number_falls_back(retriever: HybridRetriever, monkeypatch):
+    """공통점이 이 집의 숫자를 하나도 짚지 않으면(어느 집에나 맞는 말) 버리고 폴백한다."""
+    reply = _solar_reply(common_point="다가구주택은 보증금 확인이 필요해요")
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
+    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: reply)
+    section = PrecedentService(retriever=retriever).match_for_verdict(_danger_trust_verdict(), explain=True)
+    assert "다가구주택은" not in section.cases[0]["commonPoint"]
+
+
+def test_bold_markers_become_emphasis(retriever: HybridRetriever, monkeypatch):
+    """AI가 쓴 **굵게**는 글에서 떼고 강조 목록으로 옮긴다 — 옛 앱도 굵게를 그린다."""
+    reply = _solar_reply(common_point="판례 속 집처럼\n이 집에도 **신탁등기 1건**이\n지금 살아 있어요")
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
+    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: reply)
+    case = PrecedentService(retriever=retriever).match_for_verdict(_danger_trust_verdict(), explain=True).cases[0]
+    assert case["commonPoint"] == "판례 속 집처럼\n이 집에도 신탁등기 1건이\n지금 살아 있어요"
+    assert case["emphasis"]["commonPoint"] == ["신탁등기 1건"]
+
+
+def test_ai_picks_order_and_count(retriever: HybridRetriever, monkeypatch):
+    """AI가 고른 판례만, 고른 순서대로 나간다(후보에 없는 id는 버린다)."""
+    picked = json.dumps({"cases": [
+        {"case_id": "prec-trust", "easy_summary": "법원이 이렇게 판단했어요", "common_point": "이 집에도 신탁등기가 1건 있어요"},
+        {"case_id": "prec-없는판례", "easy_summary": "지어낸 판례예요", "common_point": "이 집에도 1건 있어요"},
+    ]}, ensure_ascii=False)
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
+    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: picked)
+    section = PrecedentService(retriever=retriever).match_for_verdict(_danger_trust_verdict(), explain=True)
+    assert [c["caseNo"] for c in section.cases] == ["대법원 trust"]
+
+
 def test_curated_advice_is_fallback_when_ai_fails(retriever: HybridRetriever):
     """Solar가 실패하면(키 없음) 사람이 쓴 조언이 그대로 나간다."""
 
@@ -425,6 +456,21 @@ def test_report_summary_has_no_address_or_alias():
     assert report.address not in summary
     assert report.alias not in summary
     assert "보증금_원" in summary
+
+
+def test_report_summary_carries_registry_facts_without_names():
+    """등기 항목(종류·접수일·금액 표기·권리자 종류)이 재료로 간다 — 이름은 없다."""
+    from app.dummy_data import build_example_report
+    from app.schemas.contract import RiskFact
+    from app.services.precedent.service import _report_summary
+
+    report = build_example_report().model_copy(
+        update={"riskFacts": [RiskFact(kind="가압류", receiptDate="2024-03-04", amount=400_000_000, holder="개인")]}
+    )
+    summary = _report_summary(report, ["압류·가압류"])
+    assert summary["등기_항목"] == [
+        {"종류": "가압류", "접수일": "2024-03-04", "금액_원": 400_000_000, "금액_표기": "4억원", "권리자": "개인"}
+    ]
 
 
 # ── 적재 파이프라인 ────────────────────────────────────────────────────────

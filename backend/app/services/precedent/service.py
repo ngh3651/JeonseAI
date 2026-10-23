@@ -18,6 +18,7 @@ from pathlib import Path
 from ...schemas.contract import Report
 from ...schemas.internal import Grade, RuleVerdict
 from .. import terms, thresholds as T
+from ..formatting import format_won
 from . import emphasis as emphasis_picker, explainer
 from .models import OUTCOME_TEXT, OUTCOME_UNKNOWN, PrecedentSection, RetrievedPrecedent
 from .retrieval import HybridRetriever
@@ -46,8 +47,12 @@ QUERY_TEMPLATES: dict[str, str] = {
 }
 
 # 시연·표시 파라미터 (인프라 수치)
-TOP_K_PER_TAG = 2   # 태그(위험 유형)당 최대 후보
+TOP_K_PER_TAG = 2   # 태그(위험 유형)당 최대 후보 — AI가 고르지 않을 때(키 없음·실패)
 MAX_CASES = 4       # 판례 섹션 최대 카드 수
+# AI가 고를 때(2026-10-24): 후보를 넉넉히 가져와 Solar가 이 집과 가장 닮은 4건을 고른다.
+#   검색어는 여전히 미리 써 둔 문장(LLM은 질의를 만들지 않는다) — AI는 **검색된 후보 중에서만** 고른다.
+TOP_K_PER_TAG_FOR_PICK = 3
+MAX_CANDIDATES = 10
 
 FALLBACK_NO_MATCH = (
     "이 매물의 위험 신호와 연결되는 판례를 아직 찾지 못했어요. "
@@ -155,6 +160,25 @@ def _report_summary(report: Report, tags: list[str]) -> dict:
         items.append(item)
     if items:
         summary["위험_항목"] = items
+    # 살아 있는 등기 항목(가압류·근저당 등)의 종류·접수일·금액 — 공통점이 '이 집의 숫자'를 짚게 (이름 없음)
+    facts = []
+    for f in getattr(report, "riskFacts", []) or []:
+        fact = {"종류": f.kind}
+        if f.receiptDate:
+            fact["접수일"] = f.receiptDate
+        if f.amount is not None:
+            fact["금액_원"] = f.amount
+            fact["금액_표기"] = format_won(f.amount)
+        if f.holder:
+            fact["권리자"] = f.holder
+        facts.append(fact)
+    if facts:
+        summary["등기_항목"] = facts
+    summary["보증금_표기"] = format_won(report.deposit)
+    if report.seniorDebtAmount:
+        summary["먼저_갚을_빚_표기"] = format_won(report.seniorDebtAmount)
+    if report.marketPrice:
+        summary["시세_표기"] = format_won(report.marketPrice)
     return summary
 
 
@@ -172,13 +196,18 @@ def _verdict_summary(verdict: RuleVerdict | None, tags: list[str]) -> dict:
 #: 카드에서 읽기 보조를 붙일 본문 필드 — 앱이 쓰는 이름 그대로 쓴다(계약 §2.3).
 #: `summary`는 이미 굵게 나가므로 강조 대상이 아니고, 용어 툴팁만 받는다.
 _BODY_FIELDS = ("summary", "result", "commonPoint", "advice")
-_EMPHASIS_FIELDS = ("result", "commonPoint", "advice")
+_EMPHASIS_FIELDS = ("summary", "result", "commonPoint", "advice")
 #: 앱 필드 이름 → LLM이 emphasis를 고를 때 쓰는 키 이름.
 #:
 #: 2026-10-23부터 조언(advice)도 Solar가 이 매물에 맞춰 쓴다(decisions.md). 강조는 여전히 **최종 문장의
 #:   부분 문자열**이어야 붙는다 — Solar 조언이 검사에서 떨어져 큐레이션 조언이 나가면, Solar가 고른 강조도
 #:   그 문장에 없으니 버려지고 결정적 폴백(금액·비율·기간)으로 내려간다.
-_LLM_EMPHASIS_KEY = {"commonPoint": "common_point", "result": "result", "advice": "advice"}
+_LLM_EMPHASIS_KEY = {
+    "summary": "easy_summary",
+    "commonPoint": "common_point",
+    "result": "result",
+    "advice": "advice",
+}
 
 
 def _attach_reading_aids(case: dict, exp) -> None:
@@ -224,14 +253,16 @@ class PrecedentService:
     def __init__(self, index_dir: Path | None = None, retriever: HybridRetriever | None = None):
         self._retriever = retriever if retriever is not None else HybridRetriever(index_dir)
 
-    def search_by_tags(self, tags: list[str]) -> list[RetrievedPrecedent]:
+    def search_by_tags(
+        self, tags: list[str], *, top_k: int = TOP_K_PER_TAG, limit: int = MAX_CASES
+    ) -> list[RetrievedPrecedent]:
         """태그별 분기 검색 → 병합 → 정렬 (매칭 태그 수 우선 — 피드백 A6)."""
         merged: dict[str, RetrievedPrecedent] = {}
         for tag in tags:
             query = QUERY_TEMPLATES.get(tag)
             if not query:
                 continue
-            for m in self._retriever.search(query, risk_tags=[tag], top_k=TOP_K_PER_TAG):
+            for m in self._retriever.search(query, risk_tags=[tag], top_k=top_k):
                 prev = merged.get(m.doc.case_id)
                 if prev is None or m.hybrid_score > prev.hybrid_score:
                     matched = sorted(set(m.doc.risk_tags) & set(tags))
@@ -249,7 +280,7 @@ class PrecedentService:
             key=lambda m: (len(m.matched_tags), m.doc.verified, m.hybrid_score),
             reverse=True,
         )
-        return ranked[:MAX_CASES]
+        return ranked[:limit]
 
     def _build_section(
         self,
@@ -261,18 +292,29 @@ class PrecedentService:
     ) -> PrecedentSection:
         if not tags:
             return PrecedentSection(cases=[], fallback_text=FALLBACK_NO_RISK)
-        matches = self.search_by_tags(tags)
-        if not matches:
+        if explain:
+            # AI가 고른다: 후보를 넉넉히 → Solar가 이 집과 닮은 순서로 최대 4건(+설명). 실패하면 점수 순 4건.
+            candidates = self.search_by_tags(
+                tags, top_k=TOP_K_PER_TAG_FOR_PICK, limit=MAX_CANDIDATES
+            )
+        else:
+            candidates = self.search_by_tags(tags)
+        if not candidates:
             return PrecedentSection(cases=[], fallback_text=FALLBACK_NO_MATCH)
 
         explanations: dict = {}
         source = "자동 생성"  # LLM 미호출·폴백은 "자동 생성" (라벨 정직성 — decisions.md 2026-07-09)
         if explain:
             explanations, llm_source = explainer.explain_matches(
-                matches, summary if summary is not None else _verdict_summary(verdict, tags)
+                candidates, summary if summary is not None else _verdict_summary(verdict, tags)
             )
             if llm_source != "폴백":
                 source = llm_source
+        if explanations:
+            by_id = {m.doc.case_id: m for m in candidates}
+            matches = [by_id[cid] for cid in explanations if cid in by_id][:MAX_CASES]
+        else:
+            matches = candidates[:MAX_CASES]
 
         cases = []
         for m in matches:

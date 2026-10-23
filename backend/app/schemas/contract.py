@@ -115,6 +115,18 @@ class MarketPriceAlternative(BaseModel):
 
 
 # ── 리포트 (§2.1 Report) ───────────────────────────────────────────────────
+class RiskFact(BaseModel):
+    """등기부의 살아 있는 위험 항목 하나 — 판례 맞춤 설명 재료 (2026-10-24, 화면 표시 없음·판정 미사용).
+
+    이름은 담지 않는다(권리자는 '기관'/'개인'만).
+    """
+
+    kind: str  # 가압류 | 압류 | 가처분 | 경매개시결정 | 신탁 | 근저당 | 전세권 | 임차권등기
+    receiptDate: Optional[str] = None
+    amount: Optional[int] = None  # 청구금액·채권최고액·보증금(원)
+    holder: Optional[str] = None  # "기관" | "개인"
+
+
 class Report(BaseModel):
     id: str
     alias: str
@@ -157,6 +169,8 @@ class Report(BaseModel):
     # ⚠ 못 읽으면 None이다. **앱은 분석일(analyzedAt)로 대체하지 않는다** — 분석일을
     #   대신 쓰면 "오늘 서류"라고 믿게 만들어 아무것도 안 쓰느니만 못하다.
     registryViewedAt: Optional[str] = None
+    # [판례 설명 재료 — 2026-10-24] 살아 있는 위험 항목의 종류·접수일·금액·권리자 종류. 판정·화면에 쓰지 않는다.
+    riskFacts: list[RiskFact] = Field(default_factory=list)
     # 이 분석을 **다음 등기부와 견줄 기준(baseline)으로 쓸 수 있는가** (2026-08-14 S-11).
     #
     # 대조는 판정 결과가 아니라 **추출 스냅샷**(소유자·빚·압류 항목)을 맞춰보는 것이라,

@@ -50,6 +50,23 @@ SEARCH_QUERIES = (
 PER_QUERY = 20  # 검색어마다 최신 몇 건까지 볼지
 MAX_NEW_PER_RUN = 40  # 한 번에 새로 받는 최대 건수 (임베딩 크레딧 상한)
 
+#: **처음 한 번 몰아 받기**(2026-10-24 규혁: "판례를 늘리자") — 검색어를 넓히고 여러 쪽을 훑는다.
+#: 끝나면 `backfill_done` 표시를 남기고, 그 뒤로는 위의 매주 업데이트만 돈다.
+BACKFILL_QUERIES = SEARCH_QUERIES + (
+    "임대차보증금반환",
+    "전세금",
+    "우선변제권",
+    "확정일자 임차인",
+    "경매 배당 임차인",
+    "소액임차인",
+    "최우선변제",
+    "임차권등기명령",
+    "공인중개사 설명의무 임대차",
+)
+BACKFILL_PAGES = 3  # 검색어마다 최대 3쪽 × 100건
+BACKFILL_MAX_NEW = 600  # 몰아 받기 한 번의 상한 (본문 600번 호출 ≈ 10~15분, 임베딩 한 번)
+BACKFILL_MARKER = "backfill_done"
+
 STATUS_FILE = "update_status.json"
 _run_lock = threading.Lock()
 
@@ -132,12 +149,12 @@ def _get_json(url: str, params: dict) -> dict:
     return data
 
 
-def _search_latest(oc: str, query: str) -> list[dict]:
+def _search_latest(oc: str, query: str, *, page: int = 1, display: int = PER_QUERY) -> list[dict]:
     data = _get_json(
         SEARCH_URL,
         {
             "OC": oc, "target": "prec", "type": "JSON", "query": query,
-            "search": 2, "sort": "ddes", "display": PER_QUERY, "page": 1,
+            "search": 2, "sort": "ddes", "display": display, "page": page,
         },
     )
     items = data.get("PrecSearch", {}).get("prec", [])
@@ -176,29 +193,58 @@ def _to_raw(detail: dict) -> dict:
     }
 
 
-def collect_new(oc: str, known_ids: set[str], *, fetch=None, search=None) -> list[dict]:
-    """검색어마다 최신 판례를 보고, 처음 보는 것만 본문을 받아 원문으로 돌려준다."""
+def collect_new(
+    oc: str, known_ids: set[str], *, fetch=None, search=None, backfill: bool = False
+) -> list[dict]:
+    """검색어마다 최신 판례를 보고, 처음 보는 것만 본문을 받아 원문으로 돌려준다.
+
+    `backfill=True`면 검색어를 넓히고 검색어마다 여러 쪽(100건씩)을 훑는다 — 처음 한 번 몰아 받기.
+    """
     real = search is None  # 진짜 법제처를 부를 때만 호출 간격을 둔다(테스트는 바로)
     search = search or _search_latest
     fetch = fetch or (lambda pid: _get_json(SERVICE_URL, {"OC": oc, "target": "prec", "type": "JSON", "ID": pid}))
+    queries = BACKFILL_QUERIES if backfill else SEARCH_QUERIES
+    pages = BACKFILL_PAGES if backfill else 1
+    limit = BACKFILL_MAX_NEW if backfill else MAX_NEW_PER_RUN
     new: list[dict] = []
     seen = set(known_ids)
-    for q in SEARCH_QUERIES:
-        for item in search(oc, q):
-            if len(new) >= MAX_NEW_PER_RUN:
-                return new
-            pid = str(item.get("판례일련번호", "")).strip()
-            if not pid or pid in seen:
-                continue
-            seen.add(pid)
+    for q in queries:
+        for page in range(1, pages + 1):
+            if backfill:
+                items = search(oc, q, page=page, display=100)
+            else:
+                items = search(oc, q)
             if real:
                 time.sleep(REQUEST_INTERVAL_SECONDS)
-            try:
-                body = fetch(pid)
-                new.append(_to_raw(body.get("PrecService", body)))
-            except Exception as e:  # noqa: BLE001 — 한 건 실패는 건너뛴다
-                _log.info(f"[판례 업데이트] 본문 실패 {item.get('사건번호')} ({type(e).__name__})")
+            for item in items:
+                if len(new) >= limit:
+                    return new
+                pid = str(item.get("판례일련번호", "")).strip()
+                if not pid or pid in seen:
+                    continue
+                seen.add(pid)
+                if real:
+                    time.sleep(REQUEST_INTERVAL_SECONDS)
+                try:
+                    body = fetch(pid)
+                    new.append(_to_raw(body.get("PrecService", body)))
+                except Exception as e:  # noqa: BLE001 — 한 건 실패는 건너뛴다
+                    _log.info(f"[판례 업데이트] 본문 실패 {item.get('사건번호')} ({type(e).__name__})")
+            if len(items) < (100 if backfill else PER_QUERY):
+                break  # 마지막 쪽
+        if backfill:
+            _log.info(f"[판례 업데이트] 몰아 받기 — '{q}'까지 새 원문 {len(new)}건")
     return new
+
+
+def backfill_done() -> bool:
+    return (settings.precedent_update_dir() / BACKFILL_MARKER).exists()
+
+
+def _mark_backfill_done() -> None:
+    path = settings.precedent_update_dir() / BACKFILL_MARKER
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(datetime.now(KST).strftime("%Y-%m-%d"), encoding="utf-8")
 
 
 # ── 창고 다시 만들기 ───────────────────────────────────────────────────────────
@@ -230,7 +276,9 @@ def _rebuild_index(ingest_fn=None) -> int:
     return int(meta.get("doc_count", 0))
 
 
-def run_update(*, collect=None, rebuild=None, now: datetime | None = None) -> dict:
+def run_update(
+    *, collect=None, rebuild=None, now: datetime | None = None, backfill: bool = False
+) -> dict:
     """한 번 돈다 — 새 판례 받기 → (있으면) 창고 다시 만들기 → 기록. 결과 기록을 돌려준다."""
     if not _run_lock.acquire(blocking=False):
         return read_status()
@@ -238,12 +286,15 @@ def run_update(*, collect=None, rebuild=None, now: datetime | None = None) -> di
         from .ingest import extra_raw_dir, load_raw_docs
 
         now = now or datetime.now(KST)
-        _log.info("[판례 업데이트] 시작 — 법제처에 최신 판례를 묻는 중")
+        _log.info(
+            "[판례 업데이트] 시작 — "
+            + ("처음 한 번 몰아 받기(검색어 넓게·여러 쪽, 10~20분)" if backfill else "법제처에 최신 판례를 묻는 중")
+        )
         st = read_status()
         st["lastCheckAt"] = now.strftime("%Y-%m-%d")
         try:
             known = {str(d.get("prec_id")) for d in load_raw_docs()}
-            new = (collect or (lambda k: collect_new(settings.law_api_oc(), k)))(known)
+            new = (collect or (lambda k: collect_new(settings.law_api_oc(), k, backfill=backfill)))(known)
             _log.info(f"[판례 업데이트] 새 판례 {len(new)}건 받음" + (" → 창고 다시 만드는 중(임베딩, 몇 분)" if new else ""))
             if new:
                 out = extra_raw_dir()
@@ -252,7 +303,12 @@ def run_update(*, collect=None, rebuild=None, now: datetime | None = None) -> di
                     (out / f"prec-{raw['prec_id']}.json").write_text(
                         json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8"
                     )
+                # 원문은 남았는데 창고 만들기가 실패하면, 다음 번엔 '새 원문 0건'이라 다시 안 만든다 → 표시로 기억
+                st["needsRebuild"] = True
+                _write_status(st)
+            if new or st.get("needsRebuild"):
                 doc_count = (rebuild or _rebuild_index)()
+                st["needsRebuild"] = False
             else:
                 doc_count = index_doc_count()
             st.update(
@@ -263,6 +319,8 @@ def run_update(*, collect=None, rebuild=None, now: datetime | None = None) -> di
                     "error": None,
                 }
             )
+            if backfill:
+                _mark_backfill_done()
             _log.info(f"[판례 업데이트] 완료 — 새 원문 {len(new)}건 · 창고 {doc_count}건")
         except Exception as e:  # noqa: BLE001 — 실패해도 서버·기존 창고는 그대로
             st["error"] = f"{type(e).__name__}: {str(e)[:160]}"
@@ -302,8 +360,11 @@ def _loop() -> None:
     time.sleep(FIRST_WAIT_SECONDS)
     while True:
         try:
-            if index_doc_count() is not None and is_due():
-                run_update()
+            if index_doc_count() is not None:
+                if not backfill_done():
+                    run_update(backfill=True)  # 처음 한 번 — 성공하면 표시가 남아 다시 안 돈다
+                elif is_due():
+                    run_update()
         except Exception as e:  # noqa: BLE001
             _log.info(f"[판례 업데이트] ⚠ 알람시계 오류 ({type(e).__name__})")
         time.sleep(CHECK_EVERY_SECONDS)

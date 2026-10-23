@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import time
 from pathlib import Path
 from typing import Protocol
 
@@ -89,13 +90,21 @@ class UpstageEmbeddingBackend:
         vectors: list[list[float]] = []
         for i in range(0, len(texts), _UPSTAGE_BATCH_SIZE):
             batch = texts[i : i + _UPSTAGE_BATCH_SIZE]
-            resp = requests.post(
-                upstage_embedding_url(),
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json={"model": model, "input": batch},
-                timeout=_REQUEST_TIMEOUT,
-            )
-            resp.raise_for_status()
+            # 판례가 수백 건으로 늘어 요청이 수백 번이 됐다(2026-10-24) — 한 번 삐끗했다고 전체를 버리지 않게 3번까지
+            for attempt in range(3):
+                try:
+                    resp = requests.post(
+                        upstage_embedding_url(),
+                        headers={"Authorization": f"Bearer {self._api_key}"},
+                        json={"model": model, "input": batch},
+                        timeout=_REQUEST_TIMEOUT,
+                    )
+                    resp.raise_for_status()
+                    break
+                except requests.exceptions.RequestException:
+                    if attempt == 2:
+                        raise
+                    time.sleep(2 * (attempt + 1))
             data = sorted(resp.json()["data"], key=lambda d: d["index"])
             vectors.extend([d["embedding"] for d in data])
         return [_l2_normalize(v) for v in vectors]

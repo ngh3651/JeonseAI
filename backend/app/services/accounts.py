@@ -162,6 +162,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 )
 """
 _INDEX = "CREATE INDEX IF NOT EXISTS idx_sessions_owner ON sessions (owner)"
+# 계정 표시 이름 (2026-10-24) — 사용자가 앱에서 **직접 정한** 이름만(카카오 닉네임은 받지 않는다). 탈퇴하면 지운다.
+_PROFILE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS profiles (
+    owner        TEXT NOT NULL PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+)
+"""
 
 _db_lock = threading.Lock()
 
@@ -173,6 +181,7 @@ def _execute(sql: str, params: tuple = ()) -> list[tuple]:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(_SCHEMA)
         conn.execute(_INDEX)
+        conn.execute(_PROFILE_SCHEMA)
         return conn.execute(sql, params).fetchall()
 
 
@@ -267,6 +276,39 @@ def claim_device_records(device_id: str | None, owner: str) -> int:
     return moved
 
 
+#: 표시 이름 최대 글자 수 — 인사말 "○○님 안녕하세요"가 한 줄에 들어가게
+DISPLAY_NAME_MAX = 12
+
+
+def clean_display_name(name: str) -> str:
+    """앞뒤 공백·줄바꿈을 걷어 낸 이름. 비면 ''(이름 지우기). 너무 길면 ValueError."""
+    cleaned = " ".join((name or "").split())
+    if len(cleaned) > DISPLAY_NAME_MAX:
+        raise ValueError(f"이름은 {DISPLAY_NAME_MAX}자까지 쓸 수 있어요")
+    return cleaned
+
+
+def display_name(owner: str) -> str | None:
+    rows = _execute("SELECT display_name FROM profiles WHERE owner = ?", (owner,))
+    return rows[0][0] if rows else None
+
+
+def set_display_name(owner: str, name: str) -> str | None:
+    """표시 이름을 정한다(빈 값이면 지운다) → 저장된 이름."""
+    if not is_account_owner(owner):
+        raise ValueError("계정 주인이 아니에요")
+    cleaned = clean_display_name(name)
+    if not cleaned:
+        _execute("DELETE FROM profiles WHERE owner = ?", (owner,))
+        return None
+    _execute(
+        "INSERT INTO profiles (owner, display_name, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(owner) DO UPDATE SET display_name = excluded.display_name, updated_at = excluded.updated_at",
+        (owner, cleaned, _iso(_now())),
+    )
+    return cleaned
+
+
 def delete_account(owner: str) -> None:
     """회원 탈퇴 — 그 계정의 **기록·세션·패스를 전부** 지운다(되돌릴 수 없다)."""
     if not is_account_owner(owner):
@@ -275,6 +317,7 @@ def delete_account(owner: str) -> None:
     analysis_cache.delete_owner(owner)
     passes = payments.delete_owner(pass_owner_key(owner))
     _execute("DELETE FROM sessions WHERE owner = ?", (owner,))
+    _execute("DELETE FROM profiles WHERE owner = ?", (owner,))
     _log.info(f"[탈퇴] 계정의 기록을 모두 지움 — 리포트 {reports}건 · 패스 {passes}건 · 세션 전부")
 
 

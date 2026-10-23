@@ -439,6 +439,13 @@ class MeResponse(BaseModel):
     loggedIn: bool
     provider: Optional[str] = None  # "kakao"
     customerKey: Optional[str] = None  # 로그인했을 때만
+    displayName: Optional[str] = None  # 사용자가 앱에서 정한 이름(2026-10-24) — 없으면 null
+
+
+class DisplayNameRequest(BaseModel):
+    """`POST /api/me/name` — 표시 이름 정하기(빈 값이면 지우기)."""
+
+    displayName: str = ""
 
 
 class PrecedentStatus(BaseModel):

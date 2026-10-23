@@ -166,6 +166,7 @@ def test_변수가_없거나_비밀이_짧으면_로그인은_503이고_카카�
         "loggedIn": False,
         "provider": None,
         "customerKey": None,
+        "displayName": None,
     }
 
 
@@ -534,3 +535,34 @@ def test_계정_키는_비밀이_다르면_달라지고_같은_회원번호면_�
     owner = accounts.owner_for(a)
     assert owner == "acct-" + a[:32]
     assert accounts.is_account_owner(owner)
+
+
+# ── 표시 이름 (2026-10-24) — "동크크 1님 안녕하세요" ──────────────────────────────
+
+
+def test_display_name_set_read_clear(client, kakao, ready):
+    token = _login(client, {"X-Device-Id": "dev-name-1"}).json()["sessionToken"]
+    h = _session_headers(token, {"X-Device-Id": "dev-name-1"})
+    assert client.get("/api/me", headers=h).json()["displayName"] is None
+
+    r = client.post("/api/me/name", json={"displayName": "  동크크 1  "}, headers=h)
+    assert r.status_code == 200 and r.json()["displayName"] == "동크크 1"
+    assert client.get("/api/me", headers=h).json()["displayName"] == "동크크 1"
+
+    assert client.post("/api/me/name", json={"displayName": "가" * 13}, headers=h).status_code == 400
+    assert client.post("/api/me/name", json={"displayName": ""}, headers=h).json()["displayName"] is None
+
+
+def test_display_name_needs_login(client):
+    r = client.post("/api/me/name", json={"displayName": "동크크"}, headers={"X-Device-Id": "dev-guest-name"})
+    assert r.status_code == 401
+
+
+def test_withdraw_deletes_display_name(client, kakao, ready):
+    token = _login(client, {"X-Device-Id": "dev-name-2"}).json()["sessionToken"]
+    h = _session_headers(token, {"X-Device-Id": "dev-name-2"})
+    client.post("/api/me/name", json={"displayName": "동크크 2"}, headers=h)
+    assert client.delete("/api/me", headers=h).status_code == 204
+    from app.services import accounts
+
+    assert not any(r for r in accounts._execute("SELECT * FROM profiles"))

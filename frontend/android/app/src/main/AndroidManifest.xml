@@ -83,5 +83,10 @@
         <!-- 카카오 로그인: 카카오톡이 깔려 있는지 보고 있으면 카카오톡으로 로그인한다(안드로이드 11+ 패키지 가시성).
              SDK도 같은 선언을 갖고 있어 합쳐진다 — 여기 적어 두면 무엇을 왜 보는지 이 파일에서 바로 보인다. -->
         <package android:name="com.kakao.talk" />
+        <!-- 판례 카드 사건번호 ↗: 판결문 원문(https)을 브라우저로 연다 (url_launcher, 안드로이드 11+ 패키지 가시성) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
     </queries>
 </manifest>

@@ -550,14 +550,26 @@ class AnalysisReport {
   List<String> get riskLabels {
     const idToLabel = {
       'senior_debt': '선순위 채권',
-      'ownership': '신탁등기',
       'jeonse_ratio': '전세가율',
       'insurance': '보증보험',
     };
-    return [
-      for (final e in evidences)
-        if (e.grade != RiskGrade.ok && idToLabel.containsKey(e.id))
-          idToLabel[e.id]!,
-    ];
+    final labels = <String>[];
+    for (final e in evidences) {
+      if (e.grade == RiskGrade.ok) continue;
+      if (e.id == 'ownership') {
+        // 소유권 카드는 신탁·압류·경매가 한 칸에 모인다 — 상세 문장으로 실제로 무엇인지 가른다
+        // (2026-10-24: 가압류만 있는 집이 '소유권을 맡긴 집(신탁)'으로 보이던 것을 고침).
+        final d = e.detailText ?? '';
+        final found = <String>[
+          if (d.contains('신탁')) '신탁등기',
+          if (d.contains('압류') || d.contains('가처분')) '압류·가압류',
+          if (d.contains('경매')) '경매',
+        ];
+        labels.addAll(found.isEmpty ? const ['신탁등기'] : found);
+      } else if (idToLabel.containsKey(e.id)) {
+        labels.add(idToLabel[e.id]!);
+      }
+    }
+    return labels;
   }
 }

@@ -29,6 +29,10 @@ os.environ["REQUIRE_DEVICE_ID"] = ""
 os.environ["SAVE_RAW_RESPONSES"] = ""
 os.environ["RATE_LIMIT_ANALYZE_PER_HOUR"] = ""
 os.environ["RATE_LIMIT_GLOBAL_PER_DAY"] = ""
+# 카카오 로그인(2026-10-22): 개발자 `.env`의 값이 끼어들지 않게 — 기본은 '준비 안 됨(503)'. 테스트가 필요할 때 켠다.
+os.environ["KAKAO_APP_ID"] = ""
+os.environ["ACCOUNT_HASH_SECRET"] = ""
+os.environ["SESSION_DAYS"] = ""
 
 import pytest  # noqa: E402
 

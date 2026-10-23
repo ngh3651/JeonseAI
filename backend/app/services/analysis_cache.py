@@ -207,3 +207,22 @@ def with_alias(report: Report, alias: str | None, *, device_id: str) -> Report:
     except Exception:  # noqa: BLE001
         _log.error("[캐시] ⚠ 새 별칭을 기록에 저장하지 못함 — 응답에만 붙입니다", exc_info=True)
     return renamed
+
+
+# ── 주인 바꾸기·지우기 (카카오 로그인 — 2026-10-22, P2-1) ─────────────────────────
+
+
+def move_owner(from_owner: str, to_owner: str) -> None:
+    """로그인한 순간 — 그 기기의 쪽지를 계정으로 옮긴다(리포트도 함께 옮겨지므로 쪽지가 그대로 맞는다)."""
+    if not from_owner or from_owner == to_owner:
+        return
+    _execute(
+        "UPDATE OR REPLACE analysis_cache SET device_id = ? WHERE device_id = ?",
+        (to_owner, from_owner),
+    )
+
+
+def delete_owner(owner: str) -> None:
+    """회원 탈퇴 — 그 계정의 쪽지를 전부 지운다."""
+    if owner:
+        _execute("DELETE FROM analysis_cache WHERE device_id = ?", (owner,))

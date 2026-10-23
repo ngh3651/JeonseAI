@@ -73,6 +73,8 @@ jobs:
     env:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       APP_KEY: ${{ secrets.APP_KEY }}
+      # 카카오 네이티브 앱 키 — APK에 들어가는 공개 값이라 비밀값이 아니라 **변수**다(2026-10-22). 없으면 카카오 버튼이 없는 APK
+      KAKAO_NATIVE_APP_KEY: ${{ vars.KAKAO_NATIVE_APP_KEY }}
       ANDROID_SIGNING_BUNDLE: ${{ secrets.ANDROID_SIGNING_BUNDLE }}
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -132,16 +134,24 @@ jobs:
             *) echo "서버 주소: 있음 (https 아님 — 평문 통신을 허용한 APK가 됩니다)" ;;
           esac
           if [ -n "$APP_KEY" ]; then echo "앱 키: 있음"; else echo "앱 키: 없음(X-App-Key를 보내지 않는 APK)"; fi
+          if [ -n "$KAKAO_NATIVE_APP_KEY" ]; then echo "카카오 앱 키: 있음"; else echo "카카오 앱 키: 없음(카카오 버튼 없이 '로그인 없이 둘러보기'만 있는 APK)"; fi
           echo "서명: ${{ steps.signing.outputs.kind }} · 빌드 번호(versionCode): ${{ github.run_number }}"
       # = flutter build apk --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} --dart-define=APP_KEY=${{ secrets.APP_KEY }}
+      #   --dart-define=KAKAO_NATIVE_APP_KEY=${{ vars.KAKAO_NATIVE_APP_KEY }}
       # 값은 위 env로 받아 따옴표로 넘긴다 — 값에 특수문자가 있어도 명령이 깨지지 않게.
-      # 비어 있으면 앱이 기본값(주소 http://127.0.0.1:8000 · 앱 키 없음)으로 되돌린다(config.dart).
+      # 비어 있으면 앱이 기본값(주소 http://127.0.0.1:8000 · 앱 키 없음 · 카카오 버튼 없음)으로 되돌린다(config.dart).
+      # 실패하면 Gradle·Dart가 말한 원인 줄을 annotation으로도 남긴다 — PR 화면(Checks)에서 로그를 열지 않아도 원인이 보이게.
       - name: APK 빌드 (release)
-        run: >-
-          flutter build apk --release
-          --build-number=${{ github.run_number }}
-          --dart-define="API_BASE_URL=$API_BASE_URL"
-          --dart-define="APP_KEY=$APP_KEY"
+        run: |
+          if ! flutter build apk --release \
+              --build-number=${{ github.run_number }} \
+              --dart-define="API_BASE_URL=$API_BASE_URL" \
+              --dart-define="APP_KEY=$APP_KEY" \
+              --dart-define="KAKAO_NATIVE_APP_KEY=$KAKAO_NATIVE_APP_KEY" 2>&1 | tee build-apk.log; then
+            { grep -A6 "What went wrong" build-apk.log; grep -E "^e: |error:|ERROR:|Missing class|Duplicate class" build-apk.log; } \
+              | head -n 20 | while IFS= read -r line; do echo "::error title=APK 빌드 실패::${line}"; done
+            exit 1
+          fi
       - name: 서명 키 지우기
         if: always()
         run: rm -f android/key.properties android/app/upload-keystore.jks

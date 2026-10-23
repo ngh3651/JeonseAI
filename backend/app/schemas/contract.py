@@ -398,3 +398,30 @@ class PassStatus(BaseModel):
     testMode: bool = True
     notice: str = "테스트 결제 — 실제 청구 없음"
     guardianPass: Optional[GuardianPass] = Field(default=None, alias="pass")
+
+
+# ── 로그인 (§3.15~§3.18 — 2026-10-22, P2-1 카카오 로그인) ───────────────────────
+# 카카오에서는 **회원번호만** 받는다(이름·이메일·닉네임·프로필 사진은 받지 않는다).
+# 회원번호도 서버에는 HMAC 값(계정 키)으로만 남는다 — 아래 응답 어디에도 회원번호는 없다.
+
+
+class KakaoLoginRequest(BaseModel):
+    """카카오 SDK가 준 **액세스 토큰**. 서버가 카카오에 물어 우리 앱의 토큰인지·누구인지(회원번호) 확인한다."""
+
+    accessToken: str = Field(min_length=1, max_length=4096)
+
+
+class SessionResponse(BaseModel):
+    """로그인 성공 — 앞으로 모든 요청에 `Authorization: Bearer <sessionToken>`을 싣는다."""
+
+    sessionToken: str  # 무작위 값. 서버에는 SHA-256만 남는다
+    expiresAt: str  # 만료 시각 (ISO 8601, UTC)
+    customerKey: str  # 토스 결제위젯 customerKey — 계정에서 만든 값(회원번호와 무관)
+
+
+class MeResponse(BaseModel):
+    """지금 로그인 상태. 로그인 안 했으면 `loggedIn=false`(둘러보기 = 기기 id)."""
+
+    loggedIn: bool
+    provider: Optional[str] = None  # "kakao"
+    customerKey: Optional[str] = None  # 로그인했을 때만

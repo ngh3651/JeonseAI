@@ -5,10 +5,9 @@
 그래서 둘을 나눴다 (docs/decisions.md 2026-10-21):
 
 - **원응답 저장** → `SAVE_RAW_RESPONSES` 환경변수(기본 꺼짐) — `settings.save_raw_responses()`
-- **호출자 구분** → 아래 `get_current_user` = 기기 id(`X-Device-Id` 헤더)
+- **호출자 구분** → 아래 `get_current_user` = 로그인 세션이 있으면 **계정**, 없으면 기기 id(`X-Device-Id` 헤더)
 
-진짜 로그인(카카오)이 붙으면 이 함수가 계정 id를 돌려주게 바꾸면 된다 — 라우터는
-"누구의 기록인가"를 이 함수의 반환값으로만 판단한다.
+라우터는 "누구의 기록인가"를 `get_current_user`의 반환값으로만 판단한다 (2026-10-22 카카오 로그인 — 라우터는 그대로).
 """
 
 from __future__ import annotations
@@ -19,11 +18,12 @@ import re
 import threading
 import time
 from collections import deque
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, Request
 
 from . import settings
+from .services import accounts
 
 #: 앱이 처음 실행될 때 만들어 폰에 저장하는 기기 id 형식 (UUID 등).
 _DEVICE_ID_RE = re.compile(r"[A-Za-z0-9-]{8,64}")
@@ -31,38 +31,68 @@ _DEVICE_ID_RE = re.compile(r"[A-Za-z0-9-]{8,64}")
 _log = logging.getLogger("jeonseai")
 
 
-def get_current_user(
-    x_device_id: Optional[str] = Header(default=None, alias="X-Device-Id"),
-) -> str:
-    """이 요청을 보낸 **기기 id**. 기록(리포트·대조 기준·판례 캐시)의 주인이 된다.
+def checked_device_id(x_device_id: Optional[str]) -> Optional[str]:
+    """`X-Device-Id` 헤더의 형식 검사. 없으면 None, 틀리면 400, 맞으면 그 값.
 
-    - 헤더가 있으면 형식(`[A-Za-z0-9-]{8,64}`)을 검사한다. 어긋나면 400.
-    - 헤더가 없으면: `REQUIRE_DEVICE_ID=1`이면 400, 아니면 옛 앱이 함께 쓰는 `legacy-device`.
-      (새 앱이 헤더를 보내기 전까지 지금 앱이 그대로 동작하게 하는 임시 통로)
+    ⚠ 막는 값 두 가지(사칭 차단):
+      - 공용 통로 이름 `legacy-device` — `REQUIRE_DEVICE_ID=1`로 통로를 닫은 뒤에도 헤더 하나로
+        옛 앱의 공용 기록에 들어가는 길이 남지 않게.
+      - 계정 주인 앞머리 `acct-` — 기기 id를 `acct-…`로 보내 남의 **계정 기록**에 들어가는 길을 막는다
+        (2026-10-22 카카오 로그인. 대소문자를 가리지 않는다).
     """
     raw = (x_device_id or "").strip()
     if not raw:
+        return None
+    if (
+        raw == settings.LEGACY_DEVICE_ID
+        or raw.lower().startswith(accounts.ACCOUNT_PREFIX)
+        or not _DEVICE_ID_RE.fullmatch(raw)
+    ):
+        raise HTTPException(status_code=400, detail="기기 정보 형식이 올바르지 않아요")
+    return raw
+
+
+def get_current_user(
+    x_device_id: Optional[str] = Header(default=None, alias="X-Device-Id"),
+    authorization: Annotated[Optional[str], Header(alias="Authorization")] = None,
+) -> str:
+    """이 요청의 **주인** — 기록(리포트·대조 기준·판례 캐시·캐시 쪽지)과 패스가 이 값에 붙는다.
+
+    - `X-Device-Id`가 있으면 형식부터 검사한다(틀리면 400 — [checked_device_id]).
+    - `Authorization: Bearer <세션>`이 있으면: 살아 있는 세션이면 **계정 주인**(`acct-…`),
+      틀리거나 만료됐으면 **401 "다시 로그인해 주세요"**(앱은 세션을 지우고 로그인을 안내한다).
+    - 세션이 없으면(로그인 없이 둘러보기) 지금까지처럼 **기기 id**.
+      헤더도 없으면: `REQUIRE_DEVICE_ID=1`이면 400, 아니면 옛 앱이 함께 쓰는 `legacy-device`.
+    """
+    device_id = checked_device_id(x_device_id)
+    token = accounts.bearer_token(authorization)
+    if token is not None:
+        session = accounts.session_for(token) if token else None
+        if session is None:
+            raise HTTPException(
+                status_code=401,
+                detail=accounts.MSG_SESSION_INVALID,
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+            )
+        return session.owner
+    if device_id is None:
         if settings.require_device_id():
             raise HTTPException(
                 status_code=400,
                 detail="기기 정보가 없어요. 앱을 최신 버전으로 업데이트해 주세요",
             )
         return settings.LEGACY_DEVICE_ID
-    # ⚠ 공용 통로 이름을 직접 보내는 것은 막는다 — `REQUIRE_DEVICE_ID=1`로 통로를 닫은 뒤에도
-    #   헤더 하나로 옛 앱의 공용 기록에 들어가는 길이 남지 않게.
-    if raw == settings.LEGACY_DEVICE_ID or not _DEVICE_ID_RE.fullmatch(raw):
-        raise HTTPException(status_code=400, detail="기기 정보 형식이 올바르지 않아요")
-    return raw
+    return device_id
 
 
 def get_pass_owner(user: str = Depends(get_current_user)) -> str:
-    """계약 지킴이 패스(결제 기록)의 **주인 키** — 이 함수 **한 곳에서만** 정한다 (2026-10-22, P2-1).
+    """계약 지킴이 패스(결제 기록)의 **주인 키** (2026-10-22, P2-1 → 같은 날 카카오 로그인).
 
-    지금은 기기 id에 붙인다: `device:<기기 id>`. 카카오 로그인이 붙으면 여기만 계정 키
-    (예: `kakao:<회원번호>`)를 돌려주게 바꾸면 된다 — 결제 라우터와 저장소는 이 값만 쓴다.
-    앞머리(`device:`)를 붙여 두는 이유: 나중에 기기 패스를 계정으로 옮길 때 어느 쪽 키인지 가린다.
+    로그인했으면 계정(`account:acct-…`), 아니면 기기(`device:<기기 id>`). 모양은 `accounts.pass_owner_key`
+    **한 함수**가 정한다 — 로그인할 때 기기의 패스를 계정으로 옮기는 것도 같은 함수를 쓴다.
+    결제 라우터와 저장소는 이 값만 쓴다.
     """
-    return f"device:{user}"
+    return accounts.pass_owner_key(user)
 
 
 # ── 앱 키 (크레딧 보호의 정문) ─────────────────────────────────────────────────

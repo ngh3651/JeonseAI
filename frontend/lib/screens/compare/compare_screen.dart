@@ -26,6 +26,8 @@ import '../../services/api_client.dart';
 import '../../utils/korean_date.dart';
 import '../common/analyze_gate.dart';
 import '../journey/journey_actions.dart';
+import '../search/capture_issue_panel.dart';
+import '../search/capture_loop_route.dart';
 import 'compare_result_view.dart';
 
 /// 대조 요청 — 여정 화면이 `push`의 `extra`로 넘긴다.
@@ -40,10 +42,18 @@ class CompareRequest {
 }
 
 class CompareScreen extends StatefulWidget {
-  const CompareScreen({super.key, required this.reportId, this.request});
+  const CompareScreen({
+    super.key,
+    required this.reportId,
+    this.request,
+    this.captureOne = defaultCaptureOne,
+  });
 
   final String reportId;
   final CompareRequest? request;
+
+  /// 카메라 주입 지점 — 사진 품질로 거절됐을 때 '그 장만 다시 찍기'에서 쓴다(테스트는 가짜 함수).
+  final CaptureOne captureOne;
 
   @override
   State<CompareScreen> createState() => _CompareScreenState();
@@ -57,6 +67,9 @@ class _CompareScreenState extends State<CompareScreen> {
 
   /// 기기 정보(400)·앱 인증(401) — 다시 시도해도 풀리지 않는다(최신 앱 설치가 답).
   bool _needsAppUpdate = false;
+
+  /// 사진 품질로 분석 전에 거절됐을 때(400 + captureCheck, P1-1) 장별 안내. 있으면 '그 장만 다시 찍기'.
+  CaptureCheck? _captureCheck;
 
   /// 진행 항목이 하나씩 나타나는 연출 (시안 0 / 0.5 / 1.1 / 1.7초)
   int _shownSteps = 0;
@@ -84,6 +97,7 @@ class _CompareScreenState extends State<CompareScreen> {
       _errorMessage = null;
       _errorStatus = null;
       _needsAppUpdate = false;
+      _captureCheck = null;
       _shownSteps = _imagePaths.isEmpty ? 4 : 0;
     });
     if (_imagePaths.isNotEmpty) _startStepChoreography();
@@ -105,6 +119,7 @@ class _CompareScreenState extends State<CompareScreen> {
         _errorMessage = e.message;
         _errorStatus = e.statusCode;
         _needsAppUpdate = e.needsAppUpdate;
+        _captureCheck = e.captureCheck;
       });
     } catch (_) {
       _stepTimer?.cancel();
@@ -116,6 +131,44 @@ class _CompareScreenState extends State<CompareScreen> {
         _needsAppUpdate = false;
       });
     }
+  }
+
+  /// 서버가 흐리다·어둡다고 한 **그 장만** 다시 찍어 바꾸고 같은 화면에서 다시 대조한다 (P1-1).
+  /// 나머지 장은 그대로 쓴다 — 다섯 장을 처음부터 다시 찍게 하지 않는다.
+  Future<void> _retakePage(CapturePageIssue page) async {
+    final index = page.index;
+    if (index < 0 || index >= _imagePaths.length) return;
+    final CaptureLoopResult? result = await Navigator.of(context).push(
+      MaterialPageRoute<CaptureLoopResult>(
+        fullscreenDialog: true,
+        builder: (_) => CaptureLoopRoute(
+          alreadyTaken: _imagePaths.length,
+          maxPhotos: _imagePaths.length,
+          captureOne: widget.captureOne,
+          replacePage: index,
+          replaceTip: page.tip,
+        ),
+      ),
+    );
+    if (!mounted || result == null || result.newPaths.isEmpty) return;
+    final severeLeft = [
+      for (final p in _captureCheck?.pages ?? const <CapturePageIssue>[])
+        if (p.severe && p.index != index) p,
+    ];
+    setState(() {
+      _imagePaths = List<String>.of(_imagePaths)..[index] = result.newPaths.last;
+      // 아직 바꿀 심한 장이 남았으면 안내만 줄이고 기다린다(같은 사진을 또 보내지 않게).
+      if (severeLeft.isNotEmpty) {
+        _captureCheck = CaptureCheck(
+          ok: false,
+          pages: [
+            for (final p in _captureCheck?.pages ?? const <CapturePageIssue>[])
+              if (p.index != index) p,
+          ],
+        );
+      }
+    });
+    if (severeLeft.isEmpty) await _run();
   }
 
   /// 사진을 다시 골라 **같은 화면에서** 다시 대조한다 (빠진 쪽 올리기 · 사진 다시 고르기).
@@ -289,7 +342,41 @@ class _CompareScreenState extends State<CompareScreen> {
 
   // ── 실패 ──────────────────────────────────────────────────────────────────
 
+  /// 사진 품질 거절(P1-1) — "몇 쪽이 왜" + 장마다 [그 장만 다시 찍기]. 대조는 하지 않았다(크레딧 0원).
+  Widget _captureRejectedBody(CaptureCheck check) {
+    final bool waiting = check.pages.any((p) => p.severe);
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      children: [
+        const SizedBox(height: AppSpacing.lg),
+        const Center(child: MascotSafe(size: 80, state: MascotState.caution)),
+        const SizedBox(height: AppSpacing.lg),
+        CaptureIssuePanel(
+          check: check,
+          title: waiting ? '사진을 다시 찍어야 대조할 수 있어요' : '남은 장도 바꿀 수 있어요',
+          message: '${_errorMessage ?? ''}\n대조는 하지 않았어요(크레딧이 들지 않았어요). '
+              '문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.',
+          onRetake: _retakePage,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        // 실패를 '이상 없음'으로 읽지 않게 못 박는다(일반 실패 화면과 같은 고지).
+        AppText(
+          '대조하지 못한 것은 "달라진 게 없다"는 뜻이 아니에요',
+          style: AppTypography.caption.copyWith(color: AppColors.caution),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        AppSecondaryButton(
+          label: '여정으로 돌아가기',
+          onPressed: () => context.pop(),
+        ),
+      ],
+    );
+  }
+
   Widget _errorBody() {
+    final capture = _captureCheck;
+    if (capture != null && capture.pages.isNotEmpty) return _captureRejectedBody(capture);
     final bool isInputProblem =
         _errorStatus == 400 || _errorStatus == 413 || _errorStatus == 415;
     final bool isQuotaProblem = _errorStatus == 402 || _errorStatus == 429;

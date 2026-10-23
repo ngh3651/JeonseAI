@@ -5,8 +5,9 @@
 /// 그런데 부스 시연·화면 공유처럼 **남이 보는 자리**에서는 가려야 한다 → 사용자가 고르게 한다.
 ///
 /// - 기본값 **꺼짐** — 대조 기능이 기본이다(NOW.md P0-2: "내 폰의 내 등기부에선 집주인 이름 대조 기능 유지").
-/// - 켜면 뷰어·리포트 진입 카드가 [MarkKind.carriesPersonalName]인 표시(지금은 집주인 이름)를
-///   형광펜 대신 **불투명한 상자**로 덮는다.
+/// - 켜면 뷰어·리포트 진입 카드가 [MarkKind.carriesPersonalName]인 표시(집주인 이름)와
+///   서버가 보낸 **실명·주민번호 자리 전부**(`AnalysisReport.privacyMasks` — 2026-10-22 P0-2b)를
+///   **불투명한 상자**로 덮는다. 자리를 모르는 쪽은 통째로 덮는다(`namesUnlocatedOn`).
 /// - 이 폰의 SharedPreferences(`hide_names_in_photos_v1`)에만 저장한다. 서버는 모른다.
 ///
 /// 화면은 Provider가 아니라 이 싱글턴을 직접 듣는다(`ListenableBuilder`) — 뷰어·카드를
@@ -27,7 +28,7 @@ class PrivacySettings extends ChangeNotifier {
   bool _hideNamesInPhotos = false;
   bool _restored = false;
 
-  /// 사진 속 이름(집주인 이름 칸)을 상자로 덮을지. 기본 false.
+  /// 분석한 사진 속 이름·주민번호 칸을 상자로 덮을지. 기본 false.
   bool get hideNamesInPhotos => _hideNamesInPhotos;
 
   /// 앱 시작 시 1회 — 첫 화면부터 저장된 값으로 그리게 미리 올린다.

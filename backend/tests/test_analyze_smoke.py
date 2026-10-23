@@ -21,13 +21,14 @@
 
 from __future__ import annotations
 
+import functools
 import io
 import json
 from pathlib import Path
 
 import pytest
 import requests
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from app import settings
 from app.schemas.internal import Grade
@@ -52,16 +53,32 @@ GRADES = {g.value for g in Grade}
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+@functools.lru_cache(maxsize=16)
 def blank_image(width: int, height: int) -> bytes:
-    """정확한 크기의 실제 JPEG 바이트.
+    """정확한 크기의 실제 JPEG 바이트 — 흰 종이에 **글자처럼 보이는 검은 막대 줄**.
 
-    내용은 비어 있어도 된다 — OCR 응답은 목으로 넣기 때문이다. 하지만 **크기는
+    글자 내용은 상관없다 — OCR 응답은 목으로 넣기 때문이다. 하지만 **크기는
     진짜여야 한다**: `ocr._image_size`가 Pillow로 직접 재고, 그 값이 하이라이트
     정규화의 분모다. 1px만 어긋나도 앱에서 좌표가 통째로 밀린다.
     또 `extraction._build_document`가 img2pdf로 진짜 병합을 하므로 유효한 이미지여야 한다.
+
+    2026-10-22: 예전에는 **새하얀** 사진이었다. 촬영 검사(`capture_check`)가 생기면서 새하얀 사진은
+    "글자를 찾지 못했어요"로 분석 전에 거절된다(그게 맞는 동작이다). 그래서 선명한 서류처럼 그린다 —
+    이름은 옛 테스트들이 그대로 쓰게 둔다.
     """
+    im = Image.new("RGB", (width, height), (250, 250, 250))
+    draw = ImageDraw.Draw(im)
+    line = max(12, height // 60)
+    for y in range(line * 2, height - line * 3, line * 2):
+        x = width // 20
+        for k in range(12):  # 낱말 길이를 조금씩 달리한 막대 — 글자 줄처럼 보이게
+            w = (2 + (k * 7 + y) % 5) * line
+            if x + w > width - width // 20:
+                break
+            draw.rectangle([x, y, x + w, y + line * 0.7], fill=(25, 25, 25))
+            x += w + line
     buf = io.BytesIO()
-    Image.new("RGB", (width, height), "white").save(buf, format="JPEG")
+    im.save(buf, format="JPEG", quality=90)
     return buf.getvalue()
 
 

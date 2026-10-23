@@ -28,10 +28,16 @@ abstract class ContentRepository {
 
   /// 계약 여정 단계.
   Future<List<JourneyStage>> journeyStages();
+
+  /// 판례 창고 상태(판례 수·마지막 업데이트 날짜, 계약 §3.19). 모르면 null — 화면은 날짜를 뺀다.
+  Future<PrecedentStatus?> precedentStatus();
 }
 
 /// 위젯 테스트 전용 더미 (서버 없이 화면 흐름 테스트). 프로덕션 주입 금지.
 class DummyContentRepository implements ContentRepository {
+  @override
+  Future<PrecedentStatus?> precedentStatus() async => null;
+
   @override
   Future<List<CaseMatch>> matchedCases(String reportId) async {
     return const [

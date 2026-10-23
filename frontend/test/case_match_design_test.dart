@@ -137,6 +137,20 @@ void main() {
       expect(find.koText('비슷한 상황의 판례를 모았어요'), findsOneWidget);
     });
 
+    testWidgets('안내 줄 옆에 업데이트 날짜, 모르면 날짜를 뺀다', (tester) async {
+      await _pump(tester, const CaseMatchHeader(asOf: '2026.10.24 기준'));
+      expect(find.koText('판례 데이터는 계속 추가되고 있어요 · 2026.10.24 기준'), findsOneWidget);
+      await _pump(tester, const CaseMatchHeader());
+      expect(find.koText('판례 데이터는 계속 추가되고 있어요'), findsOneWidget);
+    });
+
+    test('서버 날짜 → "2026.10.24 기준", 이상한 값이면 null', () {
+      expect(const PrecedentStatus(updatedAt: '2026-10-24').asOfLabel, '2026.10.24 기준');
+      expect(const PrecedentStatus(updatedAt: null).asOfLabel, isNull);
+      expect(const PrecedentStatus(updatedAt: '어제').asOfLabel, isNull);
+      expect(PrecedentStatus.fromJson({'docCount': 40, 'updatedAt': '2026-10-24'}).docCount, 40);
+    });
+
     testWidgets('판례 0건 상자', (tester) async {
       await _pump(tester, const CaseEmptyBox());
       expect(find.koText('이 매물의 위험과 딱 맞는\n판례가 아직 없어요'), findsOneWidget);

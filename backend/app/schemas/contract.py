@@ -425,3 +425,10 @@ class MeResponse(BaseModel):
     loggedIn: bool
     provider: Optional[str] = None  # "kakao"
     customerKey: Optional[str] = None  # 로그인했을 때만
+
+
+class PrecedentStatus(BaseModel):
+    """판례 창고 상태 (계약 §3.11 — 2026-10-24 판례 자동 업데이트)."""
+
+    docCount: Optional[int] = None  # 창고에 든 판례 수
+    updatedAt: Optional[str] = None  # 마지막 업데이트 날짜 "YYYY-MM-DD"

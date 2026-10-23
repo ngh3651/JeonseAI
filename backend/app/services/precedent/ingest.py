@@ -114,12 +114,31 @@ def is_lease_related(holding: str, title: str | None = None) -> bool:
 
 
 def load_raw_docs(raw_dir: Path | None = None) -> list[dict]:
-    raw_dir = raw_dir or (_PRECEDENT_DATA_DIR / "raw")
-    docs = []
-    if raw_dir.exists():
-        for p in sorted(raw_dir.glob("prec-*.json")):
-            docs.append(json.loads(p.read_text(encoding="utf-8")))
+    """판례 원문 목록 — 레포에 든 것 + **자동 업데이트로 더 받은 것**(`${DATA_DIR}/precedents/raw`, 2026-10-24).
+
+    같은 판례(일련번호)가 둘 다에 있으면 한 번만 넣는다.
+    """
+    dirs = [raw_dir] if raw_dir else [_PRECEDENT_DATA_DIR / "raw", extra_raw_dir()]
+    docs: list[dict] = []
+    seen: set[str] = set()
+    for d in dirs:
+        if not d.exists():
+            continue
+        for p in sorted(d.glob("prec-*.json")):
+            doc = json.loads(p.read_text(encoding="utf-8"))
+            key = str(doc.get("prec_id") or p.stem)
+            if key in seen:
+                continue
+            seen.add(key)
+            docs.append(doc)
     return docs
+
+
+def extra_raw_dir() -> Path:
+    """자동 업데이트가 법제처에서 더 받은 판례 원문이 쌓이는 곳."""
+    from ... import settings
+
+    return settings.precedent_update_dir() / "raw"
 
 
 def load_excluded_cases(path: Path | None = None) -> dict[str, str]:

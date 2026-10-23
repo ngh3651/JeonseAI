@@ -3,6 +3,7 @@
 - GET /api/journey-stages          계약 여정 단계 (비회원 허용)
 - GET /api/glossary                용어 목록/추천 칩 (비회원 허용)
 - GET /api/glossary/lookup?q=      용어 조회 (비회원 허용, 못 찾으면 404=범위 밖)
+- GET /api/precedents/status       판례 창고 판례 수 · 마지막 업데이트 날짜 (2026-10-24)
 
 더미 응답은 app/dummy_data.py(앱 더미 그대로 이식)에서 온다. 실데이터는 Phase E.
 """
@@ -12,7 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from .. import dummy_data
-from ..schemas.contract import GlossaryAnswer, GlossaryTerm, JourneyStage
+from ..schemas.contract import GlossaryAnswer, GlossaryTerm, JourneyStage, PrecedentStatus
 from ..services import chat, journey
 
 router = APIRouter(prefix="/api", tags=["content"])
@@ -62,3 +63,15 @@ def glossary_lookup(q: str) -> GlossaryAnswer:
         term=reply.term,
         description=reply.answer,  # 옛 앱 호환 거울 필드
     )
+
+
+@router.get("/precedents/status", response_model=PrecedentStatus)
+def precedents_status() -> PrecedentStatus:
+    """판례 창고 상태 — 판례 화면의 "판례 데이터는 계속 추가되고 있어요 · 2026.10.24 기준".
+
+    `updatedAt` = 자동 업데이트가 마지막으로 **성공한** 날(아직 없으면 창고를 만든 날). 모르면 null —
+    앱은 null이면 날짜를 빼고 보여 준다(지어내지 않는다).
+    """
+    from ..services.precedent import updater
+
+    return PrecedentStatus(**updater.public_status())

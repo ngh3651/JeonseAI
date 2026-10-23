@@ -38,6 +38,9 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
 
   late Future<(AnalysisReport?, List<CaseMatch>)> _future;
 
+  /// 판례 창고 상태 — 안내 줄 옆 "2026.10.24 기준". 판례 목록과 따로 받아 화면을 막지 않는다.
+  late final Future<PrecedentStatus?> _status = context.read<ContentRepository>().precedentStatus();
+
   @override
   void initState() {
     super.initState();
@@ -83,7 +86,10 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
               AppSpacing.xxxl,
             ),
             children: [
-              const CaseMatchHeader(),
+              FutureBuilder<PrecedentStatus?>(
+                future: _status,
+                builder: (_, s) => CaseMatchHeader(asOf: s.data?.asOfLabel),
+              ),
               const SizedBox(height: AppSpacing.xxl),
               CaseRiskBox(labels: labels),
               const SizedBox(height: AppSpacing.xxxl),
@@ -143,7 +149,10 @@ String caseCountTitle(List<CaseMatch> cases) {
 
 /// 화면 맨 위 — 제목(24, **한 줄 고정**: 넘치면 줄바꿈 대신 그 줄만 살짝 줄인다) + 안내(15).
 class CaseMatchHeader extends StatelessWidget {
-  const CaseMatchHeader({super.key});
+  const CaseMatchHeader({super.key, this.asOf});
+
+  /// "2026.10.24 기준" — 서버가 알려 준 마지막 판례 업데이트 날짜. 모르면 null → 날짜를 뺀다.
+  final String? asOf;
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +169,16 @@ class CaseMatchHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
-        AppText('판례 데이터는 계속 추가되고 있어요', style: AppTypographyNext.caption),
+        // 한 줄에 다 안 들어가면 날짜가 통째로 다음 줄로 간다(어절 단위 줄바꿈)
+        AppText.rich(
+          TextSpan(
+            style: AppTypographyNext.caption,
+            children: [
+              const TextSpan(text: '판례 데이터는 계속 추가되고 있어요'),
+              if (asOf != null) TextSpan(text: ' · $asOf'),
+            ],
+          ),
+        ),
       ],
     );
   }

@@ -48,6 +48,20 @@ String riskTagLabel(String tag) => kRiskTagLabel[tag] ?? tag;
 /// "한눈에"라는 목적 자체가 사라진다.
 const int kMaxCardTags = 3;
 
+/// 판례 카드 글자 (2026-10-23 규혁: "글자가 전반적으로 작아 불편") — 본문 15→16, 소제목 13→15.
+final TextStyle _kCardBody = AppTypography.body.copyWith(fontSize: 16, height: 1.55);
+final TextStyle _kCardLabel = AppTypography.body.copyWith(
+  fontWeight: FontWeight.w700,
+  color: AppColors.textMuted,
+);
+
+/// 줄바꿈 없이 한 줄 — 넘치면 줄바꿈 대신 그 줄만 살짝 줄인다(좁은 폰·큰 글자 배율).
+Widget _oneLine(Widget child) => FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: child,
+    );
+
 class CaseMatchScreen extends StatefulWidget {
   const CaseMatchScreen({super.key, required this.reportId});
 
@@ -102,39 +116,24 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.screenPadding),
             children: [
-              // ── [D21 · 2026-08-14] 화면 맨 위를 "무엇을 보고 있는가"로 연다 ──
-              //
-              // 예전에는 이 한 줄이 본문 크기(15)라 아래 칩·카드와 무게가 같아서,
-              // 스크롤을 내리다 들어온 사람에게는 그냥 첫 문장으로 읽혔다. 화면 제목
-              // 크기로 올려 **판례 화면의 헤드라인**이 되게 한다.
-              // '판례' 첫 등장의 툴팁은 그대로 유지한다(용어는 유지 — 신뢰 무게가 핵심).
-              AppText.rich(
-                TextSpan(
-                  style: AppTypography.headline,
-                  children: [
-                    const TextSpan(text: '이 매물의 위험과 비슷한 상황에서 나온 '),
-                    termSpan(
-                      context,
-                      term: '판례',
-                      description:
-                          '법원의 실제 판결이에요. 실제로 이런 일이 일어나 '
-                          '법정까지 갔다는 뜻이라, 위험을 훨씬 더 무겁게 봐야 해요.',
-                      style: AppTypography.headline,
-                    ),
-                    const TextSpan(text: '를 모았어요'),
-                  ],
+              // ── [2026-10-23 규혁] 제목·안내는 **한 줄**로, 글자는 크게 ──────────
+              // 예전 헤드라인('이 매물의 위험과 비슷한 상황에서 나온 판례를 모았어요')은 두 줄로 넘어갔고,
+              // '판례'에 붙은 뜻 풀이(초록 밑줄)는 뺐다 — "판례 뜻 모르는 사람 없다".
+              // 폰이 좁거나 글자 배율이 크면 줄바꿈 대신 **살짝 줄여서** 한 줄을 지킨다(_oneLine).
+              _oneLine(AppText('비슷한 상황의 판례를 모았어요', style: AppTypography.headline, maxLines: 1)),
+              const SizedBox(height: AppSpacing.xs),
+              _oneLine(
+                AppText(
+                  '판례 데이터는 계속 추가되고 있어요',
+                  style: AppTypography.body.copyWith(color: AppColors.textMuted),
+                  maxLines: 1,
                 ),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              // 스크롤 맨 아래에 있던 줄을 헤드라인 바로 밑으로 올렸다. 여기 있어야
-              // "지금 보이는 게 전부는 아니다"를 **판례를 읽기 전에** 알 수 있다 —
-              // 맨 아래에서는 카드를 다 믿고 내려온 뒤에야 만나는 말이었다.
-              AppText('판례 데이터는 계속 추가되고 있어요', style: AppTypography.caption),
               const SizedBox(height: AppSpacing.xl),
-              AppText('이 매물에서 눈에 띈 위험', style: AppTypography.title),
+              _oneLine(AppText('이 매물에서 눈에 띈 위험', style: AppTypography.title, maxLines: 1)),
               const SizedBox(height: AppSpacing.sm),
               if (patterns.isEmpty)
-                AppText('눈에 띄는 위험 패턴이 없어요', style: AppTypography.caption)
+                AppText('눈에 띄는 위험 패턴이 없어요', style: AppTypography.body.copyWith(color: AppColors.textMuted))
               else
                 Wrap(
                   spacing: AppSpacing.sm,
@@ -193,15 +192,13 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
           // 이 줄이 "지어낸 이야기가 아니라 실제 판결"이라는 증거인데, 13px 회색
           // 보통 글씨라 영상에서 읽히지 않았다. **색은 그대로 두고**(대비 검증 완료)
           // 크기와 굵기만 올린다.
+          // [2026-10-23] 글자 크게 — 사건번호·요약 17, 소제목 15, 본문 16 (_kCardBody·_kCardLabel)
           AppText(
             c.caseNo,
-            style: AppTypography.body.copyWith(
-              fontWeight: FontWeight.w700,
-              color: AppColors.textMuted,
-            ),
+            style: AppTypography.title.copyWith(color: AppColors.textMuted),
           ),
           const SizedBox(height: AppSpacing.sm),
-          AppText(c.summary, style: AppTypography.bodyStrong),
+          AppText(c.summary, style: AppTypography.title),
           const SizedBox(height: AppSpacing.md),
           _row(context, c, '결과', 'result', c.result, AppColors.danger),
           const SizedBox(height: AppSpacing.sm),
@@ -279,15 +276,15 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
     String value,
     Color valueColor,
   ) {
-    final TextStyle base = AppTypography.body.copyWith(color: valueColor);
+    final TextStyle base = _kCardBody.copyWith(color: valueColor);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppText(
           label,
-          style: AppTypography.caption.copyWith(fontWeight: FontWeight.w700),
+          style: _kCardLabel,
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: AppSpacing.xs),
         AppText.rich(
           _bodySpan(
             context,

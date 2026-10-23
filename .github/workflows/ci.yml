@@ -176,7 +176,7 @@ jobs:
           retention-days: 30
       # 고정 링크 = app-latest 릴리스의 jeonseai.apk. 디버그 키 APK는 올리지 않는다(덮어 설치가 끊기므로).
       - name: 최신 APK를 고정 링크에 올리기 (main + 고정 키일 때만)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.signing.outputs.kind == 'release'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.signing.outputs.kind == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -195,5 +195,5 @@ jobs:
           fi
           echo "올렸어요: https://github.com/${GITHUB_REPOSITORY}/releases/download/app-latest/jeonseai.apk"
       - name: 고정 링크를 건너뛴 이유
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.signing.outputs.kind != 'release'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.signing.outputs.kind != 'release'
         run: echo "::notice::고정 서명 키 비밀값(ANDROID_SIGNING_BUNDLE)이 없어 고정 링크에 올리지 않았어요 — 이번 APK는 Artifacts에만 있어요."

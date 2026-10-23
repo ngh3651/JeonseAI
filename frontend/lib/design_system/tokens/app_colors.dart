@@ -53,11 +53,12 @@ abstract final class AppColors {
   static const Color okArc = Color(0xFF1E9150);
 
   // ── 중립 ─────────────────────────────────────────────────────
-  static const Color textStrong = Color(0xFF16211B); // 제목·결론
-  static const Color textBody = Color(0xFF3C4842); // 본문
+  // 2026-10-24 미리보기: 판례 화면 시범 색(AppColorsNext)을 앱 전체에
+  static const Color textStrong = Color(0xFF1C2621); // 제목·결론
+  static const Color textBody = Color(0xFF222B27); // 본문 (더 진하게 — 읽기 쉽게)
   static const Color textMuted = Color(
-    0xFF5F6C65,
-  ); // 보조·캡션 (background 위 ≈5.1:1)
+    0xFF5E6B64,
+  ); // 보조·캡션 (회색 배경 위에서도 4.5:1)
   static const Color line = Color(0xFFE1E8E3); // 구분선·테두리(챗봇 말풍선 등)
   static const Color surface = Color(0xFFFFFFFF); // 카드 표면
   // 화면 배경 — 흰 카드와 대비되는 중립 회색 (2026-07-09 F1: 초록 틴트 제거)

@@ -12,7 +12,7 @@
          달력·알람 앱이 아니면 쓰기 어렵다. 알림은 몇 분 늦게 울릴 수 있다(inexactAllowWhileIdle). -->
 
     <application
-        android:label="전세AI프"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="${usesCleartextTraffic}"><!-- http(비-HTTPS) 통신 허용 여부 — app/build.gradle.kts가 정한다: 개발 빌드는 허용(adb reverse로 http://127.0.0.1:8000), 릴리스는 서버 주소(API_BASE_URL)가 http일 때만 -->

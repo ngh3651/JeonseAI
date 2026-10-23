@@ -86,6 +86,8 @@ android {
         manifestPlaceholders["usesCleartextTraffic"] = "true"
         // AndroidManifest.xml의 `${kakaoScheme}` 자리 (카카오 로그인 — 위 설명)
         manifestPlaceholders["kakaoScheme"] = kakaoScheme
+        // AndroidManifest.xml의 `${appLabel}` 자리 — 폰 홈 화면에 보이는 앱 이름
+        manifestPlaceholders["appLabel"] = "전세AI프"
     }
 
     signingConfigs {
@@ -100,6 +102,13 @@ android {
     }
 
     buildTypes {
+        // 개발 빌드(`flutter run`)는 **다른 앱으로** 깔린다(2026-10-23) — 이름표 끝 `.dev` + 이름 '전세AI프 개발'.
+        // 그래야 고정 링크 APK(시연용, 다른 서명)와 한 폰에 나란히 깔리고, 무선 디버깅 + 핫 리로드로 화면을 바로 본다.
+        // ⚠ 카카오 로그인은 이 개발 앱에서 안 된다(카카오 콘솔엔 시연용 패키지명·키 해시만 등록).
+        debug {
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "전세AI프 개발"
+        }
         release {
             // 키가 있으면 릴리스 키, 없으면 디버그 키 (`flutter run --release`도 그대로 된다)
             signingConfig = if (hasReleaseKey) {

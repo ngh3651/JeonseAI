@@ -83,6 +83,10 @@ String get kakaoNativeAppKey {
 /// 카카오 로그인을 보여 줄 수 있는가 — 빌드 때 앱 키를 넣었을 때만.
 bool get kakaoLoginAvailable => kakaoNativeAppKey.isNotEmpty;
 
+/// **개발 도구** 켜기 — `flutter run --dart-define=DEV_TOOLS=true`일 때만 마이 화면 맨 아래에
+/// '로딩 화면 미리보기' 같은 개발용 버튼이 보인다(서버를 부르지 않아 크레딧 0원). 시연용 APK·테스트에선 늘 꺼져 있다.
+const bool kDevTools = bool.fromEnvironment('DEV_TOOLS');
+
 /// 개인정보 처리방침 화면의 **서버 지역** (예: `싱가포르`) — Railway 배포 때 정해진다.
 /// 비어 있으면 그 줄을 빼고 보여 준다(지어내지 않는다). 사람 할 일: NOW.md "Railway 지역 확인 후 상수 채우기".
 const String kServerRegion = '';

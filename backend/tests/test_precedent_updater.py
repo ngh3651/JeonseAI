@@ -117,3 +117,23 @@ def test_rebuild_swaps_index_folder(data_dir):
     assert updater._rebuild_index(fake_ingest) == 45
     assert updater.index_doc_count() == 45
     assert not (data_dir / "index.building").exists() and not (data_dir / "index.old").exists()
+
+
+def test_health_summary_plain_words(data_dir):
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    assert TestClient(app).get("/").json()["precedentUpdate"]["ok"] is False  # 아직 한 번도 안 돎
+
+    def blocked(_):
+        raise RuntimeError("법제처 API 사용자 검증 실패 — LAW_API_OC·서버 IP 등록 확인 필요")
+
+    updater.run_update(collect=blocked, now=datetime(2026, 10, 24, tzinfo=updater.KST))
+    pu = TestClient(app).get("/").json()["precedentUpdate"]
+    assert pu == {
+        "lastCheckAt": "2026-10-24", "lastSuccessAt": None, "added": None,
+        "ok": False, "error": "법제처 인증 실패(OC·서버 IP 등록)",
+    }
+    updater.run_update(collect=lambda k: [], now=datetime(2026, 10, 25, tzinfo=updater.KST))
+    pu = TestClient(app).get("/").json()["precedentUpdate"]
+    assert pu["ok"] is True and pu["error"] is None and pu["added"] == 0

@@ -99,6 +99,27 @@ def public_status() -> dict:
     return {"docCount": index_doc_count(), "updatedAt": updated}
 
 
+def health_summary() -> dict:
+    """헬스체크(`GET /`)용 — 마지막 확인·성공 날짜, 이번에 새로 받은 수, 성공 여부, 실패 종류(쉬운 말)."""
+    st = read_status()
+    err = st.get("error") or ""
+    if not err:
+        kind = None
+    elif "검증" in err:
+        kind = "법제처 인증 실패(OC·서버 IP 등록)"
+    elif any(k in err for k in ("Connection", "Timeout", "SSL", "ProxyError")):
+        kind = "법제처 연결 실패"
+    else:
+        kind = err.split(":")[0][:40]
+    return {
+        "lastCheckAt": st.get("lastCheckAt"),
+        "lastSuccessAt": st.get("lastSuccessAt"),
+        "added": st.get("added"),
+        "ok": bool(st.get("lastCheckAt")) and not err,
+        "error": kind,
+    }
+
+
 # ── 법제처 ────────────────────────────────────────────────────────────────────
 
 
@@ -217,11 +238,13 @@ def run_update(*, collect=None, rebuild=None, now: datetime | None = None) -> di
         from .ingest import extra_raw_dir, load_raw_docs
 
         now = now or datetime.now(KST)
+        _log.info("[판례 업데이트] 시작 — 법제처에 최신 판례를 묻는 중")
         st = read_status()
         st["lastCheckAt"] = now.strftime("%Y-%m-%d")
         try:
             known = {str(d.get("prec_id")) for d in load_raw_docs()}
             new = (collect or (lambda k: collect_new(settings.law_api_oc(), k)))(known)
+            _log.info(f"[판례 업데이트] 새 판례 {len(new)}건 받음" + (" → 창고 다시 만드는 중(임베딩, 몇 분)" if new else ""))
             if new:
                 out = extra_raw_dir()
                 out.mkdir(parents=True, exist_ok=True)

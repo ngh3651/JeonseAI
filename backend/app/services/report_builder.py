@@ -24,6 +24,7 @@ from . import (
     capture_check,
     compare,
     cross_check,
+    document_gate,
     document_parse,
     explanation,
     extraction,
@@ -453,6 +454,14 @@ def analyze(
     doc_check = ocr_bundle.doc_check
 
     assert extract is not None  # ie_error가 없으면 반드시 값이 있다
+    # 등기부가 아닌 사진(키보드·화면 등)이면 여기서 멈춘다 — 리포트·기록을 만들지 않는다 (2026-10-24).
+    # 등기부인데 못 읽은 것과 가른다: IE가 아무것도 못 찾았고 OCR에도 등기부 낱말이 없을 때만.
+    if document_gate.looks_not_registry(extract, ocr_result.pages):
+        _log.info(
+            f"[분석 중단] 등기부가 아닌 사진 — IE 내용 없음 · OCR 등기부 낱말 "
+            f"{document_gate.ocr_marker_count(ocr_result.pages)}개"
+        )
+        raise extraction.ExtractionError(400, document_gate.NOT_REGISTRY_DETAIL)
     # [진단] IE 응답 실태 — 개수/참·거짓만 (이름·등록번호 금지). rank_number 채움 여부 확인용.
     _rank_filled = sum(
         1 for m in extract.mortgages if str(getattr(m, "rank_number", "") or "").strip()

@@ -63,6 +63,7 @@ def test_헬스체크는_키_값을_절대_내보내지_않는다(client, tmp_pa
     monkeypatch.setenv("UPSTAGE_API_KEY", secret_upstage)
     monkeypatch.setenv("MOLIT_API_KEY", secret_molit)
     monkeypatch.setenv("APP_KEY", "booth-key-2026")
+    monkeypatch.setenv("LAW_API_OC", "law-oc-secret-777")
     monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "0123456789abcdef0123456789abcdef01234567")
 
     resp = client.get("/")  # 앱 키 없이도 열려 있다
@@ -70,10 +71,11 @@ def test_헬스체크는_키_값을_절대_내보내지_않는다(client, tmp_pa
     body = resp.json()
     assert body["upstageKey"] is True and body["molitKey"] is True
     assert body["version"] == "0123456"
-    for secret in (secret_upstage, secret_molit, "booth-key-2026", str(tmp_path)):
+    for secret in (secret_upstage, secret_molit, "booth-key-2026", "law-oc-secret-777", str(tmp_path)):
         assert secret not in resp.text
-    # 값의 종류도 못 박는다 — 참/거짓과 짧은 버전 문자열뿐
-    assert {k for k, v in body.items() if not isinstance(v, bool)} == {"status", "version"}
+    # 값의 종류도 못 박는다 — 참/거짓과 짧은 버전 문자열, 판례 업데이트 요약(날짜·수·성공 여부·실패 종류)뿐
+    assert {k for k, v in body.items() if not isinstance(v, bool)} == {"status", "version", "precedentUpdate"}
+    assert set(body["precedentUpdate"]) == {"lastCheckAt", "lastSuccessAt", "added", "ok", "error"}
 
 
 def test_헬스체크는_외부를_부르지_않는다(client, monkeypatch):

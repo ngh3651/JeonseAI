@@ -330,7 +330,11 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: AppSpacing.sm),
             AppText(
               label,
-              style: AppTypography.label.copyWith(color: AppColors.textBody),
+              style: AppTypography.caption.copyWith(
+                color: AppColors.textBody,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

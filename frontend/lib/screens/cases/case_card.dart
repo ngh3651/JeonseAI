@@ -38,7 +38,7 @@ const int kMaxCardTags = 3;
 // ── 크기 (디자인 규칙 문서 값) ─────────────────────────────────────────────
 const double _kBoxRadius = 24;
 const double _kBoxPadding = 20;
-const double _kMinTouch = 44;
+const double _kMinTouch = 48; // 안드로이드 최소 터치 48dp (디자인 리뷰 2026-10-24)
 const double _kCommonMaxWidth = 250;
 const double _kAdviceMaxWidth = 270;
 
@@ -98,7 +98,8 @@ class CaseRiskBox extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (labels.isEmpty)
-            AppText('눈에 띄는 위험 패턴이 없어요', style: AppTypographyNext.caption)
+            // '위험 없음'으로 읽히지 않게 — 판례와 맞춰 볼 패턴이 없다는 뜻만 (보수적 편향, 디자인 리뷰 2026-10-24)
+            AppText('판례와 맞춰 볼 위험 패턴이 없어요 · 리포트 결과를 함께 확인하세요', style: AppTypographyNext.caption)
           else
             ...rows,
         ],

@@ -131,6 +131,33 @@ def tags_from_report(report: Report) -> list[str]:
     return list(dict.fromkeys(tags))
 
 
+def _report_summary(report: Report, tags: list[str]) -> dict:
+    """저장된 리포트 → LLM 맞춤 설명 재료 (2026-10-23 — '이 매물'과 얼마나 닮았나를 쓰게).
+
+    판정에서 나온 값만 싣는다: 종합 등급·보증금·시세·먼저 갚을 빚·위험 항목별 상세.
+    ⚠ **주소·별칭·이름은 싣지 않는다** — 저장된 리포트는 이미 가린 사본이지만, 맞춤 설명에 필요 없는 정보는 아예 안 보낸다.
+    """
+    summary: dict = {
+        "위험_태그": tags,
+        "종합등급": report.grade,
+        "보증금_원": report.deposit,
+        "먼저_갚을_빚_원": report.seniorDebtAmount,
+    }
+    if report.marketPrice:
+        summary["시세_원"] = report.marketPrice
+    items = []
+    for ev in report.evidences:
+        if ev.grade == "양호":
+            continue
+        item = {"항목": ev.title, "등급": ev.grade}
+        if ev.detailText:
+            item["상세"] = ev.detailText
+        items.append(item)
+    if items:
+        summary["위험_항목"] = items
+    return summary
+
+
 def _verdict_summary(verdict: RuleVerdict | None, tags: list[str]) -> dict:
     """LLM 공통점 서술용 판정 요약 — 판정에서 파생한 값만 (원본 추출·이미지 없음)."""
     summary: dict = {"위험_태그": tags}
@@ -148,14 +175,9 @@ _BODY_FIELDS = ("summary", "result", "commonPoint", "advice")
 _EMPHASIS_FIELDS = ("result", "commonPoint", "advice")
 #: 앱 필드 이름 → LLM이 emphasis를 고를 때 쓰는 키 이름.
 #:
-#: ⚠ `advice`가 여기 들어 있는 것은 **의도적**이며, "advice는 LLM 불가침"
-#:   (decisions.md 2026-07-09) 원칙과 어긋나지 않는다. 그 원칙이 막는 것은 **문구 변경**인데,
-#:   emphasis는 문구를 담지 않는다 — 본문의 부분 문자열이 아니면 `emphasis.validate`가
-#:   폐기하므로 LLM은 advice를 **가리킬 수만 있고 고쳐 쓸 수는 없다**(구조적 보장).
-#:   출력 모델(PrecedentExplanation)에도 여전히 `advice` 필드는 존재하지 않는다.
-#: ⚠ 되돌리려면 이 표에서 `"advice"` 한 줄만 지우면 된다. 그러면 advice의 강조는
-#:   결정적 폴백(금액·비율·기간)만 남고, 실측상 큐레이션 조언에는 숫자가 거의 없어
-#:   **굵게가 사라진다** — 그 사실을 알고 지워야 한다.
+#: 2026-10-23부터 조언(advice)도 Solar가 이 매물에 맞춰 쓴다(decisions.md). 강조는 여전히 **최종 문장의
+#:   부분 문자열**이어야 붙는다 — Solar 조언이 검사에서 떨어져 큐레이션 조언이 나가면, Solar가 고른 강조도
+#:   그 문장에 없으니 버려지고 결정적 폴백(금액·비율·기간)으로 내려간다.
 _LLM_EMPHASIS_KEY = {"commonPoint": "common_point", "result": "result", "advice": "advice"}
 
 
@@ -230,7 +252,12 @@ class PrecedentService:
         return ranked[:MAX_CASES]
 
     def _build_section(
-        self, tags: list[str], verdict: RuleVerdict | None, *, explain: bool
+        self,
+        tags: list[str],
+        verdict: RuleVerdict | None,
+        *,
+        explain: bool,
+        summary: dict | None = None,
     ) -> PrecedentSection:
         if not tags:
             return PrecedentSection(cases=[], fallback_text=FALLBACK_NO_RISK)
@@ -242,7 +269,7 @@ class PrecedentService:
         source = "자동 생성"  # LLM 미호출·폴백은 "자동 생성" (라벨 정직성 — decisions.md 2026-07-09)
         if explain:
             explanations, llm_source = explainer.explain_matches(
-                matches, _verdict_summary(verdict, tags)
+                matches, summary if summary is not None else _verdict_summary(verdict, tags)
             )
             if llm_source != "폴백":
                 source = llm_source
@@ -263,13 +290,12 @@ class PrecedentService:
                     #   (2026-08-07 검증 2단계 분리 — models.PrecedentDoc 참고)
                     "curated": m.doc.verified,
                     # [설명 — LLM 생성 성공 시만, 실패·미호출은 결정적 폴백]
-                    # [요약] 큐레이션이 있으면 **그것이 정본** — outcome·advice와 같은 원칙.
-                    #   사람이 원문과 대조해 확정한 문구인데 LLM이 매번 새로 쓰면
-                    #   화면에 나가는 문장이 검수한 문장과 달라져 검수 자체가 무의미해진다.
-                    #   (검수 뒤 seed_cases.json에 summary_easy로 굳힌다)
+                    # [요약·공통점·조언 = Solar 먼저] 2026-10-23 규혁 결정(decisions.md):
+                    #   판례는 "우리 집과 얼마나 닮았나"가 궁금해서 보는 것이라 이 매물에 맞춰 Solar가 쓴다.
+                    #   사람이 쓴 요약·조언은 Solar에게 **재료**로 주고, Solar가 실패·검사 탈락하면 그대로 나간다.
                     "summary": (
-                        m.doc.summary_easy
-                        or (exp.easy_summary if exp else None)
+                        (exp.easy_summary if exp else None)
+                        or m.doc.summary_easy
                         or explainer.fallback_summary(m)
                     ),
                     "commonPoint": exp.common_point if exp else explainer.fallback_common_point(m),
@@ -288,7 +314,7 @@ class PrecedentService:
                         )
                         or OUTCOME_UNKNOWN
                     ),
-                    "advice": m.doc.advice,
+                    "advice": (exp.advice if exp else None) or m.doc.advice,
                 }
             )
             _attach_reading_aids(case, exp)
@@ -299,7 +325,10 @@ class PrecedentService:
         return self._build_section(tags_from_verdict(verdict), verdict, explain=explain)
 
     def match_for_report(self, report: Report, *, explain: bool = False) -> PrecedentSection:
-        return self._build_section(tags_from_report(report), None, explain=explain)
+        tags = tags_from_report(report)
+        return self._build_section(
+            tags, None, explain=explain, summary=_report_summary(report, tags)
+        )
 
 
 # ── 싱글턴 (2026-08-07 라우터 통합) ──────────────────────────────────────────

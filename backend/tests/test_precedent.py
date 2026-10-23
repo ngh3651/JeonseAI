@@ -119,17 +119,21 @@ def test_rule_engine_does_not_import_precedent():
 
 
 def test_precedent_explanation_model_has_no_verdict_fields():
-    """LLM 출력 모델에 판정·사건번호·조언 필드가 존재하지 않는다 (extra=forbid)."""
+    """LLM 출력 모델에 판정·사건번호·결과 문장 필드가 존재하지 않는다 (extra=forbid).
+
+    조언(advice)은 2026-10-23부터 Solar가 쓰는 칸이다(이 매물 맞춤 — decisions.md).
+    """
     from app.services.precedent.models import PrecedentExplanation
 
-    with pytest.raises(Exception):
-        PrecedentExplanation(
-            case_id="x", easy_summary="요약이에요", common_point="공통점이에요", grade="위험"
-        )
-    with pytest.raises(Exception):
-        PrecedentExplanation(
-            case_id="x", easy_summary="요약이에요", common_point="공통점이에요", advice="조언"
-        )
+    for extra in ({"grade": "위험"}, {"case_no": "2099다1"}, {"result": "이겼어요"}):
+        with pytest.raises(Exception):
+            PrecedentExplanation(
+                case_id="x", easy_summary="요약이에요", common_point="공통점이에요", **extra
+            )
+    ok = PrecedentExplanation(
+        case_id="x", easy_summary="요약이에요", common_point="공통점이에요", advice="조언이에요"
+    )
+    assert ok.advice == "조언이에요"
 
 
 # ── 청킹 ───────────────────────────────────────────────────────────────────
@@ -357,18 +361,70 @@ def test_explainer_no_key_uses_fallback(retriever: HybridRetriever):
     assert section.cases and section.cases[0]["summary"] == "신탁등기 관련 쉬운 요약이에요"
 
 
-def test_advice_passes_through_untouched(retriever: HybridRetriever, monkeypatch):
-    """advice(큐레이션 조언)는 LLM 성공 여부와 무관하게 문서 값 그대로다."""
-    ok = json.dumps(
-        {"cases": [{"case_id": "prec-trust", "easy_summary": "법원이 이렇게 판단했어요",
-                    "common_point": "신탁등기 신호가 같아요"}]},
-        ensure_ascii=False,
-    )
+def _solar_reply(**fields) -> str:
+    case = {"case_id": "prec-trust", "easy_summary": "법원이 이렇게 판단했어요",
+            "common_point": "신탁등기 신호가 같아요"}
+    case.update(fields)
+    return json.dumps({"cases": [case]}, ensure_ascii=False)
+
+
+def test_ai_tailored_advice_is_used(retriever: HybridRetriever, monkeypatch):
+    """2026-10-23 결정: 조언은 Solar가 이 매물에 맞춰 쓴다 — 검사를 통과하면 그 문장이 나간다."""
+    reply = _solar_reply(advice="계약 전에 신탁회사 동의서를 받으세요.\n\n  잔금 전에 등기부를 다시 떼 보세요.  ")
     monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
-    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: ok)
-    svc = PrecedentService(retriever=retriever)
-    section = svc.match_for_verdict(_danger_trust_verdict(), explain=True)
-    assert section.cases[0]["advice"] is None  # make_doc은 advice를 만들지 않는다 — LLM이 채우면 실패
+    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: reply)
+    section = PrecedentService(retriever=retriever).match_for_verdict(_danger_trust_verdict(), explain=True)
+    # 줄바꿈 정리: 빈 줄·앞뒤 공백을 지우고 문장마다 한 줄
+    assert section.cases[0]["advice"] == "계약 전에 신탁회사 동의서를 받으세요.\n잔금 전에 등기부를 다시 떼 보세요."
+    assert section.cases[0]["summary"] == "법원이 이렇게 판단했어요"  # 요약도 Solar 먼저
+
+
+def test_ai_advice_with_made_up_number_is_dropped(retriever: HybridRetriever, monkeypatch):
+    """입력에 없는 숫자(지어낸 금액)가 든 조언은 그 칸만 버린다 → 사람이 쓴 조언(여기선 없음)으로."""
+    reply = _solar_reply(advice="보증금 3억 5,000만 원 중 1억은 돌려받기 어려워요.")
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
+    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: reply)
+    section = PrecedentService(retriever=retriever).match_for_verdict(_danger_trust_verdict(), explain=True)
+    assert section.cases[0]["advice"] is None  # make_doc은 사람 조언이 없다
+    assert section.cases[0]["summary"] == "법원이 이렇게 판단했어요"  # 요약·공통점은 살아 있다
+
+
+def test_ai_common_point_with_made_up_number_falls_back(retriever: HybridRetriever, monkeypatch):
+    """공통점에 입력에 없는 숫자가 있으면 그 판례 설명 전체를 폴백(큐레이션 요약)으로."""
+    reply = _solar_reply(common_point="이 집도 보증금의 95%가 빚이에요")
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
+    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: reply)
+    section = PrecedentService(retriever=retriever).match_for_verdict(_danger_trust_verdict(), explain=True)
+    assert "95%" not in section.cases[0]["commonPoint"]
+    assert section.cases[0]["summary"] == "신탁등기 관련 쉬운 요약이에요"
+
+
+def test_curated_advice_is_fallback_when_ai_fails(retriever: HybridRetriever):
+    """Solar가 실패하면(키 없음) 사람이 쓴 조언이 그대로 나간다."""
+
+    class _WithAdvice:
+        def search(self, query, risk_tags, top_k):
+            return [
+                m.model_copy(update={"doc": m.doc.model_copy(update={"advice": "신탁원부를 떼 보세요"})})
+                for m in retriever.search(query, risk_tags=risk_tags, top_k=top_k)
+            ]
+
+    section = PrecedentService(retriever=_WithAdvice()).match_for_verdict(
+        _danger_trust_verdict(), explain=True
+    )
+    assert section.cases[0]["advice"] == "신탁원부를 떼 보세요"
+
+
+def test_report_summary_has_no_address_or_alias():
+    """맞춤 설명 재료에 주소·별칭이 들어가지 않는다(필요 없는 정보는 안 보낸다)."""
+    from app.dummy_data import build_example_report
+    from app.services.precedent.service import _report_summary
+
+    report = build_example_report()
+    summary = json.dumps(_report_summary(report, ["신탁등기"]), ensure_ascii=False)
+    assert report.address not in summary
+    assert report.alias not in summary
+    assert "보증금_원" in summary
 
 
 # ── 적재 파이프라인 ────────────────────────────────────────────────────────

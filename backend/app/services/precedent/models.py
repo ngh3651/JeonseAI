@@ -49,7 +49,7 @@ class PrecedentDoc(BaseModel):
     holding: str                      # 판시사항·판결요지 (검색 대상 핵심 텍스트)
     outcome: Optional[str] = None     # 임차인(피해자) 관점 결과 한 줄
     summary_easy: Optional[str] = None  # 쉬운 한 줄 요약 (큐레이션 — 없으면 LLM 폴백 전 원문 표시)
-    advice: Optional[str] = None      # "이런 피해를 피하려면" — 큐레이션 전용, LLM 불가침
+    advice: Optional[str] = None      # "이런 피해를 피하려면" — 사람이 쓴 조언(Solar 맞춤 조언의 재료·폴백, 2026-10-23)
     source_url: str                   # 출처 링크 (필수 — 지어내기 금지 원칙)
     full_text: Optional[str] = None   # 판례 전문 (법제처 API 수집 시)
     # ── 검증 2단계 (2026-08-07) ──────────────────────────────────────────
@@ -122,7 +122,7 @@ OUTCOME_UNKNOWN = "이 사건도 법정까지 갔어요 — 결과는 원문을 
 
 
 class PrecedentExplanation(BaseModel):
-    """LLM이 채울 수 있는 필드의 전부 — 판정·사건번호·조언 필드는 존재하지 않는다.
+    """LLM이 채울 수 있는 필드의 전부 — 판정·사건번호·결과 문장 필드는 존재하지 않는다.
 
     LLM이 여분 키(grade, case_no, advice 등)를 실어 보내면 pydantic 검증 실패 → 폴백.
     """
@@ -131,7 +131,10 @@ class PrecedentExplanation(BaseModel):
 
     case_id: str                      # 어떤 검색 결과에 대한 설명인지 (서버가 대조 검증)
     easy_summary: str                 # 사건 쉬운 요약 (1~2문장, 해요체)
-    common_point: str                 # 이 매물 판정과의 공통점 (1문장, 해요체)
+    common_point: str                 # 이 매물과 얼마나·어디가 닮았나 (1~2문장, 해요체)
+    # 이 매물 맞춤 조언 (2026-10-23 규혁 결정 — decisions.md). 예전엔 사람만 쓰던 칸이다.
+    # 검증(길이·금지어·숫자 근거)에 걸리면 이 칸만 버려지고 큐레이션 조언으로 내려간다.
+    advice: Optional[str] = None
     # 결과 **분류**만 받는다. 문구는 OUTCOME_TEXT가 정한다 (위 docstring 참고).
     # 큐레이션 outcome이 있는 판례는 그쪽이 우선이라 이 값은 쓰이지 않는다.
     outcome_kind: Optional[OutcomeKind] = None

@@ -192,31 +192,11 @@ Future<void> confirmAndDeleteAccount(BuildContext context) async {
 Future<void> editDisplayName(BuildContext context) async {
   final session = context.read<AppSession>();
   final messenger = ScaffoldMessenger.of(context);
-  final controller = TextEditingController(text: session.displayName ?? '');
+  // 입력칸은 창이 **스스로** 갖고 치운다 — 창이 닫히는 애니메이션 중에 치우면 오류가 난다(2026-10-24 CI)
   final name = await showDialog<String>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: const AppText('이름 정하기'),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        maxLength: 12,
-        decoration: const InputDecoration(hintText: '예: 동크크 1'),
-        onSubmitted: (v) => Navigator.pop(ctx, v),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const AppText('취소'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, controller.text),
-          child: const AppText('저장'),
-        ),
-      ],
-    ),
+    builder: (_) => _NameDialog(initial: session.displayName ?? ''),
   );
-  controller.dispose();
   if (name == null) return;
   final error = await session.setDisplayName(name);
   messenger
@@ -229,4 +209,47 @@ Future<void> editDisplayName(BuildContext context) async {
         ),
       ),
     );
+}
+
+class _NameDialog extends StatefulWidget {
+  const _NameDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_NameDialog> createState() => _NameDialogState();
+}
+
+class _NameDialogState extends State<_NameDialog> {
+  late final TextEditingController _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const AppText('이름 정하기'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: 12,
+        decoration: const InputDecoration(hintText: '예: 동크크 1'),
+        onSubmitted: (v) => Navigator.pop(context, v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const AppText('취소'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const AppText('저장'),
+        ),
+      ],
+    );
+  }
 }

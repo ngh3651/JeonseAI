@@ -8,7 +8,7 @@
       1. 등기부등본 분석   POST /api/analyze            → Information Extract · Document OCR · Solar(글자 정리·쉬운 설명)
       2. 판례 근거 찾기    GET  /api/reports/{id}/cases  → Embeddings(질의) · Solar(판례 설명)
       3. 다시 떼서 대조    POST /api/reports/{id}/compare → Information Extract · Document OCR
-      4. 용어 챗봇         GET  /api/glossary/lookup     → Solar(설명 생성)
+      4. 챗봇              POST /api/chat                → Solar(대화 답)
 
 원칙
     - 서비스 코드는 건드리지 않는다. 이 스크립트 안에서만 `requests.post`를 감싸 **api.upstage.ai로 가는 호출만** 기록한다
@@ -53,7 +53,7 @@ KST = timezone(timedelta(hours=9), "KST")  # 한국은 서머타임이 없어 +9
 UPSTAGE_HOST = "api.upstage.ai"
 DEVICE_ID = "ailog-export-0001"
 DEFAULT_NAMES = ["등기부등본 분석", "판례 근거 찾기", "다시 떼서 대조", "용어 챗봇"]
-#: 챗봇은 사전에 그대로 있는 낱말이면 AI 없이 답한다(L2) → AI가 붙는 자연어 질문을 차례로 시도한다.
+#: 챗봇 질문 — 하나라도 AI 답이 기록되면 멈춘다(2026-10-24부터 모든 질문에 AI가 답한다).
 CHAT_QUESTIONS = [
     "집주인이 빚이 많으면 세입자는 어떻게 되나요?",
     "전세 계약하기 전에 등기부에서 무엇을 먼저 봐야 하나요?",
@@ -341,7 +341,7 @@ def run_all(client, headers: dict, recorder: CallRecorder, names: list[str], pho
     for q in CHAT_QUESTIONS:
         before = len(recorder.records.get(chat_name, []))
         try:
-            _check(client.get("/api/glossary/lookup", params={"q": q}, headers=headers), chat_name)
+            _check(client.post("/api/chat", json={"messages": [{"role": "user", "content": q}]}, headers=headers), chat_name)
         except Exception as e:
             notes[chat_name] = f"실패: {e}"
         if len(recorder.records.get(chat_name, [])) > before:

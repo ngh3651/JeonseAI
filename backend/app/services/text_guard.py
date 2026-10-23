@@ -219,41 +219,78 @@ def unsupported_numbers(text: str, allowed: set[float]) -> list[str]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-#: 용어 챗봇 답변 길이 상한. 넘으면 **자르지 않고 버린다** — 잘린 문장은 뜻이 바뀐다.
-CHAT_MAX_LEN = 200
+# ══════════════════════════════════════════════════════════════════════════════
+# 챗봇 답 검사 (2026-10-24 대화형 챗봇)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 예전(2026-08-14)에는 챗봇에 재료가 없다며 **숫자 전면 금지**였다. 이제는 재료가 생겼다 —
+# ⑴ 사용자가 직접 말한 숫자(그 사람의 사실이다) ⑵ 판정 기준(thresholds.py 상수).
+# 그래서 리포트와 같은 **화이트리스트** 방식으로 바꿨다: 그 밖의 숫자를 AI가 지어내면 걸린다.
 
-#: 아라비아 숫자 하나라도 있으면 걸린다. 한글 수사('한두 가지')는 통과한다.
-_DIGIT_RE = re.compile(r"\d")
+#: 챗봇 답 길이 상한 — 넘으면 자르지 않고 고쳐 쓰게 한다(잘린 문장은 뜻이 바뀐다).
+CHAT_MAX_LEN = 450
+
+#: 집·계약에 대한 **판정 문장** — 어느 쪽(해도 된다/하지 마라)이든 챗봇이 말하면 안 된다.
+#: 공백을 지운 문자열에 댄다. `계약해도 되는지는 제가 정할 수 없어요`처럼 **묻거나 부정하는 꼴**은 통과.
+_CHAT_VERDICT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("계약-허락", re.compile(r"계약(을)?(해도|하셔도|하시면)(돼|됩|되겠|될것같|괜찮|좋)(?!는지|을지|는가|나요|ㄹ지)")),
+    ("계약-말림", re.compile(r"계약(은|을)?(하지마|하지않는게좋|안하는게좋|피하는게좋|피하세요|미루세요|포기하)")),
+    ("사기-단정", re.compile(r"(이집|그집|이건|이매물|그매물)(은|는)?.{0,6}사기(예요|에요|입니다|가맞|인것같|같아요|일가능성이높)")),
+    ("집-단정", re.compile(r"(이집|그집|이매물|그매물)(은|는|이|가)?.{0,8}(위험해요|위험합니다|위험한집|괜찮아요|괜찮습니다|괜찮은집|좋은집|나쁜집)")),
+    ("가격-단정", re.compile(r"(적정|적당|합리적인|싼|비싼)(한)?(가격|편|금액)(이에요|이예요|입니다|이네요)")),
+)
+
+#: 조심 모드(규칙이 판정 요구를 알아챈 질문)에서만 더 막는 말 — 권유·안심 표현.
+_CHAT_CAREFUL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("조심-권유", re.compile(r"(추천해요|추천드려요|추천합니다|권해드려요|계약하세요|계약하셔도|들어가셔도)")),
+    ("조심-안심", re.compile(r"(괜찮(아요|습니다|을거예요|을것같아요))(?!.{0,8}(없|않|아니|어렵|못|모르))")),
+)
+
+#: 인터넷 주소 — 지어낸 주소일 수 있다(설명에서 '인터넷등기소 누리집'처럼 말로 쓴다).
+_URL_RE = re.compile(r"https?://|www\.|[a-z0-9-]+\.(?:go\.kr|or\.kr|co\.kr|com|net|org|kr)\b", re.I)
+
+#: 세는 말이 붙은 작은 수(1~10)는 사실을 말하지 않는다 — `1순위`, `3가지`, `2단계`.
+_COUNTER_SMALL_RE = re.compile(
+    r"(?<![\d.,])(10|[1-9])\s*(순위|가지|단계|번째|번|개|곳|명|장|쪽|층|차)"
+)
 
 
-def check_chat(text: str) -> str | None:
-    """**용어 챗봇 답변** 전용 검증. 통과면 None, 아니면 사유 문자열.
+def chat_allowed_numbers(user_texts: Iterable[str], extra: Iterable[float] = ()) -> set[float]:
+    """챗봇 답에 써도 되는 수 — 사용자가 말한 수 + 판정 기준(호출부가 넘긴다) + 0."""
+    allowed: set[float] = {0.0}
+    for t in user_texts:
+        for _, value in extract_numbers(t or ""):
+            allowed.add(value)
+    allowed.update(float(x) for x in extra)
+    return allowed
 
-    리포트 설명(`check`)과 규칙이 다른 이유는 하나다 — **챗봇에는 재료가 없다.**
-    설명 생성은 판정 JSON을 받아서 "재료에 있는 수만 허용"이라는 화이트리스트를 만들 수
-    있지만, 챗봇의 입력은 사용자 문장 하나뿐이라 그 목록을 만들 방법이 없다.
-    그래서 화이트리스트 대신 **숫자 전면 금지**로 받는다:
 
-      LLM이 "전세가율 80%가 기준이에요"를 지어내면 그 값은 우리 판정 계층
-      (`thresholds.py`)과 충돌한다. 사용자는 챗봇 말을 기준으로 계약을 판단하는데,
-      리포트가 다른 숫자를 보여주면 **어느 쪽도 믿을 수 없게 된다.**
+def check_chat_reply(text: str, *, allowed: set[float], careful: bool = False) -> tuple[str, str] | None:
+    """챗봇 답을 내보내도 되나. 통과면 None, 아니면 `(분류, 쉬운 말 사유)`.
 
-    금지 표현·등급 단어 검사는 리포트와 **같은 패턴**을 그대로 쓴다(위 `_BANNED_PATTERNS`).
-    두 화면이 다른 그물을 쓰면 한쪽만 고쳐졌을 때 조용히 갈라진다.
+    분류는 로그용(사용자 글이 섞이지 않는다), 사유는 AI에게 고쳐 쓰라고 돌려줄 문장이다.
+    금지 표현·등급 단어는 리포트와 **같은 패턴**을 쓴다(두 화면이 다른 그물을 쓰면 조용히 갈라진다).
     """
     if not text or not text.strip():
-        return "빈 문자열"
+        return ("빈답", "답이 비어 있어요")
     if len(text) > CHAT_MAX_LEN:
-        return f"길이 초과({len(text)}자 > {CHAT_MAX_LEN}자)"
+        return ("길이", f"{CHAT_MAX_LEN}자를 넘었어요. 더 짧게 줄여 주세요")
     hit = banned_hit(text)
     if hit:
-        return f"금지 표현({hit})"
+        return (f"금지표현-{hit}", "'안전해요·문제없어요·걱정 마세요·안심하세요' 같은 단정 표현은 쓸 수 없어요")
     hit = grade_word_hit(text)
     if hit:
-        return f"등급 단어({hit})"
-    m = _DIGIT_RE.search(text)
-    if m:
-        return f"숫자 사용('{m.group(0)}') — 챗봇에는 대조할 재료가 없어 숫자를 쓸 수 없다"
+        return (f"등급단어-{hit}", "'양호·확인 필요·위험 등급' 같은 등급 이름은 쓸 수 없어요")
+    squeezed = _squeeze(text)
+    for name, pattern in _CHAT_VERDICT_PATTERNS + (_CHAT_CAREFUL_PATTERNS if careful else ()):
+        if pattern.search(squeezed):
+            return (name, "집이나 계약, 가격이 괜찮은지 판단하는 말은 할 수 없어요. 판단 없이 확인할 방법만 알려 주세요")
+    if _URL_RE.search(text):
+        return ("주소", "인터넷 주소는 쓸 수 없어요. 기관 이름만 말로 써 주세요")
+    bare = _COUNTER_SMALL_RE.sub("", text)
+    bad = [chunk for chunk in unsupported_numbers(bare, allowed) if re.search(r"\d", chunk)]
+    if bad:
+        return ("숫자", f"숫자 '{bad[0]}'는 근거가 없어 쓸 수 없어요. 숫자 없이 말로 풀어 주세요")
     return None
 
 

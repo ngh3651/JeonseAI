@@ -108,6 +108,25 @@ def rate_limit_global_per_day() -> int:
     return env_int("RATE_LIMIT_GLOBAL_PER_DAY", 500)
 
 
+# ── 챗봇 질문 상한 (2026-10-24) — 챗봇이 매 질문 Solar를 부르게 되면서. 분석과 칸을 따로 센다.
+# 운영 상한이지 위험 판정 수치가 아니다. 0 이하면 그 겹은 끈다.
+
+
+def rate_limit_chat_per_hour() -> int:
+    """기기 id × IP별 챗봇 질문 상한(최근 1시간) — 연타 장난."""
+    return env_int("RATE_LIMIT_CHAT_PER_HOUR", 60)
+
+
+def rate_limit_chat_ip_per_hour() -> int:
+    """IP 하나의 챗봇 질문 상한(최근 1시간) — 부스 폰들은 같은 와이파이를 쓴다."""
+    return env_int("RATE_LIMIT_CHAT_IP_PER_HOUR", 300)
+
+
+def rate_limit_chat_global_per_day() -> int:
+    """서버 전체 챗봇 질문 상한(최근 24시간) — 하루 크레딧 뚜껑."""
+    return env_int("RATE_LIMIT_CHAT_GLOBAL_PER_DAY", 3000)
+
+
 def docs_disabled() -> bool:
     """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
     return env_flag("DISABLE_DOCS")

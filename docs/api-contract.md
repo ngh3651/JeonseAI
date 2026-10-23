@@ -445,7 +445,9 @@ MarketPriceAlternative {
 - **인증**: 불필요.
 - **응답 200**: `GlossaryTerm[]`.
 
-### 3.9 `GET /api/glossary/lookup?q={query}` — 챗봇 질문 · **비회원 허용**
+### 3.9 `GET /api/glossary/lookup?q={query}` — 챗봇 질문 · **비회원 허용** · ⚠ 2026-10-24부터 **옛 앱 전용**
+
+> **2026-10-24**: 새 앱은 §3.21 `POST /api/chat`을 쓴다. 이 주소는 옛 APK가 깨지지 않게 남겨 두고, 안에서 새 챗봇 엔진(`chat.reply`)에 질문 하나만 넣는다 — `answer`·`description`은 굵게 표시를 뺀 글, `outOfScope`는 늘 false, `source`는 모델명(기본 문장이면 ""), `termGlossary`는 빈 값. 아래 L1~L5 표는 **옛 설계 기록**이다.
 - **목적**: 질문 하나에 답 하나. 용어·제도 설명만 하고, 판정·조언은 **거절**한다(가드레일).
 - **인증**: 불필요.
 - **요청**: 쿼리스트링 `q` = 사용자 입력 문자열.
@@ -529,6 +531,28 @@ MarketPriceAlternative {
 
 ---
 
+
+### 3.21 `POST /api/chat` — 챗봇 · **비회원 허용** (2026-10-24 추가)
+- **목적**: 최근 대화를 받아 답 하나. 인사·잡담·장난·"더 쉽게" 같은 이어 묻기까지 **AI(Solar)가 직접 읽고 답한다**. 판정은 하지 않는다.
+- **요청**: `ChatRequest { messages: ChatMessage[] }` — `ChatMessage { role: "user"|"assistant", content: string }`. 1~20개, **마지막은 이번 질문(user)**. 서버는 최근 8개만 쓰고 **대화를 저장하지 않는다**(앱이 매번 보낸다). 헤더 `X-Device-Id`는 횟수 상한에만 쓴다.
+- **응답 200**: `ChatResponse { answer, mode, model }`
+  - `answer`: 화면에 그릴 글. 줄바꿈(`\n`)과 **`**굵게**` 표시(최대 3곳)**가 들어 있다 — 앱이 굵게 그린다. 용어 밑줄(`termGlossary`)은 없다(챗봇이 곧 풀이라서).
+  - `mode`: `normal` AI 답 / `careful` 규칙이 판정 요구를 알아채 '판단 없이' 답함 / `fallback` AI 대신 기본 문장(AI 연결 실패·검사 두 번 실패)
+  - `model`: 답을 쓴 모델 문자열(예: `solar-pro2`). 기본 문장이면 `""`.
+  - **등급·점수·금액 칸이 없다** — 판정은 리포트(규칙 엔진)만 한다.
+- **에러**: **400** 마지막이 질문이 아님·빈 질문·질문 500자 초과 / **422** 모양이 틀림 / **429** 질문 횟수 상한(기기×IP 시간당 `RATE_LIMIT_CHAT_PER_HOUR` 60 · IP 시간당 `RATE_LIMIT_CHAT_IP_PER_HOUR` 300 · 서버 하루 `RATE_LIMIT_CHAT_GLOBAL_PER_DAY` 3000 — 분석과 칸이 따로).
+- **흐름 (구현: `app/services/chat.py`)**:
+
+| 단계 | 무엇 | 비고 |
+|---|---|---|
+| 정리 | 최근 8개 · 주민번호·전화번호 꼴 가리기 · 길이 자르기 | 질문 글은 로그에 안 남김(길이·분류만) |
+| 규칙 | 마지막 질문이 판정·금액·법률 판단 요구인가(정규식) | 맞으면 **조심 모드** 지시를 붙인다 — 막지 않는다 |
+| Solar | 검수된 용어 풀이 + 판정 기준(`thresholds.py` 상수에서 생성)을 참고 자료로 받아 자기 말로 답 | 해요체 · 2~4문장 · 한 줄 한 문장 · 굵게 1~2곳 |
+| 검사 | 금지 표현·등급 단어(리포트와 같은 패턴) · 집/계약/가격 판정 문장 · 근거 없는 숫자(사용자 숫자 + 판정 기준만 허용) · 인터넷 주소 · 450자 | `text_guard.check_chat_reply` |
+| 고쳐 쓰기 | 걸리면 이유를 알려 주고 한 번 다시 쓰게 함 | 그래도 걸리면 기본 문장(검수된 용어가 있으면 그 풀이) |
+
+- **스위치**: `CHATBOT_LLM=off`면 AI를 건너뛴다(용어 풀이 + 안내 문장).
+
 ## 4. 화면 ↔ 엔드포인트 매핑
 
 | 화면 | 사용 엔드포인트 | 인증 |
@@ -544,7 +568,7 @@ MarketPriceAlternative {
 | S-10 질문 생성기 | `GET /api/reports/{id}/questions` | 비회원 허용 |
 | S-11 계약 여정 (매물 타임라인) | `GET /api/journey-stages`, `GET /api/reports` | 비회원 허용 |
 | S-11 등기부 대조 (로딩·결과 4갈래) | `POST /api/reports/{id}/compare` | **인증 필요** |
-| S-12 용어 챗봇 (칩 + 자연어 질문) | `GET /api/glossary`, `GET /api/glossary/lookup?q=` | 비회원 허용 |
+| S-12 챗봇 (칩 + 대화) | `GET /api/glossary`(추천 칩), `POST /api/chat`(2026-10-24 — 옛 앱은 `GET /api/glossary/lookup?q=`) | 비회원 허용 |
 | S-13 마이/설정 | `GET /api/reports`, `DELETE /api/reports/{id}` | 조회=비회원 허용 / 삭제=그 기록의 주인 |
 | 마이 → 계정 칸 (2026-10-22) | `POST /api/auth/logout`, `DELETE /api/me`(회원 탈퇴) | 세션 |
 | 개인정보 처리방침 (시작·로그인·마이에서 진입) | (없음 — 앱 안 정적 화면, `privacy_policy_screen.dart`) | — |

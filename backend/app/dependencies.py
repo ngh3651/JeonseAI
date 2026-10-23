@@ -132,13 +132,16 @@ _DAY_SECONDS = 86400.0
 _MAX_BUCKETS = 20_000
 _GLOBAL = ("*", "*")
 _GLOBAL_DAY = ("*", "day")
+_CHAT_GLOBAL_DAY = ("chat*", "day")
 #: 청소(_cleanup)가 절대 버리지 않는 칸 — 서버 전체 칸들.
-_PINNED = (_GLOBAL, _GLOBAL_DAY)
+_PINNED = (_GLOBAL, _GLOBAL_DAY, _CHAT_GLOBAL_DAY)
 
 _MSG_HOUR = "분석을 너무 자주 했어요. 한 시간쯤 뒤에 다시 시도해 주세요"
 _MSG_DAY = "오늘은 서버의 하루 분석 횟수를 다 썼어요. 내일 다시 시도해 주세요"
+_MSG_CHAT_HOUR = "질문을 너무 많이 보냈어요. 잠시 뒤에 다시 물어봐 주세요"
+_MSG_CHAT_DAY = "오늘은 챗봇 질문을 다 썼어요. 내일 다시 물어봐 주세요"
 
-_hits: dict[tuple[str, str], deque[float]] = {}
+_hits: dict[tuple, deque[float]] = {}
 _hits_lock = threading.Lock()
 
 
@@ -187,28 +190,46 @@ def limit_analyze(request: Request, device_id: str) -> None:
     확인과 기록을 한 잠금 안에서 하므로, 동시에 몰려 와도 상한을 넘겨 통과하지 못한다.
     """
     ip = client_ip(request)
-    limits = [
-        ((device_id, ip), settings.rate_limit_analyze_per_hour(), _WINDOW_SECONDS),
-        (("ip", ip), settings.rate_limit_ip_per_hour(), _WINDOW_SECONDS),
-        (_GLOBAL, settings.rate_limit_global_per_hour(), _WINDOW_SECONDS),
-        (_GLOBAL_DAY, settings.rate_limit_global_per_day(), _DAY_SECONDS),
-    ]
-    limits = [(key, limit, window) for key, limit, window in limits if limit > 0]
+    _count(
+        [
+            ((device_id, ip), settings.rate_limit_analyze_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
+            (("ip", ip), settings.rate_limit_ip_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
+            (_GLOBAL, settings.rate_limit_global_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
+            (_GLOBAL_DAY, settings.rate_limit_global_per_day(), _DAY_SECONDS, _MSG_DAY),
+        ],
+        day_key=_GLOBAL_DAY,
+        day_env="RATE_LIMIT_GLOBAL_PER_DAY",
+    )
+
+
+def limit_chat(request: Request, device_id: str) -> None:
+    """챗봇 질문 1건을 센다 (2026-10-24 — 질문마다 Solar를 부르게 되면서). 분석과 칸이 따로다."""
+    ip = client_ip(request)
+    _count(
+        [
+            (("chat", device_id, ip), settings.rate_limit_chat_per_hour(), _WINDOW_SECONDS, _MSG_CHAT_HOUR),
+            (("chat-ip", ip), settings.rate_limit_chat_ip_per_hour(), _WINDOW_SECONDS, _MSG_CHAT_HOUR),
+            (_CHAT_GLOBAL_DAY, settings.rate_limit_chat_global_per_day(), _DAY_SECONDS, _MSG_CHAT_DAY),
+        ],
+        day_key=_CHAT_GLOBAL_DAY,
+        day_env="RATE_LIMIT_CHAT_GLOBAL_PER_DAY",
+    )
+
+
+def _count(limits: list, *, day_key: tuple, day_env: str) -> None:
+    limits = [item for item in limits if item[1] > 0]
     now = time.monotonic()
     with _hits_lock:
-        for key, limit, window in limits:
+        for key, limit, window, msg in limits:
             bucket = _hits.get(key)
             if bucket is not None:
                 _trim(bucket, now, window)
                 if len(bucket) >= limit:
-                    if key == _GLOBAL_DAY:
+                    if key == day_key:
                         # 운영자가 Railway 로그에서 바로 알아보게 남긴다(결선 날이면 상한을 올린다).
-                        _log.warning(f"[속도 제한] 서버 하루 상한 {limit}회에 닿음 — RATE_LIMIT_GLOBAL_PER_DAY")
-                    raise HTTPException(
-                        status_code=429,
-                        detail=_MSG_DAY if key == _GLOBAL_DAY else _MSG_HOUR,
-                    )
-        for key, _, _ in limits:
+                        _log.warning(f"[속도 제한] 서버 하루 상한 {limit}회에 닿음 — {day_env}")
+                    raise HTTPException(status_code=429, detail=msg)
+        for key, _, _, _ in limits:
             _hits.setdefault(key, deque()).append(now)
         if len(_hits) > _MAX_BUCKETS:
             _cleanup(now)

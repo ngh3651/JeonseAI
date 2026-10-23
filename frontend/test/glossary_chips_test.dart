@@ -217,14 +217,14 @@ void main() {
     });
 
     testWidgets('말풍선은 화면 폭의 75%를 넘지 않는다', (tester) async {
-      final long = '아주 긴 질문이에요 ' * 30;
-      await _pump(tester, reply: ChatReply(answer: '아주 긴 답이에요 ' * 30));
+      final long = '아주 긴 질문이에요 ' * 10; // 한 줄을 넘칠 만큼만(화면 밖으로 밀리지 않게)
+      await _pump(tester, reply: ChatReply(answer: '아주 긴 답이에요 ' * 10));
       await _send(tester, long);
 
       const limit = 360.0 * kBubbleWidthFactor;
       // 글자 덩어리의 폭 = 말풍선 안쪽 폭 → 말풍선 폭(75%)보다 작아야 한다
-      expect(tester.getSize(find.koTextContaining('아주 긴 질문')).width, lessThanOrEqualTo(limit));
-      expect(tester.getSize(find.koTextContaining('아주 긴 답')).width, lessThanOrEqualTo(limit));
+      expect(tester.getSize(find.koTextContaining('아주 긴 질문', skipOffstage: false)).width, lessThanOrEqualTo(limit));
+      expect(tester.getSize(find.koTextContaining('아주 긴 답', skipOffstage: false)).width, lessThanOrEqualTo(limit));
       expect(tester.takeException(), isNull);
     });
 

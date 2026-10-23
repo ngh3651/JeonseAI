@@ -63,6 +63,7 @@
 
 > ⚠ 본선 이후 Upstage 키가 바뀜 — 배포 전 `python scripts/check_keys.py`로 확인. 키는 backend/.env와 Railway Variables에만 넣고 채팅·커밋에 쓰지 않는다.
 
+- **AI API 호출 로그 제출**(대회 「국내 AI API 호출 로그 제출 가이드」 v11.0 — 10/14 이후 호출만, 기능별 1회, 요청+응답 한 건, KST, 민감정보 제거): `cd backend && python scripts/export_ai_call_logs.py --photos test_samples/<등기부 사진 폴더> --names "<보고서 기능명 4개>"` → `backend/out/AI_API_호출로그_전세AI프.zip`. 기능 = 등기부등본 분석 · 판례 근거 찾기 · 다시 떼서 대조 · 용어 챗봇(전부 Upstage). 사진 데이터는 빼고 이름·주민번호·주소꼴은 가린다 — **내기 전에 눈으로 실명 0 확인**.
 - **10/26까지** 포스터용 앱 화면 캡처를 팀에 넘긴다 (인쇄 주문 10/28).
 - **P1-1 숫자 재기(사람, 키 필요)**: 종이 등기부 하나를 10번 찍어 `촬영묶음/<등기부>/01~10/page_N.jpg`로 두고
   `cd backend && python scripts/measure_consistency.py ../촬영묶음 --deposit <보증금>` → `backend/out/consistency_*.md`(판정 일치율·재촬영 안내·처리 시간). 크레딧: 묶음당 IE 1 + OCR 장수 + 설명 1.

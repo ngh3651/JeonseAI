@@ -291,6 +291,16 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   // ══════════════════════════════════════════════════════════════════════════
 
   Widget _conversation() {
+    // 말풍선 폭은 **이 목록이 실제로 받은 폭** 기준이다(MediaQuery 크기가 아니라 — 분할 화면·테스트에서도 맞게).
+    return LayoutBuilder(
+      builder: (context, box) {
+        _bubbleMax = box.maxWidth * kBubbleWidthFactor;
+        return _conversationList();
+      },
+    );
+  }
+
+  Widget _conversationList() {
     return ListView.separated(
       controller: _scrollCtrl,
       padding: const EdgeInsets.fromLTRB(
@@ -317,7 +327,10 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     );
   }
 
-  double get _maxBubbleWidth => MediaQuery.sizeOf(context).width * kBubbleWidthFactor;
+  /// 말풍선 최대 폭 — `_conversation`의 LayoutBuilder가 정한다.
+  double _bubbleMax = 270;
+
+  double get _maxBubbleWidth => _bubbleMax;
 
   TextStyle get _bodyStyle =>
       AppTypography.body.copyWith(fontSize: 17, height: 1.6, color: AppColors.textStrong);

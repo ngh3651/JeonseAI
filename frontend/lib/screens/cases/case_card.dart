@@ -197,7 +197,8 @@ class CaseCard extends StatefulWidget {
 class _CaseCardState extends State<CaseCard> {
   late bool _expanded = widget.initiallyExpanded;
   bool _commonOpen = false;
-  bool _adviceOpen = true;
+  // 2026-10-24 규혁: 판례 화면은 전부 닫힌 채로 시작 — 카드도, 말풍선 둘도
+  bool _adviceOpen = false;
 
   CaseMatch get c => widget.match;
 

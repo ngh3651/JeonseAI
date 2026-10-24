@@ -27,7 +27,9 @@ import 'chat_mascot.dart';
 const String kChatLoadingMessage = '답을 쓰고 있어요…';
 
 /// 빈 화면 안내 — AI가 답한다는 사실을 숨기지 않는다.
-const String kChatAiNotice = 'Upstage Solar Pro 2가 쉬운 말로 답해요';
+/// 빈 화면 안내 줄 — 앞에 Upstage 로고 이미지가 붙는다(회사 이름은 로고로, 2026-10-24)
+const String kChatAiNotice = 'Solar Pro 2가 쉬운 말로 답해요';
+const String kUpstageLogoAsset = 'assets/brand/upstage_logo.png';
 
 /// 연결 실패 안내 (경고색·에러 아이콘 없이)
 const String kChatFailedMessage = '연결이 잠깐 끊겼어요.';
@@ -236,7 +238,20 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                 style: AppTypographyNext.title,
               ),
               const SizedBox(height: AppSpacing.sm),
-              AppText(kChatAiNotice, textAlign: TextAlign.center, style: AppTypographyNext.caption),
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  Image.asset(
+                    kUpstageLogoAsset,
+                    height: MediaQuery.textScalerOf(context).scale(18),
+                    semanticLabel: 'Upstage',
+                  ),
+                  AppText(kChatAiNotice, textAlign: TextAlign.center, style: AppTypographyNext.caption),
+                ],
+              ),
               const SizedBox(height: AppSpacing.xxl),
               for (int i = 0; i < kSuggestedQuestions.length; i++) ...[
                 if (i > 0) const SizedBox(height: AppSpacing.sm),

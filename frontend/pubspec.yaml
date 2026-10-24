@@ -104,6 +104,8 @@ flutter:
   # (search≈caution, worried≈danger, point≈tip).
   assets:
     - assets/mascot/
+    # 챗봇 빈 화면 안내 줄의 Upstage 로고 (원본 색 그대로 — 남의 로고라 토큰으로 바꾸지 않음)
+    - assets/brand/
 
   # Pretendard: 무료 라이선스(OFL) 한국어 폰트 — 디자인 시스템 기본 서체 (C-1)
   fonts:

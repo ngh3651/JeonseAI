@@ -2,8 +2,8 @@
 ///
 /// 그림 파일은 여기 상수에서만 고른다 — 새 그림을 넣으면 경로만 바꾸면 된다.
 /// - 답 들기: `mascot_hold.png` = 기존 `mascot_loading.png`(선에 매달린 세이프)에서 머리·앞발만 잘라 만든 것
-/// - 달리기: 전용 프레임이 아직 없다 → [kSafeRunFrames]가 비어 있으면 기본 세이프에 **통통 뛰며 흔들리기**만 준다.
-///   프레임(`safe_run_1~4.png`)을 넣고 이 목록을 채우면 90ms씩 바뀐다.
+/// - 달리기: `safe_run_1~4.png`(원본 560×560, 투명 배경, 귀 끝 높이 맞춤 — 2026-10-24 전달)를 90ms씩 바꾸고
+///   몸 전체를 통통 뛰며 흔든다. [kSafeRunFrames]를 비우면 기본 세이프에 흔들기만 준다.
 library;
 
 import 'dart:math' as math;
@@ -19,7 +19,12 @@ const String kSafeHoldAsset = 'assets/mascot/mascot_hold.png';
 const String kSafeDefaultAsset = 'assets/mascot/mascot_tip.png';
 
 /// 달리기 프레임 — 비어 있으면 기본 그림 + 흔들기
-const List<String> kSafeRunFrames = [];
+const List<String> kSafeRunFrames = [
+  'assets/mascot/safe_run_1.png',
+  'assets/mascot/safe_run_2.png',
+  'assets/mascot/safe_run_3.png',
+  'assets/mascot/safe_run_4.png',
+];
 
 /// 마스코트 칸 크기(그대로 — 글자 배율과 무관)
 const double kSafeSize = 56;
@@ -64,9 +69,17 @@ class _SafeRunningState extends State<SafeRunning> with SingleTickerProviderStat
     duration: const Duration(milliseconds: 360),
   );
 
+  /// 원본 560을 화면 크기(56 × 기기 배율)로만 풀어 둔다 — 메모리 절약
+  int _cacheWidth(BuildContext context) => (kSafeSize * MediaQuery.devicePixelRatioOf(context)).round();
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // 첫 바퀴에 프레임이 깜빡이지 않게 미리 풀어 둔다
+    final w = _cacheWidth(context);
+    for (final f in kSafeRunFrames) {
+      precacheImage(ResizeImage(AssetImage(f), width: w), context, onError: (_, _) {});
+    }
     if (MediaQuery.disableAnimationsOf(context)) {
       _ctrl.stop();
     } else if (!_ctrl.isAnimating) {
@@ -82,6 +95,7 @@ class _SafeRunningState extends State<SafeRunning> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    final cacheWidth = kSafeRunFrames.isEmpty ? null : _cacheWidth(context);
     return ExcludeSemantics(
       child: SizedBox(
         width: kSafeSize,
@@ -106,6 +120,7 @@ class _SafeRunningState extends State<SafeRunning> with SingleTickerProviderStat
                   child: _OnSoftCircle(
                     child: Image.asset(
                       frame,
+                      cacheWidth: cacheWidth,
                       fit: BoxFit.contain,
                       filterQuality: FilterQuality.medium,
                       gaplessPlayback: true,

@@ -10,6 +10,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,7 @@ import 'package:jeonse_ai/models/compare_result.dart';
 import 'package:jeonse_ai/models/content_models.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/repositories/content_repository.dart';
+import 'package:jeonse_ai/screens/chatbot/chat_mascot.dart';
 import 'package:jeonse_ai/screens/chatbot/glossary_chatbot_screen.dart';
 import 'package:jeonse_ai/services/api_client.dart';
 import 'package:jeonse_ai/state/app_session.dart';
@@ -98,6 +100,7 @@ Future<_FakeContentRepo> _pump(
   bool fail = false,
   double textScale = 1.0,
   double width = 360,
+  bool disableAnimations = false,
 }) async {
   final repo = _FakeContentRepo(reply: reply, pending: pending, fail: fail);
   tester.view.physicalSize = Size(width * 3, 760 * 3);
@@ -115,7 +118,10 @@ Future<_FakeContentRepo> _pump(
         theme: buildAppTheme(),
         home: Builder(
           builder: (context) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(textScale),
+              disableAnimations: disableAnimations,
+            ),
             child: const GlossaryChatbotScreen(),
           ),
         ),
@@ -124,6 +130,14 @@ Future<_FakeContentRepo> _pump(
   );
   await tester.pumpAndSettle();
   return repo;
+}
+
+/// 지금 달리는 세이프가 그리는 프레임 경로
+String _runFrame(WidgetTester tester) {
+  final img = tester.widget<Image>(find.descendant(of: find.byType(SafeRunning), matching: find.byType(Image)));
+  final provider = img.image;
+  final asset = provider is ResizeImage ? provider.imageProvider : provider;
+  return (asset as AssetImage).assetName;
 }
 
 /// 보내고, 답이 올 때까지(기다리는 중이면 몇 프레임만)
@@ -277,6 +291,38 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.koText(kChatLoadingMessage), findsNothing);
       expect(find.koText('안녕하세요!'), findsOneWidget);
+    });
+
+    testWidgets('세이프가 달리기 프레임 4장을 90ms씩 바꾼다', (tester) async {
+      final pending = Completer<ChatReply>();
+      await _pump(tester, pending: pending);
+      await _send(tester, '안녕', settle: false);
+      expect(find.byType(SafeRunning), findsOneWidget);
+      final seen = <String>{};
+      for (int i = 0; i < 4; i++) {
+        seen.add(_runFrame(tester));
+        await tester.pump(const Duration(milliseconds: 90));
+      }
+      expect(seen, kSafeRunFrames.toSet());
+      pending.complete(const ChatReply(answer: '네'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('애니메이션 끄기 설정이면 첫 프레임에 멈춘다', (tester) async {
+      final pending = Completer<ChatReply>();
+      await _pump(tester, pending: pending, disableAnimations: true);
+      await _send(tester, '안녕', settle: false);
+      final first = _runFrame(tester);
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(_runFrame(tester), first);
+      pending.complete(const ChatReply(answer: '네'));
+      await tester.pumpAndSettle();
+    });
+
+    test('달리기 프레임 파일이 저장소에 있다', () {
+      for (final f in kSafeRunFrames) {
+        expect(File(f).existsSync(), isTrue, reason: f);
+      }
     });
   });
 

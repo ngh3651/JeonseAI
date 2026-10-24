@@ -194,7 +194,11 @@ class CaseCard extends StatefulWidget {
   State<CaseCard> createState() => _CaseCardState();
 }
 
-class _CaseCardState extends State<CaseCard> {
+/// 펼침 상태를 스크롤해도 기억한다 — 목록 밖으로 나갔다 오면 카드가 새로 만들어져 닫혀 버렸다(2026-10-24 실기기).
+class _CaseCardState extends State<CaseCard> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   late bool _expanded = widget.initiallyExpanded;
   bool _commonOpen = false;
   // 2026-10-24 규혁: 판례 화면은 전부 닫힌 채로 시작 — 카드도, 말풍선 둘도
@@ -221,6 +225,7 @@ class _CaseCardState extends State<CaseCard> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // keep-alive 등록
     final tags = c.displayTags.take(kMaxCardTags).toList();
     final hasAdvice = c.advice != null && c.advice!.trim().isNotEmpty;
 

@@ -15,6 +15,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jeonse_ai/design_system/tokens/app_typography.dart';
 import 'package:jeonse_ai/design_system/components/amber_hint.dart';
 import 'package:jeonse_ai/design_system/text/keep_all.dart';
 import 'package:jeonse_ai/design_system/components/photo_tray.dart';
@@ -223,10 +224,10 @@ void main() {
     final TextField field = tester.widget(find.byType(TextField).first);
     expect(field.controller!.text, '12,000');
 
-    // 접미사 '만원'은 입력 글자(17)보다 작고 흐려야 한다
-    expect(field.style!.fontSize, 17);
+    // 접미사 '만원'은 입력 글자보다 작고 흐려야 한다 (숫자 대신 관계로 — 글자 크기 체계가 바뀌어도 뜻은 같다)
+    expect(field.style!.fontSize, AppTypography.title.fontSize);
     expect(field.decoration!.suffixText, '만원');
-    expect(field.decoration!.suffixStyle!.fontSize, 15);
+    expect(field.decoration!.suffixStyle!.fontSize, lessThan(field.style!.fontSize!));
   });
 
   testWidgets('보증금은 8자리를 넘지 않는다', (tester) async {

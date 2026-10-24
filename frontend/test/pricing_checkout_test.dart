@@ -299,6 +299,9 @@ void main() {
       expect(find.koText(kPassIncludesLine, skipOffstage: false), findsOneWidget);
       expect(PassStore.instance.active, isTrue);
 
+      // 글자가 커지면 버튼이 화면 아래로 밀린다 — 보이게 내린 뒤 누른다
+      await tester.ensureVisible(find.koText('계약 여정으로 가기', skipOffstage: false));
+      await tester.pumpAndSettle();
       await tester.tap(find.koText('계약 여정으로 가기'));
       await tester.pumpAndSettle();
       expect(find.text('여정 화면'), findsOneWidget);

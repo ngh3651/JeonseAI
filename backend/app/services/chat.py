@@ -52,7 +52,10 @@ MAX_TURNS = 8
 MAX_USER_CHARS = 500
 MAX_HISTORY_CHARS = 800
 #: 생성 상한
-MAX_OUTPUT_TOKENS = 600
+MAX_OUTPUT_TOKENS = 700
+#: 대화 온도 — 설명 생성(0.3)보다 조금 높게: 같은 말만 되풀이하지 않고 자연스럽게(2026-10-24 '자율성').
+#: 날조는 온도가 아니라 참고 자료 + 출력 검사로 막는다.
+CHAT_TEMPERATURE = 0.5
 
 #: 모드
 MODE_NORMAL = "normal"
@@ -203,8 +206,25 @@ def criteria_block() -> str:
     )
 
 
+_FACTS_PATH = _BACKEND_ROOT / "data" / "chat_facts.json"
+
+
+def facts_block() -> str:
+    """실생활 정보(발급처·수수료·기한 등, 출처 있음) — `data/chat_facts.json`. 팀원이 파일만 고치면 된다."""
+    import json
+
+    try:
+        facts = json.loads(_FACTS_PATH.read_text(encoding="utf-8")).get("facts", [])
+    except (OSError, ValueError):
+        return "· (없음)"
+    lines = [f"· [{f.get('topic', '')}] {f.get('fact', '')} (출처: {f.get('source', '')})" for f in facts]
+    return "\n".join(lines) or "· (없음)"
+
+
 def system_prompt(careful: bool) -> str:
-    base = CHAT_SYSTEM_PROMPT.format(glossary=glossary_block(), criteria=criteria_block())
+    base = CHAT_SYSTEM_PROMPT.format(
+        glossary=glossary_block(), criteria=criteria_block(), facts=facts_block()
+    )
     return base + (CHAT_CAREFUL_ADDENDUM if careful else "")
 
 
@@ -324,10 +344,20 @@ def criteria_mixup(text: str) -> str | None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+#: "뭐야·뜻" 같은 **뜻을 묻는 질문**일 때만 사전 풀이로 떨어진다 — "어디서 떼요?"에 뜻 풀이가 나가면 동문서답이다(2026-10-24 실기기)
+_MEANING_RE = re.compile(r"뭐|무엇|뜻|의미|이란|란\?|설명|알려|쉽게|모르")
+
+
 def _dictionary_fallback(question: str, careful: bool) -> ChatReply | None:
     if careful:
         return None
-    found = terms.lookup(question)
+    q = question.strip()
+    found = terms.lookup(q)
+    if found is None:
+        return None
+    is_bare_term = len(_squeeze(q)) <= len(_squeeze(found.term)) + 2
+    if not (is_bare_term or _MEANING_RE.search(q)):
+        return None
     if found is None:
         return None
     return ChatReply(answer=found.description, mode=MODE_FALLBACK, layer="폴백-용어풀이")
@@ -344,8 +374,33 @@ def _fallback(question: str, careful: bool, *, layer: str, text: str, llm_calls:
     return ChatReply(answer=text, mode=MODE_FALLBACK, layer=layer, llm_calls=llm_calls)
 
 
+# ── 운영 통계 (헬스체크 `GET /`의 `chat`) — 서버가 켜진 뒤로 몇 번 AI가 바로 답했고, 고쳐 썼고,
+#    기본 문장으로 떨어졌는지 + 최근 검사에 걸린 이유(분류 이름만 — 사용자 글은 없다). 2026-10-24
+_stats = {"ai": 0, "repaired": 0, "fallback": 0}
+_recent_rejects: list[str] = []
+
+
+def _record(r: ChatReply) -> ChatReply:
+    key = "fallback" if r.mode == MODE_FALLBACK else ("repaired" if r.layer == "AI-고쳐씀" else "ai")
+    _stats[key] += 1
+    return r
+
+
+def _record_reject(code: str) -> None:
+    _recent_rejects.append(code)
+    del _recent_rejects[:-20]
+
+
+def stats() -> dict:
+    return {**_stats, "recentRejects": list(_recent_rejects)}
+
+
 def reply(messages: Iterable[dict | Turn]) -> ChatReply:
     """최근 대화 → 화면에 그릴 답. **어떤 실패에도 예외를 던지지 않는다.**"""
+    return _record(_reply(messages))
+
+
+def _reply(messages: Iterable[dict | Turn]) -> ChatReply:
     turns = _clean_turns(messages)
     if not turns or turns[-1].role != "user":
         return ChatReply(answer=RETRY_FALLBACK, mode=MODE_FALLBACK, layer="빈질문")
@@ -402,7 +457,7 @@ def _generate(turns: list[Turn], careful: bool) -> ChatReply:
                 system,
                 user_msg,
                 max_tokens=MAX_OUTPUT_TOKENS,
-                temperature=llm.CHAT_TEMPERATURE,
+                temperature=CHAT_TEMPERATURE,
                 history=history,
             )
         except llm.LlmError as e:
@@ -434,6 +489,7 @@ def _generate(turns: list[Turn], careful: bool) -> ChatReply:
                 )
             code, why = verdict
         last_reason = code
+        _record_reject(code)
         _log.info(f"[챗봇:{provider.name}] 검사 걸림({code}) — {'고쳐 쓰게 함' if attempt == 1 else '기본 문장'}")
         # 고쳐 쓰기: 방금 답을 대화에 넣고, 이유를 알려 준다
         history = history + [

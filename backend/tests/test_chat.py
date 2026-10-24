@@ -223,17 +223,44 @@ def test_두_번_다_걸리면_조심_모드_기본_문장(fake_llm):
 
 
 def test_지어낸_숫자는_고쳐_쓰게_한다(fake_llm):
-    p = fake_llm(_a("보통 30일 안에 신고해요."), _a("보통 계약 기간은 법으로 정해져 있어요."))
+    p = fake_llm(_a("보통 전세가율 70%면 괜찮다고 해요."), _a("보통 계약 기간은 법으로 정해져 있어요."))
     r = chat.answer("전세 계약 기간이 얼마나 돼?")
-    assert len(p.calls) == 2 and "숫자 '30'" in p.calls[1]["user"]
+    assert len(p.calls) == 2 and "'70%'" in p.calls[1]["user"]
     assert r.answer == "보통 계약 기간은 법으로 정해져 있어요."
 
 
-def test_보통_질문이_두_번_걸리면_용어_풀이로_떨어진다(fake_llm):
-    fake_llm(_a("www.iros.go.kr 에서 떼요"))
-    r = chat.answer("등기부등본 어디서 떼?")
+def test_뜻을_묻는_질문이_두_번_걸리면_용어_풀이로_떨어진다(fake_llm):
+    fake_llm(_a("www.example.com 을 보세요"))
+    r = chat.answer("등기부등본이 뭐야?")
     assert r.mode == chat.MODE_FALLBACK
     assert r.answer == terms.lookup("등기부등본").description
+
+
+def test_뜻이_아닌_질문엔_사전_풀이를_내지_않는다(fake_llm):
+    """'어디서 떼요?'에 뜻 풀이가 나가면 동문서답이다 (2026-10-24 실기기)."""
+    fake_llm(_a("www.example.com 을 보세요"))
+    r = chat.answer("등기부등본 어디서 발급받아?")
+    assert r.answer == chat.RETRY_FALLBACK
+
+
+def test_공공기관_주소와_실생활_숫자는_쓸_수_있다(fake_llm):
+    text = "대법원 인터넷등기소(iros.go.kr)에서 떼요.\n인터넷 열람은 700원, 발급은 1,000원이에요."
+    fake_llm(_a(text))
+    r = chat.answer("등기부등본 어디서 발급받아?")
+    assert r.mode == chat.MODE_NORMAL and r.answer == text
+
+
+def test_실생활_정보는_참고_자료로_들어간다(fake_llm):
+    p = fake_llm(_a("네!"))
+    chat.answer("확정일자 어디서 받아?")
+    assert "인터넷등기소" in p.calls[0]["system"] and "출처:" in p.calls[0]["system"]
+
+
+def test_헬스체크에_챗봇_통계(client, fake_llm):
+    fake_llm(_a("www.example.com"), _a("안녕하세요!"))
+    client.post("/api/chat", json={"messages": [_u("안녕")]}, headers={"X-Device-Id": "dev-test-9"})
+    body = client.get("/").json()
+    assert body["chat"]["repaired"] >= 1 and "주소" in body["chat"]["recentRejects"]
 
 
 def test_스키마에_없는_칸은_고쳐_쓰게_한다(fake_llm):
@@ -295,13 +322,12 @@ ALLOWED = text_guard.chat_allowed_numbers(["보증금 2억"], chat.criteria_numb
         "안전합니다.",
         "걱정 마세요.",
         "양호한 편이에요.",
-        "보통 30일 안에 해요.",
-        "www.iros.go.kr",
+        "전세가율 70%면 괜찮아요.",
+        "www.example.com 에서 떼요",
         "전세가율이 80%라 주의 기준에 해당해요.",
         "보증금이 집값의 80%를 넘었어요.",
         "이 집은 안전한 편이에요.",
         "걱정할 필요 없어요.",
-        "제3조에 따라",
     ],
 )
 def test_막히는_답(text):
@@ -319,6 +345,8 @@ def test_막히는_답(text):
         "괜찮아요, 천천히 물어보세요.",
         "빚이 집값을 넘어서면 보증금을 못 돌려받을 수 있어요.",
         "보통 2년 계약이 많아요.",
+        "인터넷등기소(iros.go.kr)에서 700원이면 열람할 수 있어요.",
+        "이사한 날부터 14일 안에 전입신고를 해요.",
         "안녕하세요! 전세 이야기라면 편하게 물어보세요.",
     ],
 )

@@ -255,13 +255,12 @@ _CHAT_CAREFUL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("조심-안심", re.compile(r"(괜찮(아요|습니다|을거예요|을것같아요))(?!.{0,8}(없|않|아니|어렵|못|모르))")),
 )
 
-#: 인터넷 주소 — 지어낸 주소일 수 있다(설명에서 '인터넷등기소 누리집'처럼 말로 쓴다).
-_URL_RE = re.compile(r"https?://|www\.|[a-z0-9-]+\.(?:go\.kr|or\.kr|co\.kr|com|net|org|kr)\b", re.I)
-
-#: 세는 말이 붙은 작은 수(1~10)는 사실을 말하지 않는다 — `1순위`, `3가지`, `2단계`.
-_COUNTER_SMALL_RE = re.compile(
-    r"(?<![\d.,])(10|[1-9])\s*(순위|가지|단계|번째|번|개|곳|명|장|쪽|층|차|년|개월)"
-)
+#: 인터넷 주소 — **공공기관(go.kr·or.kr)만** 허용한다(2026-10-24: 막으면 "어디서 떼요?"에 답을 못 했다).
+#: 그 밖의 주소는 지어냈거나 광고일 수 있다.
+_URL_RE = re.compile(r"(?:https?://)?(?:www\.)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:/\S*)?", re.I)
+_PUBLIC_DOMAIN_RE = re.compile(r"\.(go|or)\.kr$", re.I)
+#: 퍼센트 숫자 — 판정 기준과 부딪힐 수 있는 수는 이것뿐이라 이것만 묶는다(2026-10-24 '자율성')
+_PERCENT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(%|퍼센트|프로)")
 
 
 def chat_allowed_numbers(user_texts: Iterable[str], extra: Iterable[float] = ()) -> set[float]:
@@ -298,12 +297,13 @@ def check_chat_reply(text: str, *, allowed: set[float], careful: bool = False) -
     for name, pattern in _CHAT_VERDICT_RAW_PATTERNS:
         if pattern.search(text):
             return (name, verdict_msg)
-    if _URL_RE.search(text):
-        return ("주소", "인터넷 주소는 쓸 수 없어요. 기관 이름만 말로 써 주세요")
-    bare = _COUNTER_SMALL_RE.sub("", text)
-    bad = [chunk for chunk in unsupported_numbers(bare, allowed) if re.search(r"\d", chunk)]
-    if bad:
-        return ("숫자", f"숫자 '{bad[0]}'는 근거가 없어 쓸 수 없어요. 숫자 없이 말로 풀어 주세요")
+    for m in _URL_RE.finditer(text):
+        host = m.group(1).lower()
+        if "." in host and not _PUBLIC_DOMAIN_RE.search(host):
+            return ("주소", "공공기관(go.kr·or.kr)이 아닌 인터넷 주소는 쓸 수 없어요. 기관 이름만 말로 써 주세요")
+    for m in _PERCENT_RE.finditer(text):
+        if not _supported(float(m.group(1)), allowed):
+            return ("숫자", f"'{m.group(0)}'는 근거가 없어 쓸 수 없어요. 판정 기준표의 퍼센트만 쓰거나 말로 풀어 주세요")
     return None
 
 

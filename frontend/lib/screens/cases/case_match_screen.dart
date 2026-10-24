@@ -99,7 +99,7 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
                 AppText(caseCountTitle(cases), style: AppTypographyNext.title),
                 const SizedBox(height: AppSpacing.md),
                 for (int i = 0; i < cases.length; i++) ...[
-                  CaseCard(match: cases[i], initiallyExpanded: i == 0),
+                  CaseCard(match: cases[i]), // 전부 닫힌 채로 시작(2026-10-24 규혁)
                   const SizedBox(height: AppSpacing.md),
                 ],
               ],

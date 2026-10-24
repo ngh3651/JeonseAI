@@ -69,9 +69,9 @@ void main() {
       expect(find.koTextContaining('나중에 들어간 임차인'), findsNothing);
     });
 
-    testWidgets('처음 펼친 카드: 피하려면은 열림, 공통점은 닫힘 → 이름 줄을 누르면 열린다', (tester) async {
+    testWidgets('펼친 카드도 말풍선 둘은 닫힌 채로 → 이름 줄을 누르면 열린다 (2026-10-24)', (tester) async {
       await _pump(tester, CaseCard(match: _case(), initiallyExpanded: true));
-      expect(find.koTextContaining('가압류를 언제 풀지'), findsOneWidget);
+      expect(find.koTextContaining('가압류를 언제 풀지'), findsNothing);
       expect(find.koTextContaining('이 집에도 가압류가'), findsNothing);
 
       await tester.tap(find.koText('우리 매물과 공통점'));
@@ -80,7 +80,7 @@ void main() {
 
       await tester.tap(find.koText('이런 피해를 피하려면'));
       await tester.pumpAndSettle();
-      expect(find.koTextContaining('가압류를 언제 풀지'), findsNothing);
+      expect(find.koTextContaining('가압류를 언제 풀지'), findsOneWidget);
     });
 
     testWidgets('피하려면 데이터가 없는 판례는 그 말풍선을 통째로 숨긴다', (tester) async {

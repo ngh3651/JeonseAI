@@ -390,3 +390,25 @@ def test_로그에_질문_글이_없다(fake_llm, caplog):
     assert "[챗봇" in joined
     for word in ("홍길동", "김영희", "점심"):
         assert word not in joined
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 실측(2026-10-24 tools/try_chat.py) 뒤 다듬기
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_이모지는_지우고_한_줄_한_문장_빈_줄_없음():
+    out = chat.tidy("안녕하세요! 😊 첫 전세라면 편하게 물어보세요. 등기부를 먼저 봐요.\n\n· 갑구 확인\n\n끝이에요.")
+    assert out == "안녕하세요!\n첫 전세라면 편하게 물어보세요.\n등기부를 먼저 봐요.\n· 갑구 확인\n끝이에요."
+
+
+def test_주의_기준을_위험이라고_하면_고쳐_쓰게_한다(fake_llm):
+    caution = thresholds.JEONSE_RATIO_CAUTION_PCT
+    danger = thresholds.JEONSE_RATIO_DANGER_PCT
+    p = fake_llm(
+        _a(f"보증금이 집값의 {caution}%를 넘으면 위험할 수 있어요."),
+        _a(f"{caution}%를 넘으면 주의, {danger}%를 넘으면 위험 신호로 봐요."),
+    )
+    r = chat.answer("집 너무 비싸 ㅜ")
+    assert len(p.calls) == 2 and "'주의' 기준" in p.calls[1]["user"]
+    assert r.layer == "AI-고쳐씀"

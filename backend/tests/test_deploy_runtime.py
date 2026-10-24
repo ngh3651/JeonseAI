@@ -244,6 +244,50 @@ def test_시세_DB를_내려받아_원자적으로_저장한다(runtime_env, tmp
     assert len(opened) == 2
 
 
+def test_주소가_바뀌면_새_시세_DB를_받는다(runtime_env, monkeypatch):
+    """2026-10-24: 2026년분 DB를 새 주소로 올려도 '이미 있음'으로 건너뛰던 것."""
+    prep = _load_prepare_runtime()
+    monkeypatch.setattr(prep.time, "sleep", lambda s: None)
+    price = runtime_env / "price"
+    price.mkdir(parents=True, exist_ok=True)
+
+    import sqlite3
+
+    def db_bytes(tag: str) -> bytes:
+        path = runtime_env / f"{tag}.sqlite"
+        con = sqlite3.connect(path)
+        con.execute("create table t(v text)")
+        con.execute("insert into t values (?)", (tag,))
+        con.commit()
+        con.close()
+        return path.read_bytes()
+
+    v2025, v2026 = db_bytes("y2025"), db_bytes("y2026")
+    opened: list[str] = []
+
+    def opener(url, timeout):
+        opened.append(url)
+        return _FakeResp(v2026 if "2026" in url else v2025)
+
+    # 지문 기록이 없는 옛 파일(지금 서버 상태) → 다시 받지 않고 기록만
+    (price / "official_price.sqlite").write_bytes(v2025)
+    monkeypatch.setenv("PRICE_DB_URLS", "https://example.invalid/price-db-2025/official_price.sqlite")
+    prep.prepare_price_db(opener=opener)
+    assert opened == [] and (price / "official_price.sqlite.source").exists()
+
+    # 같은 주소 → 건너뜀
+    prep.prepare_price_db(opener=opener)
+    assert opened == []
+
+    # 주소가 바뀜 → 새로 받아 바꿔 끼운다
+    monkeypatch.setenv("PRICE_DB_URLS", "https://example.invalid/price-db-2026/official_price.sqlite")
+    prep.prepare_price_db(opener=opener)
+    assert len(opened) == 1 and (price / "official_price.sqlite").read_bytes() == v2026
+    prep.prepare_price_db(opener=opener)
+    assert len(opened) == 1  # 다음 시작엔 건너뜀
+    assert "2026" not in (price / "official_price.sqlite.source").read_text()  # 주소는 남기지 않고 지문만
+
+
 def test_내려받기_실패는_3번_다시_시도하고_서버를_막지_않는다(runtime_env, monkeypatch, capsys):
     prep = _load_prepare_runtime()
     monkeypatch.setattr(prep.time, "sleep", lambda s: None)

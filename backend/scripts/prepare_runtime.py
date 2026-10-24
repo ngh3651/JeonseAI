@@ -152,29 +152,69 @@ def download(url: str, dest: Path, *, opener=urllib.request.urlopen) -> bool:
     return False
 
 
+def _source_marker(price_dir: Path, name: str) -> Path:
+    return price_dir / f"{name}.source"
+
+
+def _url_fingerprint(url: str) -> str:
+    """주소의 지문(해시) — 주소 자체는 토큰이 섞일 수 있어 파일에 남기지 않는다."""
+    import hashlib
+
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+
+
 def prepare_price_db(*, opener=urllib.request.urlopen) -> None:
+    """시세 DB 준비 — 없으면 받고, **`PRICE_DB_URLS`의 주소가 바뀌었으면 새로 받는다**(2026-10-24).
+
+    예전엔 파일이 있으면 무조건 건너뛰어, 2026년분 DB를 새 주소로 올려도 서버는 옛 파일을 계속 썼다.
+    이제 받은 주소의 지문을 `<이름>.source`에 남기고, 지문이 다르면 다시 받는다(임시 파일에 받은 뒤 바꿔 끼우므로
+    받는 동안에도 옛 DB로 조회된다). 지문 기록이 없는 옛 파일은 지금 주소에서 받은 것으로 보고 기록만 남긴다.
+    """
     price_dir = settings.price_db_dir()
-    missing = [n for n in PRICE_DB_FILENAMES if not (price_dir / n).is_file()]
-    if not missing:
-        log(f"시세 DB 있음 — 건너뜀 ({', '.join(PRICE_DB_FILENAMES)})")
-        return
     urls = [u.strip() for u in settings.env_str("PRICE_DB_URLS").split(",") if u.strip()]
+    missing = [n for n in PRICE_DB_FILENAMES if not (price_dir / n).is_file()]
     if not urls:
-        log(
-            f"⚠ 시세 DB 없음({', '.join(missing)}) + PRICE_DB_URLS 미설정 — 시세 자동 조회는"
-            " 실거래가(MOLIT)만 씁니다. 분석은 그대로 됩니다"
-        )
+        if missing:
+            log(
+                f"⚠ 시세 DB 없음({', '.join(missing)}) + PRICE_DB_URLS 미설정 — 시세 자동 조회는"
+                " 실거래가(MOLIT)만 씁니다. 분석은 그대로 됩니다"
+            )
+        else:
+            log(f"시세 DB 있음 — 건너뜀 ({', '.join(PRICE_DB_FILENAMES)})")
         return
     for i, url in enumerate(urls, 1):
         name = _target_name(url)
         if name is None:
             log(f"⚠ PRICE_DB_URLS {i}번째 주소의 파일 이름을 모름 — 건너뜀 (official_price/tax_base.sqlite[.gz])")
             continue
-        if name not in missing:
-            continue
-        log(f"시세 DB 내려받는 중: {name} (PRICE_DB_URLS {i}번째)")
-        download(url, price_dir / name, opener=opener)
+        dest = price_dir / name
+        marker = _source_marker(price_dir, name)
+        fp = _url_fingerprint(url)
+        if dest.is_file():
+            try:
+                recorded = marker.read_text(encoding="utf-8").strip()
+            except OSError:
+                recorded = ""
+            if not recorded:
+                _write_marker(marker, fp)  # 지문 없던 옛 파일 — 지금 주소에서 받은 것으로 기록만
+                log(f"시세 DB 있음 — 건너뜀 ({name})")
+                continue
+            if recorded == fp:
+                log(f"시세 DB 있음 — 건너뜀 ({name})")
+                continue
+            log(f"시세 DB 주소가 바뀜 → 새로 받는 중: {name} (PRICE_DB_URLS {i}번째)")
+        else:
+            log(f"시세 DB 내려받는 중: {name} (PRICE_DB_URLS {i}번째)")
+        if download(url, dest, opener=opener):
+            _write_marker(marker, fp)
 
+
+def _write_marker(marker: Path, fp: str) -> None:
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(fp, encoding="utf-8")
+    except OSError:
+        pass
 
 def precedent_index_ready(index_dir: Path | None = None) -> bool:
     """판례 인덱스가 **끝까지** 만들어졌는가 — 적재가 마지막에 쓰는 `meta.json`으로 판단한다."""

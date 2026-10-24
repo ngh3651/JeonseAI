@@ -67,10 +67,7 @@ jobs:
           if ! flutter test 2>&1 | tee flutter-test.log; then
             # 보통 리포터는 실패한 테스트 줄 끝에 [E], GitHub 리포터(Actions에서 저절로 켜진다)는 줄 앞에 ❌를 붙인다
             sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g; s/^::(group|endgroup)::/  /' flutter-test.log > flutter-test.clean.log
-            grep -E '\[E\]|❌' flutter-test.clean.log | sort -u | head -n 10 \
-              | while IFS= read -r line; do echo "::error title=실패한 테스트::${line}"; done
-            awk '/\[E\]|❌/{n=40} n>0{print; n--}' flutter-test.clean.log | head -n 400 \
-              | python3 -c "import sys; t=sys.stdin.read(); print('::error title=실패 내용::' + t.replace('%','%25').replace('\r','').replace('\n','%0A'))"
+            python3 ../.github/scripts/flutter_failures.py flutter-test.clean.log
             exit 1
           fi
 

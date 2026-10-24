@@ -20,6 +20,7 @@ import 'design_system/theme.dart';
 import 'repositories/analysis_repository.dart';
 import 'repositories/api_analysis_repository.dart';
 import 'repositories/api_content_repository.dart';
+import 'repositories/chat_history_repository.dart';
 import 'repositories/content_repository.dart';
 import 'repositories/payment_repository.dart';
 import 'state/app_session.dart';
@@ -106,6 +107,7 @@ class JeonseSafeApp extends StatelessWidget {
     this.analysisRepository,
     this.contentRepository,
     this.paymentRepository,
+    this.chatHistoryRepository,
     this.appSession,
   });
 
@@ -113,6 +115,9 @@ class JeonseSafeApp extends StatelessWidget {
   final AnalysisRepository? analysisRepository;
   final ContentRepository? contentRepository;
   final PaymentRepository? paymentRepository;
+
+  /// 챗봇 지난 대화(이 폰에만). null이면 폰 저장(shared_preferences).
+  final ChatHistoryRepository? chatHistoryRepository;
 
   /// 테스트 전용 — 가짜 카카오·저장소를 넣은 세션. null이면 앱 전체 세션([AppSession.instance]).
   final AppSession? appSession;
@@ -136,6 +141,10 @@ class JeonseSafeApp extends StatelessWidget {
         // 요금제·테스트 결제·내 패스 (2026-10-22, P2-1)
         Provider<PaymentRepository>(
           create: (_) => paymentRepository ?? ApiPaymentRepository(),
+        ),
+        // 챗봇 지난 대화 — 이 폰에만 저장 (챗봇 v2, 2026-10-24)
+        Provider<ChatHistoryRepository>(
+          create: (_) => chatHistoryRepository ?? PrefsChatHistoryRepository(),
         ),
         // 계약 일정 — 기기 로컬 저장. 여정 화면과 홈 배너가 같은 값을 본다.
         ChangeNotifierProvider<JourneyScheduleStore>.value(

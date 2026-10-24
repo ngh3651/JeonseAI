@@ -200,6 +200,21 @@ def _numbers_grounded(text: str, source: str) -> bool:
     return not bad
 
 
+def _why_not_ok(kind: str, text: str, source: str = "") -> str:
+    """`_field_ok`가 왜 떨어뜨렸나 — 이름만(글은 남기지 않는다)."""
+    if not text or not text.strip():
+        return "빈칸"
+    if len(text) > _MAX_LEN[kind]:
+        return "길이"
+    if text_guard.banned_hit(text) is not None:
+        return "금지표현"
+    if text_guard.grade_word_hit(text) is not None:
+        return "등급단어"
+    if not _numbers_grounded(text, source):
+        return "숫자"
+    return "?"
+
+
 def _field_ok(kind: str, text: str, source: str = "") -> bool:
     if not text or not text.strip():
         return False
@@ -228,6 +243,31 @@ def fallback_common_point(match: RetrievedPrecedent) -> str:
     return "이 매물의 위험 신호와 같은 유형의 사건이에요"
 
 
+# ── 마지막 호출 결과 (헬스체크 `GET /`의 `precedentExplain`) — 2026-10-24 실기기에서 판례 카드가 전부 폴백(원문 요지 +
+#    "결과는 원문을 확인해 주세요")으로 나왔는데 로그 없이는 왜인지 몰랐다. 사건번호·글은 남기지 않고 개수·이유 이름만.
+_last: dict = {}
+
+
+def last_status() -> dict:
+    return dict(_last)
+
+
+def _remember(result: str, *, reason: str = "", kept: int = 0, drops: list[str] | None = None, elapsed: float = 0.0) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    _last.clear()
+    _last.update(
+        {
+            "at": datetime.now(timezone(timedelta(hours=9))).strftime("%m-%d %H:%M"),
+            "result": result,
+            "reason": reason,
+            "kept": kept,
+            "drops": drops or [],
+            "seconds": round(elapsed, 1),
+        }
+    )
+
+
 def explain_matches(
     matches: list[RetrievedPrecedent], verdict_summary: dict
 ) -> tuple[dict[str, PrecedentExplanation], str]:
@@ -242,6 +282,7 @@ def explain_matches(
     api_key = _load_api_key()
     if not api_key:
         _log.info("[Solar/판례] 호출 생략 → 폴백 문구 (원인: API 키 없음)")
+        _remember("폴백", reason="키 없음")
         return {}, "폴백"
 
     payload = {
@@ -285,14 +326,17 @@ def explain_matches(
 
     if parsed is None:
         _log.info(f"[Solar/판례] 실패 → 전체 폴백 (원인: {last_error}, {time.perf_counter() - t0:.1f}초)")
+        _remember("폴백", reason=last_error.split(":")[0], elapsed=time.perf_counter() - t0)
         return {}, "폴백"
 
     valid_ids = {m.doc.case_id for m in matches}
     out: dict[str, PrecedentExplanation] = {}
     dropped = 0
+    drops: list[str] = []
     for exp in parsed.cases:
         if exp.case_id not in valid_ids:
             dropped += 1  # 검색 결과에 없는 판례 언급 → 폐기 (환각 인용 차단)
+            drops.append("없는사건")
             continue
         # 줄바꿈 정리 + `**굵게**` 표시를 떼어 강조 목록(emphasis)으로 옮긴다 — 옛 앱도 굵게를 그린다
         summary, b_sum = split_bold(tidy_lines(exp.easy_summary))
@@ -313,15 +357,19 @@ def explain_matches(
                 "emphasis": emphasis,
             }
         )
-        if not _field_ok("easy_summary", exp.easy_summary, source_text) or not _field_ok(
-            "common_point", exp.common_point, source_text
-        ):
+        if not _field_ok("easy_summary", exp.easy_summary, source_text):
             dropped += 1
+            drops.append("요약검사:" + _why_not_ok("easy_summary", exp.easy_summary, source_text))
+            continue
+        if not _field_ok("common_point", exp.common_point, source_text):
+            dropped += 1
+            drops.append("공통점검사:" + _why_not_ok("common_point", exp.common_point, source_text))
             continue
         # 공통점이 이 집의 숫자를 하나도 짚지 않으면(어느 집에나 맞는 말) 버린다 → 폴백
         if not _mentions_property(exp.common_point, property_text):
             _log.info(f"[Solar/판례] 공통점에 이 집 숫자 없음 → 폐기 ({exp.case_id})")
             dropped += 1
+            drops.append("이집숫자없음")
             continue
         # 조언만 검사에 걸리면 **조언 칸만** 버린다(요약·공통점은 살린다) → 호출부가 큐레이션 조언으로
         if exp.advice and not _field_ok("advice", exp.advice, source_text):
@@ -333,9 +381,11 @@ def explain_matches(
 
     elapsed = time.perf_counter() - t0
     if not out:
-        _log.info(f"[Solar/판례] 사용 가능 설명 0건 → 전체 폴백 ({elapsed:.1f}초)")
+        _log.info(f"[Solar/판례] 사용 가능 설명 0건 → 전체 폴백 ({elapsed:.1f}초) · 이유 {drops}")
+        _remember("폴백", reason="쓸 설명 0건", drops=drops, elapsed=elapsed)
         return {}, "폴백"
     missing = len(matches) - len(out)
     source = "AI 생성" if missing == 0 and dropped == 0 else "AI 생성(일부 폴백)"
     _log.info(f"[Solar/판례] 응답 OK ({elapsed:.1f}초) — 설명 {len(out)}건 · 폐기/누락 {dropped + missing}건")
+    _remember("AI", kept=len(out), drops=drops, elapsed=elapsed)
     return out, source

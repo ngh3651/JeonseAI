@@ -169,6 +169,9 @@ def health_check():
         from .services import chat as chat_service
 
         body["chat"] = chat_service.stats()  # 챗봇이 AI로 답했나·고쳐 썼나·기본 문장이었나(2026-10-24)
+        from .services.precedent import explainer as precedent_explainer
+
+        body["precedentExplain"] = precedent_explainer.last_status()  # 판례 AI 설명 마지막 결과·폐기 이유(2026-10-24)
     except Exception:  # noqa: BLE001 — 헬스체크는 절대 실패하지 않는다
         pass
     commit = settings.env_str("RAILWAY_GIT_COMMIT_SHA")

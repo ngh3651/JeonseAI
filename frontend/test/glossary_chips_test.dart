@@ -1,17 +1,18 @@
-/// S-12 챗봇 화면 (2026-10-24 대화형) — 추천 칩 + 대화가 그려지는 방식.
+/// S-12 챗봇 화면 (2026-10-24 리디자인) — 빈 화면 · 대화 · 기다리는 중 · 연결 실패.
 ///
-/// 못 박는 것:
-///   · 빈 화면: 인사 + **AI 안내 한 줄** + 추천 칩 6개 + [더 보기]
-///   · 말풍선 밑 **출처 라벨·'내 리포트 보기' 버튼·용어 밑줄이 없다**(규혁: "여기선 딱 챗봇만")
-///   · `**굵게**`는 굵게, 표시 기호는 안 보인다
-///   · **앞 대화를 통째로 보낸다**("더 쉽게"가 이어지게)
-///   · 말풍선 폭이 화면의 75%를 넘지 않는다
-///   · [새 대화]로 지운다
+/// 못 박는 것 (Claude Design 협의 스펙):
+///   · 빈 화면: 추천 질문 4개(누르면 바로 보냄), [더 보기] 없음, AI 안내 한 줄
+///   · 말풍선 폭 ≤ 화면의 75%, 말풍선 밑 라벨·리포트 버튼 없음
+///   · 기다리는 중: "답을 쓰고 있어요…" + 보내기 비활성
+///   · 연결 실패: 안내 + [다시 시도](재전송), 경고 아이콘 없음
+///   · 글자 배율 1.3에서 네 상태 모두 넘침 없음 · 입력칸은 4줄까지
+///   · 앞 대화를 통째로 보낸다 · 엔터는 줄바꿈
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jeonse_ai/design_system/text/app_text.dart';
 import 'package:jeonse_ai/design_system/text/keep_all.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
@@ -20,6 +21,7 @@ import 'package:jeonse_ai/models/content_models.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/repositories/content_repository.dart';
 import 'package:jeonse_ai/screens/chatbot/glossary_chatbot_screen.dart';
+import 'package:jeonse_ai/services/api_client.dart';
 import 'package:jeonse_ai/state/app_session.dart';
 import 'package:provider/provider.dart';
 
@@ -27,29 +29,29 @@ import 'support/ko_finders.dart';
 
 /// 서버가 실제로 내려주는 18개 (GET /api/glossary, 2026-08-14 확인).
 /// **대항력은 없다** — 검수 대기라 응답에서 제외된다(docs/terms-review-queue.md).
-const _serverTerms = <String>[
-  '전세가율', '선순위 채권', '근저당권', '신탁등기', '압류', '가압류',
-  '경매개시결정', '임차권등기', '확정일자', '전입신고', '등기사항전부증명서',
-  '갑구', '을구', '말소', '다가구주택', '전세보증금 반환보증', 'HUG', '실거래가',
-];
-
 class _FakeContentRepo implements ContentRepository {
-  _FakeContentRepo({this.reply});
+  _FakeContentRepo({this.reply, this.pending, this.fail = false});
 
   /// null이면 질문을 되풀이한 답을 준다.
   final ChatReply? reply;
+
+  /// 있으면 이 Completer가 끝날 때까지 답을 기다린다(기다리는 중 상태 시험)
+  final Completer<ChatReply>? pending;
+
+  /// true면 연결 실패
+  bool fail;
 
   /// 화면이 보낸 대화들(호출마다 한 묶음)
   final List<List<ChatTurn>> sent = [];
 
   @override
-  Future<List<GlossaryTerm>> glossaryTerms() async => [
-    for (final t in _serverTerms) GlossaryTerm(term: t, description: '$t 설명이에요.'),
-  ];
+  Future<List<GlossaryTerm>> glossaryTerms() async => const [];
 
   @override
   Future<ChatReply> chat(List<ChatTurn> messages) async {
     sent.add(List.of(messages));
+    if (fail) throw const ApiException('연결 실패');
+    if (pending != null) return pending!.future;
     return reply ?? ChatReply(answer: '${messages.last.content} 설명이에요.', model: 'solar-pro2');
   }
 
@@ -92,11 +94,13 @@ class _EmptyAnalysisRepo extends AnalysisRepository {
 Future<_FakeContentRepo> _pump(
   WidgetTester tester, {
   ChatReply? reply,
+  Completer<ChatReply>? pending,
+  bool fail = false,
   double textScale = 1.0,
   double width = 360,
 }) async {
-  final repo = _FakeContentRepo(reply: reply);
-  tester.view.physicalSize = Size(width * 3, 800 * 3);
+  final repo = _FakeContentRepo(reply: reply, pending: pending, fail: fail);
+  tester.view.physicalSize = Size(width * 3, 760 * 3);
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
 
@@ -104,16 +108,16 @@ Future<_FakeContentRepo> _pump(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppSession()),
-        ChangeNotifierProvider<AnalysisRepository>(
-          create: (_) => _EmptyAnalysisRepo(),
-        ),
+        ChangeNotifierProvider<AnalysisRepository>(create: (_) => _EmptyAnalysisRepo()),
         Provider<ContentRepository>.value(value: repo),
       ],
       child: MaterialApp(
         theme: buildAppTheme(),
-        home: MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
-          child: const GlossaryChatbotScreen(),
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: const GlossaryChatbotScreen(),
+          ),
         ),
       ),
     ),
@@ -122,57 +126,43 @@ Future<_FakeContentRepo> _pump(
   return repo;
 }
 
-Future<void> _send(WidgetTester tester, String text) async {
+/// 보내고, 답이 올 때까지(기다리는 중이면 몇 프레임만)
+Future<void> _send(WidgetTester tester, String text, {bool settle = true}) async {
   await tester.enterText(find.byType(TextField), text);
   await tester.tap(find.byIcon(Icons.arrow_upward)); // 엔터는 줄바꿈 — 보내기는 버튼으로
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }
 
 void main() {
-  group('빈 상태', () {
-    testWidgets('인사 + AI 안내 한 줄 + 추천 칩 6개 + [더 보기]', (tester) async {
+  group('① 빈 화면', () {
+    testWidgets('추천 질문 4개 + AI 안내, [더 보기]·단어 칩 없음', (tester) async {
       await _pump(tester);
-
       expect(find.koText('챗봇'), findsOneWidget);
-      expect(find.koText('전세·부동산,\n뭐든 물어보세요'), findsOneWidget);
+      expect(find.koText('전세·부동산, 뭐든 물어보세요'), findsOneWidget);
       expect(find.koText(kChatAiNotice), findsOneWidget);
-      expect(find.byType(ActionChip), findsNWidgets(kFeaturedChipCount));
-      expect(find.koTextContaining('더 보기'), findsOneWidget);
-    });
-
-    testWidgets('첫 칩 순서는 촬영 대본 순서로 고정된다', (tester) async {
-      await _pump(tester);
-
-      // 칩 라벨은 AppText라 원문(data)을 그대로 읽는다(줄바꿈 부호는 그릴 때 붙는다).
-      final labels = tester
-          .widgetList<ActionChip>(find.byType(ActionChip))
-          .map((c) => (c.label as AppText).data!)
-          .toList();
-
-      // 대항력은 검수 대기라 서버 응답에 없다 → 그 자리는 남은 용어가 채운다
-      expect(labels.take(4).toList(), ['근저당권', '선순위 채권', '전세가율', '확정일자']);
-      expect(labels.contains('신탁등기'), isTrue);
-      expect(labels.length, kFeaturedChipCount);
-    });
-
-    testWidgets('[더 보기]를 누르면 나머지가 펼쳐진다', (tester) async {
-      await _pump(tester);
-
-      await tester.tap(find.koTextContaining('더 보기'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(ActionChip), findsNWidgets(_serverTerms.length));
-    });
-
-    testWidgets('글자 배율 2.0·좁은 화면에서도 칩이 넘치지 않는다', (tester) async {
-      for (final scale in [1.3, 2.0]) {
-        await _pump(tester, textScale: scale, width: 320);
-        expect(tester.takeException(), isNull, reason: '글자 배율 $scale 에서 깨졌어요');
+      for (final q in kSuggestedQuestions) {
+        expect(find.koText(q), findsOneWidget);
       }
+      expect(kSuggestedQuestions.length, 4);
+      expect(find.koTextContaining('더 보기'), findsNothing);
+      expect(find.byType(ActionChip), findsNothing);
+    });
+
+    testWidgets('질문 카드를 누르면 그 문장을 바로 보낸다', (tester) async {
+      final repo = await _pump(tester);
+      await tester.tap(find.koText(kSuggestedQuestions[1]));
+      await tester.pumpAndSettle();
+      expect(repo.sent.single.single.content, kSuggestedQuestions[1]);
+      expect(find.koText('${kSuggestedQuestions[1]} 설명이에요.'), findsOneWidget);
     });
   });
 
-  group('대화', () {
+  group('② 대화', () {
     testWidgets('엔터는 줄바꿈이고 보내지 않는다', (tester) async {
       final repo = await _pump(tester);
       final field = tester.widget<TextField>(find.byType(TextField));
@@ -185,29 +175,24 @@ void main() {
       expect(repo.sent.single.last.content, '첫 줄\n둘째 줄');
     });
 
-    testWidgets('칩을 누르면 질문과 답 — 출처 라벨·유도 버튼·밑줄이 없다', (tester) async {
+    testWidgets('답에 출처 라벨·리포트 버튼이 없다', (tester) async {
       await _pump(tester);
-
-      await tester.tap(find.koText('근저당권'));
-      await tester.pumpAndSettle();
-
-      expect(find.koText('근저당권'), findsOneWidget); // 사용자 말풍선
+      await _send(tester, '근저당권');
       expect(find.koText('근저당권 설명이에요.'), findsOneWidget);
       for (final gone in ['검수된 용어 사전', '준비된 문구', 'solar-pro2', '내 리포트 보기', '매물 분석하러 가기']) {
         expect(find.koText(gone), findsNothing, reason: '$gone 이 보여요');
       }
+      expect(find.koText('세이프'), findsOneWidget);
     });
 
-    testWidgets('**굵게**는 굵게 그리고 표시 기호는 안 보인다', (tester) async {
+    testWidgets('**굵게**는 굵게(primaryDeep), 표시 기호는 안 보인다', (tester) async {
       await _pump(tester, reply: const ChatReply(answer: '가압류는 **집을 잠깐 묶어 두는 것**이에요.\n쉽죠?'));
       await _send(tester, '가압류 쉽게');
-
       expect(find.koTextContaining('**'), findsNothing);
-      // 어절 줄바꿈 부호가 끼어 조각이 나뉠 수 있다 — 굵은 조각들의 글자를 모아 본다
       final boldText = StringBuffer();
       for (final r in tester.widgetList<RichText>(find.byType(RichText))) {
         r.text.visitChildren((s) {
-          if (s is TextSpan && s.style?.fontWeight == FontWeight.w700) {
+          if (s is TextSpan && s.style?.fontWeight == FontWeight.w600) {
             boldText.write(stripWordJoiner(s.text ?? ''));
           }
           return true;
@@ -216,11 +201,26 @@ void main() {
       expect(boldText.toString(), contains('집을 잠깐 묶어 두는 것'));
     });
 
+    testWidgets('번호 목록·점 목록·주소 칸을 그린다', (tester) async {
+      await _pump(
+        tester,
+        reply: const ChatReply(
+          answer: '인터넷등기소(iros.go.kr)에서 떼요.\n1. 사이트 접속\n2. 주소 검색\n· 열람용 700원\n· 발급용 1,000원',
+        ),
+      );
+      await _send(tester, '등기부 떼는 법');
+      expect(find.text('1'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+      expect(find.text('iros.go.kr'), findsOneWidget);
+      expect(find.koTextContaining('사이트 접속'), findsOneWidget);
+      expect(find.koTextContaining('열람용 700원'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('앞 대화를 통째로 보낸다 — "더 쉽게"가 이어진다', (tester) async {
       final repo = await _pump(tester);
       await _send(tester, '가압류 알려줘');
       await _send(tester, '더 쉽게');
-
       final last = repo.sent.last;
       expect(last.map((t) => t.isUser).toList(), [true, false, true]);
       expect(last.first.content, '가압류 알려줘');
@@ -229,12 +229,9 @@ void main() {
     });
 
     testWidgets('말풍선은 화면 폭의 75%를 넘지 않는다', (tester) async {
-      final long = '아주 긴 질문이에요 ' * 10; // 한 줄을 넘칠 만큼만(화면 밖으로 밀리지 않게)
       await _pump(tester, reply: ChatReply(answer: '아주 긴 답이에요 ' * 10));
-      await _send(tester, long);
-
+      await _send(tester, '아주 긴 질문이에요 ' * 10);
       const limit = 360.0 * kBubbleWidthFactor;
-      // 글자 덩어리의 폭 = 말풍선 안쪽 폭 → 말풍선 폭(75%)보다 작아야 한다
       expect(tester.getSize(find.koTextContaining('아주 긴 질문', skipOffstage: false)).width, lessThanOrEqualTo(limit));
       expect(tester.getSize(find.koTextContaining('아주 긴 답', skipOffstage: false)).width, lessThanOrEqualTo(limit));
       expect(tester.takeException(), isNull);
@@ -244,10 +241,85 @@ void main() {
       await _pump(tester);
       await _send(tester, '안녕');
       expect(find.koText(kChatAiNotice), findsNothing);
-
       await tester.tap(find.byTooltip('새 대화'));
       await tester.pumpAndSettle();
       expect(find.koText(kChatAiNotice), findsOneWidget);
+    });
+
+    testWidgets('입력칸은 4줄까지만 늘어나고 안에서 스크롤', (tester) async {
+      await _pump(tester);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.minLines, 1);
+      expect(field.maxLines, 4);
+      final h1 = tester.getSize(find.byType(TextField)).height;
+      await tester.enterText(find.byType(TextField), '1\n2\n3\n4');
+      await tester.pumpAndSettle();
+      final h4 = tester.getSize(find.byType(TextField)).height;
+      await tester.enterText(find.byType(TextField), '1\n2\n3\n4\n5');
+      await tester.pumpAndSettle();
+      final h5 = tester.getSize(find.byType(TextField)).height;
+      expect(h4, greaterThan(h1));
+      expect(h5, h4);
+    });
+  });
+
+  group('③ 기다리는 중', () {
+    testWidgets('점 + "답을 쓰고 있어요…", 보내기 비활성', (tester) async {
+      final pending = Completer<ChatReply>();
+      await _pump(tester, pending: pending);
+      await _send(tester, '안녕', settle: false);
+      expect(find.koText(kChatLoadingMessage), findsOneWidget);
+      final btn = tester.widget<Semantics>(
+        find.byWidgetPredicate((w) => w is Semantics && w.properties.label == '답을 기다리는 중'),
+      );
+      expect(btn.properties.enabled, isFalse);
+      pending.complete(const ChatReply(answer: '안녕하세요!'));
+      await tester.pumpAndSettle();
+      expect(find.koText(kChatLoadingMessage), findsNothing);
+      expect(find.koText('안녕하세요!'), findsOneWidget);
+    });
+  });
+
+  group('④ 연결 실패', () {
+    testWidgets('안내 + [다시 시도] → 다시 보냄, 경고 아이콘 없음', (tester) async {
+      final repo = await _pump(tester, fail: true);
+      await _send(tester, '안녕');
+      expect(find.koText(kChatFailedMessage), findsOneWidget);
+      expect(find.byIcon(Icons.error), findsNothing);
+      expect(find.byIcon(Icons.warning_amber), findsNothing);
+      repo.fail = false;
+      await tester.tap(find.koText('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(repo.sent.length, 2);
+      expect(find.koText('안녕 설명이에요.'), findsOneWidget);
+      expect(find.koText(kChatFailedMessage), findsNothing);
+    });
+  });
+
+  group('글자 배율 1.3', () {
+    testWidgets('네 상태 모두 넘치지 않는다', (tester) async {
+      // ① 빈 화면
+      await _pump(tester, textScale: 1.3);
+      expect(tester.takeException(), isNull, reason: '빈 화면');
+      // ② 대화
+      await _pump(
+        tester,
+        textScale: 1.3,
+        reply: const ChatReply(answer: '등기부등본은 **인터넷등기소**에서 떼요.\n1. 사이트 접속\n· 열람용 700원'),
+      );
+      await _send(tester, '등기부등본 어떻게 떼요?');
+      expect(tester.takeException(), isNull, reason: '대화');
+      // ③ 기다리는 중
+      final pending = Completer<ChatReply>();
+      await _pump(tester, textScale: 1.3, pending: pending);
+      await _send(tester, '안녕', settle: false);
+      expect(tester.takeException(), isNull, reason: '기다리는 중');
+      pending.complete(const ChatReply(answer: '네'));
+      await tester.pumpAndSettle();
+      // ④ 연결 실패
+      await _pump(tester, textScale: 1.3, fail: true);
+      await _send(tester, '안녕');
+      expect(tester.takeException(), isNull, reason: '연결 실패');
     });
   });
 }

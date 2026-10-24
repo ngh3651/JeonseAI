@@ -190,8 +190,9 @@ def criteria_block() -> str:
     t = thresholds
     return "\n".join(
         [
-            f"· 전세가율(보증금 ÷ 집값): {t.JEONSE_RATIO_CAUTION_PCT}%를 넘으면 주의, "
-            f"{t.JEONSE_RATIO_DANGER_PCT}%를 넘으면 위험 신호로 봐요 (HUG 전세보증금반환보증 담보인정비율 기준).",
+            f"· 전세가율(보증금 ÷ 집값): {t.JEONSE_RATIO_CAUTION_PCT}%를 넘으면 '주의', "
+            f"{t.JEONSE_RATIO_DANGER_PCT}%를 넘으면 '위험 신호'로 봐요 (HUG 전세보증금반환보증 담보인정비율 기준). "
+            f"⚠ {t.JEONSE_RATIO_CAUTION_PCT}%는 '주의'예요 — '위험'이라고 하지 마세요.",
             f"· 선순위 채권(나보다 먼저 받아 가는 빚) ÷ 집값: {t.SENIOR_DEBT_RATIO_DANGER_PCT}%를 넘으면 위험 신호 "
             "(HUG 전세보증 가입 요건).",
             f"· 보증금 + 선순위 채권이 집값의 {t.COMBINED_RATIO_DANGER_PCT}%를 넘으면 위험 신호 (HUG 가입 요건).",
@@ -273,20 +274,49 @@ def llm_enabled() -> bool:
 MAX_BOLD_SPANS = 3
 
 
+#: 이모지·그림 문자 — 말투 규칙(이모지 없음)을 코드로 지킨다(실측 2026-10-24: 😊가 나왔다)
+_EMOJI_RE = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]")
+#: 한 줄 안의 문장 경계 — '…요. 다음' / '…다. 다음' / '…요? 다음'
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[요다죠까네][.!?])\s+(?=\S)")
+
+
 def tidy(text: str) -> str:
-    """모양만 고친다(뜻은 그대로): 마크다운 나열·제목 → '· ', 짝이 안 맞거나 너무 많은 굵게는 뺀다."""
-    lines = []
-    for line in (text or "").replace("\r\n", "\n").split("\n"):
+    """모양만 고친다(뜻은 그대로).
+
+    - 마크다운 나열·제목 → '· ' · 이모지 삭제 · 빈 줄 삭제
+    - 나열이 아닌 줄에 문장이 여럿 붙어 있으면 **문장마다 줄을 나눈다**(한 줄 한 문장 — 실측 2026-10-24)
+    - 짝이 안 맞거나 너무 많은 굵게는 뺀다
+    """
+    lines: list[str] = []
+    for line in _EMOJI_RE.sub("", (text or "").replace("\r\n", "\n")).split("\n"):
         s = line.strip()
         s = re.sub(r"^#{1,6}\s*", "", s)
         s = re.sub(r"^[-*•]\s+", "· ", s)
-        lines.append(s)
+        s = re.sub(r"\s{2,}", " ", s)
+        if not s:
+            continue
+        if s.startswith("· "):
+            lines.append(s)
+        else:
+            lines.extend(part.strip() for part in _SENTENCE_SPLIT_RE.split(s) if part.strip())
     out = "\n".join(lines)
-    out = re.sub(r"\n{3,}", "\n\n", out).strip()
     marks = out.count("**")
     if marks % 2 == 1 or marks // 2 > MAX_BOLD_SPANS:
         out = out.replace("**", "")
     return out
+
+
+def criteria_mixup(text: str) -> str | None:
+    """판정 기준 숫자를 **다른 단계 이름**으로 말했나 — '80%를 넘으면 위험'(우리 기준은 80% 주의·90% 위험).
+
+    숫자가 허용 목록에 있어도 짝이 틀리면 리포트와 말이 갈라진다(실측 2026-10-24).
+    """
+    caution = thresholds.JEONSE_RATIO_CAUTION_PCT
+    for m in re.finditer(rf"(?<!\d){caution}\s*%", text):
+        window = text[m.end() : m.end() + 20]
+        if "위험" in window and "주의" not in window:
+            return f"{caution}%는 '주의' 기준이에요. '위험'은 {thresholds.JEONSE_RATIO_DANGER_PCT}%예요"
+    return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -385,6 +415,9 @@ def _generate(turns: list[Turn], careful: bool) -> ChatReply:
         code = "스키마" if why else ""
         if not why:
             verdict = text_guard.check_chat_reply(text or "", allowed=allowed, careful=careful)
+            if verdict is None:
+                mix = criteria_mixup(text or "")
+                verdict = ("기준혼동", mix) if mix else None
             if verdict is None:
                 _log.info(
                     f"[챗봇:{provider.name}] 답 {'(고쳐 쓴 뒤) ' if attempt == 2 else ''}통과"

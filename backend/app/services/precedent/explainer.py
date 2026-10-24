@@ -179,10 +179,19 @@ def _mentions_property(text: str, property_text: str) -> bool:
     return False
 
 
+#: 한 줄 안의 문장 경계 — '…요. 다음' / '…다. 다음' (챗봇과 같은 규칙)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[요다죠까네][.!?])\s+(?=\S)")
+
+
 def tidy_lines(text: str) -> str:
-    """줄바꿈 정리 — 줄마다 앞뒤 공백을 지우고 빈 줄은 하나도 남기지 않는다(카드 안에서 문장마다 한 줄)."""
-    lines = [ln.strip() for ln in (text or "").replace("\r", "").split("\n")]
-    return "\n".join(ln for ln in lines if ln)
+    """줄바꿈 정리 — 줄마다 앞뒤 공백을 지우고 빈 줄은 없앤다. 한 줄에 문장이 여럿 붙어 오면 **문장마다 줄을 나눈다**
+    (2026-10-24 실기기: "…들어왔어요. 이"가 한 줄에 붙었다)."""
+    out: list[str] = []
+    for ln in (text or "").replace("\r", "").split("\n"):
+        ln = ln.strip()
+        if ln:
+            out.extend(part.strip() for part in _SENTENCE_SPLIT_RE.split(ln) if part.strip())
+    return "\n".join(out)
 
 
 def _digits_only(s: str) -> str:

@@ -136,6 +136,16 @@ def tags_from_report(report: Report) -> list[str]:
     return list(dict.fromkeys(tags))
 
 
+def _korean_date(raw: str) -> str:
+    """'2021-08-26' → '2021년 8월 26일' — AI가 받은 모양 그대로 옮겨 써서, 컴퓨터식 날짜가 카드에 나갔다(2026-10-24 실기기)."""
+    import re as _re
+
+    m = _re.fullmatch(r"\s*(\d{4})[-./](\d{1,2})[-./](\d{1,2})\.?\s*", raw or "")
+    if not m:
+        return raw
+    return f"{int(m.group(1))}년 {int(m.group(2))}월 {int(m.group(3))}일"
+
+
 def _report_summary(report: Report, tags: list[str]) -> dict:
     """저장된 리포트 → LLM 맞춤 설명 재료 (2026-10-23 — '이 매물'과 얼마나 닮았나를 쓰게).
 
@@ -165,7 +175,7 @@ def _report_summary(report: Report, tags: list[str]) -> dict:
     for f in getattr(report, "riskFacts", []) or []:
         fact = {"종류": f.kind}
         if f.receiptDate:
-            fact["접수일"] = f.receiptDate
+            fact["접수일"] = _korean_date(f.receiptDate)
         if f.amount is not None:
             fact["금액_원"] = f.amount
             fact["금액_표기"] = format_won(f.amount)

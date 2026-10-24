@@ -58,7 +58,8 @@ def download_urls(tag: str, names: list[str]) -> str:
 
 
 def _gh(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["gh", *args], capture_output=True, text=True)
+    # 윈도우는 기본으로 cp949로 읽어 gh의 영어·기호 출력에서 UnicodeDecodeError가 난다 → UTF-8로, 깨진 글자는 대체
+    return subprocess.run(["gh", *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def main() -> int:
@@ -102,13 +103,13 @@ def main() -> int:
             "--latest=false",
         )
         if r.returncode != 0:
-            print(f"[중단] 릴리스를 못 만들었어요: {r.stderr.strip()[:300]}")
+            print(f"[중단] 릴리스를 못 만들었어요: {(r.stderr or '').strip()[:300]}")
             return 1
     for gz in assets:
         print(f"올리는 중: {gz.name} (크기에 따라 몇 분)")
         r = _gh("release", "upload", args.tag, str(gz), "--clobber", "-R", REPO)
         if r.returncode != 0:
-            print(f"[중단] 올리기 실패: {r.stderr.strip()[:300]}")
+            print(f"[중단] 올리기 실패: {(r.stderr or '').strip()[:300]}")
             return 1
 
     print("\n✅ 끝. Railway → jeonseai 서비스 → Variables에 아래 한 줄을 넣고 Deploy를 누르세요:\n")

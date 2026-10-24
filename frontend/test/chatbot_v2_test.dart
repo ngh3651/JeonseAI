@@ -434,11 +434,16 @@ void main() {
 
       await tester.tap(find.koText('이름 바꾸기'));
       await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget, reason: '이름 바꾸기 창');
       await tester.enterText(find.descendant(of: find.byType(Dialog), matching: find.byType(TextField)), '근저당 공부');
-      await tester.tap(find.koText('바꾸기'));
+      await tester.pump();
+      final save = find.ancestor(of: find.koText('바꾸기'), matching: find.byType(FilledButton));
+      expect(tester.widget<FilledButton>(save).onPressed, isNotNull, reason: '[바꾸기]가 켜져 있다');
+      await tester.tap(save);
       await tester.pumpAndSettle();
-      expect(find.koText('근저당 공부'), findsOneWidget);
-      expect((await history.list()).single.title, '근저당 공부');
+      expect(find.byType(Dialog), findsNothing, reason: '창이 닫혔다');
+      expect((await history.list()).single.title, '근저당 공부', reason: '저장소에 바뀐 이름');
+      expect(find.koText('근저당 공부'), findsOneWidget, reason: '서랍 줄에 바뀐 이름');
     });
 
     testWidgets('⋯ 시트 → 삭제 확인(빨간색 없음) → 사라짐 · 마지막 하나면 기록 없음 화면', (tester) async {

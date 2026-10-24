@@ -1,6 +1,8 @@
 /// 챗봇 v2 단위 테스트 — 대화 저장/불러오기/이름 바꾸기/삭제 · 검색 · 묶음 이름 · 인용 전송 글.
 library;
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/models/chat_history.dart';
 import 'package:jeonse_ai/models/content_models.dart';
@@ -269,6 +271,34 @@ void main() {
       expect(firstChatLine('\n**근저당권**은 담보예요.\n둘째 줄'), '근저당권은 담보예요.');
       expect(chatTitleFrom('  등기부등본은\n어떻게   떼요?'), '등기부등본은');
       expect(chatTitleFrom('전세가율   계산'), '전세가율 계산');
+    });
+  });
+
+  group('디자인 토큰만 (완료 조건 grep)', () {
+    const files = [
+      'lib/screens/chatbot/glossary_chatbot_screen.dart',
+      'lib/screens/chatbot/chat_mascot.dart',
+      'lib/screens/chatbot/chat_answer_parser.dart',
+      'lib/screens/chatbot/chat_history_drawer.dart',
+      'lib/screens/chatbot/chat_history_logic.dart',
+      'lib/screens/chatbot/chat_quote.dart',
+      'lib/screens/chatbot/chat_selection.dart',
+      'lib/screens/chatbot/chat_swipe.dart',
+      'lib/models/chat_history.dart',
+      'lib/repositories/chat_history_repository.dart',
+    ];
+    test('하드코딩 색(Color(0x…)·Colors.xxx)·글자 크기(fontSize:) 없음 — 그림자 색만 예외', () {
+      for (final f in files) {
+        final lines = File(f).readAsLinesSync();
+        for (var i = 0; i < lines.length; i++) {
+          final line = lines[i];
+          if (line.trimLeft().startsWith('///') || line.trimLeft().startsWith('//')) continue;
+          final shadow = line.contains('BoxShadow(');
+          expect(line.contains('Color(0x') && !shadow, isFalse, reason: '$f:${i + 1} $line');
+          expect(RegExp(r'(?<![A-Za-z])Colors\.').hasMatch(line), isFalse, reason: '$f:${i + 1} $line');
+          expect(RegExp(r'fontSize\s*:').hasMatch(line), isFalse, reason: '$f:${i + 1} $line');
+        }
+      }
     });
   });
 }

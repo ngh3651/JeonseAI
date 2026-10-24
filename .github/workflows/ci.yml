@@ -67,22 +67,7 @@ jobs:
           if ! flutter test 2>&1 | tee flutter-test.log; then
             # 보통 리포터는 실패한 테스트 줄 끝에 [E], GitHub 리포터(Actions에서 저절로 켜진다)는 줄 앞에 ❌를 붙인다
             sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g; s/^::(group|endgroup)::/  /' flutter-test.log > flutter-test.clean.log
-            # 한 단계에 annotation은 10개까지라: 이름 목록 1개 + 실패마다 1개(최대 9개, 각 30줄 — 한 덩어리에 몰면 잘린다)
-            python3 - <<'PY'
-            import re
-            esc = lambda t: t.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
-            lines = open('flutter-test.clean.log', encoding='utf-8', errors='replace').read().split('\n')
-            names = sorted({l.strip() for l in lines if re.search(r'\[E\]|❌', l)})
-            print('::error title=실패한 테스트 ' + str(len(names)) + '개::' + esc('\n'.join(names[:30])))
-            blocks, seen = [], set()
-            for i, l in enumerate(lines):
-                if re.search(r'\[E\]|❌', l) and l.strip() not in seen:
-                    seen.add(l.strip())
-                    keep = [x for x in lines[i:i + 45] if '<asynchronous suspension>' not in x and not re.match(r'^#[0-9]', x)]
-                    blocks.append('\n'.join(keep[:30]))
-            for n, b in enumerate(blocks[:9], 1):
-                print('::error title=실패 내용 ' + str(n) + '::' + esc(b))
-            PY
+            python3 ../.github/scripts/flutter_failures.py flutter-test.clean.log
             exit 1
           fi
 

@@ -34,7 +34,10 @@ class _LinePickDelegate extends StaticSelectionContainerDelegate {
 }
 
 /// 손잡이만 바꾼 선택 도구 — 14×14 물방울, primary. (메뉴는 [ChatSelectionChip]이 그린다)
-class ChatSelectionControls extends MaterialTextSelectionControls {
+///
+/// [TextSelectionHandleControls]를 섞어야 SelectionArea가 메뉴를 `contextMenuBuilder`(우리 칩)로 그린다
+/// — 섞지 않으면 옛 방식(`buildToolbar`, 안드로이드 기본 메뉴)으로 간다.
+class ChatSelectionControls extends MaterialTextSelectionControls with TextSelectionHandleControls {
   @override
   Size getHandleSize(double textLineHeight) => const Size(kChatHandleSize, kChatHandleSize);
 

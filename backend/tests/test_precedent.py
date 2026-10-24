@@ -469,7 +469,7 @@ def test_report_summary_carries_registry_facts_without_names():
     )
     summary = _report_summary(report, ["압류·가압류"])
     assert summary["등기_항목"] == [
-        {"종류": "가압류", "접수일": "2024-03-04", "금액_원": 400_000_000, "금액_표기": "4억원", "권리자": "개인"}
+        {"종류": "가압류", "접수일": "2024년 3월 4일", "금액_원": 400_000_000, "금액_표기": "4억원", "권리자": "개인"}
     ]
 
 
@@ -801,3 +801,13 @@ def test_판례_AI_설명_결과가_헬스체크에_남는다(retriever: HybridR
     st = explainer.last_status()
     assert st["result"] == "폴백" and st["drops"] == ["없는사건"]
     assert "지어낸" not in json.dumps(st, ensure_ascii=False)
+
+
+def test_날짜는_한국식_문장은_줄마다():
+    """2026-10-24 실기기: '2021-08-26'이 그대로 나갔고, 두 문장이 한 줄에 붙었다."""
+    from app.services.precedent import explainer, service
+
+    assert service._korean_date("2021-08-26") == "2021년 8월 26일"
+    assert service._korean_date("2024.01.11") == "2024년 1월 11일"
+    assert service._korean_date("모름") == "모름"
+    assert explainer.tidy_lines("먼저 걸렸어요. 이 집에도 있어요.\n\n지금은") == "먼저 걸렸어요.\n이 집에도 있어요.\n지금은"

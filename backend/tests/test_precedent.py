@@ -787,3 +787,17 @@ def test_이_집_숫자는_값으로_비교한다_날짜_조각에_걸리지_않
     assert explainer._numbers_grounded("가압류 4억원", prop)
     assert not explainer._numbers_grounded("가압류 5억원", prop)
     assert not explainer._field_ok("common_point", "이 집은 양호한 편이에요. 4억원", prop)
+
+
+def test_판례_AI_설명_결과가_헬스체크에_남는다(retriever: HybridRetriever, monkeypatch):
+    """2026-10-24: 전부 폴백이 났는데 이유를 몰랐다 → 마지막 결과·폐기 이유 이름을 남긴다(글은 남기지 않음)."""
+    fabricated = json.dumps(
+        {"cases": [{"case_id": "prec-없는판례", "easy_summary": "지어낸 설명이에요", "common_point": "지어낸 공통점"}]},
+        ensure_ascii=False,
+    )
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test-key")
+    monkeypatch.setattr(explainer, "_call_solar", lambda messages, api_key: fabricated)
+    PrecedentService(retriever=retriever).match_for_verdict(_danger_trust_verdict(), explain=True)
+    st = explainer.last_status()
+    assert st["result"] == "폴백" and st["drops"] == ["없는사건"]
+    assert "지어낸" not in json.dumps(st, ensure_ascii=False)

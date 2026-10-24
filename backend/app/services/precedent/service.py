@@ -314,7 +314,9 @@ class PrecedentService:
             by_id = {m.doc.case_id: m for m in candidates}
             matches = [by_id[cid] for cid in explanations if cid in by_id][:MAX_CASES]
         else:
-            matches = candidates[:MAX_CASES]
+            # AI 설명이 하나도 없으면: **사람이 쉬운 말 요약을 써 둔 판례를 앞에** — 원문 요지(법률 문장)가
+            # 그대로 나가는 카드를 줄인다(2026-10-24 실기기). 순서는 그다음 점수 순 그대로.
+            matches = sorted(candidates, key=lambda m: 0 if m.doc.summary_easy else 1)[:MAX_CASES]
 
         cases = []
         for m in matches:

@@ -1,34 +1,36 @@
-/// S-12 챗봇 (탭) — **대화는 AI(Solar)가, 판정은 리포트만** (2026-10-24 대화형으로).
-///
-/// 무엇이 달라졌나 (2026-08-14 '용어 챗봇' → '챗봇'):
-/// 예전엔 서버 규칙이 '안녕'·'더 쉽게'까지 막아 "준비된 문구"가 나왔고, 질문 하나 = 답 하나라 앞 대화를
-/// 몰랐다. 이제 **최근 대화를 통째로 보내고**(서버는 저장하지 않는다) AI가 이어서 답한다.
+/// S-12 챗봇 (탭) — **대화는 AI(Solar)가, 판정은 리포트만** (2026-10-24 대화형 → 같은 날 화면 리디자인).
 ///
 /// 앱이 지키는 것:
-/// ⑴ **문구를 지어내지 않는다.** 답·기본 문장 모두 서버가 준다.
-/// ⑵ **챗봇만 둔다**(규혁: "여기선 딱 챗봇만") — 말풍선 밑 출처 라벨·'내 리포트 보기' 버튼·용어 밑줄 없음.
-///    AI가 답한다는 사실은 빈 화면 한 줄로 알린다(인공지능 기본법 'AI 결과물 고지').
-/// ⑶ 말풍선 폭을 화면의 75%로 묶는다 — 긴 글이 가로로 끝없이 늘어지지 않게. `**굵게**`는 굵게 그린다.
+/// ⑴ **문구를 지어내지 않는다.** 답·기본 문장 모두 서버가 준다. 앱은 최근 대화를 통째로 보내고 그리기만 한다.
+/// ⑵ **챗봇만 둔다** — 말풍선 밑 출처 라벨·리포트 버튼·용어 밑줄 없음. AI가 답한다는 사실은 빈 화면 한 줄로 알린다.
+/// ⑶ 디자인 시스템 토큰만 쓴다(새 색·크기 없음). 리디자인 스펙: Claude Design 협의안(2026-10-24).
+///    - 내 말풍선 primary 바탕 · AI 말풍선 흰 바탕 + 세이프가 위에서 "답을 들고" 있음
+///    - 답 글은 덩어리로 나눠 그린다(문단 · 번호 목록 · 점 목록 · **굵게** · 기관 주소 칸) — `chat_answer_parser.dart`
+///    - 기다리는 중엔 세이프가 달린다(`chat_mascot.dart`)
 library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../design_system/components/app_button.dart';
 import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
-import '../../design_system/tokens/app_typography.dart';
+import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/content_models.dart';
 import '../../repositories/content_repository.dart';
 import '../../services/api_client.dart';
+import 'chat_answer_parser.dart';
+import 'chat_mascot.dart';
 
 /// 답을 기다리는 동안 띄우는 한 줄 — **상수로 둔다**(촬영 중에 바꿀 수 있게).
 const String kChatLoadingMessage = '답을 쓰고 있어요…';
 
 /// 빈 화면 안내 — AI가 답한다는 사실을 숨기지 않는다.
-const String kChatAiNotice = 'Upstage Solar AI가 쉬운 말로 답해요';
+const String kChatAiNotice = 'Upstage Solar Pro 2가 쉬운 말로 답해요';
+
+/// 연결 실패 안내 (경고색·에러 아이콘 없이)
+const String kChatFailedMessage = '연결이 잠깐 끊겼어요.';
 
 /// 한 번에 보낼 수 있는 글자 수 (서버 상한 500보다 넉넉히 안쪽)
 const int kChatMaxChars = 300;
@@ -36,21 +38,13 @@ const int kChatMaxChars = 300;
 /// 말풍선 최대 폭 — 화면 폭의 비율
 const double kBubbleWidthFactor = 0.75;
 
-/// 빈 화면에 먼저 보여줄 추천 칩 — **촬영 대본에 쓰는 순서 그대로**.
-///
-/// ⚠ 서버가 실제로 내려준 것만 보여준다. `대항력`은 지금 **검수 대기**라 서버 응답에
-///   없다 — 그 자리는 남은 용어로 채운다. 검수가 끝나 응답에 들어오면 이 순서대로 앞에 선다.
-const List<String> kFeaturedChips = [
-  '근저당권',
-  '선순위 채권',
-  '전세가율',
-  '확정일자',
-  '대항력',
-  '신탁등기',
+/// 빈 화면 추천 질문 — 누르면 그 문장을 바로 보낸다 (리디자인 2026-10-24: 단어 칩 → 질문 문장 4개)
+const List<String> kSuggestedQuestions = [
+  '등기부등본은 어떻게 떼요?',
+  '근저당권이 뭔지 알려 주세요',
+  '전세가율은 어떻게 계산해요?',
+  '확정일자는 언제 받아요?',
 ];
-
-/// 접힌 상태에서 보여줄 칩 개수 (2열 × 3행)
-const int kFeaturedChipCount = 6;
 
 class _Msg {
   const _Msg.user(this.text) : reply = null, isUser = true, isLoading = false, retryQuery = null;
@@ -63,7 +57,7 @@ class _Msg {
 
   const _Msg.loading() : text = '', reply = null, isUser = false, isLoading = true, retryQuery = null;
 
-  /// 네트워크 오류 — [다시 시도]가 재질문할 원문을 들고 있다
+  /// 연결 실패 — [다시 시도]가 재질문할 원문을 들고 있다
   const _Msg.failed(this.text, this.retryQuery) : reply = null, isUser = false, isLoading = false;
 
   final String text;
@@ -71,6 +65,8 @@ class _Msg {
   final bool isUser;
   final bool isLoading;
   final String? retryQuery;
+
+  bool get isFailed => !isUser && !isLoading && reply == null;
 }
 
 class GlossaryChatbotScreen extends StatefulWidget {
@@ -86,39 +82,18 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   final List<_Msg> _messages = [];
 
   bool _sending = false;
-  bool _showAllChips = false;
 
-  /// 키보드 높이 — 키보드가 올라오면 마지막 답이 가려지지 않게 맨 아래로 내린다(디자인 리뷰 2026-10-24).
+  /// 키보드 높이 — 키보드가 올라오면 마지막 답이 가려지지 않게 맨 아래로 내린다.
   double _lastInset = 0;
-  List<GlossaryTerm> _terms = const [];
 
-  @override
-  void initState() {
-    super.initState();
-    _loadTerms();
-  }
-
-  Future<void> _loadTerms() async {
-    try {
-      final terms = await context.read<ContentRepository>().glossaryTerms();
-      if (mounted) setState(() => _terms = terms);
-    } catch (_) {
-      // 추천 칩만 비어 보임 — 입력으로는 계속 물어볼 수 있다.
-    }
-  }
+  /// 말풍선 최대 폭 — `_conversation`의 LayoutBuilder가 정한다(목록이 실제로 받은 폭 기준).
+  double _bubbleMax = 270;
 
   @override
   void dispose() {
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
-  }
-
-  /// 화면에 보여줄 칩 순서 — 대본 순서를 앞에 두고, 나머지는 서버 순서대로.
-  List<String> get _orderedChips {
-    final all = _terms.map((t) => t.term).toList();
-    final featured = [for (final t in kFeaturedChips) if (all.contains(t)) t];
-    return [...featured, ...all.where((t) => !featured.contains(t))];
   }
 
   /// 서버에 보낼 대화 — 질문과 답만(로딩·실패 줄은 빼고).
@@ -147,12 +122,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       reply = _Msg.bot(answer);
     } on ApiException catch (e) {
       // 429(질문 너무 많음)는 서버 문장 그대로, 그 밖은 연결 문제로 본다
-      reply = _Msg.failed(
-        e.statusCode == 429 ? e.message : '연결이 불안정해요. 다시 시도해 주세요',
-        q,
-      );
+      reply = _Msg.failed(e.statusCode == 429 ? e.message : kChatFailedMessage, q);
     } catch (_) {
-      reply = _Msg.failed('연결이 불안정해요. 다시 시도해 주세요', q);
+      reply = _Msg.failed(kChatFailedMessage, q);
     }
     if (!mounted) return;
     setState(() {
@@ -183,7 +155,6 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     setState(() {
       _messages.clear();
       _inputCtrl.clear();
-      _showAllChips = false;
     });
   }
 
@@ -205,15 +176,20 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     if (inset > _lastInset && _messages.isNotEmpty) _scrollToBottom();
     _lastInset = inset;
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const AppText('챗봇'),
+        title: AppText('챗봇', style: AppTypographyNext.title),
+        centerTitle: true,
         automaticallyImplyLeading: false,
         actions: [
           if (_messages.isNotEmpty && !_sending)
-            IconButton(
-              tooltip: '새 대화',
-              icon: const Icon(Icons.refresh),
-              onPressed: _reset,
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: IconButton(
+                tooltip: '새 대화',
+                icon: const Icon(Icons.refresh, size: AppSize.iconMd, color: AppColorsNext.textStrong),
+                onPressed: _reset,
+              ),
             ),
         ],
       ),
@@ -227,278 +203,494 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 빈 상태 — 마스코트 + 인사 + AI 안내 + 추천 칩
+  // ① 빈 화면 — 세이프 + 제목 + AI 안내 + 추천 질문 4개
   // ══════════════════════════════════════════════════════════════════════════
 
   Widget _emptyState() {
-    final chips = _orderedChips;
-    final visible = _showAllChips ? chips : chips.take(kFeaturedChipCount).toList();
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenPadding,
-        AppSpacing.xxl,
-        AppSpacing.screenPadding,
-        AppSpacing.xxl,
-      ),
-      children: [
-        const Center(child: MascotSafe(size: 96, state: MascotState.tip)),
-        const SizedBox(height: AppSpacing.xl),
-        AppText(
-          '전세·부동산,\n뭐든 물어보세요',
-          textAlign: TextAlign.center,
-          style: AppTypography.headline.copyWith(height: 1.35),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        AppText(
-          kChatAiNotice,
-          textAlign: TextAlign.center,
-          style: AppTypography.body.copyWith(color: AppColors.textMuted),
-        ),
-        const SizedBox(height: AppSpacing.xxxl),
-        Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
-          children: [for (final term in visible) _chip(term)],
-        ),
-        if (chips.length > kFeaturedChipCount && !_showAllChips) ...[
-          const SizedBox(height: AppSpacing.md),
-          Center(
-            child: TextButton.icon(
-              onPressed: () => setState(() => _showAllChips = true),
-              icon: const Icon(Icons.expand_more, size: AppSize.iconSm),
-              label: AppText('더 보기 (${chips.length - kFeaturedChipCount}개)'),
-            ),
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding, vertical: AppSpacing.xxl),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: (box.maxHeight - AppSpacing.xxl * 2).clamp(0.0, double.infinity).toDouble()),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 96,
+                  height: 96,
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySoft,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.line),
+                  ),
+                  child: const MascotSafe(size: 80, state: MascotState.tip),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              AppText(
+                '전세·부동산, 뭐든 물어보세요',
+                textAlign: TextAlign.center,
+                style: AppTypographyNext.title,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              AppText(kChatAiNotice, textAlign: TextAlign.center, style: AppTypographyNext.caption),
+              const SizedBox(height: AppSpacing.xxl),
+              for (int i = 0; i < kSuggestedQuestions.length; i++) ...[
+                if (i > 0) const SizedBox(height: AppSpacing.sm),
+                _questionCard(kSuggestedQuestions[i]),
+              ],
+            ],
           ),
-        ],
-      ],
+        ),
+      ),
     );
   }
 
-  Widget _chip(String term) {
-    return ActionChip(
-      label: AppText(term),
-      onPressed: _sending ? null : () => _ask(term),
-      backgroundColor: AppColors.primarySoft,
-      side: BorderSide.none,
-      labelStyle: AppTypography.buttonSmall.copyWith(color: AppColors.primary),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+  Widget _questionCard(String q) {
+    return Material(
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        side: const BorderSide(color: AppColors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _sending ? null : () => _ask(q),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppSize.minTouchTarget),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+            child: Row(
+              children: [
+                Expanded(child: AppText(q, style: AppTypographyNext.body.copyWith(color: AppColorsNext.textStrong))),
+                const SizedBox(width: AppSpacing.sm),
+                const Icon(Icons.north_east, size: AppSize.iconSm, color: AppColors.primary),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 대화
+  // ② 대화 · ③ 기다리는 중 · ④ 연결 실패
   // ══════════════════════════════════════════════════════════════════════════
 
   Widget _conversation() {
-    // 말풍선 폭은 **이 목록이 실제로 받은 폭** 기준이다(MediaQuery 크기가 아니라 — 분할 화면·테스트에서도 맞게).
     return LayoutBuilder(
       builder: (context, box) {
         _bubbleMax = box.maxWidth * kBubbleWidthFactor;
-        return _conversationList();
+        return ListView.builder(
+          controller: _scrollCtrl,
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenPadding,
+            AppSpacing.lg,
+            AppSpacing.screenPadding,
+            AppSpacing.xl,
+          ),
+          itemCount: _messages.length,
+          itemBuilder: (context, i) {
+            final m = _messages[i];
+            // 말하는 사람이 바뀌면 24, 같은 사람이 이어지면 8
+            final gap = i == 0 ? 0.0 : (_messages[i - 1].isUser == m.isUser ? AppSpacing.sm : AppSpacing.xxl);
+            final Widget child;
+            if (m.isUser) {
+              child = _userBubble(m.text);
+            } else if (m.isLoading) {
+              child = _botBubble(running: true, content: _typingLine());
+            } else if (m.reply != null) {
+              child = Semantics(
+                liveRegion: i == _messages.length - 1,
+                child: _botBubble(running: false, content: _answer(m.reply!.answer)),
+              );
+            } else {
+              child = _failedNotice(m);
+            }
+            return Padding(padding: EdgeInsets.only(top: gap), child: child);
+          },
+        );
       },
     );
   }
 
-  Widget _conversationList() {
-    return ListView.separated(
-      controller: _scrollCtrl,
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenPadding,
-        AppSpacing.lg,
-        AppSpacing.screenPadding,
-        AppSpacing.xl,
-      ),
-      itemCount: _messages.length,
-      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.lg),
-      itemBuilder: (context, i) {
-        final m = _messages[i];
-        if (m.isUser) return _userBubble(m.text);
-        if (m.isLoading) return _botRow(_bubbleText(kChatLoadingMessage, muted: true));
-        if (m.reply != null) {
-          // 새 답이 오면 스크린리더가 읽어 준다
-          return Semantics(
-            liveRegion: i == _messages.length - 1,
-            child: _botRow(_answerText(m.reply!.answer)),
-          );
-        }
-        return _failedRow(m);
-      },
-    );
-  }
-
-  /// 말풍선 최대 폭 — `_conversation`의 LayoutBuilder가 정한다.
-  double _bubbleMax = 270;
-
-  double get _maxBubbleWidth => _bubbleMax;
-
-  TextStyle get _bodyStyle =>
-      AppTypography.body.copyWith(fontSize: 17, height: 1.6, color: AppColors.textStrong);
-
-  /// 사용자 말풍선 — 연초록, 오른쪽.
+  /// 내 말풍선 — primary 바탕, 흰 글자, 오른쪽 아래 모서리만 작게
   Widget _userBubble(String text) {
     return Align(
       alignment: Alignment.centerRight,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: _maxBubbleWidth),
+        constraints: BoxConstraints(maxWidth: _bubbleMax),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-          decoration: BoxDecoration(
-            color: AppColors.primarySoft,
-            borderRadius: BorderRadius.circular(AppRadius.xl),
-          ),
-          child: AppText(text, style: _bodyStyle),
-        ),
-      ),
-    );
-  }
-
-  /// 챗봇 줄 — 작은 세이프 + 흰 말풍선(왼쪽). 폭은 사용자 말풍선과 같은 비율로 묶는다.
-  Widget _botRow(Widget content) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(top: 2),
-          child: MascotSafe(size: 28, state: MascotState.tip),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Flexible(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: _maxBubbleWidth),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                border: Border.all(color: AppColors.line),
-                borderRadius: BorderRadius.circular(AppRadius.xl),
-              ),
-              child: content,
+          decoration: const BoxDecoration(
+            color: AppColors.primary,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(AppRadius.xl),
+              topRight: Radius.circular(AppRadius.xl),
+              bottomLeft: Radius.circular(AppRadius.xl),
+              bottomRight: Radius.circular(AppRadius.sm),
             ),
           ),
+          child: AppText(text, style: AppTypographyNext.body.copyWith(color: AppColors.surface)),
         ),
-      ],
-    );
-  }
-
-  Widget _bubbleText(String text, {bool muted = false}) => AppText(
-    text,
-    style: muted ? _bodyStyle.copyWith(color: AppColors.textMuted) : _bodyStyle,
-  );
-
-  /// 답 — `**굵게**`만 굵게 그린다(밑줄·링크 없음).
-  Widget _answerText(String answer) {
-    final base = _bodyStyle;
-    final bold = base.copyWith(fontWeight: FontWeight.w700);
-    return AppText.rich(TextSpan(style: base, children: boldSpans(answer, base: base, bold: bold)));
-  }
-
-  Widget _failedRow(_Msg m) {
-    return _botRow(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _bubbleText(m.text),
-          const SizedBox(height: AppSpacing.md),
-          AppCompactButton(
-            label: '다시 시도',
-            icon: Icons.refresh,
-            tonal: true,
-            onPressed: _sending ? null : () => _retry(m),
-          ),
-        ],
       ),
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 입력창 — 하단 고정 pill + 원형 전송 버튼
-  // ══════════════════════════════════════════════════════════════════════════
-
-  Widget _inputBar() {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenPadding,
-          AppSpacing.sm,
-          AppSpacing.screenPadding,
-          AppSpacing.md,
-        ),
-        child: Row(
+  /// AI 말풍선 — 흰 바탕 + 위에 세이프(답 들기 / 달리기) + 이름
+  Widget _botBubble({required bool running, required Widget content}) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _bubbleMax),
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _inputCtrl,
-                // 엔터 = 줄바꿈(2026-10-24 규혁). 보내기는 오른쪽 ↑ 버튼으로만.
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                maxLength: kChatMaxChars,
-                minLines: 1,
-                maxLines: 4,
-                style: AppTypography.body.copyWith(color: AppColors.textStrong),
-                decoration: InputDecoration(
-                  hintText: '궁금한 걸 물어보세요',
-                  counterText: '',
-                  filled: true,
-                  fillColor: AppColors.surface,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xl,
-                    vertical: AppSpacing.md,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                    borderSide: const BorderSide(color: AppColors.line),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                  ),
+            Padding(
+              padding: const EdgeInsets.only(top: kSafeRise),
+              child: Container(
+                padding: running
+                    ? const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md)
+                    : const EdgeInsets.all(AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.line),
+                  borderRadius: BorderRadius.circular(AppRadius.xl),
                 ),
+                child: content,
               ),
             ),
-            const SizedBox(width: AppSpacing.sm),
-            // 전송 중에는 잠근다 — 두 번 눌러 두 번 묻는 일이 없게.
-            Semantics(
-              button: true,
-              enabled: !_sending,
-              label: _sending ? '답을 기다리는 중' : '질문 보내기',
-              child: Material(
-                color: _sending ? AppColors.buttonDisabledBg : AppColors.primary,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  onTap: _sending ? null : () => _ask(_inputCtrl.text),
-                  customBorder: const CircleBorder(),
-                  child: SizedBox(
-                    width: AppSize.minTouchTarget,
-                    height: AppSize.minTouchTarget,
-                    child: Icon(
-                      _sending ? Icons.more_horiz : Icons.arrow_upward,
-                      size: AppSize.iconSm,
-                      color: _sending ? AppColors.buttonDisabledFg : Colors.white,
-                    ),
-                  ),
-                ),
+            // 세이프 — 말풍선 왼쪽 끝에서 16 안쪽, 아래 끝이 말풍선 윗선에 걸친다(답 들기는 앞발이 테두리를 덮는다)
+            Positioned(
+              left: AppSpacing.lg,
+              top: 0,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: running ? const SafeRunning(key: ValueKey('run')) : const SafeHold(key: ValueKey('hold')),
               ),
+            ),
+            Positioned(
+              left: AppSpacing.lg + kSafeSize + AppSpacing.lg,
+              top: kSafeRise / 2 - 10,
+              child: AppText('세이프', style: AppTypographyNext.caption),
             ),
           ],
         ),
       ),
     );
   }
+
+  /// ③ 점 3개 + "답을 쓰고 있어요…"
+  Widget _typingLine() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _TypingDots(),
+        const SizedBox(width: AppSpacing.md),
+        Flexible(child: AppText(kChatLoadingMessage, style: AppTypographyNext.caption)),
+      ],
+    );
+  }
+
+  /// 답 글 → 덩어리(문단·번호·점) → 위젯. 덩어리 사이 12.
+  Widget _answer(String answer) {
+    final blocks = parseChatAnswer(answer);
+    final body = AppTypographyNext.body;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int b = 0; b < blocks.length; b++) ...[
+          if (b > 0) const SizedBox(height: AppSpacing.md),
+          switch (blocks[b].kind) {
+            ChatBlockKind.paragraph => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [for (final line in blocks[b].lines) _inlineText(line, body)],
+            ),
+            ChatBlockKind.numbered => _listBlock(
+              blocks[b].lines,
+              (i) => _NumberBadge(number: blocks[b].numbers[i]),
+              body,
+            ),
+            ChatBlockKind.bullets => _listBlock(blocks[b].lines, (_) => const _BulletDot(), body),
+          },
+        ],
+      ],
+    );
+  }
+
+  Widget _listBlock(List<String> items, Widget Function(int) marker, TextStyle body) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (int i = 0; i < items.length; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              marker(i),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(child: _inlineText(items[i], body)),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 한 줄 — 글 · **굵게**(primaryDeep) · 주소 칸(누를 수 없음, 밑줄 없음)
+  Widget _inlineText(String line, TextStyle body) {
+    final bold = AppTypographyNext.bodyStrong.copyWith(color: AppColors.primaryDeep);
+    return AppText.rich(
+      TextSpan(
+        style: body,
+        children: [
+          for (final part in parseChatInline(line))
+            switch (part.kind) {
+              ChatInlineKind.text => TextSpan(text: part.text, style: body),
+              ChatInlineKind.bold => TextSpan(text: part.text, style: bold),
+              ChatInlineKind.address => WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: _AddressChip(text: part.text),
+              ),
+            },
+        ],
+      ),
+    );
+  }
+
+  /// ④ 연결 실패 — 세이프 말풍선이 아니라 가운데 알림. 경고색·에러 아이콘 없음.
+  Widget _failedNotice(_Msg m) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppText(m.text, textAlign: TextAlign.center, style: AppTypographyNext.body),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            height: AppSize.minTouchTarget,
+            child: OutlinedButton(
+              onPressed: _sending ? null : () => _retry(m),
+              style: OutlinedButton.styleFrom(
+                backgroundColor: AppColors.surface,
+                foregroundColor: AppColors.primary,
+                side: const BorderSide(color: AppColors.primary),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+                textStyle: AppTypographyNext.button,
+              ),
+              child: const AppText('다시 시도'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 입력 줄 — pill 입력칸(엔터=줄바꿈, 4줄까지) + 원형 ↑ 보내기
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _inputBar() {
+    return Container(
+      color: AppColors.background,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding, vertical: AppSpacing.md),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _inputCtrl,
+                  // 엔터 = 줄바꿈. 보내기는 오른쪽 ↑ 버튼으로만.
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  maxLength: kChatMaxChars,
+                  minLines: 1,
+                  maxLines: 4,
+                  style: AppTypographyNext.body,
+                  decoration: InputDecoration(
+                    hintText: '궁금한 걸 물어보세요',
+                    hintStyle: AppTypographyNext.body.copyWith(color: AppColorsNext.textMuted),
+                    counterText: '',
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    isDense: true,
+                    constraints: const BoxConstraints(minHeight: 52),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.md),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                      borderSide: const BorderSide(color: AppColors.line),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              // 입력칸이 한 줄일 때 세로 가운데에 오도록 아래 2 (52 - 48)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Semantics(
+                  button: true,
+                  enabled: !_sending,
+                  label: _sending ? '답을 기다리는 중' : '질문 보내기',
+                  child: Material(
+                    color: _sending ? AppColors.line : AppColors.primary,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      onTap: _sending ? null : () => _ask(_inputCtrl.text),
+                      customBorder: const CircleBorder(),
+                      child: SizedBox(
+                        width: AppSize.minTouchTarget,
+                        height: AppSize.minTouchTarget,
+                        child: Icon(
+                          Icons.arrow_upward,
+                          size: AppSize.iconMd,
+                          color: _sending ? AppColorsNext.textMuted : AppColors.surface,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/// `**굵게**` 표시 → 글 조각들. 짝이 안 맞는 `**`는 그냥 글자로 둔다(서버가 이미 정리하지만 한 번 더).
-List<InlineSpan> boldSpans(String text, {required TextStyle base, required TextStyle bold}) {
-  final spans = <InlineSpan>[];
-  final re = RegExp(r'\*\*(.+?)\*\*', dotAll: true);
-  int cursor = 0;
-  for (final m in re.allMatches(text)) {
-    if (m.start > cursor) spans.add(TextSpan(text: text.substring(cursor, m.start), style: base));
-    spans.add(TextSpan(text: m.group(1), style: bold));
-    cursor = m.end;
+/// 번호 배지 — 원 24(글자 배율 따라 커짐), primarySoft 바탕, 숫자 primary
+class _NumberBadge extends StatelessWidget {
+  const _NumberBadge({required this.number});
+
+  final int number;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = MediaQuery.textScalerOf(context).scale(24);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Container(
+        width: d,
+        height: d,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(color: AppColors.primarySoft, shape: BoxShape.circle),
+        child: Text(
+          '$number',
+          style: AppTypographyNext.caption.copyWith(color: AppColors.primary, height: 1),
+        ),
+      ),
+    );
   }
-  if (cursor < text.length) spans.add(TextSpan(text: text.substring(cursor), style: base));
-  return spans;
+}
+
+/// 점 — 폭 24 칸 가운데 6×6, 칸 높이는 본문 첫 줄 높이
+class _BulletDot extends StatelessWidget {
+  const _BulletDot();
+
+  @override
+  Widget build(BuildContext context) {
+    final body = AppTypographyNext.body;
+    final lineHeight = MediaQuery.textScalerOf(context).scale(body.fontSize!) * (body.height ?? 1);
+    return SizedBox(
+      width: 24,
+      height: lineHeight,
+      child: Center(
+        child: Container(
+          width: 6,
+          height: 6,
+          decoration: const BoxDecoration(color: AppColors.primaryBright, shape: BoxShape.circle),
+        ),
+      ),
+    );
+  }
+}
+
+/// 기관 주소 칸 — 누를 수 없는 글자(링크처럼 보이지 않게)
+class _AddressChip extends StatelessWidget {
+  const _AddressChip({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 24),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(AppRadius.sm)),
+      child: Text(text, style: AppTypographyNext.caption),
+    );
+  }
+}
+
+/// 기다리는 중 점 3개 — 8×8, 투명도 0.3 → 1 → 0.3, 1.2초 반복, 점마다 0.16초 늦게
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _ctrl.stop();
+    } else if (!_ctrl.isAnimating) {
+      _ctrl.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  double _opacity(int i) {
+    final t = (_ctrl.value - i * (160 / 1200)) % 1.0; // 점마다 0.16초 늦게
+    final wave = t < 0.5 ? t * 2 : (1 - t) * 2; // 0 → 1 → 0
+    return 0.3 + 0.7 * wave;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, _) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < 3; i++) ...[
+              if (i > 0) const SizedBox(width: AppSpacing.xs),
+              Opacity(
+                opacity: _opacity(i),
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(color: AppColors.primaryBright, shape: BoxShape.circle),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }

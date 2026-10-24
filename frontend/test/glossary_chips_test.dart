@@ -196,7 +196,7 @@ void main() {
       for (final gone in ['검수된 용어 사전', '준비된 문구', 'solar-pro2', '내 리포트 보기', '매물 분석하러 가기']) {
         expect(find.koText(gone), findsNothing, reason: '$gone 이 보여요');
       }
-      expect(find.koText('세이프'), findsOneWidget);
+      expect(find.koText('세이프'), findsNothing, reason: '마스코트 옆 이름 줄은 뺐다(2026-10-24)');
     });
 
     testWidgets('**굵게**는 굵게(primaryDeep), 표시 기호는 안 보인다', (tester) async {

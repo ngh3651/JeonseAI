@@ -340,7 +340,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     );
   }
 
-  /// AI 말풍선 — 흰 바탕 + 위에 세이프(답 들기 / 달리기) + 이름
+  /// AI 말풍선 — 흰 바탕 + 위에 세이프(답 들기 / 달리기)
   Widget _botBubble({required bool running, required Widget content}) {
     return Align(
       alignment: Alignment.centerLeft,
@@ -372,11 +372,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                 child: running ? const SafeRunning(key: ValueKey('run')) : const SafeHold(key: ValueKey('hold')),
               ),
             ),
-            Positioned(
-              left: AppSpacing.lg + kSafeSize + AppSpacing.lg,
-              top: kSafeRise / 2 - 10,
-              child: AppText('세이프', style: AppTypographyNext.caption),
-            ),
+            // 이름 줄 '세이프'는 뺐다(2026-10-24, 규혁) — 마스코트만으로 누가 답하는지 보인다
           ],
         ),
       ),

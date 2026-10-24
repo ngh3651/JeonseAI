@@ -431,8 +431,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
             Expanded(
               child: TextField(
                 controller: _inputCtrl,
-                textInputAction: TextInputAction.send,
-                onSubmitted: _ask,
+                // 엔터 = 줄바꿈(2026-10-24 규혁). 보내기는 오른쪽 ↑ 버튼으로만.
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
                 maxLength: kChatMaxChars,
                 minLines: 1,
                 maxLines: 4,

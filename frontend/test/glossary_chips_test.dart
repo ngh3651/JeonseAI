@@ -124,7 +124,7 @@ Future<_FakeContentRepo> _pump(
 
 Future<void> _send(WidgetTester tester, String text) async {
   await tester.enterText(find.byType(TextField), text);
-  await tester.testTextInput.receiveAction(TextInputAction.send);
+  await tester.tap(find.byIcon(Icons.arrow_upward)); // 엔터는 줄바꿈 — 보내기는 버튼으로
   await tester.pumpAndSettle();
 }
 
@@ -173,6 +173,18 @@ void main() {
   });
 
   group('대화', () {
+    testWidgets('엔터는 줄바꿈이고 보내지 않는다', (tester) async {
+      final repo = await _pump(tester);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.textInputAction, TextInputAction.newline);
+      await tester.enterText(find.byType(TextField), '첫 줄\n둘째 줄');
+      await tester.pumpAndSettle();
+      expect(repo.sent, isEmpty);
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pumpAndSettle();
+      expect(repo.sent.single.last.content, '첫 줄\n둘째 줄');
+    });
+
     testWidgets('칩을 누르면 질문과 답 — 출처 라벨·유도 버튼·밑줄이 없다', (tester) async {
       await _pump(tester);
 

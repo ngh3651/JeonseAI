@@ -530,7 +530,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
               ),
               const SizedBox(height: AppSpacing.lg),
               AppText(
-                '전세·부동산, 뭐든 물어보세요',
+                '전세 · 부동산 · 리포트, 뭐든 물어보세요!',
                 textAlign: TextAlign.center,
                 style: AppTypographyNext.title,
               ),
@@ -548,21 +548,6 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                   ),
                   AppText(kChatAiNotice, textAlign: TextAlign.center, style: AppTypographyNext.caption),
                 ],
-              ),
-              // 챗봇이 어느 리포트를 알고 답하는지 — 모르는 리포트 이야기로 오해하지 않게 (2026-10-26)
-              ValueListenableBuilder<ReportRef?>(
-                valueListenable: ReportFocus.current,
-                builder: (context, ref, _) => ref == null
-                    ? const SizedBox.shrink()
-                    : Padding(
-                        padding: const EdgeInsets.only(top: AppSpacing.xs),
-                        child: AppText(
-                          "'${ref.alias}' 리포트 내용을 알고 답해요",
-                          key: const ValueKey('chat-report-focus'),
-                          textAlign: TextAlign.center,
-                          style: AppTypographyNext.caption,
-                        ),
-                      ),
               ),
               const SizedBox(height: AppSpacing.xxl),
               for (int i = 0; i < kSuggestedQuestions.length; i++) ...[

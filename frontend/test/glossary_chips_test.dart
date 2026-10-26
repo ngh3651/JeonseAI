@@ -157,7 +157,7 @@ void main() {
     testWidgets('추천 질문 4개 + AI 안내, [더 보기]·단어 칩 없음', (tester) async {
       await _pump(tester);
       expect(find.koText('챗봇'), findsOneWidget);
-      expect(find.koText('전세·부동산, 뭐든 물어보세요'), findsOneWidget);
+      expect(find.koText('전세 · 부동산 · 리포트, 뭐든 물어보세요!'), findsOneWidget);
       expect(find.koText(kChatAiNotice), findsOneWidget);
       for (final q in kSuggestedQuestions) {
         expect(find.koText(q), findsOneWidget);

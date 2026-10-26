@@ -669,14 +669,15 @@ void main() {
   });
 
   group('리포트를 아는 챗봇', () {
-    testWidgets('보던 리포트 id를 함께 보내고, 빈 화면에 어느 리포트인지 알린다', (tester) async {
+    testWidgets('보던 리포트 id를 함께 보내고, 빈 화면엔 따로 알리지 않는다', (tester) async {
       final h = await _pump(tester, focus: const ReportRef('r9', '행복아파트 101호'));
-      expect(find.koText("'행복아파트 101호' 리포트 내용을 알고 답해요"), findsOneWidget);
+      // 2026-10-26 규혁: "'…' 리포트 내용을 알고 답해요" 안내 줄은 뺀다(챗봇은 그대로 리포트를 안다)
+      expect(find.koTextContaining('리포트 내용을 알고 답해요'), findsNothing);
       await _send(tester, '왜 위험이야?');
       expect(h.repo.reportIds.single, 'r9');
     });
 
-    testWidgets('리포트가 없으면 id 없이 보내고 안내 줄도 없다', (tester) async {
+    testWidgets('리포트가 없으면 id 없이 보낸다', (tester) async {
       final h = await _pump(tester);
       expect(find.byKey(const ValueKey('chat-report-focus')), findsNothing);
       await _send(tester, '안녕');

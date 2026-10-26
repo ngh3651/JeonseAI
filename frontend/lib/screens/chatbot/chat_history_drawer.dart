@@ -133,6 +133,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
 
   Future<void> _openMenu(ChatConversation c) async {
     final action = await showModalBottomSheet<_SheetAction>(
+      showDragHandle: false, // 손잡이는 직접 그린다 — 테마 손잡이와 겹쳐 두 개로 보였다 (2026-10-27)
       context: context,
       useRootNavigator: true,
       backgroundColor: AppColors.surface,

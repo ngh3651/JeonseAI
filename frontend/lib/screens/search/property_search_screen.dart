@@ -298,6 +298,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     required VoidCallback onCta,
   }) {
     showModalBottomSheet<void>(
+      showDragHandle: false, // 손잡이는 직접 그린다 — 테마 손잡이와 겹쳐 두 개로 보였다 (2026-10-27)
       context: context,
       backgroundColor: AppColors.surface,
       barrierColor: AppColors.viewerSheetScrim,

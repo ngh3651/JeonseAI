@@ -28,6 +28,7 @@ import '../../models/property_reports.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 import '../../services/api_client.dart';
+import '../../state/journey_focus.dart';
 import '../../state/journey_key_migration.dart';
 import '../../state/journey_progress_store.dart';
 import '../../state/journey_schedule_store.dart';
@@ -35,7 +36,6 @@ import '../common/analyze_gate.dart';
 import '../common/ask_selection.dart';
 import '../pricing/guardian_pass_widgets.dart';
 import '../search/capture_loop_route.dart';
-import 'balance_due_banner.dart';
 import 'journey_compare_flow.dart';
 import 'journey_logic.dart';
 import 'journey_parts.dart';
@@ -98,11 +98,18 @@ class _JourneyScreenState extends State<JourneyScreen> {
     _analysisRepo = context.read<AnalysisRepository>()
       ..addListener(_reloadHistory);
     _load();
+    JourneyFocus.pending.addListener(_onFocusRequest);
+  }
+
+  /// 여정 탭이 이미 떠 있는 채로 홈에서 단계를 골라 왔다 → 다시 그려 [JourneyFocus]를 쓴다.
+  void _onFocusRequest() {
+    if (JourneyFocus.pending.value != null && mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _analysisRepo?.removeListener(_reloadHistory);
+    JourneyFocus.pending.removeListener(_onFocusRequest);
     _flashTimer?.cancel();
     _chipScroll.dispose();
     super.dispose();
@@ -232,8 +239,20 @@ class _JourneyScreenState extends State<JourneyScreen> {
       _selectedStage = progress.initialSelection.clamp(0, _stages.length - 1);
       _openItems.clear();
     }
+    // 홈 '오늘 중요한 일정'에서 왔다 — 그날 단계를 골라 둔 채로 (2026-10-27)
+    final JourneyDateKey? focus = JourneyFocus.pending.value;
+    if (focus != null && property != null) {
+      final int index = _stages.indexWhere((s) => s.dateKey == focus);
+      JourneyFocus.pending.value = null;
+      if (index >= 0) {
+        _selectedStage = index;
+        _openItems.clear();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _jumpToStage(index);
+        });
+      }
+    }
     final int selected = _selectedStage!;
-    final banner = property == null ? null : journeyBannerFor(schedule);
     final logs = property == null
         ? const <CompareLogEntry>[]
         : progressStore.logFor(property.key);
@@ -248,18 +267,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
           32,
         ),
         children: [
-          if (property != null && banner != null) ...[
-            BalanceDueBanner(
-              title: banner.title,
-              message: banner.message,
-              legalNote: banner.legalNote,
-              onCompare: () =>
-                  _compareFromBanner(property, progress, banner.isMoveInNext),
-              onGuide: () => context.push('/guide'),
-              onEditSchedule: () => _openScheduleSheet(property, store),
-            ),
-            const SizedBox(height: 12),
-          ],
+          // 잔금·이사 날 큰 배너는 없다 (2026-10-27) — 그날은 단계 칩의 D-day와 리포트 카드의 회색 띠로 보인다
           if (property != null) ...[
             HouseRow(
               property: property,
@@ -337,7 +345,8 @@ class _JourneyScreenState extends State<JourneyScreen> {
                 ),
                 compareSubtitle: property == null
                     ? '먼저 등기부를 분석해 주세요'
-                    : '${viewedLabel(property.latest.registryViewedAt)} 리포트와 비교',
+                    // 날짜를 못 읽었으면 "최근 리포트와 비교" ("최근 리포트 리포트와"가 되던 것)
+                    : '${viewedLabel(property.latest.registryViewedAt, fallback: '최근')} 리포트와 비교',
                 onCompare: () => property == null
                     ? startAnalysis(context)
                     : startJourneyCompare(
@@ -470,23 +479,6 @@ class _JourneyScreenState extends State<JourneyScreen> {
   }
 
   /// 잔금 배너의 [최근 분석과 대조하기] — 잔금(또는 입주 다음 날) 단계로 기록한다.
-  void _compareFromBanner(
-    PropertyReports property,
-    JourneyProgress progress,
-    bool moveInNext,
-  ) {
-    final key = moveInNext ? JourneyDateKey.moveInNext : JourneyDateKey.balance;
-    final int index = _stages.indexWhere((s) => s.dateKey == key);
-    startJourneyCompare(
-      context,
-      property: property,
-      stageIndex: index < 0 ? null : index,
-      stageTitle: index < 0 ? null : _stages[index].title,
-      captureOne: widget.captureOne,
-      pickMany: widget.pickMany,
-    );
-  }
-
   Future<void> _switchHouse(
     List<PropertyReports> properties,
     PropertyReports current,

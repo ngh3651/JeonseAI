@@ -34,6 +34,7 @@ Future<HousePick?> showHouseSwitchSheet(
   required JourneyScheduleStore store,
 }) {
   return showModalBottomSheet<HousePick>(
+    showDragHandle: false, // 손잡이는 직접 그린다 — 테마 손잡이와 겹쳐 두 개로 보였다 (2026-10-27)
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.5),
     backgroundColor: AppColors.surface,

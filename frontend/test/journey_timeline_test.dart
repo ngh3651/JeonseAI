@@ -24,6 +24,7 @@ import 'package:jeonse_ai/repositories/content_repository.dart';
 import 'package:jeonse_ai/screens/journey/journey_compare_flow.dart';
 import 'package:jeonse_ai/screens/journey/journey_parts.dart';
 import 'package:jeonse_ai/screens/journey/journey_screen.dart';
+import 'package:jeonse_ai/state/journey_focus.dart';
 import 'package:jeonse_ai/state/app_session.dart';
 import 'package:jeonse_ai/state/journey_progress_store.dart';
 import 'package:jeonse_ai/state/journey_schedule_store.dart';
@@ -482,15 +483,33 @@ void main() {
       expect(find.koText('날짜 없음'), findsOneWidget);
     });
 
-    testWidgets('잔금 하루 전 — 배너가 맨 위 + [최근 분석과 대조하기]', (tester) async {
+    // 2026-10-27 홈_종버튼_시안: 여정 화면 안에도 큰 배너를 띄우지 않는다
+    testWidgets('잔금 하루 전에도 큰 배너가 없다', (tester) async {
       await JourneyScheduleStore.instance.save(
         _jeongjaKey,
         const JourneySchedule().copyWith(JourneyDateKey.balance, _day(1)),
       );
       await _pumpJourney(tester);
-      expect(find.koTextContaining('잔금일이 내일이에요'), findsOneWidget);
-      expect(find.koText('최근 분석과 대조하기'), findsWidgets);
-      expect(find.koText('떼는 법'), findsOneWidget);
+      expect(find.koTextContaining('잔금일이 내일이에요'), findsNothing);
+      expect(find.koText('떼는 법'), findsNothing);
+    });
+
+    testWidgets('내 계약 일정의 [+] 원을 눌러도 일정 넣기 시트가 열린다', (tester) async {
+      await _pumpJourney(tester);
+      final plus = find.byKey(const ValueKey('journey-circle-tap-0'));
+      await tester.ensureVisible(plus);
+      await tester.pumpAndSettle();
+      await tester.tap(plus);
+      await tester.pumpAndSettle();
+      expect(find.koText('계약 일정을 알려주세요'), findsOneWidget);
+    });
+
+    testWidgets('홈 종 시트에서 왔으면 그날 단계가 골라진 채 열린다', (tester) async {
+      JourneyFocus.request(JourneyDateKey.contract);
+      await _pumpJourney(tester);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('stage-status-2')), findsOneWidget, reason: '3번째 칩 = 계약서');
+      expect(JourneyFocus.pending.value, isNull, reason: '쓰고 나면 비운다');
     });
   });
 

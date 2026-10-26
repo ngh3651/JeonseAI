@@ -309,7 +309,8 @@ def _ocr_then_second_opinion(
     try:
         # 정렬이 확정됐으면 **그 순서로** 텍스트를 만든다 (업로드 순서가 아니라).
         ordered, _, _ = highlight._apply_page_order(ocr_result.pages, check.page_order)
-        layout_text = _layout_text_for(images, ordered, run_id)
+        # 돌려 세운 장은 바로 선 사진으로(DP 경로가 쓴다) — 2026-10-26
+        layout_text = _layout_text_for(ocr_result.upright_images or images, ordered, run_id)
         second = provider.structure(layout_text, timeout=llm.STRUCTURE_TIMEOUT_SECONDS)
         return OcrPath(
             ocr=ocr_result,
@@ -454,6 +455,15 @@ def analyze(
     doc_check = ocr_bundle.doc_check
 
     assert extract is not None  # ie_error가 없으면 반드시 값이 있다
+    # 가로·거꾸로 찍은 장을 OCR이 바로 세웠으면(2026-10-26) IE도 **바로 선 사진으로** 한 번 더 읽는다 —
+    # 판정 재료(IE)가 누운 글자를 잘못 읽은 채로 남지 않게. 실패하면 처음 읽은 결과를 그대로 쓴다.
+    if ocr_result.rotated:
+        turned = [i + 1 for i, r in enumerate(ocr_result.rotations(len(images))) if r]
+        _log.info(f"[방향] {turned}번째 사진을 바로 세움 → IE를 바로 선 사진으로 다시 읽음")
+        try:
+            extract = extraction.extract_registry(ocr_result.upright_images, run_id=run_id)
+        except Exception as e:  # noqa: BLE001 — 다시 읽기가 실패해도 처음 결과로 계속
+            _log.info(f"[방향] IE 다시 읽기 실패 — 처음 읽은 결과로 계속 ({type(e).__name__})")
     # 등기부가 아닌 사진(키보드·화면 등)이면 여기서 멈춘다 — 리포트·기록을 만들지 않는다 (2026-10-24).
     # 등기부인데 못 읽은 것과 가른다: IE가 아무것도 못 찾았고 OCR에도 등기부 낱말이 없을 때만.
     if document_gate.looks_not_registry(extract, ocr_result.pages):
@@ -557,6 +567,11 @@ def analyze(
     if mask_result is not None:
         report.privacyMasks = mask_result.masks
         report.privacyMasksReady = True
+    # 사진 순서·방향 (2026-10-26) — 표시 전용. 뷰어가 1쪽부터 정렬하고 글자가 바로 서게 돌려 그린다.
+    if doc_check is not None and doc_check.page_order:
+        report.pageOrder = list(doc_check.page_order)
+    if ocr_result.pages:
+        report.pageRotations = ocr_result.rotations(len(images))
     # 화면엔 실명, 저장은 가린 사본 (2026-10-22) — 사람 이름 목록. 앱 가리기 스위치가 쓰고, `store.add`가 이 목록으로
     # 가린 사본을 만든다. ⚠ 목록이 비면 저장 사본에 실명(집주인 제목)이 남으므로, 실패해도 집주인 이름만은 꼭 넣는다.
     try:

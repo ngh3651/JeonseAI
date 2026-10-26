@@ -193,6 +193,12 @@ class Report(BaseModel):
     # 서버 기록에 남는 사본(기록 API·캐시 적중)에서는 이 목록도 가려져 있다(`name_privacy.mask_report_for_storage`).
     # 회사·은행·관공서 이름은 넣지 않는다(원래부터 그대로 보인다).
     personNames: list[str] = Field(default_factory=list)
+    # 사진 **문서 순서** (2026-10-26, §9.12) — 업로드 인덱스를 1쪽부터 차례로. 예: `[3, 2, 1, 0, 4]` = 4번째로 올린 사진이 1쪽.
+    # 빈 목록 = 올린 순서 그대로(이미 맞거나, 쪽 번호를 다 못 읽어 믿고 정렬할 수 없음). 하이라이트 `page`는 여전히 업로드 인덱스다.
+    pageOrder: list[int] = Field(default_factory=list)
+    # 업로드 순서별 **시계 방향 회전 각도**(0·90·180·270, §9.12). 가로·거꾸로 찍은 장을 바로 세운 각도다.
+    # 하이라이트·가림 상자 좌표는 **돌린 사진 기준** 정규화 값 → 앱은 폰의 사진을 이만큼 돌려 그린다. 빈 목록 = 전부 0.
+    pageRotations: list[int] = Field(default_factory=list)
 
 
 # ── 판례 (§2.3 CaseMatch) ──────────────────────────────────────────────────

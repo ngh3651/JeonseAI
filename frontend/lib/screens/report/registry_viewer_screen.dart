@@ -278,8 +278,8 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
 
   Future<_ViewerData> _load(AnalysisRepository repo) async {
     final report = await repo.getReport(widget.reportId);
-    final sizes = await Future.wait([for (final p in _paths) _intrinsicSize(p)]);
-    final data = _ViewerData(report: report, sizes: sizes);
+    final rawSizes = await Future.wait([for (final p in _paths) _intrinsicSize(p)]);
+    final data = _ViewerData.arranged(report: report, paths: _paths, rawSizes: rawSizes);
     // 진입 시 선택은 **가장 무거운 표시**다(목록의 첫 표시가 아니라).
     //
     // 목록은 등기부 읽는 순서라 첫 표시가 `address`(주소)이고, 그 다음이 `area`(면적)다.
@@ -480,7 +480,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
           );
         }
         final data = snapshot.data?.withCurrentPrivacy();
-        if (data?.report == null || _paths.isEmpty) return _emptyScaffold();
+        if (data?.report == null || data!.paths.isEmpty) return _emptyScaffold();
 
         final report = data!.report!;
         final marks = data.marks;
@@ -572,16 +572,19 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
                 child: SizedBox(
                   height: layout.pageHeight(i),
                   child: _RegistryPage(
-                    path: _paths[i],
+                    path: data.paths[i],
                     pageIndex: i,
                     intrinsic: data.sizes[i],
+                    rawSize: data.rawSizes[i],
+                    quarterTurns: data.turns[i],
                     highlights: [
                       for (final m in marks)
                         if (m.page == i) m,
                     ],
                     // '사진 속 이름 가리기'가 덮을 이 쪽의 실명·주민번호 자리 (서버 §9.8)
-                    privacyBoxes: data.report?.privacyBoxesOn(i) ?? const [],
-                    namesUnlocated: data.report?.namesUnlocatedOn(i) ?? true,
+                    // 서버의 쪽 번호는 업로드 순서라 이 쪽의 업로드 인덱스로 묻는다(§9.12)
+                    privacyBoxes: data.report?.privacyBoxesOn(data.uploadOf[i]) ?? const [],
+                    namesUnlocated: data.report?.namesUnlocatedOn(data.uploadOf[i]) ?? true,
                     selected: _selected,
                     draw: _draw,
                     // 사진 위 표시를 직접 누르면 카드와 같은 대접을 한다 —
@@ -767,16 +770,54 @@ class _ViewerAppBar extends StatelessWidget implements PreferredSizeWidget {
 
 /// 화면이 쓰는 데이터 한 묶음 — 리포트 + 사진 원본 크기.
 class _ViewerData {
-  _ViewerData({required this.report, required this.sizes})
-    : marks = [
-        if (report != null)
-          for (final h in report.highlights)
-            // 사진 장수보다 큰 page 인덱스는 버린다 — 엉뚱한 사진에 그리지 않기 위함.
-            if (h.page >= 0 && h.page < sizes.length) h,
-      ];
+  _ViewerData({
+    required this.report,
+    required this.sizes,
+    required this.paths,
+    required this.rawSizes,
+    required this.turns,
+    required this.uploadOf,
+  }) : marks = [
+         if (report != null)
+           for (final h in report.highlights)
+             // 사진 장수보다 큰 page 인덱스는 버린다 — 엉뚱한 사진에 그리지 않기 위함.
+             // 서버 page는 **업로드 순서** → 화면 쪽 번호(1쪽부터 정렬한 순서)로 바꿔 둔다(§9.12).
+             if (h.page >= 0 && h.page < uploadOf.length) h.withPage(uploadOf.indexOf(h.page)),
+       ];
+
+  /// 화면 순서로 늘어놓은 데이터 (2026-10-26 — 1쪽부터 정렬 · 글자가 바로 서게).
+  ///
+  /// - 쪽 순서: 서버가 쪽 번호를 다 읽어 정한 [AnalysisReport.pageDisplayOrder]. 믿을 수 없으면 올린 순서 그대로.
+  /// - 방향: 서버가 바로 세운 각도만큼 사진을 돌려 그린다 — 좌표가 돌린 사진 기준이라 그래야 형광펜이 맞는다.
+  ///   90·270°면 가로세로를 바꿔 잰다(쪽 높이·좌표가 바로 선 사진 크기로 계산된다).
+  factory _ViewerData.arranged({
+    required AnalysisReport? report,
+    required List<String> paths,
+    required List<Size> rawSizes,
+  }) {
+    final order = report?.pageDisplayOrder(paths.length) ?? [for (var i = 0; i < paths.length; i++) i];
+    final turns = [for (final u in order) report?.quarterTurnsOf(u) ?? 0];
+    return _ViewerData(
+      report: report,
+      paths: [for (final u in order) paths[u]],
+      rawSizes: [for (final u in order) rawSizes[u]],
+      sizes: [
+        for (var d = 0; d < order.length; d++)
+          turns[d].isOdd ? Size(rawSizes[order[d]].height, rawSizes[order[d]].width) : rawSizes[order[d]],
+      ],
+      turns: turns,
+      uploadOf: order,
+    );
+  }
 
   final AnalysisReport? report;
+
+  /// 화면 쪽마다 — 바로 선 사진 크기 · 사진 경로 · 파일 그대로의 크기 · 시계 방향 90° 회전 수 · 업로드 인덱스
   final List<Size> sizes;
+  final List<String> paths;
+  final List<Size> rawSizes;
+  final List<int> turns;
+  final List<int> uploadOf;
 
   /// 지금 '사진 속 이름 가리기' 값에 맞춘 데이터(사진 크기는 그대로). 같으면 자기 자신.
   _ViewerData withCurrentPrivacy() {
@@ -786,7 +827,14 @@ class _ViewerData {
     if (identical(shown, current)) return this;
     final cached = _privacyVariant;
     if (cached != null && identical(cached.report, shown)) return cached;
-    return _privacyVariant = _ViewerData(report: shown, sizes: sizes);
+    return _privacyVariant = _ViewerData(
+      report: shown,
+      sizes: sizes,
+      paths: paths,
+      rawSizes: rawSizes,
+      turns: turns,
+      uploadOf: uploadOf,
+    );
   }
 
   _ViewerData? _privacyVariant;
@@ -839,12 +887,20 @@ class _RegistryPage extends StatefulWidget {
     required this.draw,
     required this.onTapHighlight,
     required this.onZoomChanged,
+    this.rawSize = Size.zero,
+    this.quarterTurns = 0,
     this.privacyBoxes = const [],
     this.namesUnlocated = false,
   });
 
   final String path;
   final int pageIndex;
+
+  /// 사진 파일 그대로의 픽셀 크기(돌리기 전) — 디코딩 크기를 정할 때 쓴다
+  final Size rawSize;
+
+  /// 글자가 바로 서도록 시계 방향으로 90°씩 몇 번 돌려 그리나 (서버 `pageRotations` — §9.12)
+  final int quarterTurns;
 
   /// 서버로 보낸 그 JPEG의 원본 픽셀 크기. [Size.zero]면 읽지 못한 것이다.
   final Size intrinsic;
@@ -989,16 +1045,20 @@ class _RegistryPageState extends State<_RegistryPage> {
     // cacheWidth가 원본보다 커져 오히려 확대 디코딩이 되므로 원본 폭에서 자른다.
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final wanted = (display.width * dpr * kZoomDecodeFactor).round();
-    final cacheWidth = widget.intrinsic.width > 0
-        ? math.min(wanted, widget.intrinsic.width.round())
-        : wanted;
-    return Image.file(
+    // 90·270°로 돌려 그리면 화면 폭 = 사진 파일의 **높이**다 → 그쪽으로 디코딩 크기를 정한다
+    final sideways = widget.quarterTurns.isOdd;
+    final rawSide = sideways ? widget.rawSize.height : widget.rawSize.width;
+    final cacheSide = rawSide > 0 ? math.min(wanted, rawSide.round()) : wanted;
+    final image = Image.file(
       File(widget.path),
       fit: BoxFit.fill,
       filterQuality: FilterQuality.medium,
-      cacheWidth: cacheWidth > 0 ? cacheWidth : null,
+      cacheWidth: !sideways && cacheSide > 0 ? cacheSide : null,
+      cacheHeight: sideways && cacheSide > 0 ? cacheSide : null,
       errorBuilder: (_, _, _) => _brokenPhoto(),
     );
+    if (widget.quarterTurns % 4 == 0) return image;
+    return RotatedBox(quarterTurns: widget.quarterTurns, child: image);
   }
 
   Widget _brokenPhoto() => Center(

@@ -389,8 +389,7 @@ MarketPriceAlternative {
   | `alias` | string | ✖ | 매물 별칭. 없으면 서버가 표제부 주소를 별칭으로 |
 
 - **응답 200**: `Report`(§2.1, `evidences` 포함) 하나.
-- **참고**: `POST /api/upload`(이미지 1장 수신·메타데이터 반환)는 **옛 통신 파이프 검증용(레거시)**이다.
-  지금 앱은 부르지 않는다 — `/api/analyze`가 그 역할을 대체·확장했다(부록 §8).
+- **참고**: 옛 통신 검증용 `POST /api/upload`는 2026-10-26에 지웠다 — `/api/analyze`가 그 역할을 대체했다.
 
 ### 3.2 `GET /api/reports` — 분석 이력 목록 · **비회원 허용**
 - **목적**: 홈 대시보드·마이의 최근 분석 이력.
@@ -646,8 +645,7 @@ MarketPriceAlternative {
   `historyDb` = 기록 DB에 쓸 수 있음 · `priceDb` = 시세 DB 2개(공시가격·기준시가)가 모두 있음 · `precedentIndex` = 판례 인덱스가 끝까지 만들어짐(`meta.json`) ·
   `upstageKey`/`molitKey` = 키가 **설정돼 있음**
   (유효한지는 보지 않는다 — 외부 호출 0회) · `version` = 배포 커밋 앞 7자(Railway에서만). **키 값·경로는 절대 나가지 않는다.**
-- `POST /api/upload` → 이미지 1장 수신·메타데이터 반환. **레거시** — 지금 앱은 부르지 않는다(정리 대상, `docs/NOW.md`).
-  이 계약의 `POST /api/analyze`가 분석 흐름에서 이를 대체·확장했다.
+- (`POST /api/upload` — 옛 통신 검증용. 2026-10-26 삭제, `POST /api/analyze`가 대체)
 
 ---
 

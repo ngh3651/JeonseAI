@@ -17,7 +17,7 @@ jobs:
     name: 문서 양산 검사
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: python3 scripts/check_docs.py
 
   backend:
@@ -27,8 +27,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -44,7 +44,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -100,7 +100,7 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -113,7 +113,7 @@ jobs:
       # 디버그 키를 실행마다 새로 만들지 않고 캐시에서 꺼내 쓴다 — 서명 비밀값이 없을 때(디버그 키 서명) 쓰인다.
       # 키가 실행마다 바뀌면 새 APK를 예전 APK 위에 덮어 설치할 수 없다(지우고 다시 → 기기 id·기록이 끊긴다).
       # ⚠ 캐시는 브랜치별이고 7일 동안 안 쓰면 지워진다 → 그때는 키가 한 번 바뀐다. 오래 쓸 APK는 서명 비밀값으로 만든다.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.android/debug.keystore
           key: android-debug-keystore-v1
@@ -174,7 +174,7 @@ jobs:
       - name: 서명 키 지우기
         if: always()
         run: rm -f android/key.properties android/app/upload-keystore.jks
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: jeonseai-apk
           path: frontend/build/app/outputs/flutter-apk/app-release.apk

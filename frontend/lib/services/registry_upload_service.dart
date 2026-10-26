@@ -9,27 +9,10 @@
 ///   전송되어 백엔드가 거부함)
 library;
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
-
-import '../app/config.dart';
-import 'api_client.dart';
-
-/// 업로드 결과. 성공이면 [data]에 백엔드 JSON, 실패면 [errorMessage]에 한국어 안내.
-class UploadResult {
-  const UploadResult.success(this.data) : errorMessage = null;
-  const UploadResult.failure(this.errorMessage) : data = null;
-
-  final Map<String, dynamic>? data;
-  final String? errorMessage;
-
-  bool get isSuccess => data != null;
-}
 
 class RegistryUploadService {
   /// 입력 이미지를 JPEG로 변환합니다.
@@ -63,42 +46,6 @@ class RegistryUploadService {
       return File(converted.path);
     } catch (_) {
       return null; // 호출부에서 사용자 안내 처리
-    }
-  }
-
-  /// JPEG로 변환된 이미지를 백엔드(POST /api/upload)로 업로드합니다.
-  ///
-  /// 현재 백엔드 계약: 요청당 파일 1개 (멀티 이미지 계약은 Phase D data-contract.md에서 확정).
-  /// ⚠ 레거시 통신 검증용 — 지금 앱은 부르지 않는다(NOW.md "정리 대상"). 그래도 서버 앞문
-  ///   (`X-App-Key`·`X-Device-Id`)은 통과해야 하므로 공통 헤더는 [ApiClient.commonHeaders]에서 받는다.
-  Future<UploadResult> uploadImage(File jpegImage) async {
-    try {
-      final uri = Uri.parse('$apiBaseUrl/api/upload');
-      final request = http.MultipartRequest('POST', uri)
-        ..headers.addAll(await ApiClient.commonHeaders())
-        ..files.add(
-          await http.MultipartFile.fromPath(
-            'file',
-            jpegImage.path,
-            filename: 'upload.jpg',
-            contentType: MediaType('image', 'jpeg'),
-          ),
-        );
-
-      final streamed = await request.send();
-      final response = await http.Response.fromStream(streamed);
-      final body = jsonDecode(utf8.decode(response.bodyBytes));
-
-      if (response.statusCode == 200) {
-        return UploadResult.success(body as Map<String, dynamic>);
-      }
-      // 백엔드가 보낸 한국어 에러 메시지(detail)를 우선 표시합니다.
-      final detail = (body is Map && body['detail'] != null)
-          ? body['detail'].toString()
-          : '업로드에 실패했습니다. (상태 코드: ${response.statusCode})';
-      return UploadResult.failure(detail);
-    } catch (_) {
-      return const UploadResult.failure('서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.');
     }
   }
 }

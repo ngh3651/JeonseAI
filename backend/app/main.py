@@ -11,7 +11,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -130,11 +130,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 업로드 허용 형식 및 용량 상한
-ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10MB
-
-
 @app.get("/")
 def health_check():
     """헬스체크: 서버가 살아있는지 + 준비 상태(참/거짓)만 알려 줍니다.
@@ -178,37 +173,3 @@ def health_check():
     if commit:
         body["version"] = commit[:7]
     return body
-
-
-@app.post("/api/upload")
-async def upload_image(file: UploadFile = File(...)):
-    """등기부등본 이미지를 수신합니다.
-
-    현재 단계에서는 OCR을 수행하지 않고, 받은 파일의 메타데이터만 응답합니다.
-    (앱↔서버 통신 파이프 검증용)
-    """
-    # 1) 형식 검증: 허용된 이미지 MIME 타입만 받습니다.
-    if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail="지원하지 않는 파일 형식입니다. JPEG, PNG, WEBP 이미지만 업로드할 수 있습니다.",
-        )
-
-    # 2) 파일 내용을 읽어 크기를 확인합니다.
-    contents = await file.read()
-    size_bytes = len(contents)
-
-    # 3) 용량 상한 검증
-    if size_bytes > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail="파일 용량이 너무 큽니다. 10MB 이하의 이미지만 업로드할 수 있습니다.",
-        )
-
-    # 4) 메타데이터만 응답 (OCR은 다음 단계)
-    return {
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "size_bytes": size_bytes,
-        "message": "이미지를 정상적으로 수신했습니다",
-    }

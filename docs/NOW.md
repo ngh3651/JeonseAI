@@ -264,14 +264,11 @@ iOS · 월세·반전세 · 계약서 교차검증(보류 확정) · 소액임�
 옛 정리 트래커(`archive-2026-10-21:docs/cleanup-tracker.md`)에서 아직 열린 것만 옮겼다.
 
 - `backend/app/dummy_data.py` — 예시 리포트·용어 칩을 아직 여기서 만든다(`store.py`가 예시 시드로 쓴다)
-- `backend/app/main.py`의 `POST /api/upload` — 레거시 통신 검증용. 지금 앱은 부르지 않는다
 - `backend/app/main.py`의 `app.router.routes.extend(...)` — fastapi/starlette 버그 우회. 버전 정리 때 `include_router`로
-- `backend/data/cases.json` — 쓰지 않는 옛 판례 파일(판례 화면은 `precedents/`)
 - `backend/data/`의 `is_sample: true` 항목 — `blacklist.json` 샘플 1건(가짜 이름)
 - `frontend/lib/app/config.dart`의 `devKeepRegistryPhotos`(폰에 등기부 사진 보관 — 실명 남음. 끄면 화면 문구도 `retentionNotice`가 알아서 "이 휴대폰에도 남기지 않아요"로 바뀐다)
 - `frontend/lib/app/config.dart`의 `devAutoLogin`(가짜 자동 로그인)
 - `frontend/lib/repositories/`의 `Dummy*Repository` — 테스트 전용. test/로 옮기거나 지운다
-- `frontend/lib/repositories/price_source.dart` — 배선 안 된 확장점(배선하거나 지운다)
 - `frontend/lib/design_system/gallery/` (`/gallery`) — 개발용 카탈로그. 유지할지 결정
 - `frontend/lib/design_system/tokens/app_typography_next.dart` — **새 글자 크기·색 체계(시범, 2026-10-24)**. 지금은 판례 매칭 화면만 쓴다. 앱 전체 적용 미리보기 = PR #26(머지 안 함) — 괜찮으면 머지하고 이 파일을 지운다
 - `frontend/lib/screens/loading/loading_preview_screen.dart` (`/dev/loading`, `kDevTools`) — 개발용 로딩 화면 미리보기. 시연용 APK엔 진입 버튼 없음

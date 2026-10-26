@@ -45,7 +45,7 @@ class ChatSelectionControls extends MaterialTextSelectionControls with TextSelec
   Widget buildHandle(
     BuildContext context,
     TextSelectionHandleType type,
-    double textLineHeight, [
+    double textHeight, [
     VoidCallback? onTap,
   ]) {
     if (type == TextSelectionHandleType.collapsed) return const SizedBox.shrink();

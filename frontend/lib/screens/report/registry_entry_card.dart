@@ -147,10 +147,15 @@ class RegistryPreviewSource {
     this.pageMarks = const [],
     this.privacyBoxes = const [],
     this.namesUnlocated = false,
+    this.quarterTurns = 0,
   });
 
   /// 그 표시가 있는 쪽의 **서버로 보낸 그 JPEG** 경로
   final String path;
+
+  /// 글자가 바로 서도록 시계 방향으로 90°씩 몇 번 돌려 그리나 (서버 `pageRotations` — api-contract §9.12).
+  /// 표시 좌표가 돌린 사진 기준이라 사진도 같이 돌려야 맞는다.
+  final int quarterTurns;
   final RegistryHighlight mark;
 
   /// 같은 쪽의 다른 표시들 — '사진 속 이름 가리기'가 켜졌을 때 스트립에 함께 비치는
@@ -343,7 +348,9 @@ class _PreviewStripState extends State<_PreviewStrip> {
     return FutureBuilder<Size>(
       future: _sizeFuture,
       builder: (context, snapshot) {
-        final pageSize = snapshot.data;
+        final raw = snapshot.data;
+        // 90·270°로 돌려 그리면 바로 선 사진의 가로세로는 파일과 반대다
+        final pageSize = raw != null && widget.source.quarterTurns.isOdd ? Size(raw.height, raw.width) : raw;
         // 크기를 못 읽었으면 스트립을 통째로 생략한다 — 배율을 모르는 채로 그리면
         // 엉뚱한 자리를 확대해 보여 주게 되고, 그건 없는 것만 못하다.
         if (pageSize == null || pageSize.width <= 0) {
@@ -385,6 +392,8 @@ class _PreviewStripState extends State<_PreviewStrip> {
       math.min(pageSize.width.round(), kPreviewMaxDecodeWidth),
       (crop.imageSize.width * dpr).round(),
     );
+    // 돌려 그리면 화면 폭 = 파일의 높이 → 디코딩 크기를 높이로 준다
+    final sideways = source.quarterTurns.isOdd;
     final markRect = crop.markRect(source.mark.box);
     // 이름 가리기가 켜져 있으면 이 스트립에 비치는 **이름 칸 전부**를 덮는다
     // (대표 표시 하나만 덮으면 공동명의의 옆 줄 이름이 그대로 보인다).
@@ -417,12 +426,16 @@ class _PreviewStripState extends State<_PreviewStrip> {
               top: crop.offset.dy,
               width: crop.imageSize.width,
               height: crop.imageSize.height,
-              child: Image.file(
-                File(source.path),
-                fit: BoxFit.fill,
-                filterQuality: FilterQuality.medium,
-                cacheWidth: cacheWidth > 0 ? cacheWidth : null,
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              child: RotatedBox(
+                quarterTurns: source.quarterTurns % 4,
+                child: Image.file(
+                  File(source.path),
+                  fit: BoxFit.fill,
+                  filterQuality: FilterQuality.medium,
+                  cacheWidth: !sideways && cacheWidth > 0 ? cacheWidth : null,
+                  cacheHeight: sideways && cacheWidth > 0 ? cacheWidth : null,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
               ),
             ),
             if (!markIsRedacted)

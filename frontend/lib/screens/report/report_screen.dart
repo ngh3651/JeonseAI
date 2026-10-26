@@ -295,6 +295,8 @@ class _ReportScreenState extends State<ReportScreen> {
                 // 서버가 찾은 나머지 실명·주민번호 자리(채무자 줄 등 — §9.8)까지 덮는다.
                 privacyBoxes: report.privacyBoxesOn(preview.page),
                 namesUnlocated: report.namesUnlocatedOn(preview.page),
+                // 가로·거꾸로 찍은 장은 서버가 바로 세운 각도만큼 돌려 그린다 (§9.12)
+                quarterTurns: report.quarterTurnsOf(preview.page),
               ),
       ),
     );

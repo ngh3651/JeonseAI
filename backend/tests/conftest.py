@@ -33,6 +33,9 @@ os.environ["RATE_LIMIT_GLOBAL_PER_DAY"] = ""
 os.environ["KAKAO_APP_ID"] = ""
 os.environ["ACCOUNT_HASH_SECRET"] = ""
 os.environ["SESSION_DAYS"] = ""
+# 사진 방향 바로 세우기(2026-10-26): 가짜 OCR 응답 순서(장마다 1번 호출)를 가정한 테스트가 많아 기본은 끈다.
+# 방향 찾기 자체는 `test_orientation.py`가 켜고 시험한다.
+os.environ["AUTO_ROTATE"] = "off"
 
 import pytest  # noqa: E402
 

@@ -194,6 +194,19 @@ class RegistryHighlight {
 
   bool get isOwner => kind == 'owner';
 
+  /// 같은 표시를 다른 쪽 번호로 — 뷰어가 쪽을 1쪽부터 다시 늘어놓을 때(§9.12) 화면 쪽 번호로 바꿔 쓴다.
+  RegistryHighlight withPage(int newPage) => RegistryHighlight(
+    id: id,
+    page: newPage,
+    kind: kind,
+    badge: badge,
+    box: box,
+    title: title,
+    body: body,
+    caution: caution,
+    source: source,
+  );
+
   factory RegistryHighlight.fromJson(Map<String, dynamic> json) =>
       RegistryHighlight(
         id: json['id'] as String,
@@ -330,6 +343,8 @@ class AnalysisReport {
     this.privacyMasksReady = false,
     this.captureCheck,
     this.personNames = const [],
+    this.pageOrder = const [],
+    this.pageRotations = const [],
     this.sourceJson,
     this.namesHidden = false,
     this.marketPriceSource = MarketPriceSource.unknown,
@@ -424,6 +439,33 @@ class AnalysisReport {
   /// 서버 기록 사본에는 가린 꼴(`홍○○`)이다. '사진 속 이름 가리기'가 켜지면 [AnalysisReport.fromJson]이
   /// 이 이름들을 화면의 **모든 글자**에서 가린다(회사·은행 이름은 서버가 넣지 않는다 — 그대로 보인다).
   final List<String> personNames;
+
+  /// 사진의 **문서 순서** — 1쪽부터 차례로 업로드 인덱스 (api-contract.md §9.12 · 2026-10-26). 빈 목록 = 올린 순서 그대로.
+  /// 하이라이트 `page`는 여전히 업로드 인덱스다 — 순서는 뷰어가 쪽을 늘어놓을 때만 쓴다([pageDisplayOrder]).
+  final List<int> pageOrder;
+
+  /// 업로드 순서별 **시계 방향 회전 각도**(0·90·180·270, §9.12). 하이라이트·가림 상자 좌표는 돌린 사진 기준이라
+  /// 사진을 이만큼 돌려 그려야 맞는다([quarterTurnsOf]). 빈 목록 = 전부 0(옛 기록).
+  final List<int> pageRotations;
+
+  /// 화면에 늘어놓을 순서 — [count]장 사진의 업로드 인덱스를 1쪽부터. [pageOrder]가 0..count-1을 한 번씩 담은
+  /// 올바른 순서가 아니면(옛 기록·사진 수가 다름) **올린 순서 그대로**(엉뚱한 사진을 엉뚱한 쪽에 두지 않게).
+  List<int> pageDisplayOrder(int count) {
+    final identity = [for (var i = 0; i < count; i++) i];
+    if (pageOrder.length != count) return identity;
+    final seen = <int>{};
+    for (final u in pageOrder) {
+      if (u < 0 || u >= count || !seen.add(u)) return identity;
+    }
+    return List.unmodifiable(pageOrder);
+  }
+
+  /// 업로드 [page]번째 사진을 바로 세우는 시계 방향 90° 회전 수(0~3). 모르는 값이면 0(돌리지 않음).
+  int quarterTurnsOf(int page) {
+    if (page < 0 || page >= pageRotations.length) return 0;
+    final deg = pageRotations[page];
+    return deg % 90 == 0 ? (deg ~/ 90) % 4 : 0;
+  }
 
   /// 이 모델을 만든 **원본 JSON**(가리기 전). 스위치가 바뀌면 [withCurrentPrivacy]가 이것으로 다시 만든다.
   /// 서버 JSON에서 만들지 않은 모델(더미·테스트)은 null.
@@ -540,6 +582,15 @@ class AnalysisReport {
     personNames: [
       for (final n in (json['personNames'] as List? ?? const []))
         if (n is String) n,
+    ],
+    // 사진 순서·방향 (§9.12). 옛 서버·옛 기록이면 없음 → 올린 순서 그대로·돌리지 않음.
+    pageOrder: [
+      for (final n in (json['pageOrder'] as List? ?? const []))
+        if (n is int) n,
+    ],
+    pageRotations: [
+      for (final n in (json['pageRotations'] as List? ?? const []))
+        if (n is int) n,
     ],
     sourceJson: source,
     namesHidden: namesHidden,

@@ -29,7 +29,7 @@ from pathlib import Path
 import requests
 from PIL import Image
 
-from . import artifacts
+from . import artifacts, orientation
 from .extraction import _USER_FACING_STATUS, ExtractionError, _load_api_key
 from .ocr_layout import OcrPage, group_lines, parse_words
 
@@ -64,10 +64,22 @@ class OcrResult:
     pages: list[OcrPage] = field(default_factory=list)
     elapsed: float = 0.0
     errors: list[str] = field(default_factory=list)
+    # 방향을 바로 세운 사진 (업로드 순서 그대로 — 돌리지 않은 장은 받은 그대로). 다른 경로(IE 다시 읽기·DP)가 쓴다.
+    upright_images: list[tuple[str, bytes]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
         return bool(self.pages)
+
+    @property
+    def rotated(self) -> bool:
+        """한 장이라도 돌려 세웠나."""
+        return any(p.rotation for p in self.pages)
+
+    def rotations(self, count: int) -> list[int]:
+        """업로드 순서별 회전 각도 — OCR이 실패한 장은 0."""
+        by_index = {p.index: p.rotation for p in self.pages}
+        return [by_index.get(i, 0) for i in range(count)]
 
 
 def _image_size(data: bytes, filename: str = "") -> tuple[int, int]:
@@ -161,6 +173,8 @@ def run_ocr(images: list[tuple[str, bytes]], *, run_id: str | None = None) -> Oc
 
     total = len(images)
     _log.info(f"[OCR] 호출 시작 — 사진 {total}장, 장별 개별 호출 (⚠ 크레딧 소모)")
+    extra_budget = [orientation.MAX_EXTRA_CALLS]  # 방향 찾기 추가 호출 상한(분석 1회 전체)
+    result.upright_images = list(images)
     for i, (filename, data) in enumerate(images):
         t1 = time.perf_counter()
         try:
@@ -173,6 +187,13 @@ def run_ocr(images: list[tuple[str, bytes]], *, run_id: str | None = None) -> Oc
             _log.info(f"[OCR] {i + 1}/{total} {filename} → 예기치 못한 실패 {type(e).__name__}: {e}")
             result.errors.append(f"{filename}: {type(e).__name__}")
             continue
+
+        # 가로·거꾸로 찍은 사진이면 바로 세운 방향으로 다시 읽는다 (2026-10-26) — 바로 찍었으면 추가 호출 0회
+        rotation = 0
+        if orientation.enabled():
+            raw, data, rotation = _upright(api_key, filename, data, raw, extra_budget, i, total)
+            if rotation:
+                result.upright_images[i] = (filename, data)
 
         if artifacts.save_enabled():  # 진단 저장이 켜졌을 때만 원응답을 남긴다 (기본 꺼짐)
             _save_raw_ocr(run_id, filename, i, raw)
@@ -197,8 +218,50 @@ def run_ocr(images: list[tuple[str, bytes]], *, run_id: str | None = None) -> Oc
                 lines=group_lines(words),
                 width=width,
                 height=height,
+                rotation=rotation,
             )
         )
 
     result.elapsed = time.perf_counter() - t0
     return result
+
+
+def _upright(
+    api_key: str,
+    filename: str,
+    data: bytes,
+    raw: dict,
+    budget: list[int],
+    i: int,
+    total: int,
+) -> tuple[dict, bytes, int]:
+    """(쓸 OCR 응답, 그 응답의 사진 바이트, 돌린 각도). 바로 섰으면 받은 그대로 돌려준다.
+
+    어떤 실패(회전·호출)도 삼키고 원래 것을 돌려준다 — 방향 찾기가 분석을 막으면 안 된다.
+    """
+    first = orientation.read_shape(raw)
+    if first.upright:
+        return raw, data, 0
+    for turn in orientation.candidate_turns(data):
+        if budget[0] <= 0:
+            _log.info(f"[OCR] {i + 1}/{total} {filename} 방향 찾기 — 추가 호출 상한에 닿아 그대로 둠")
+            break
+        budget[0] -= 1
+        try:
+            turned = orientation.rotate_jpeg(data, turn)
+            raw2 = call_document_ocr(api_key, filename, turned)
+        except Exception as e:  # noqa: BLE001
+            _log.info(f"[OCR] {i + 1}/{total} {filename} {turn}° 돌려 읽기 실패 ({type(e).__name__}) — 다음 방향")
+            continue
+        shape = orientation.read_shape(raw2)
+        if shape.upright:
+            _log.info(
+                f"[OCR] {i + 1}/{total} {filename} → 시계 방향 {turn}° 돌려 바로 세움"
+                f" (표지 낱말 {first.markers}→{shape.markers}개)"
+            )
+            return raw2, turned, turn
+    _log.info(
+        f"[OCR] {i + 1}/{total} {filename} 방향 찾기 — 바로 선 방향을 못 찾아 받은 그대로 둠"
+        f" (표지 낱말 {first.markers}개)"
+    )
+    return raw, data, 0

@@ -203,6 +203,9 @@ class OcrPage:
     lines: list[Line]
     width: int = 0  # 원본 픽셀 크기 (Pillow로 직접 읽은 값 — OCR 응답을 믿지 않는다)
     height: int = 0
+    # 글자가 바로 서도록 사진을 시계 방향으로 돌린 각도(0·90·180·270) — 좌표·크기는 **돌린 사진 기준**이다
+    # (`orientation.py`, 2026-10-26). 앱은 폰의 원본 사진을 이만큼 돌려 그린다.
+    rotation: int = 0
 
 
 @dataclass

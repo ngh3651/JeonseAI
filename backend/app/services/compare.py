@@ -541,6 +541,8 @@ def _doc(snapshot: RegistrySnapshot) -> CompareDoc:
         analyzedAt=snapshot.analyzed_at,
         grade=snapshot.grade,
         pageCount=snapshot.page_count,
+        # 고유번호 숫자만 (store.property_id와 같은 규칙 — 10자리 미만은 잘못 읽은 것으로 보고 None)
+        propertyId=pid if len(pid := _digits(snapshot.unique_number)) >= 10 else None,
     )
 
 

@@ -142,6 +142,7 @@
 | `highlightNotice` | string \| null | [표시] | 사진 묶음 안내 한 줄 — §9 |
 | `checkedNotes` | string[] | [표시] | "무엇을 찾아봤나" 요약 — §9 (기본 `[]`) |
 | `registryViewedAt` | string \| null | [표시] | 등기부 열람일시 `YYYY.MM.DD` — §9 |
+| `propertyId` | string \| null | [메타] | 부동산고유번호 **숫자만**(10자리 이상, 못 읽으면 `null`) — 같은 집 묶기의 첫 기준(둘 다 있으면 이것만, 아니면 도로명 병기를 뗀 주소). 화면에 안 보임 (2026-10-27) |
 | `comparable` | boolean | [메타] | 이 분석을 **다음 등기부와 견줄 기준으로 쓸 수 있는가** — §2.9 (기본 `false`) |
 | `privacyMasks` · `privacyMasksReady` | `PrivacyMask[]` · boolean | [표시] | 사진 속 실명·주민번호 **자리**(글자 없음) — §9.8 (기본 `[]` · `false`) |
 | `captureCheck` | `CaptureCheck` \| null | [표시] | 촬영 품질 검사 — 장별 흐림·어두움·잘림 안내 §9.9 (기본 `null`). 심하면 분석 전 400 |
@@ -299,7 +300,7 @@ CompareResult {
   identityBasis: string | null, // 같은 집인지 무엇으로 확인했나 — "고유번호" | "소재지" | null
   newReportId:   string | null  // 이번 서류로 만들어진 리포트 id. **다른 집이면 null**
 }
-CompareDoc { reportId, alias, address, viewedAt, analyzedAt, grade, pageCount }  // 전부 nullable
+CompareDoc { reportId, alias, address, viewedAt, analyzedAt, grade, pageCount, propertyId }  // 전부 nullable
 CompareRow {
   kind:        string,        // added|removed|changed|same|unknown|grade
   tone:        string,        // danger|caution|neutral (색은 앱이 토큰으로 매핑)

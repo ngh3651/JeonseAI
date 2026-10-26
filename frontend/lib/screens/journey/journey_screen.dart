@@ -28,6 +28,7 @@ import '../../models/property_reports.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 import '../../services/api_client.dart';
+import '../../state/journey_key_migration.dart';
 import '../../state/journey_progress_store.dart';
 import '../../state/journey_schedule_store.dart';
 import '../common/analyze_gate.dart';
@@ -146,7 +147,12 @@ class _JourneyScreenState extends State<JourneyScreen> {
     }
   }
 
-  List<PropertyReports> get _properties => groupByProperty(_reports);
+  List<PropertyReports> get _properties {
+    final properties = groupByProperty(_reports);
+    // 예전 열쇠(주소 띄어쓰기만 뺀 것)로 넣어 둔 일정·기록을 새 열쇠로 (2026-10-27)
+    adoptLegacyPropertyKeys(properties);
+    return properties;
+  }
 
   /// 고른 집 — 저장된 선택이 없거나 사라졌으면 첫 집(가장 최근에 분석한 집).
   PropertyReports? _selected(

@@ -169,6 +169,10 @@ class Report(BaseModel):
     # ⚠ 못 읽으면 None이다. **앱은 분석일(analyzedAt)로 대체하지 않는다** — 분석일을
     #   대신 쓰면 "오늘 서류"라고 믿게 만들어 아무것도 안 쓰느니만 못하다.
     registryViewedAt: Optional[str] = None
+    # 부동산고유번호의 숫자만 (예: '11011996123456', 2026-10-27). **같은 집인지 묶는 첫 기준** — 표시·판정에 쓰지 않는다.
+    # 주소는 IE가 읽을 때마다 글자가 조금씩 달라진다('[도로명주소] …'가 붙었다 빠졌다) → 주소만으로는 같은 집이 둘로 갈린다.
+    # 못 읽었으면 None (그땐 앱·서버 모두 주소로 묶는다).
+    propertyId: Optional[str] = None
     # [판례 설명 재료 — 2026-10-24] 살아 있는 위험 항목의 종류·접수일·금액·권리자 종류. 판정·화면에 쓰지 않는다.
     riskFacts: list[RiskFact] = Field(default_factory=list)
     # 이 분석을 **다음 등기부와 견줄 기준(baseline)으로 쓸 수 있는가** (2026-08-14 S-11).
@@ -344,6 +348,7 @@ class CompareDoc(BaseModel):
     analyzedAt: Optional[str] = None  # ISO 8601
     grade: Optional[str] = None  # "위험" | "확인 필요" | "양호"
     pageCount: Optional[int] = None  # 이번에 올린 사진 장수
+    propertyId: Optional[str] = None  # 부동산고유번호 숫자만 — 폰의 계약 일정을 찾는 집 열쇠 (Report.propertyId와 같다)
 
 
 class CompareRow(BaseModel):

@@ -338,6 +338,7 @@ class AnalysisReport {
     this.highlightNotice,
     this.checkedNotes = const [],
     this.registryViewedAt,
+    this.propertyId,
     this.comparable = false,
     this.privacyMasks = const [],
     this.privacyMasksReady = false,
@@ -361,6 +362,11 @@ class AnalysisReport {
 
   /// 표제부 소재지 주소
   final String address;
+
+  /// 부동산고유번호의 숫자만 (2026-10-27). **같은 집인지 묶는 첫 기준** — 화면에 보이지 않는다.
+  /// 주소는 읽을 때마다 글자가 조금씩 달라져(도로명 병기가 붙었다 빠졌다) 주소만으로는 같은 집이 둘로 갈린다.
+  /// 못 읽었으면 null — 그땐 주소로 묶는다([groupByProperty]).
+  final String? propertyId;
 
   final DateTime analyzedAt;
 
@@ -555,6 +561,7 @@ class AnalysisReport {
     ],
     // 구버전 서버는 이 필드를 안 보낸다 → null → 앱은 그 줄을 그리지 않는다.
     registryViewedAt: json['registryViewedAt'] as String?,
+    propertyId: json['propertyId'] as String?,
     // 구버전 서버·옛 이력이면 없음 → false(대조 기준으로 쓸 수 없음)로 본다.
     comparable: json['comparable'] as bool? ?? false,
     // 사진 속 실명 자리 (§9.8). 옛 서버·옛 이력이면 없음 → 준비 안 됨(false) → 가리기가 켜지면 통째로 덮는다.

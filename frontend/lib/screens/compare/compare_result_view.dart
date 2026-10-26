@@ -27,6 +27,7 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/compare_result.dart';
 import '../../models/content_models.dart';
+import '../../models/property_reports.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
 import 'compare_next_step.dart';
@@ -82,10 +83,17 @@ class CompareResultView extends StatelessWidget {
 
   /// 폰에 저장된 이 집의 잔금일이 **오늘보다 앞**인가(서연 리뷰 #3). 날짜는 이 폰에만 있다(서버는 모른다).
   /// 잔금 당일은 아직 '보내기 전'으로 본다.
+  /// 이 집의 열쇠 — 폰에 저장된 계약 일정을 찾는다 (고유번호 → 주소, [propertyKeyFor])
+  String get _propertyKey => propertyKeyFor(
+    propertyId: result.baseline.propertyId,
+    address: result.baseline.address,
+    reportId: result.baseline.reportId,
+  );
+
   bool get _balancePassed {
     final address = result.baseline.address;
     if (address == null || address.trim().isEmpty) return false;
-    final balance = JourneyScheduleStore.instance.scheduleFor(journeyPropertyKey(address)).balance;
+    final balance = JourneyScheduleStore.instance.scheduleFor(_propertyKey).balance;
     if (balance == null) return false;
     final t = now ?? DateTime.now();
     final today = DateTime(t.year, t.month, t.day);
@@ -388,9 +396,7 @@ class CompareResultView extends StatelessWidget {
     final address = result.baseline.address;
     if (address == null) return null;
 
-    final schedule = context
-        .read<JourneyScheduleStore>()
-        .scheduleFor(journeyPropertyKey(address));
+    final schedule = context.read<JourneyScheduleStore>().scheduleFor(_propertyKey);
     for (final key in const [
       JourneyDateKey.contract,
       JourneyDateKey.downPayment,

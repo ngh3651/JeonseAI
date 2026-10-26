@@ -13,6 +13,7 @@ import 'package:jeonse_ai/design_system/text/app_text.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/compare_result.dart';
+import 'package:jeonse_ai/models/content_models.dart';
 import 'package:jeonse_ai/models/property_reports.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
@@ -21,7 +22,9 @@ import 'package:jeonse_ai/screens/common/ask_selection.dart';
 import 'package:jeonse_ai/screens/report/report_history_sheet.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:jeonse_ai/state/chat_handoff.dart';
+import 'package:jeonse_ai/state/journey_key_migration.dart';
 import 'package:jeonse_ai/state/journey_progress_store.dart';
+import 'package:jeonse_ai/state/journey_schedule_store.dart';
 import 'package:jeonse_ai/utils/money_format.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,6 +37,7 @@ AnalysisReport _r(
   String alias = '성산동 행복아파트',
   String address = '서울 마포구 성산동 100-1',
   RiskGrade grade = RiskGrade.ok,
+  String? propertyId,
 }) {
   final at = DateTime.now().subtract(Duration(days: daysAgo));
   return AnalysisReport(
@@ -42,6 +46,7 @@ AnalysisReport _r(
     address: address,
     analyzedAt: at,
     registryViewedAt: formatDate(at),
+    propertyId: propertyId,
     grade: grade,
     headline: '큰 위험 신호는 보이지 않았어요',
     nextAction: '직접 확인',
@@ -133,6 +138,87 @@ void main() {
         versionsOf(_mid, [_latest, _other, _mid, _first]).map((r) => r.id),
         ['v3', 'v2', 'v1'],
       );
+    });
+
+    test('주소가 달리 읽혀도(도로명 병기) 같은 집 — 실기기 2026-10-27', () {
+      final a = _r(
+        'a',
+        daysAgo: 0,
+        alias: '위험한 집',
+        address: '서울특별시 서초구 서초동 1557-8 주건축물 제1동',
+      );
+      final b = _r(
+        'b',
+        daysAgo: 1,
+        alias: '서초동 1557-8',
+        address: '서울특별시 서초구 서초동 1557-8 주건축물 제1동 [도로명주소] 서울특별시 서초구 반포대로26길 35',
+      );
+      expect(groupByProperty([a, b]).single.alias, '위험한 집');
+    });
+
+    test('고유번호가 같으면 주소가 달라도 한 집, 다르면 주소가 같아도 다른 집', () {
+      final a = _r(
+        'a',
+        daysAgo: 0,
+        address: '서초동 1557-8',
+        propertyId: '11011996123456',
+      );
+      final b = _r(
+        'b',
+        daysAgo: 1,
+        address: '전혀 다르게 읽힌 주소',
+        propertyId: '11011996123456',
+      );
+      final c = _r(
+        'c',
+        daysAgo: 2,
+        address: '서초동 1557-8',
+        propertyId: '11011996999999',
+      );
+      final d = _r('d', daysAgo: 3, address: '서초동 1557-8'); // 고유번호를 못 읽음 → 주소로
+      final groups = groupByProperty([a, b, c, d]);
+      expect(groups.map((g) => g.reports.map((r) => r.id).toList()), [
+        ['a', 'b', 'd'],
+        ['c'],
+      ]);
+      expect(groups.first.key, '고유번호:11011996123456');
+      expect(groups.first.legacyKeys, contains('서초동1557-8'));
+    });
+
+    test('주소를 못 읽은 리포트끼리는 묶지 않는다', () {
+      final u1 = _r('u1', daysAgo: 0, address: '주소 미확인 (등기부 원본 확인 필요)');
+      final u2 = _r('u2', daysAgo: 1, address: '주소 미확인 (등기부 원본 확인 필요)');
+      expect(groupByProperty([u1, u2]).length, 2);
+    });
+
+    test('예전 열쇠로 넣어 둔 잔금일이 새 열쇠로 옮겨진다', () async {
+      final schedules = JourneyScheduleStore.instance..resetForTest();
+      final old = _r('o', daysAgo: 3, address: '서울 서초구 서초동 1557-8');
+      final now = _r(
+        'n',
+        daysAgo: 0,
+        address: '서울 서초구 서초동 1557-8',
+        propertyId: '11011996123456',
+      );
+      await schedules.save(
+        journeyPropertyKey(old.address),
+        JourneySchedule(
+          dates: {JourneyDateKey.balance: DateTime(2026, 11, 20)},
+        ),
+      );
+      await schedules.select(journeyPropertyKey(old.address));
+      final props = groupByProperty([now, old]);
+      adoptLegacyPropertyKeys(props);
+      await pumpEventQueue();
+      expect(
+        schedules.scheduleFor('고유번호:11011996123456').balance,
+        DateTime(2026, 11, 20),
+      );
+      expect(
+        schedules.scheduleFor(journeyPropertyKey(old.address)).isEmpty,
+        isTrue,
+      );
+      expect(schedules.selectedPropertyKey, '고유번호:11011996123456');
     });
 
     test('같은 집은 최근 5건까지만', () {

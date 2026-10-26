@@ -1,7 +1,7 @@
 /// 계약 여정의 **진행 기록** — 단계 완료(수동 켜고 끄기)·등기부 대조 기록·알림 켜짐 여부 (2026-10-26 여정 디자인).
 ///
 /// 날짜([JourneyScheduleStore])처럼 **이 휴대폰에만** 저장한다 — 서버로 보내지 않는다.
-/// 집마다 따로(매물 키 = 주소에서 띄어쓰기를 뺀 것, [journeyPropertyKey]).
+/// 집마다 따로(집 열쇠 = 고유번호, 없으면 주소 — `propertyKeyFor`).
 ///
 /// - 단계 완료: 날짜가 지나면 저절로 완료. 칩을 한 번 더 누르면 사용자가 켜고 끌 수 있다(이 값이 우선).
 ///   대조를 마치면 그 단계가 자동으로 완료된다.
@@ -180,6 +180,24 @@ class JourneyProgressStore extends ChangeNotifier {
   Future<void> setNotificationsOn(bool? on) async {
     if (_notificationsOn == on) return;
     _notificationsOn = on;
+    notifyListeners();
+    await _persist();
+  }
+
+  /// 이 열쇠에 남은 기록(완료 표시·대조 기록)이 있나.
+  bool hasRecord(String propertyKey) =>
+      (_manual[propertyKey]?.isNotEmpty ?? false) ||
+      (_logs[propertyKey]?.isNotEmpty ?? false);
+
+  /// 예전 열쇠([from])의 기록을 새 열쇠([to])로 옮긴다 — 새 열쇠에 이미 있는 것은 그대로 둔다 (2026-10-27 집 열쇠 변경).
+  Future<void> adoptKey(String from, String to) async {
+    final manual = _manual.remove(from);
+    final logs = _logs.remove(from);
+    if (manual == null && logs == null) return;
+    if (manual != null) _manual[to] = {...manual, ...?_manual[to]};
+    if (logs != null) {
+      _logs[to] = [...?_logs[to], ...logs]..sort((a, b) => b.at.compareTo(a.at));
+    }
     notifyListeners();
     await _persist();
   }

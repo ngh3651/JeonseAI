@@ -94,6 +94,8 @@ def short_address(address: str) -> str:
     if not address:
         return address
     head = address.split(",")[0].strip()  # 등기부의 '지번, 도로명' 병기 중 앞부분만
+    # '[도로명주소] …' 병기도 뗀다 — 홈 카드 제목이 세 줄로 늘어났다(실기기 2026-10-27)
+    head = re.sub(r"\s*[\[(（]\s*도로명\s*주소\s*[\])）].*$", "", head) or head
     m = _DONG_RE.search(head) or _ROAD_RE.search(head)
     return head[m.start():] if m else head
 

@@ -489,7 +489,7 @@ def test_같은_집은_최신_5건만_남고_다른_집은_그대로다():
     other = _report("prune-other").model_copy(update={"address": "서울 마포구 성산동 100-1"})
     store.add(other, device_id=device)
 
-    removed = store.prune_versions("경기 성남시 분당구 정자동 456-7", device_id=device)
+    removed = store.prune_versions(_report("prune-6"), device_id=device)
 
     left = [r.id for r in store.list_reports(device_id=device) if r.id.startswith("prune-")]
     assert removed == 2
@@ -499,8 +499,52 @@ def test_같은_집은_최신_5건만_남고_다른_집은_그대로다():
     assert "prune-0" not in left and "prune-1" not in left
 
 
-def test_주소가_비어_있으면_묶지_않는다():
-    assert store.prune_versions("  ", device_id="dev-prune-empty") == 0
+def test_주소를_못_읽은_리포트끼리는_묶지_않는다():
+    device = "dev-prune-unknown"
+    for i in range(7):
+        r = _report(f"unk-{i}").model_copy(update={"address": "주소 미확인 (등기부 원본 확인 필요)"})
+        store.add(r, device_id=device)
+    assert store.prune_versions(_report("unk-6").model_copy(update={"address": "주소 미확인 (등기부 원본 확인 필요)"}), device_id=device) == 0
+    assert store.property_key("  ") == ""
+
+
+# ── 같은 집 = 고유번호 먼저, 없으면 주소 (2026-10-27 실기기: 같은 집이 둘로 갈림) ─────────
+def test_도로명_병기가_붙었다_빠져도_같은_주소_키():
+    a = "서울특별시 서초구 서초동 1557-8 주건축물 제1동"
+    b = "서울특별시 서초구 서초동 1557-8 주건축물 제1동 [도로명주소] 서울특별시 서초구 반포대로26길 35"
+    assert store.property_key(a) == store.property_key(b)
+    assert store.property_key("서울 마포구 성산동 100-1 (도로명주소) 월드컵로 1") == "서울마포구성산동100-1"
+
+
+def test_고유번호가_둘_다_있으면_그것만_본다():
+    base = _report("pid-a")
+    same_pid = base.model_copy(update={"id": "pid-b", "propertyId": "11011996123456", "address": "전혀 다르게 읽힌 주소"})
+    a = base.model_copy(update={"propertyId": "1101-1996-123456".replace("-", "")})
+    assert store.same_property(a, same_pid)
+    other = a.model_copy(update={"id": "pid-c", "propertyId": "11011996999999"})
+    assert not store.same_property(a, other), "주소가 같아도 고유번호가 다르면 다른 집(같은 지번 다른 호실)"
+    # 한쪽만 고유번호가 있으면 주소로
+    assert store.same_property(a, base)
+
+
+def test_고유번호는_10자리_이상만():
+    assert store.property_id("1101-1996-123456") == "11011996123456"
+    assert store.property_id("1101-19") is None
+    assert store.property_id(None) is None
+
+
+def test_옛_리포트는_대조_스냅샷의_고유번호로_채운다():
+    device = "dev-pid-fill"
+    old = _report("pid-old")
+    assert old.propertyId is None
+    store.add(old, device_id=device)
+    snap = compare.build_snapshot(
+        _extract(unique_number="1101-1996-123456"), report=old, page_count=1, manual_market_price=None
+    )
+    store.put_snapshot(old.id, snap, device_id=device)
+    got = store.get(old.id, device_id=device)
+    assert got is not None and got.propertyId == "11011996123456"
+    assert [r.propertyId for r in store.list_reports(device_id=device) if r.id == old.id] == ["11011996123456"]
 
 
 def test_여정_단계는_칩_이름과_어디서를_싣는다():
@@ -510,3 +554,18 @@ def test_여정_단계는_칩_이름과_어디서를_싣는다():
     ]
     assert stages[1].items[0].where == "인터넷등기소 · 열람 700원"
     assert stages[1].items[2].where is None
+
+
+def test_주소가_달리_읽혀도_고유번호가_같으면_한_집으로_정리한다():
+    device = "dev-prune-pid"
+    for i in range(7):
+        addr = "서울 서초구 서초동 1557-8" + (" [도로명주소] 반포대로26길 35" if i % 2 else " 주건축물 제1동")
+        store.add(
+            _report(f"pp-{i}").model_copy(update={"address": addr, "propertyId": "11011996123456"}),
+            device_id=device,
+        )
+    latest = store.get("pp-6", device_id=device)
+    assert latest is not None
+    assert store.prune_versions(latest, device_id=device) == 2
+    left = [r.id for r in store.list_reports(device_id=device) if r.id.startswith("pp-")]
+    assert len(left) == 5 and "pp-0" not in left

@@ -20,6 +20,7 @@ import '../../models/property_reports.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
 import '../../state/app_session.dart';
+import '../../state/journey_key_migration.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
@@ -57,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: AppSpacing.xxl),
                 // 잔금일이 내일인 집이 있으면 **인사 바로 아래**에 경고가 온다.
                 // 홈에 들어온 사람이 그 하루를 모르고 나가는 일이 없게 (S-11).
-                ..._balanceDueBanners(context, history),
+                ..._balanceDueBanners(context, snapshot.data ?? const []),
                 AppPrimaryButton(
                   // F12: 버튼 안 원형(돋보기) 아이콘 제거 — 라벨만
                   label: '매물 분석 시작하기',
@@ -111,12 +112,14 @@ class _HomeScreenState extends State<HomeScreen> {
   ) {
     final store = context.watch<JourneyScheduleStore>();
     final banners = <Widget>[];
-    final seen = <String>{};
 
-    for (final report in history) {
-      final key = journeyPropertyKey(report.address);
-      if (!seen.add(key)) continue; // 같은 집의 옛 분석은 건너뛴다(최신 1건만)
-      final schedule = store.scheduleFor(key);
+    // 같은 집(고유번호 → 주소)은 최신 1건만 — 목록과 같은 묶기
+    final properties = groupByProperty(history);
+    // 예전 열쇠(주소 띄어쓰기만 뺀 것)로 넣어 둔 일정을 새 열쇠로 (2026-10-27)
+    adoptLegacyPropertyKeys(properties);
+    for (final property in properties) {
+      final report = property.latest;
+      final schedule = store.scheduleFor(property.key);
       // 잔금 하루 전·당일·입주 다음 날 — 휴대폰 알림과 같은 세 날 (2026-10-22)
       final banner = journeyBannerFor(schedule);
       if (banner == null) continue;

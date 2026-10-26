@@ -590,6 +590,8 @@ def analyze(
         report.pageRotations = ocr_result.rotations(len(images))
     if rotation_note:
         report.checkedNotes = [*report.checkedNotes, rotation_note]
+    # 같은 집 묶기의 첫 기준 (2026-10-27) — 표시·판정에 쓰지 않는다. 주소는 읽을 때마다 글자가 조금씩 달라진다.
+    report.propertyId = store.property_id(extract.unique_number)
     # 화면엔 실명, 저장은 가린 사본 (2026-10-22) — 사람 이름 목록. 앱 가리기 스위치가 쓰고, `store.add`가 이 목록으로
     # 가린 사본을 만든다. ⚠ 목록이 비면 저장 사본에 실명(집주인 제목)이 남으므로, 실패해도 집주인 이름만은 꼭 넣는다.
     try:

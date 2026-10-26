@@ -209,6 +209,11 @@ void main() {
     expect(pop.canPop, isFalse);
 
     kakao.finish();
+    // 로그인이 끝나 홈으로 넘어가는 사이에 [시작하기] 화면이 잠깐 보이면 안 된다(깜빡임)
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.koText('시작하기'), findsNothing);
+    }
     await tester.pumpAndSettle();
     expect(find.text('홈 화면'), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing); // 성공하면 안내 문구 없이

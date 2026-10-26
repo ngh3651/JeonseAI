@@ -53,9 +53,7 @@ Future<void> showRegistryMarkSheet(
       reverseDuration: kSheetExitDuration,
     ),
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(AppRadius.sheet),
-      ),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
     ),
     builder: (_) => RegistryMarkSheet(mark: mark),
   );
@@ -108,10 +106,7 @@ class RegistryMarkSheet extends StatelessWidget {
               const SizedBox(height: 11),
               AppText(
                 mark.body,
-                style: AppTypography.body.copyWith(
-                  fontSize: 13.5,
-                  height: 1.62,
-                ),
+                style: AppTypography.body.copyWith(fontSize: 13.5, height: 1.62),
               ),
               if (mark.caution != null) ...[
                 const SizedBox(height: AppSpacing.md),

@@ -134,10 +134,7 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: AppText(
-                '“${q.question}”',
-                style: AppTypography.bodyStrong,
-              ),
+              child: AppText('“${q.question}”', style: AppTypography.bodyStrong),
             ),
             IconButton(
               icon: const Icon(Icons.copy, size: AppSize.iconSm),
@@ -191,10 +188,7 @@ class _QuestionGeneratorScreenState extends State<QuestionGeneratorScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                AppText(
-                  label,
-                  style: AppTypography.label.copyWith(color: color),
-                ),
+                AppText(label, style: AppTypography.label.copyWith(color: color)),
                 const SizedBox(height: 2),
                 AppText(text, style: AppTypography.body),
               ],

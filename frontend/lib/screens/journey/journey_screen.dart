@@ -33,6 +33,7 @@ import '../../state/journey_schedule_store.dart';
 import '../common/analyze_gate.dart';
 import '../common/ask_selection.dart';
 import '../pricing/guardian_pass_widgets.dart';
+import '../search/capture_loop_route.dart';
 import 'balance_due_banner.dart';
 import 'journey_compare_flow.dart';
 import 'journey_logic.dart';
@@ -45,10 +46,19 @@ import 'journey_schedule_sheet.dart';
 typedef JourneyProperty = PropertyReports;
 
 class JourneyScreen extends StatefulWidget {
-  const JourneyScreen({super.key, this.showBack = false});
+  const JourneyScreen({
+    super.key,
+    this.showBack = false,
+    this.captureOne = defaultCaptureOne,
+    this.pickMany = defaultPickMany,
+  });
 
   /// 리포트에서 push로 열릴 때 true — 뒤로가기 버튼을 보인다 (탭 루트일 땐 false).
   final bool showBack;
+
+  /// 카메라·앨범 주입 지점 — 대조할 새 등기부(테스트는 가짜 함수)
+  final CaptureOne captureOne;
+  final PickMany pickMany;
 
   @override
   State<JourneyScreen> createState() => _JourneyScreenState();
@@ -329,6 +339,8 @@ class _JourneyScreenState extends State<JourneyScreen> {
                         property: property,
                         stageIndex: selected,
                         stageTitle: _stages[selected].title,
+                        captureOne: widget.captureOne,
+                        pickMany: widget.pickMany,
                       ),
               ),
             ),
@@ -464,6 +476,8 @@ class _JourneyScreenState extends State<JourneyScreen> {
       property: property,
       stageIndex: index < 0 ? null : index,
       stageTitle: index < 0 ? null : _stages[index].title,
+      captureOne: widget.captureOne,
+      pickMany: widget.pickMany,
     );
   }
 

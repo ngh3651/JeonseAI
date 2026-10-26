@@ -93,11 +93,7 @@ class _ReportShareSheetState extends State<_ReportShareSheet> {
     setState(() => _sharing = true);
     final text = reportShareText(widget.report, hideNames: _hideNames);
     final navigator = Navigator.of(context);
-    await shareWithFeedback(
-      context,
-      text,
-      subject: '[전세AI프] ${widget.report.alias}',
-    );
+    await shareWithFeedback(context, text, subject: '[전세AI프] ${widget.report.alias}');
     if (!mounted) return;
     navigator.pop();
   }
@@ -119,7 +115,10 @@ class _ReportShareSheetState extends State<_ReportShareSheet> {
           children: [
             const AppText('리포트 요약 보내기', style: AppTypography.title),
             const SizedBox(height: AppSpacing.xs),
-            AppText('이 글자만 보내요. 사진은 보내지 않아요.', style: AppTypography.caption),
+            AppText(
+              '이 글자만 보내요. 사진은 보내지 않아요.',
+              style: AppTypography.caption,
+            ),
             const SizedBox(height: AppSpacing.md),
             Container(
               key: const ValueKey('report-share-preview'),
@@ -135,13 +134,8 @@ class _ReportShareSheetState extends State<_ReportShareSheet> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _hideNames,
-              onChanged: _sharing
-                  ? null
-                  : (v) => setState(() => _hideNames = v),
-              title: const AppText(
-                '사람 이름 가리기',
-                style: AppTypography.bodyStrong,
-              ),
+              onChanged: _sharing ? null : (v) => setState(() => _hideNames = v),
+              title: const AppText('사람 이름 가리기', style: AppTypography.bodyStrong),
               subtitle: AppText(
                 '받는 사람 화면에는 홍○○처럼 보여요',
                 style: AppTypography.caption,

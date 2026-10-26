@@ -43,7 +43,10 @@ void showLoginSheet(BuildContext context, {required String next}) {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AppText('로그인하면 분석 기록이 계정에 남아요', style: AppTypography.headline),
+          const AppText(
+            '로그인하면 분석 기록이 계정에 남아요',
+            style: AppTypography.headline,
+          ),
           const SizedBox(height: AppSpacing.sm),
           AppText(
             '폰을 바꾸거나 앱을 다시 깔아도 카카오로 로그인하면 기록을 다시 볼 수 있어요. '

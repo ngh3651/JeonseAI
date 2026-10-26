@@ -37,10 +37,7 @@ import 'guardian_pass_widgets.dart';
 String newOrderId([Random? random]) {
   final rng = random ?? Random.secure();
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  final tail = List.generate(
-    20,
-    (_) => chars[rng.nextInt(chars.length)],
-  ).join();
+  final tail = List.generate(20, (_) => chars[rng.nextInt(chars.length)]).join();
   return 'jsp_$tail';
 }
 
@@ -113,9 +110,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       });
       // 결제 수단 자리가 화면에 붙은 **뒤에** 그린다(토스 SDK가 자리를 먼저 찾는다).
       if (_gateway != null) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _render(plan.price!),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) => _render(plan.price!));
       }
     } catch (e) {
       if (!mounted) return;
@@ -189,9 +184,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       PassStore.instance.set(pass);
       // 알림에도 '지킴이 패스' 표시를 붙여 다시 건다(표시만 — 알림 자체는 패스와 상관없이 울린다)
       unawaited(
-        JourneyReminderService.instance.resyncAll(
-          JourneyScheduleStore.instance,
-        ),
+        JourneyReminderService.instance.resyncAll(JourneyScheduleStore.instance),
       );
       if (!mounted) return;
       setState(() {
@@ -211,7 +204,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: AppText(_phase == _Phase.done ? '영수증' : '테스트 결제')),
+      appBar: AppBar(
+        title: AppText(_phase == _Phase.done ? '영수증' : '테스트 결제'),
+      ),
       body: switch (_phase) {
         _Phase.loading => const Center(child: CircularProgressIndicator()),
         _Phase.failed => _failedBody(),
@@ -341,9 +336,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Expanded(
               child: AppText(
                 '${pass.planName}가 열렸어요',
-                style: AppTypography.headline.copyWith(
-                  color: AppColors.primary,
-                ),
+                style: AppTypography.headline.copyWith(color: AppColors.primary),
               ),
             ),
           ],
@@ -440,10 +433,7 @@ class TestPaymentNotice extends StatelessWidget {
                 ),
                 // 지수 #9: '카드 정보를 넣어도'는 진짜 카드를 넣으라는 말로 읽혔다. 진짜 번호 없이 끝내는 방법은
                 // 토스 공식 문서로 확인하지 못해 적지 않는다(NOW.md 사람 할 일 — 실기기에서 확인).
-                const AppText(
-                  kTestPaymentPracticeLine,
-                  style: AppTypography.caption,
-                ),
+                const AppText(kTestPaymentPracticeLine, style: AppTypography.caption),
               ],
             ),
           ),

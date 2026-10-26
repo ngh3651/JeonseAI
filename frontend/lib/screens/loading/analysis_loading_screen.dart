@@ -246,7 +246,8 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
         !needsAppUpdate && (status == 400 || status == 413 || status == 415);
     // 크레딧 소진·호출 한도는 재시도 버튼을 주지 않는다 (무한 재시도 루프 방지)
     final isQuotaProblem = status == 402 || status == 429;
-    final message = _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
+    final message =
+        _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
 
     return SafeArea(
       child: _Scrollable(
@@ -297,8 +298,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     final progress = _done ? 1.0 : estimatedProgress(elapsed);
     final fraction = elapsed.inMilliseconds / (kAnalysisExpectedSeconds * 1000);
     final stage = _stages.firstWhere((s) => fraction < s.until).text;
-    final secondsLeft =
-        (kAnalysisExpectedSeconds - elapsed.inMilliseconds / 1000).ceil();
+    final secondsLeft = (kAnalysisExpectedSeconds - elapsed.inMilliseconds / 1000).ceil();
     final String timeText;
     if (_done) {
       timeText = '다 됐어요';
@@ -308,8 +308,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
       timeText = '조금 더 걸리고 있어요'; // '거의 다 됐어요'는 사실이 아닐 수 있다(가짜 완료 없음)
     }
     final tipIndex =
-        (_tipStart + elapsed.inMilliseconds ~/ _tipEvery.inMilliseconds) %
-        kLoadingTips.length;
+        (_tipStart + elapsed.inMilliseconds ~/ _tipEvery.inMilliseconds) % kLoadingTips.length;
 
     return _Scrollable(
       child: Column(
@@ -341,12 +340,15 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
-              Expanded(child: AppText(timeText, style: AppTypography.caption)),
+              Expanded(
+                child: AppText(
+                  timeText,
+                  style: AppTypography.caption,
+                ),
+              ),
               AppText(
                 '${(progress * 100).floor()}%',
-                style: AppTypography.bodyStrong.copyWith(
-                  color: AppColors.primary,
-                ),
+                style: AppTypography.bodyStrong.copyWith(color: AppColors.primary),
               ),
             ],
           ),
@@ -395,11 +397,7 @@ class _TipCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.lightbulb_outline,
-                size: AppSize.iconSm,
-                color: AppColors.primary,
-              ),
+              const Icon(Icons.lightbulb_outline, size: AppSize.iconSm, color: AppColors.primary),
               const SizedBox(width: AppSpacing.xs),
               AppText(
                 '알고 계셨나요?',
@@ -425,6 +423,7 @@ class _TipCard extends StatelessWidget {
   }
 }
 
+
 /// 글자 배율 2.0·작은 폰에서도 넘치지 않게 — 넘칠 때만 스크롤, 아니면 가운데 정렬 그대로 (디자인 리뷰 2026-10-24).
 class _Scrollable extends StatelessWidget {
   const _Scrollable({required this.child});
@@ -438,9 +437,7 @@ class _Scrollable extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.xxxl),
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            minHeight: (box.maxHeight - AppSpacing.xxxl * 2)
-                .clamp(0.0, double.infinity)
-                .toDouble(),
+            minHeight: (box.maxHeight - AppSpacing.xxxl * 2).clamp(0.0, double.infinity).toDouble(),
           ),
           child: child,
         ),

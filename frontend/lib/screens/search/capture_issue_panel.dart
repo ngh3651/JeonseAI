@@ -88,19 +88,13 @@ class CaptureIssuePanel extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.photo_camera_outlined,
-                size: AppSize.iconSm,
-                color: AppColors.caution,
-              ),
+              const Icon(Icons.photo_camera_outlined, size: AppSize.iconSm, color: AppColors.caution),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: AppText(
                   title,
                   // D8: 연한 앰버 바탕 위 글자는 진한 색 — 앰버는 아이콘·테두리에만
-                  style: AppTypography.bodyStrong.copyWith(
-                    color: AppColors.textStrong,
-                  ),
+                  style: AppTypography.bodyStrong.copyWith(color: AppColors.textStrong),
                 ),
               ),
             ],
@@ -115,8 +109,7 @@ class CaptureIssuePanel extends StatelessWidget {
               page: page,
               pageNumber: pageNumberOf?.call(page.index) ?? page.index + 1,
               onRetake: onRetake == null ? null : () => onRetake!(page),
-              retakeLabel:
-                  '${pageNumberOf?.call(page.index) ?? page.index + 1}쪽$retakeParticle $retakeLabel',
+              retakeLabel: '${pageNumberOf?.call(page.index) ?? page.index + 1}쪽$retakeParticle $retakeLabel',
             ),
           ],
         ],
@@ -126,12 +119,7 @@ class CaptureIssuePanel extends StatelessWidget {
 }
 
 class _PageRow extends StatelessWidget {
-  const _PageRow({
-    required this.page,
-    required this.pageNumber,
-    required this.onRetake,
-    required this.retakeLabel,
-  });
+  const _PageRow({required this.page, required this.pageNumber, required this.onRetake, required this.retakeLabel});
 
   final CapturePageIssue page;
   final int pageNumber;
@@ -161,9 +149,7 @@ class _PageRow extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.textStrong,
                 side: const BorderSide(color: AppColors.caution),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.button),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
                 textStyle: AppTypography.buttonSmall,
               ),
               icon: const Icon(Icons.photo_camera, size: AppSize.iconSm),

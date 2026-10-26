@@ -274,11 +274,11 @@ void main() {
         ),
       ]);
 
-      expect(message, contains('집: 경기 성남시 분당구 정자동 456-7\n서류: 7월 9일 ↔ 8월 5일 등기부'));
       expect(
         message,
-        contains('- 새로 생긴 빚이 있어요 (근저당권 1건 · 채권최고액 1억 2,000만원)'),
+        contains('집: 경기 성남시 분당구 정자동 456-7\n서류: 7월 9일 ↔ 8월 5일 등기부'),
       );
+      expect(message, contains('- 새로 생긴 빚이 있어요 (근저당권 1건 · 채권최고액 1억 2,000만원)'));
       expect(message, contains('- 집주인이 달라요'));
       expect(message, contains('- $_brokerQuestion'));
       // 집주인 줄의 상세(가린 이름)도, 접수일 줄도 문자에 옮기지 않는다
@@ -304,7 +304,10 @@ void main() {
       ]);
       expect(message, contains('- 질문1번'));
       expect(message, contains('- 질문$kBrokerMessageMaxQuestions번'));
-      expect(message, isNot(contains('- 질문${kBrokerMessageMaxQuestions + 1}번')));
+      expect(
+        message,
+        isNot(contains('- 질문${kBrokerMessageMaxQuestions + 1}번')),
+      );
     });
 
     test('질문을 못 받으면 달라진 점만 담는다', () {
@@ -313,28 +316,21 @@ void main() {
       expect(message, isNot(contains('확인 부탁드려요')));
     });
 
-    test('가족·배우자용은 인사·질문을 뺀 요약판 (어느 집·어느 서류인지는 남긴다)', () {
-      final message = familyMessageFor(_changedWithDanger);
-      expect(message, startsWith('[전세AI프] 등기부를 다시 떼어 보니 처음 서류와 달라진 점이 있어요'));
-      expect(message, contains('집: 경기 성남시 분당구 정자동 456-7'));
-      expect(message, contains('서류: 7월 9일 ↔ 8월 5일 등기부'));
-      expect(message, contains('- 새로 생긴 빚이 있어요 (근저당권 1건 · 채권최고액 1억 2,000만원)'));
-      expect(message, isNot(contains('안녕하세요')));
-      expect(message, isNot(contains('확인 부탁드려요')));
-      expect(message, isNot(contains('김○○')));
-    });
-
     test('잔금일이 지났으면 문자에 "잔금 보내기 전"이라고 쓰지 않는다', () {
-      final broker = brokerMessageFor(_changedWithDanger, const [], balancePassed: true);
+      final broker = brokerMessageFor(
+        _changedWithDanger,
+        const [],
+        balancePassed: true,
+      );
       expect(broker, isNot(contains('잔금 보내기 전')));
       expect(broker, isNot(contains('잔금을 보내려고')));
-      final family = familyMessageFor(_changedWithDanger, balancePassed: true);
-      expect(family, isNot(contains('잔금을 보내려고')));
     });
   });
 
   group('화면', () {
-    testWidgets('위험 줄 → 결론 바로 아래 "잔금 보내기 전에 멈추세요" + 달라진 점 + 보내기 + 상담처', (tester) async {
+    testWidgets('위험 줄 → 결론 바로 아래 "잔금 보내기 전에 멈추세요" + 달라진 점 + 보내기 + 상담처', (
+      tester,
+    ) async {
       final content = _Content();
       final copied = _captureClipboard(tester);
       final shared = <String>[];
@@ -357,17 +353,32 @@ void main() {
       expect(find.byType(GuardianPassBadge), findsNothing);
 
       // 순서: 결론 헤더 → 지금 할 일 (리포트의 '등급 → 결정'과 같게, D2)
-      final double cardTop = tester.getTopLeft(find.koText('잔금 보내기 전에 멈추세요')).dy;
-      final double headlineTop = tester.getTopLeft(find.koText('달라진 점이 2가지 있어요')).dy;
+      final double cardTop = tester
+          .getTopLeft(find.koText('잔금 보내기 전에 멈추세요'))
+          .dy;
+      final double headlineTop = tester
+          .getTopLeft(find.koText('달라진 점이 2가지 있어요'))
+          .dy;
       expect(headlineTop, lessThan(cardTop));
 
       final counseling = find.koTextContaining(kCounselingLine);
-      await tester.scrollUntilVisible(counseling, 200, scrollable: find.byType(Scrollable).first);
+      await tester.scrollUntilVisible(
+        counseling,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
-      expect(find.koText('$kCounselingLine $kCounselingSearchHint'), findsOneWidget);
+      expect(
+        find.koText('$kCounselingLine $kCounselingSearchHint'),
+        findsOneWidget,
+      );
 
       final send = find.koText('중개사에게 보내기');
-      await tester.scrollUntilVisible(send, -200, scrollable: find.byType(Scrollable).first);
+      await tester.scrollUntilVisible(
+        send,
+        -200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(send);
       await tester.pumpAndSettle();
@@ -380,7 +391,7 @@ void main() {
       expect(find.koTextContaining('복사도 해 뒀어요'), findsOneWidget);
     });
 
-    testWidgets('질문을 못 받아도 보낸다 (달라진 점만) · 가족에게는 요약판', (tester) async {
+    testWidgets('질문을 못 받아도 보낸다 (달라진 점만) · 가족에게 보내기는 없다', (tester) async {
       final shared = <String>[];
       TextShare.debugOverride((text, {subject}) async => shared.add(text));
       addTearDown(() => TextShare.debugOverride(null));
@@ -392,27 +403,29 @@ void main() {
       );
 
       final send = find.koText('중개사에게 보내기');
-      await tester.scrollUntilVisible(send, 200, scrollable: find.byType(Scrollable).first);
+      await tester.scrollUntilVisible(
+        send,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(send);
       await tester.pumpAndSettle();
       expect(shared.last, contains('- 집주인이 달라요'));
       expect(shared.last, isNot(contains(_brokerQuestion)));
 
-      final family = find.koText('가족·배우자에게 보내기');
-      await tester.scrollUntilVisible(family, 200, scrollable: find.byType(Scrollable).first);
-      await tester.pumpAndSettle();
-      await tester.tap(family);
-      await tester.pumpAndSettle();
-      expect(shared.last, startsWith('[전세AI프]'));
-      expect(shared.last, isNot(contains('안녕하세요')));
+      // 2026-10-26: 가족·배우자에게 보내기 기능을 뺐다
+      expect(find.koText('가족·배우자에게 보내기'), findsNothing);
     });
 
     testWidgets('폰에 저장된 잔금일이 지났으면 문구만 바꾼다 (판정은 그대로)', (tester) async {
       final key = journeyPropertyKey(_baseline.address!);
       await JourneyScheduleStore.instance.save(
         key,
-        const JourneySchedule().copyWith(JourneyDateKey.balance, DateTime(2026, 8, 1)),
+        const JourneySchedule().copyWith(
+          JourneyDateKey.balance,
+          DateTime(2026, 8, 1),
+        ),
       );
       await _pump(tester, _changedWithDanger, now: DateTime(2026, 8, 5, 10));
 
@@ -433,7 +446,10 @@ void main() {
       final key = journeyPropertyKey(_baseline.address!);
       await JourneyScheduleStore.instance.save(
         key,
-        const JourneySchedule().copyWith(JourneyDateKey.balance, DateTime(2026, 8, 5)),
+        const JourneySchedule().copyWith(
+          JourneyDateKey.balance,
+          DateTime(2026, 8, 5),
+        ),
       );
       await _pump(tester, _changedWithDanger, now: DateTime(2026, 8, 5, 10));
       expect(find.koText('잔금 보내기 전에 멈추세요'), findsOneWidget);
@@ -446,17 +462,18 @@ void main() {
       await _pump(tester, _unchanged, onBackToJourney: () => back++);
 
       expect(find.koText('입금 전 마지막 체크리스트'), findsOneWidget);
-      expect(find.koText('돈 받는 계좌 주인이 집주인과 같은지 확인하기'), findsOneWidget);
-      expect(
-        find.koText('등기부를 다시 떼서 달라진 게 없는지 보기 — 방금 했어요'),
-        findsOneWidget,
-      );
+      expect(find.koText('계좌 주인 = 집주인'), findsOneWidget);
+      expect(find.koText('이체 직전 등기부 대조 — 방금 했어요'), findsOneWidget);
       expect(find.koText('잔금 보내기 전에 멈추세요'), findsNothing);
       // 여정으로 돌아가는 버튼은 화면 맨 아래 하나뿐이다 — 카드 안에 같은 버튼을 겹쳐 두지 않는다(D3)
       expect(find.koText('잔금 단계로 돌아가기', skipOffstage: false), findsNothing);
 
       final bottom = find.koText('잔금 보내기 전에 확인할 것 보기');
-      await tester.scrollUntilVisible(bottom, 200, scrollable: find.byType(Scrollable).first);
+      await tester.scrollUntilVisible(
+        bottom,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(bottom);
       await tester.pumpAndSettle();
@@ -486,7 +503,11 @@ void main() {
       expect(find.koText('입금 전 마지막 체크리스트'), findsNothing);
 
       final button = find.koText('빠진 쪽만 더 찍기 (먼저 찍은 3장은 그대로)');
-      await tester.scrollUntilVisible(button, 200, scrollable: find.byType(Scrollable).first);
+      await tester.scrollUntilVisible(
+        button,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(button);
       await tester.pumpAndSettle();

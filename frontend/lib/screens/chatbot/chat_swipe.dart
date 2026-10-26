@@ -51,8 +51,7 @@ class SwipeToQuote extends StatefulWidget {
   State<SwipeToQuote> createState() => _SwipeToQuoteState();
 }
 
-class _SwipeToQuoteState extends State<SwipeToQuote>
-    with SingleTickerProviderStateMixin {
+class _SwipeToQuoteState extends State<SwipeToQuote> with SingleTickerProviderStateMixin {
   /// 0 = 제자리, 1 = [kSwipeMax]만큼 밀림
   late final AnimationController _ctrl = AnimationController(vsync: this);
   Timer? _nudgeTimer;
@@ -86,17 +85,9 @@ class _SwipeToQuoteState extends State<SwipeToQuote>
     _nudgeTimer?.cancel();
     _nudgeTimer = Timer(const Duration(seconds: 1), () async {
       if (!mounted || _swiping) return;
-      await _ctrl.animateTo(
-        kSwipeNudge / kSwipeMax,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      await _ctrl.animateTo(kSwipeNudge / kSwipeMax, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       if (!mounted || _swiping) return;
-      await _ctrl.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeIn,
-      );
+      await _ctrl.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
     });
   }
 
@@ -117,8 +108,7 @@ class _SwipeToQuoteState extends State<SwipeToQuote>
       _decided = true;
       // 꾹 누른 뒤(글자 선택) 움직이는 건 밀기가 아니다. 세로로 더 움직이면 목록 스크롤.
       final held = e.timeStamp - _downAt;
-      _swiping =
-          held < kLongPressTimeout && d.dx < 0 && d.dx.abs() > d.dy.abs();
+      _swiping = held < kLongPressTimeout && d.dx < 0 && d.dx.abs() > d.dy.abs();
       if (!_swiping) {
         _down = null;
         return;
@@ -141,11 +131,7 @@ class _SwipeToQuoteState extends State<SwipeToQuote>
 
   void _finish() {
     if (_swiping) {
-      _ctrl.animateTo(
-        0,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-      );
+      _ctrl.animateTo(0, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
     }
     _down = null;
     _swiping = false;
@@ -167,10 +153,7 @@ class _SwipeToQuoteState extends State<SwipeToQuote>
           return Stack(
             clipBehavior: Clip.none,
             children: [
-              Transform.translate(
-                offset: Offset(-dx, 0),
-                child: widget.builder(context, dx > 0),
-              ),
+              Transform.translate(offset: Offset(-dx, 0), child: widget.builder(context, dx > 0)),
               if (dx > 0)
                 Positioned(
                   top: widget.topInset,
@@ -186,15 +169,8 @@ class _SwipeToQuoteState extends State<SwipeToQuote>
                           key: const ValueKey('swipe-arrow'),
                           width: kSwipeArrowCircle,
                           height: kSwipeArrowCircle,
-                          decoration: const BoxDecoration(
-                            color: AppColors.primarySoft,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.reply,
-                            size: kSwipeArrowIcon,
-                            color: AppColors.primary,
-                          ),
+                          decoration: const BoxDecoration(color: AppColors.primarySoft, shape: BoxShape.circle),
+                          child: const Icon(Icons.reply, size: kSwipeArrowIcon, color: AppColors.primary),
                         ),
                       ),
                     ),

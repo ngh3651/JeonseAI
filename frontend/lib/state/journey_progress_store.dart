@@ -74,18 +74,19 @@ class CompareLogEntry {
     'lines': [for (final l in lines) l.toJson()],
   };
 
-  factory CompareLogEntry.fromJson(Map<String, dynamic> json) => CompareLogEntry(
-    at: DateTime.tryParse(json['at'] as String? ?? '') ?? DateTime.now(),
-    changedCount: (json['changedCount'] as num?)?.toInt() ?? 0,
-    stageIndex: (json['stageIndex'] as num?)?.toInt(),
-    stageTitle: json['stageTitle'] as String?,
-    reportId: json['reportId'] as String?,
-    viewedAt: json['viewedAt'] as String?,
-    lines: [
-      for (final l in (json['lines'] as List?) ?? const [])
-        CompareLogLine.fromJson((l as Map).cast<String, dynamic>()),
-    ],
-  );
+  factory CompareLogEntry.fromJson(Map<String, dynamic> json) =>
+      CompareLogEntry(
+        at: DateTime.tryParse(json['at'] as String? ?? '') ?? DateTime.now(),
+        changedCount: (json['changedCount'] as num?)?.toInt() ?? 0,
+        stageIndex: (json['stageIndex'] as num?)?.toInt(),
+        stageTitle: json['stageTitle'] as String?,
+        reportId: json['reportId'] as String?,
+        viewedAt: json['viewedAt'] as String?,
+        lines: [
+          for (final l in (json['lines'] as List?) ?? const [])
+            CompareLogLine.fromJson((l as Map).cast<String, dynamic>()),
+        ],
+      );
 }
 
 class JourneyProgressStore extends ChangeNotifier {
@@ -123,7 +124,8 @@ class JourneyProgressStore extends ChangeNotifier {
         }
         for (final e in ((decoded['logs'] as Map?) ?? const {}).entries) {
           _logs[e.key as String] = [
-            for (final l in e.value as List) CompareLogEntry.fromJson((l as Map).cast<String, dynamic>()),
+            for (final l in e.value as List)
+              CompareLogEntry.fromJson((l as Map).cast<String, dynamic>()),
           ];
         }
         _notificationsOn = decoded['notificationsOn'] as bool?;
@@ -144,7 +146,8 @@ class JourneyProgressStore extends ChangeNotifier {
   }
 
   /// 사용자가 정한 완료 여부. 정하지 않았으면 null.
-  bool? manualDone(String propertyKey, int stageIndex) => _manual[propertyKey]?[stageIndex];
+  bool? manualDone(String propertyKey, int stageIndex) =>
+      _manual[propertyKey]?[stageIndex];
 
   Future<void> setDone(String propertyKey, int stageIndex, bool done) async {
     (_manual[propertyKey] ??= {})[stageIndex] = done;
@@ -152,7 +155,8 @@ class JourneyProgressStore extends ChangeNotifier {
     await _persist();
   }
 
-  List<CompareLogEntry> logFor(String propertyKey) => List.unmodifiable(_logs[propertyKey] ?? const []);
+  List<CompareLogEntry> logFor(String propertyKey) =>
+      List.unmodifiable(_logs[propertyKey] ?? const []);
 
   /// 이 리포트를 만든 대조 기록 (이전 리포트 꼬리말용). 없으면 null.
   CompareLogEntry? logForReport(String reportId) {
@@ -199,7 +203,8 @@ class JourneyProgressStore extends ChangeNotifier {
               e.key: {for (final s in e.value.entries) '${s.key}': s.value},
           },
           'logs': {
-            for (final e in _logs.entries) e.key: [for (final l in e.value) l.toJson()],
+            for (final e in _logs.entries)
+              e.key: [for (final l in e.value) l.toJson()],
           },
           'notificationsOn': _notificationsOn,
         }),

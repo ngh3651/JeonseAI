@@ -9,7 +9,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
 import '../../design_system/text/app_text.dart';
 import '../../design_system/text/keep_all.dart';

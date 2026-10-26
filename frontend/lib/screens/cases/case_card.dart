@@ -59,9 +59,7 @@ class CaseRiskBox extends StatelessWidget {
     final rows = <Widget>[];
     for (int i = 0; i < labels.length; i += 2) {
       if (i > 0) {
-        rows.add(
-          const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
-        );
+        rows.add(const Divider(height: 1, thickness: 1, color: AppColorsNext.divider));
       }
       rows.add(
         IntrinsicHeight(
@@ -69,11 +67,7 @@ class CaseRiskBox extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: _RiskCell(label: labels[i], left: true)),
-              const VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: AppColorsNext.divider,
-              ),
+              const VerticalDivider(width: 1, thickness: 1, color: AppColorsNext.divider),
               Expanded(
                 child: i + 1 < labels.length
                     ? _RiskCell(label: labels[i + 1], left: false)
@@ -97,9 +91,7 @@ class CaseRiskBox extends StatelessWidget {
                 if (labels.isNotEmpty)
                   TextSpan(
                     text: '  ${labels.length}',
-                    style: AppTypographyNext.title.copyWith(
-                      color: AppColorsNext.dangerText,
-                    ),
+                    style: AppTypographyNext.title.copyWith(color: AppColorsNext.dangerText),
                   ),
               ],
             ),
@@ -107,10 +99,7 @@ class CaseRiskBox extends StatelessWidget {
           const SizedBox(height: 8),
           if (labels.isEmpty)
             // '위험 없음'으로 읽히지 않게 — 판례와 맞춰 볼 패턴이 없다는 뜻만 (보수적 편향, 디자인 리뷰 2026-10-24)
-            AppText(
-              '판례와 맞춰 볼 위험 패턴이 없어요 · 리포트 결과를 함께 확인하세요',
-              style: AppTypographyNext.caption,
-            )
+            AppText('판례와 맞춰 볼 위험 패턴이 없어요 · 리포트 결과를 함께 확인하세요', style: AppTypographyNext.caption)
           else
             ...rows,
         ],
@@ -130,19 +119,10 @@ class _RiskCell extends StatelessWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48),
       child: Padding(
-        padding: EdgeInsets.only(
-          left: left ? 0 : 16,
-          right: left ? 12 : 0,
-          top: 10,
-          bottom: 10,
-        ),
+        padding: EdgeInsets.only(left: left ? 0 : 16, right: left ? 12 : 0, top: 10, bottom: 10),
         child: Row(
           children: [
-            const Icon(
-              Icons.warning_amber_rounded,
-              size: 18,
-              color: AppColorsNext.dangerText,
-            ),
+            const Icon(Icons.warning_amber_rounded, size: 18, color: AppColorsNext.dangerText),
             const SizedBox(width: 8),
             Expanded(
               child: AppText(
@@ -174,19 +154,13 @@ class CaseEmptyBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _WhiteBox(
-      padding: const EdgeInsets.symmetric(
-        horizontal: _kBoxPadding,
-        vertical: 28,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: _kBoxPadding, vertical: 28),
       child: Column(
         children: [
           Container(
             width: 56,
             height: 56,
-            decoration: const BoxDecoration(
-              color: AppColors.background,
-              shape: BoxShape.circle,
-            ),
+            decoration: const BoxDecoration(color: AppColors.background, shape: BoxShape.circle),
             child: const Icon(Icons.search, size: 28, color: AppColors.caution),
           ),
           const SizedBox(height: 16),
@@ -211,11 +185,7 @@ class CaseEmptyBox extends StatelessWidget {
 /// - 펼침: 태그 → 결과 문장 → 요약 → [🏛 사건번호 ↗ | 접기 ⌃] → 연한 선 → 말풍선 2개
 /// - 말풍선: '우리 매물과 공통점'(처음 닫힘·왼쪽·노랑) · '이런 피해를 피하려면'(처음 열림·오른쪽·초록, 없으면 숨김)
 class CaseCard extends StatefulWidget {
-  const CaseCard({
-    super.key,
-    required this.match,
-    this.initiallyExpanded = false,
-  });
+  const CaseCard({super.key, required this.match, this.initiallyExpanded = false});
 
   final CaseMatch match;
   final bool initiallyExpanded;
@@ -225,8 +195,7 @@ class CaseCard extends StatefulWidget {
 }
 
 /// 펼침 상태를 스크롤해도 기억한다 — 목록 밖으로 나갔다 오면 카드가 새로 만들어져 닫혀 버렸다(2026-10-24 실기기).
-class _CaseCardState extends State<CaseCard>
-    with AutomaticKeepAliveClientMixin {
+class _CaseCardState extends State<CaseCard> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -243,19 +212,14 @@ class _CaseCardState extends State<CaseCard>
     final messenger = ScaffoldMessenger.maybeOf(context);
     bool ok = false;
     try {
-      ok = await launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
-      );
+      ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (_) {
       ok = false;
     }
     if (!ok) {
       messenger
         ?..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: AppText('판결문을 열지 못했어요. 잠시 후 다시 눌러 주세요')),
-        );
+        ..showSnackBar(const SnackBar(content: AppText('판결문을 열지 못했어요. 잠시 후 다시 눌러 주세요')));
     }
   }
 
@@ -294,11 +258,7 @@ class _CaseCardState extends State<CaseCard>
           const SizedBox(height: 4),
           _sourceRow(),
           if (_expanded) ...[
-            const Divider(
-              height: 17,
-              thickness: 1,
-              color: AppColorsNext.divider,
-            ),
+            const Divider(height: 17, thickness: 1, color: AppColorsNext.divider),
             _BubbleHeader(
               label: '우리 매물과 공통점',
               icon: Icons.home_outlined,
@@ -358,11 +318,7 @@ class _CaseCardState extends State<CaseCard>
     final source = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(
-          Icons.account_balance_outlined,
-          size: 18,
-          color: AppColorsNext.textMuted,
-        ),
+        const Icon(Icons.account_balance_outlined, size: 18, color: AppColorsNext.textMuted),
         const SizedBox(width: 6),
         Flexible(
           child: AppText(
@@ -392,27 +348,17 @@ class _CaseCardState extends State<CaseCard>
                       onTap: _openSource,
                       borderRadius: BorderRadius.circular(8),
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          minHeight: _kMinTouch,
-                        ),
+                        constraints: const BoxConstraints(minHeight: _kMinTouch),
                         child: Padding(
                           padding: const EdgeInsets.only(right: 8),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            widthFactor: 1,
-                            child: source,
-                          ),
+                          child: Align(alignment: Alignment.centerLeft, widthFactor: 1, child: source),
                         ),
                       ),
                     ),
                   )
                 : ConstrainedBox(
                     constraints: const BoxConstraints(minHeight: _kMinTouch),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: 1,
-                      child: source,
-                    ),
+                    child: Align(alignment: Alignment.centerLeft, widthFactor: 1, child: source),
                   ),
           ),
         ),
@@ -430,20 +376,14 @@ class _CaseCardState extends State<CaseCard>
                     _expanded ? '접기' : '펼치기',
                     style: AppTypographyNext.caption.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: _expanded
-                          ? AppColorsNext.textBody
-                          : AppColors.primary,
+                      color: _expanded ? AppColorsNext.textBody : AppColors.primary,
                     ),
                   ),
                   const SizedBox(width: 2),
                   Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
+                    _expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                     size: 22,
-                    color: _expanded
-                        ? AppColorsNext.textBody
-                        : AppColors.primary,
+                    color: _expanded ? AppColorsNext.textBody : AppColors.primary,
                   ),
                 ],
               ),
@@ -509,10 +449,7 @@ class _BubbleHeader extends StatelessWidget {
     );
     final text = AppText(
       label,
-      style: AppTypographyNext.caption.copyWith(
-        fontWeight: FontWeight.w700,
-        color: color,
-      ),
+      style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w700, color: color),
     );
     final chevron = Icon(
       open ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
@@ -522,20 +459,8 @@ class _BubbleHeader extends StatelessWidget {
     // 글자를 크게 키운 폰에서 이름이 폭을 넘으면 줄을 바꾼다(넘쳐서 잘리지 않게) — Flexible
     final name = Flexible(child: text);
     final children = alignEnd
-        ? [
-            chevron,
-            const SizedBox(width: 4),
-            name,
-            const SizedBox(width: 8),
-            circle,
-          ]
-        : [
-            circle,
-            const SizedBox(width: 8),
-            name,
-            const SizedBox(width: 4),
-            chevron,
-          ];
+        ? [chevron, const SizedBox(width: 4), name, const SizedBox(width: 8), circle]
+        : [circle, const SizedBox(width: 8), name, const SizedBox(width: 4), chevron];
 
     return Align(
       alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
@@ -601,10 +526,7 @@ class _Bubble extends StatelessWidget {
 
 /// 흰 상자 (모서리 24 · 안쪽 20)
 class _WhiteBox extends StatelessWidget {
-  const _WhiteBox({
-    required this.child,
-    this.padding = const EdgeInsets.all(_kBoxPadding),
-  });
+  const _WhiteBox({required this.child, this.padding = const EdgeInsets.all(_kBoxPadding)});
 
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -735,10 +657,7 @@ InlineSpan caseRichText(
   final stripped = stripBoldMarkers(text);
   final body = stripped.text;
   final bold = _markRanges(body, [...emphasis, ...stripped.bold]);
-  final boldStyle = base.copyWith(
-    fontWeight: FontWeight.w700,
-    color: AppColorsNext.textStrong,
-  );
+  final boldStyle = base.copyWith(fontWeight: FontWeight.w700, color: AppColorsNext.textStrong);
   final children = <InlineSpan>[];
 
   void addPlain(int start, int end) {
@@ -749,9 +668,7 @@ InlineSpan caseRichText(
       while (j < end && bold[j] == on) {
         j++;
       }
-      children.add(
-        TextSpan(text: body.substring(i, j), style: on ? boldStyle : base),
-      );
+      children.add(TextSpan(text: body.substring(i, j), style: on ? boldStyle : base));
       i = j;
     }
   }
@@ -764,9 +681,7 @@ InlineSpan caseRichText(
       if (term.isEmpty) continue;
       final at = body.indexOf(term, cursor);
       if (at < 0) continue;
-      if (bestAt == -1 ||
-          at < bestAt ||
-          (at == bestAt && term.length > bestTerm!.length)) {
+      if (bestAt == -1 || at < bestAt || (at == bestAt && term.length > bestTerm!.length)) {
         bestAt = at;
         bestTerm = term;
       }
@@ -780,11 +695,7 @@ InlineSpan caseRichText(
       WidgetSpan(
         alignment: PlaceholderAlignment.baseline,
         baseline: TextBaseline.alphabetic,
-        child: _CaseTerm(
-          term: bestTerm,
-          description: glossary[bestTerm]!,
-          base: base,
-        ),
+        child: _CaseTerm(term: bestTerm, description: glossary[bestTerm]!, base: base),
       ),
     );
     cursor = bestAt + bestTerm.length;
@@ -794,11 +705,7 @@ InlineSpan caseRichText(
 
 /// 요약 속 용어 — 초록 #14724B · 굵기 600 · 실선 밑줄(두께 2, 35% 투명, 글자와 간격 4). 누르면 풀이 시트.
 class _CaseTerm extends StatelessWidget {
-  const _CaseTerm({
-    required this.term,
-    required this.description,
-    required this.base,
-  });
+  const _CaseTerm({required this.term, required this.description, required this.base});
 
   final String term;
   final String description;
@@ -811,16 +718,12 @@ class _CaseTerm extends StatelessWidget {
       label: '$term 뜻 보기',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () =>
-            showCaseTermSheet(context, term: term, description: description),
+        onTap: () => showCaseTermSheet(context, term: term, description: description),
         child: Container(
           padding: const EdgeInsets.only(bottom: 2),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(
-                color: AppColors.primary.withValues(alpha: 0.35),
-                width: 2,
-              ),
+              bottom: BorderSide(color: AppColors.primary.withValues(alpha: 0.35), width: 2),
             ),
           ),
           child: AppText(
@@ -864,11 +767,7 @@ Future<void> showCaseTermSheet(
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.article_outlined,
-                size: 18,
-                color: AppColors.primary,
-              ),
+              const Icon(Icons.article_outlined, size: 18, color: AppColors.primary),
               const SizedBox(width: 6),
               AppText(
                 '어려운 말 풀이',
@@ -889,9 +788,7 @@ Future<void> showCaseTermSheet(
             child: FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               onPressed: () => Navigator.of(sheetContext).pop(),
               child: AppText(

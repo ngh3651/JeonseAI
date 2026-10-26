@@ -33,7 +33,8 @@ class PropertyReports {
   String get address => latest.address;
 
   /// 등기부에 인쇄된 열람일. 못 읽었으면 null — 분석일로 대신 채우지 않는다.
-  DateTime? get registryViewedDate => parseRegistryViewedAt(latest.registryViewedAt);
+  DateTime? get registryViewedDate =>
+      parseRegistryViewedAt(latest.registryViewedAt);
 
   /// 등기부를 뗀 지 며칠 됐나. 날짜를 못 읽었으면 null.
   int? get registryAgeDays {
@@ -46,11 +47,16 @@ class PropertyReports {
 List<PropertyReports> groupByProperty(List<AnalysisReport> reports) {
   final grouped = <String, List<AnalysisReport>>{};
   for (final report in reports) {
-    grouped.putIfAbsent(journeyPropertyKey(report.address), () => []).add(report);
+    grouped
+        .putIfAbsent(journeyPropertyKey(report.address), () => [])
+        .add(report);
   }
   return [
     for (final entry in grouped.entries)
-      PropertyReports(key: entry.key, reports: entry.value.take(kKeepReportVersions).toList()),
+      PropertyReports(
+        key: entry.key,
+        reports: entry.value.take(kKeepReportVersions).toList(),
+      ),
   ];
 }
 
@@ -60,12 +66,16 @@ List<AnalysisReport> latestPerProperty(List<AnalysisReport> reports) => [
 ];
 
 /// 이 리포트와 같은 집의 리포트들 (최신순, 최대 [kKeepReportVersions]건). 이 리포트가 목록에 없으면 이 리포트 하나.
-List<AnalysisReport> versionsOf(AnalysisReport report, List<AnalysisReport> history) {
+List<AnalysisReport> versionsOf(
+  AnalysisReport report,
+  List<AnalysisReport> history,
+) {
   final key = journeyPropertyKey(report.address);
   final same = [
     for (final r in history)
       if (journeyPropertyKey(r.address) == key) r,
   ].take(kKeepReportVersions).toList();
-  if (!same.any((r) => r.id == report.id)) return [report, ...same].take(kKeepReportVersions).toList();
+  if (!same.any((r) => r.id == report.id))
+    return [report, ...same].take(kKeepReportVersions).toList();
   return same;
 }

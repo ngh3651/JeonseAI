@@ -59,10 +59,7 @@ class RegistryDocumentLayout {
       pageWidth: w,
       pageHeights: [
         for (final s in sizes)
-          w *
-              (s.width > 0 && s.height > 0
-                  ? s.height / s.width
-                  : kFallbackPageAspect),
+          w * (s.width > 0 && s.height > 0 ? s.height / s.width : kFallbackPageAspect),
       ],
       padTop: padTop,
       padBottom: padBottom,
@@ -105,8 +102,7 @@ class RegistryDocumentLayout {
       fractionOf(pageTop(i) + pageHeight(i) + gap / 2);
 
   /// 쪽 [i] 한가운데의 레일 비율 — 쪽번호 라벨 위치.
-  double pageCenterFraction(int i) =>
-      fractionOf(pageTop(i) + pageHeight(i) / 2);
+  double pageCenterFraction(int i) => fractionOf(pageTop(i) + pageHeight(i) / 2);
 
   static List<double> _cumulativeTops(
     List<double> heights,

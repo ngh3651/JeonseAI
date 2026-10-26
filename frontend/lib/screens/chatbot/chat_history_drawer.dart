@@ -67,18 +67,11 @@ Future<ChatDrawerResult?> showChatHistoryDrawer(
       onDeleted: onDeleted,
       clock: clock,
     ),
-    transitionBuilder: (context, animation, secondary, child) =>
-        SlideTransition(
-          position: Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
-              .animate(
-                CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutCubic,
-                  reverseCurve: Curves.easeInCubic,
-                ),
-              ),
-          child: child,
-        ),
+    transitionBuilder: (context, animation, secondary, child) => SlideTransition(
+      position: Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
+          .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic)),
+      child: child,
+    ),
   );
 }
 
@@ -144,13 +137,8 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
       useRootNavigator: true,
       backgroundColor: AppColors.surface,
       barrierColor: AppColors.dim,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppRadius.sheet),
-        ),
-      ),
-      builder: (context) =>
-          _ConversationSheet(conversation: c, now: widget.clock()),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet))),
+      builder: (context) => _ConversationSheet(conversation: c, now: widget.clock()),
     );
     if (!mounted || action == null) return;
     switch (action) {
@@ -161,8 +149,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
           barrierColor: AppColors.dim,
           builder: (context) => _RenameDialog(initial: c.title),
         );
-        if (title == null || title.trim().isEmpty || title.trim() == c.title)
-          return;
+        if (title == null || title.trim().isEmpty || title.trim() == c.title) return;
         await widget.repository.rename(c.id, title.trim());
         widget.onRenamed(c.id, title.trim());
         await _load();
@@ -194,17 +181,13 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
         onHorizontalDragStart: (_) => _drag = 0,
         onHorizontalDragUpdate: (d) => _drag += d.delta.dx,
         onHorizontalDragEnd: (d) {
-          if (_drag < -AppSize.minTouchTarget ||
-              (d.primaryVelocity ?? 0) < -300)
-            _close();
+          if (_drag < -AppSize.minTouchTarget || (d.primaryVelocity ?? 0) < -300) _close();
         },
         child: Material(
           key: const ValueKey('chat-drawer'),
           color: AppColors.surface,
           shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.horizontal(
-              right: Radius.circular(AppRadius.sheet),
-            ),
+            borderRadius: BorderRadius.horizontal(right: Radius.circular(AppRadius.sheet)),
           ),
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
@@ -222,17 +205,10 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
                       AppSpacing.screenPadding,
                       AppSpacing.md,
                     ),
-                    child: AppText(
-                      '지난 대화',
-                      style: AppTypographyNext.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: AppText('지난 대화', style: AppTypographyNext.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.screenPadding,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
                     child: _searchField(enabled: !empty),
                   ),
                   if (!_searching) ...[
@@ -271,46 +247,24 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
         style: AppTypographyNext.body,
         decoration: InputDecoration(
           hintText: '대화 검색',
-          hintStyle: AppTypographyNext.body.copyWith(
-            color: AppColorsNext.textMuted,
-          ),
+          hintStyle: AppTypographyNext.body.copyWith(color: AppColorsNext.textMuted),
           filled: true,
           fillColor: focused ? AppColors.surface : AppColors.background,
           isDense: true,
           constraints: const BoxConstraints(minHeight: AppSize.minTouchTarget),
           contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-          prefixIcon: const Icon(
-            Icons.search,
-            size: AppSize.iconSm,
-            color: AppColorsNext.textMuted,
-          ),
-          prefixIconConstraints: const BoxConstraints(
-            minWidth: AppSize.minTouchTarget,
-            minHeight: AppSize.minTouchTarget,
-          ),
+          prefixIcon: const Icon(Icons.search, size: AppSize.iconSm, color: AppColorsNext.textMuted),
+          prefixIconConstraints: const BoxConstraints(minWidth: AppSize.minTouchTarget, minHeight: AppSize.minTouchTarget),
           suffixIcon: _searchCtrl.text.isEmpty
               ? null
               : IconButton(
                   tooltip: '검색어 지우기',
-                  icon: const Icon(
-                    Icons.close,
-                    size: AppSize.iconSm,
-                    color: AppColorsNext.textMuted,
-                  ),
+                  icon: const Icon(Icons.close, size: AppSize.iconSm, color: AppColorsNext.textMuted),
                   onPressed: () => setState(_searchCtrl.clear),
                 ),
-          suffixIconConstraints: const BoxConstraints(
-            minWidth: AppSize.minTouchTarget,
-            minHeight: AppSize.minTouchTarget,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: pill,
-            borderSide: BorderSide.none,
-          ),
-          disabledBorder: OutlineInputBorder(
-            borderRadius: pill,
-            borderSide: BorderSide.none,
-          ),
+          suffixIconConstraints: const BoxConstraints(minWidth: AppSize.minTouchTarget, minHeight: AppSize.minTouchTarget),
+          enabledBorder: OutlineInputBorder(borderRadius: pill, borderSide: BorderSide.none),
+          disabledBorder: OutlineInputBorder(borderRadius: pill, borderSide: BorderSide.none),
           focusedBorder: OutlineInputBorder(
             borderRadius: pill,
             borderSide: const BorderSide(color: AppColors.primary, width: 2),
@@ -332,20 +286,14 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             child: Row(
               children: [
-                const Icon(
-                  Icons.add,
-                  size: AppSize.iconSm,
-                  color: AppColors.primary,
-                ),
+                const Icon(Icons.add, size: AppSize.iconSm, color: AppColors.primary),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: AppText(
                     '새 대화',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypographyNext.bodyStrong.copyWith(
-                      color: AppColors.primary,
-                    ),
+                    style: AppTypographyNext.bodyStrong.copyWith(color: AppColors.primary),
                   ),
                 ),
               ],
@@ -358,12 +306,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
 
   Widget _groupHeader(String label) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.screenPadding,
-        AppSpacing.lg,
-        AppSpacing.screenPadding,
-        AppSpacing.xs,
-      ),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, AppSpacing.lg, AppSpacing.screenPadding, AppSpacing.xs),
       child: AppText(label, style: AppTypographyNext.caption, maxLines: 2),
     );
   }
@@ -380,10 +323,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
       }
       children.add(_row(c, subtitle: _defaultSub(c, now)));
     }
-    return ListView(
-      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-      children: children,
-    );
+    return ListView(padding: const EdgeInsets.only(bottom: AppSpacing.lg), children: children);
   }
 
   Widget _searchResults(List<ChatConversation> all) {
@@ -400,28 +340,19 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
           _row(
             h.conversation,
             titleMatches: h.titleMatches,
-            subtitle: h.snippet == null
-                ? _defaultSub(h.conversation, now)
-                : _highlight(h.snippet!, h.snippetMatches, _subStyle),
+            subtitle: h.snippet == null ? _defaultSub(h.conversation, now) : _highlight(h.snippet!, h.snippetMatches, _subStyle),
           ),
       ],
     );
   }
 
-  static final TextStyle _subStyle = AppTypographyNext.caption.copyWith(
-    color: AppColorsNext.textMuted,
-  );
-  static final TextStyle _titleStyle = AppTypographyNext.bodyStrong.copyWith(
-    color: AppColorsNext.textStrong,
-  );
+  static final TextStyle _subStyle = AppTypographyNext.caption.copyWith(color: AppColorsNext.textMuted);
+  static final TextStyle _titleStyle = AppTypographyNext.bodyStrong.copyWith(color: AppColorsNext.textStrong);
 
   InlineSpan _defaultSub(ChatConversation c, DateTime now) {
     final answer = c.lastAnswer;
     final time = chatRowTime(c.updatedAt, now);
-    return TextSpan(
-      text: answer == null ? time : '$time · ${firstChatLine(answer.text)}',
-      style: _subStyle,
-    );
+    return TextSpan(text: answer == null ? time : '$time · ${firstChatLine(answer.text)}', style: _subStyle);
   }
 
   /// 맞은 글자 — 바탕 primarySoft + 글자 primaryDeep 600
@@ -435,8 +366,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
     final spans = <TextSpan>[];
     var cursor = 0;
     for (final m in matches) {
-      if (m.start > cursor)
-        spans.add(TextSpan(text: text.substring(cursor, m.start)));
+      if (m.start > cursor) spans.add(TextSpan(text: text.substring(cursor, m.start)));
       spans.add(TextSpan(text: text.substring(m.start, m.end), style: hit));
       cursor = m.end;
     }
@@ -444,11 +374,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
     return TextSpan(style: base, children: spans);
   }
 
-  Widget _row(
-    ChatConversation c, {
-    required InlineSpan subtitle,
-    List<ChatMatch> titleMatches = const [],
-  }) {
+  Widget _row(ChatConversation c, {required InlineSpan subtitle, List<ChatMatch> titleMatches = const []}) {
     final current = c.id == _currentId;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
@@ -460,11 +386,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
         child: InkWell(
           onTap: () => _close(OpenChat(c)),
           child: Padding(
-            padding: const EdgeInsets.only(
-              left: AppSpacing.md,
-              top: AppSpacing.md,
-              bottom: AppSpacing.md,
-            ),
+            padding: const EdgeInsets.only(left: AppSpacing.md, top: AppSpacing.md, bottom: AppSpacing.md),
             child: Row(
               children: [
                 Expanded(
@@ -477,25 +399,14 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text.rich(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      Text.rich(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
                 IconButton(
                   tooltip: '대화 메뉴',
-                  constraints: const BoxConstraints(
-                    minWidth: AppSize.minTouchTarget,
-                    minHeight: AppSize.minTouchTarget,
-                  ),
-                  icon: const Icon(
-                    Icons.more_horiz,
-                    size: AppSize.iconMd,
-                    color: AppColorsNext.textMuted,
-                  ),
+                  constraints: const BoxConstraints(minWidth: AppSize.minTouchTarget, minHeight: AppSize.minTouchTarget),
+                  icon: const Icon(Icons.more_horiz, size: AppSize.iconMd, color: AppColorsNext.textMuted),
                   onPressed: () => _openMenu(c),
                 ),
               ],
@@ -509,9 +420,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
   Widget _emptyState() {
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.screenPadding,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: box.maxHeight),
           child: Column(
@@ -532,16 +441,10 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
               AppText(
                 '아직 지난 대화가 없어요',
                 textAlign: TextAlign.center,
-                style: AppTypographyNext.bodyStrong.copyWith(
-                  color: AppColorsNext.textStrong,
-                ),
+                style: AppTypographyNext.bodyStrong.copyWith(color: AppColorsNext.textStrong),
               ),
               const SizedBox(height: AppSpacing.xs),
-              AppText(
-                '물어본 내용이 여기에 차곡차곡 쌓여요',
-                textAlign: TextAlign.center,
-                style: AppTypographyNext.caption,
-              ),
+              AppText('물어본 내용이 여기에 차곡차곡 쌓여요', textAlign: TextAlign.center, style: AppTypographyNext.caption),
             ],
           ),
         ),
@@ -575,10 +478,7 @@ class _ConversationSheet extends StatelessWidget {
             child: Container(
               width: 36,
               height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.line,
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-              ),
+              decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(AppRadius.pill)),
             ),
           ),
           Padding(
@@ -595,9 +495,7 @@ class _ConversationSheet extends StatelessWidget {
                   conversation.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypographyNext.bodyStrong.copyWith(
-                    color: AppColorsNext.textStrong,
-                  ),
+                  style: AppTypographyNext.bodyStrong.copyWith(color: AppColorsNext.textStrong),
                 ),
                 AppText(
                   '${chatSheetTime(conversation.updatedAt, now)} · 말 ${conversation.messageCount}개',
@@ -614,31 +512,19 @@ class _ConversationSheet extends StatelessWidget {
     );
   }
 
-  Widget _item(
-    BuildContext context,
-    IconData icon,
-    String label,
-    _SheetAction action,
-  ) {
+  Widget _item(BuildContext context, IconData icon, String label, _SheetAction action) {
     return InkWell(
       onTap: () => Navigator.of(context).pop(action),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 56),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.screenPadding,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
           child: Row(
             children: [
               Icon(icon, size: AppSize.iconMd, color: AppColorsNext.textMuted),
               const SizedBox(width: AppSpacing.lg),
               Expanded(
-                child: AppText(
-                  label,
-                  style: AppTypographyNext.body.copyWith(
-                    color: AppColorsNext.textStrong,
-                  ),
-                ),
+                child: AppText(label, style: AppTypographyNext.body.copyWith(color: AppColorsNext.textStrong)),
               ),
             ],
           ),
@@ -670,13 +556,8 @@ class _CenterDialog extends StatelessWidget {
     return Dialog(
       backgroundColor: AppColors.surface,
       surfaceTintColor: AppColors.surface,
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.screenPadding,
-        vertical: AppSpacing.xxl,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding, vertical: AppSpacing.xxl),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
@@ -693,9 +574,7 @@ class _CenterDialog extends StatelessWidget {
                   child: OutlinedButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(
-                        AppSize.minTouchTarget,
-                      ),
+                      minimumSize: const Size.fromHeight(AppSize.minTouchTarget),
                       backgroundColor: AppColors.surface,
                       foregroundColor: AppColorsNext.textStrong,
                       side: const BorderSide(color: AppColors.line),
@@ -710,9 +589,7 @@ class _CenterDialog extends StatelessWidget {
                   child: FilledButton(
                     onPressed: onConfirm,
                     style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(
-                        AppSize.minTouchTarget,
-                      ),
+                      minimumSize: const Size.fromHeight(AppSize.minTouchTarget),
                       backgroundColor: AppColors.primary,
                       foregroundColor: AppColors.surface,
                       disabledBackgroundColor: AppColors.line,
@@ -761,9 +638,7 @@ class _RenameDialog extends StatefulWidget {
 }
 
 class _RenameDialogState extends State<_RenameDialog> {
-  late final TextEditingController _ctrl = TextEditingController(
-    text: widget.initial,
-  );
+  late final TextEditingController _ctrl = TextEditingController(text: widget.initial);
 
   @override
   void dispose() {
@@ -791,14 +666,9 @@ class _RenameDialogState extends State<_RenameDialog> {
           counterText: '',
           filled: true,
           fillColor: AppColors.surface,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
-          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
           enabledBorder: border,
-          focusedBorder: border.copyWith(
-            borderSide: const BorderSide(color: AppColors.primary, width: 2),
-          ),
+          focusedBorder: border.copyWith(borderSide: const BorderSide(color: AppColors.primary, width: 2)),
         ),
       ),
       confirmLabel: '바꾸기',

@@ -47,9 +47,7 @@ List<ChatTurn> buildChatTurns(List<ChatEntry> entries) {
       out.add(ChatTurn.user(q));
       continue;
     }
-    final prevBot = out.isNotEmpty && !out.last.isUser
-        ? out.last.content.trim()
-        : null;
+    final prevBot = out.isNotEmpty && !out.last.isUser ? out.last.content.trim() : null;
     if (prevBot != null && prevBot == quote) {
       out.add(ChatTurn.user('$kQuoteLeadWhole\n$q'));
       continue;
@@ -59,18 +57,10 @@ List<ChatTurn> buildChatTurns(List<ChatEntry> entries) {
       out.add(ChatTurn.user(inline));
       continue;
     }
-    out.add(
-      ChatTurn.bot(
-        quote.length > kServerBotLimit
-            ? quote.substring(0, kServerBotLimit)
-            : quote,
-      ),
-    );
+    out.add(ChatTurn.bot(quote.length > kServerBotLimit ? quote.substring(0, kServerBotLimit) : quote));
     out.add(ChatTurn.user('$kQuoteLeadWhole\n$q'));
   }
-  return out.length > kServerMaxTurns
-      ? out.sublist(out.length - kServerMaxTurns)
-      : out;
+  return out.length > kServerMaxTurns ? out.sublist(out.length - kServerMaxTurns) : out;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -90,8 +80,7 @@ String firstChatLine(String text) {
 }
 
 /// 대화 제목 = 첫 질문 한 줄 (공백 정리)
-String chatTitleFrom(String question) =>
-    firstChatLine(question).replaceAll(RegExp(r'\s+'), ' ');
+String chatTitleFrom(String question) => firstChatLine(question).replaceAll(RegExp(r'\s+'), ' ');
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 시각 글 · 묶음 이름
@@ -99,8 +88,7 @@ String chatTitleFrom(String question) =>
 
 DateTime _day(DateTime t) => DateTime(t.year, t.month, t.day);
 
-int _daysAgo(DateTime t, DateTime now) =>
-    _day(now).difference(_day(t)).inHours ~/ 24;
+int _daysAgo(DateTime t, DateTime now) => _day(now).difference(_day(t)).inHours ~/ 24;
 
 /// '오후 5:43'
 String koreanClock(DateTime t) {
@@ -109,9 +97,7 @@ String koreanClock(DateTime t) {
   return '$ampm $h:${t.minute.toString().padLeft(2, '0')}';
 }
 
-String _date(DateTime t, DateTime now) => t.year == now.year
-    ? '${t.month}월 ${t.day}일'
-    : '${t.year}년 ${t.month}월 ${t.day}일';
+String _date(DateTime t, DateTime now) => t.year == now.year ? '${t.month}월 ${t.day}일' : '${t.year}년 ${t.month}월 ${t.day}일';
 
 /// 서랍 묶음 이름 — 오늘 · 어제 · 지난 7일 · 그 전은 달('9월', 해가 다르면 '2025년 9월')
 String chatGroupLabel(DateTime t, DateTime now) {
@@ -123,8 +109,7 @@ String chatGroupLabel(DateTime t, DateTime now) {
 }
 
 /// 서랍 한 줄의 시각 — 오늘·어제는 '오후 5:43', 그 전은 '10월 20일'
-String chatRowTime(DateTime t, DateTime now) =>
-    _daysAgo(t, now) <= 1 ? koreanClock(t) : _date(t, now);
+String chatRowTime(DateTime t, DateTime now) => _daysAgo(t, now) <= 1 ? koreanClock(t) : _date(t, now);
 
 /// [⋯] 시트의 시각 — '오늘 오후 5:43' · '어제 오후 5:43' · '10월 20일 오후 5:43'
 String chatSheetTime(DateTime t, DateTime now) {
@@ -145,8 +130,7 @@ class ChatMatch {
   final int end;
 
   @override
-  bool operator ==(Object other) =>
-      other is ChatMatch && other.start == start && other.end == end;
+  bool operator ==(Object other) => other is ChatMatch && other.start == start && other.end == end;
 
   @override
   int get hashCode => Object.hash(start, end);
@@ -205,9 +189,7 @@ List<ChatSearchHit> searchChats(List<ChatConversation> all, String query) {
         final line = rawLine.trim();
         final m = findMatches(line, q);
         if (m.isEmpty) continue;
-        final cut = m.first.start > kSnippetLead
-            ? m.first.start - kSnippetLead
-            : 0;
+        final cut = m.first.start > kSnippetLead ? m.first.start - kSnippetLead : 0;
         snippet = cut > 0 ? '…${line.substring(cut)}' : line;
         snippetMatches = findMatches(snippet, q);
         break;
@@ -215,18 +197,14 @@ List<ChatSearchHit> searchChats(List<ChatConversation> all, String query) {
       if (snippet != null) break;
     }
     if (titleMatches.isEmpty && snippet == null) continue;
-    hits.add(
-      ChatSearchHit(
-        conversation: c,
-        titleMatches: titleMatches,
-        snippet: snippet,
-        snippetMatches: snippetMatches,
-      ),
-    );
+    hits.add(ChatSearchHit(
+      conversation: c,
+      titleMatches: titleMatches,
+      snippet: snippet,
+      snippetMatches: snippetMatches,
+    ));
   }
-  hits.sort(
-    (a, b) => b.conversation.updatedAt.compareTo(a.conversation.updatedAt),
-  );
+  hits.sort((a, b) => b.conversation.updatedAt.compareTo(a.conversation.updatedAt));
   return hits;
 }
 

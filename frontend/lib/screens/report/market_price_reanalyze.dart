@@ -23,10 +23,7 @@ bool canReanalyzeWithMarketPrice(AnalysisReport report) =>
     RegistryPhotoStore.instance.pathsFor(report.id).isNotEmpty;
 
 /// 시세를 묻고 새로 분석한다. 취소하거나 사진이 없으면 아무것도 하지 않는다.
-Future<void> reanalyzeWithMarketPrice(
-  BuildContext context,
-  AnalysisReport report,
-) async {
+Future<void> reanalyzeWithMarketPrice(BuildContext context, AnalysisReport report) async {
   final paths = RegistryPhotoStore.instance.pathsFor(report.id);
   if (paths.isEmpty) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
@@ -48,9 +45,7 @@ Future<void> reanalyzeWithMarketPrice(
   if (returned is CaptureRejection) {
     messenger?.showSnackBar(
       SnackBar(
-        content: AppText(
-          '${returned.message}\n아직 분석하지 않았어요. 사진을 다시 찍어 새로 분석해 주세요.',
-        ),
+        content: AppText('${returned.message}\n아직 분석하지 않았어요. 사진을 다시 찍어 새로 분석해 주세요.'),
         duration: const Duration(seconds: 5),
       ),
     );

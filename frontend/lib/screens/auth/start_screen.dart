@@ -108,6 +108,10 @@ class _StartScreenState extends State<StartScreen>
   );
 
   bool _started = false;
+
+  /// 이 화면에서 카카오 로그인을 시작해 끝날 때까지(성공 뒤 홈으로 넘어가는 순간 포함) true —
+  /// 로그인이 끝나 세션이 바뀌어도 [시작하기] 화면으로 잠깐 바뀌어 보이지 않게, 로그인 중 모습을 유지한다.
+  bool _signingIn = false;
   bool _reduceMotion = false;
 
   bool get _idleOn {
@@ -166,8 +170,13 @@ class _StartScreenState extends State<StartScreen>
   }
 
   Future<void> _kakao(BuildContext context) async {
+    setState(() => _signingIn = true);
     final ok = await runKakaoLogin(context);
-    if (!context.mounted || !ok) return;
+    if (!context.mounted) return;
+    if (!ok) {
+      setState(() => _signingIn = false);
+      return;
+    }
     context.go('/home');
   }
 
@@ -197,8 +206,10 @@ class _StartScreenState extends State<StartScreen>
   @override
   Widget build(BuildContext context) {
     final session = context.watch<AppSession>();
-    final kakao = !session.isLoggedIn && session.kakaoAvailable;
-    final busy = session.busy;
+    // 로그인 중이면 세션이 이미 로그인으로 바뀌었어도 카카오 화면 그대로 (넘어가는 순간 깜빡임 방지)
+    final loggedInView = session.isLoggedIn && !_signingIn;
+    final kakao = !loggedInView && session.kakaoAvailable;
+    final busy = session.busy || _signingIn;
     final topInset = MediaQuery.paddingOf(context).top;
 
     return PopScope(
@@ -263,7 +274,7 @@ class _StartScreenState extends State<StartScreen>
       dy: 0,
     );
 
-    if (session.isLoggedIn) {
+    if (session.isLoggedIn && !_signingIn) {
       return [
         _rise(
           _beatKakao,
@@ -544,16 +555,15 @@ class AppNameTitle extends StatelessWidget {
           children: [
             const TextSpan(text: '전세'),
             WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
+              // 글자 바닥줄(baseline)에 맞춘다 — 가운데 정렬 + 아래로 내리면 실기기 주아체에서 아래로 처져 보였다
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 1),
-                child: Transform.translate(
-                  offset: const Offset(0, 3), // 아래로 3 내림
-                  child: const SizedBox(
-                    width: 30,
-                    height: 34,
-                    child: CustomPaint(painter: AiGlyphPainter()),
-                  ),
+                child: const SizedBox(
+                  width: 30,
+                  height: 34,
+                  child: CustomPaint(painter: AiGlyphPainter()),
                 ),
               ),
             ),

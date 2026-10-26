@@ -67,8 +67,10 @@ class _FakeKakao implements KakaoLoginGateway {
 
 class _FakeAuth implements AuthRepository {
   @override
-  Future<MeStatus> setDisplayName(String name) async =>
-      MeStatus(loggedIn: true, displayName: name.trim().isEmpty ? null : name.trim());
+  Future<MeStatus> setDisplayName(String name) async => MeStatus(
+    loggedIn: true,
+    displayName: name.trim().isEmpty ? null : name.trim(),
+  );
 
   final List<String> kakaoTokens = [];
   final List<String> loggedOut = [];
@@ -128,10 +130,7 @@ Widget _app(AppSession session, {String initial = '/start'}) {
         path: '/analyze',
         builder: (_, _) => const Scaffold(body: Text('분석 화면')),
       ),
-      GoRoute(
-        path: '/privacy',
-        builder: (_, _) => const PrivacyPolicyScreen(),
-      ),
+      GoRoute(path: '/privacy', builder: (_, _) => const PrivacyPolicyScreen()),
       GoRoute(
         path: '/my',
         builder: (_, _) => const Scaffold(
@@ -208,7 +207,9 @@ void main() {
     });
 
     testWidgets('분석 게이트가 로그인 안내 없이 바로 분석으로 간다', (tester) async {
-      await tester.pumpWidget(_app(newSession(kakaoEnabled: false), initial: '/gate'));
+      await tester.pumpWidget(
+        _app(newSession(kakaoEnabled: false), initial: '/gate'),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('분석 시작'));
       await tester.pumpAndSettle();
@@ -216,7 +217,9 @@ void main() {
     });
 
     testWidgets('마이의 계정 칸에도 카카오 버튼이 없다', (tester) async {
-      await tester.pumpWidget(_app(newSession(kakaoEnabled: false), initial: '/my'));
+      await tester.pumpWidget(
+        _app(newSession(kakaoEnabled: false), initial: '/my'),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(KakaoLoginButton), findsNothing);
       expect(find.koText('로그인 없이 둘러보는 중'), findsOneWidget);
@@ -231,7 +234,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.koText(KakaoLoginButton.label), findsOneWidget);
       expect(find.koText('로그인 없이 둘러보기'), findsOneWidget);
-      expect(find.koText(LoginPrivacyNote.text), findsOneWidget);
+      expect(find.koText(StartScreen.privacyLabel), findsOneWidget);
+      // 카카오가 있으면 둘러보기는 테두리(보조) 버튼
+      expect(
+        find.ancestor(
+          of: find.koText('로그인 없이 둘러보기'),
+          matching: find.byType(OutlinedButton),
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(find.koText(KakaoLoginButton.label));
       await tester.pumpAndSettle();
@@ -242,6 +253,7 @@ void main() {
       expect(storage.saved?.token, 'session-token-1');
       expect(SessionCredentials.instance.token, 'session-token-1');
       expect(find.text('홈 화면'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing); // 성공하면 안내 없이 넘어간다
     });
 
     testWidgets('사용자가 카카오 화면을 닫으면 조용히 그대로 (오류 안내 없음)', (tester) async {
@@ -258,7 +270,10 @@ void main() {
     });
 
     testWidgets('카카오·서버가 실패하면 쉬운 말 한 줄, 로그인 안 됨', (tester) async {
-      auth.loginError = const ApiException('카카오 로그인을 확인하지 못했어요. 다시 로그인해 주세요', statusCode: 401);
+      auth.loginError = const ApiException(
+        '카카오 로그인을 확인하지 못했어요. 다시 로그인해 주세요',
+        statusCode: 401,
+      );
       final session = newSession();
       await tester.pumpWidget(_app(session));
       await tester.pumpAndSettle();
@@ -275,7 +290,6 @@ void main() {
       await session.restore(now: DateTime.utc(2026, 10, 22));
       await tester.pumpWidget(_app(session));
       await tester.pumpAndSettle();
-      expect(find.koText('카카오로 로그인되어 있어요'), findsOneWidget);
       expect(find.byType(KakaoLoginButton), findsNothing);
       await tester.tap(find.koText('시작하기'));
       await tester.pumpAndSettle();
@@ -322,7 +336,10 @@ void main() {
 
     testWidgets('로그인 화면(next)에서 둘러보기를 골라도 원래 하려던 곳으로 간다', (tester) async {
       await tester.pumpWidget(
-        _app(newSession(), initial: '/login?next=${Uri.encodeComponent('/analyze')}'),
+        _app(
+          newSession(),
+          initial: '/login?next=${Uri.encodeComponent('/analyze')}',
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.koText('로그인 없이 둘러보기'));
@@ -333,15 +350,16 @@ void main() {
 
   group('세션 헤더 — 모든 요청에 Authorization: Bearer', () {
     test('세션이 있으면 기기 id와 함께 싣고, 없으면 싣지 않는다', () {
-      expect(
-        buildApiHeaders(deviceId: 'abcd-1234', sessionToken: 'tok-1'),
-        {'X-Device-Id': 'abcd-1234', 'Authorization': 'Bearer tok-1'},
-      );
-      expect(
-        buildApiHeaders(deviceId: 'abcd-1234', sessionToken: ''),
-        {'X-Device-Id': 'abcd-1234'},
-      );
-      expect(buildApiHeaders(deviceId: 'abcd-1234'), {'X-Device-Id': 'abcd-1234'});
+      expect(buildApiHeaders(deviceId: 'abcd-1234', sessionToken: 'tok-1'), {
+        'X-Device-Id': 'abcd-1234',
+        'Authorization': 'Bearer tok-1',
+      });
+      expect(buildApiHeaders(deviceId: 'abcd-1234', sessionToken: ''), {
+        'X-Device-Id': 'abcd-1234',
+      });
+      expect(buildApiHeaders(deviceId: 'abcd-1234'), {
+        'X-Device-Id': 'abcd-1234',
+      });
     });
 
     test('로그인하면 GET·POST·DELETE·멀티파트 전부에 실린다', () async {
@@ -362,13 +380,23 @@ void main() {
       await api.delete('/api/reports/r1');
       await api.postMultipart(
         '/api/analyze',
-        files: [http.MultipartFile.fromString('files', 'jpeg', filename: 'page_1.jpg')],
+        files: [
+          http.MultipartFile.fromString(
+            'files',
+            'jpeg',
+            filename: 'page_1.jpg',
+          ),
+        ],
         fields: {'deposit': '1'},
       );
       expect(seen, hasLength(4));
       final deviceId = await DeviceId.instance.get();
       for (final r in seen) {
-        expect(r.headers['Authorization'], 'Bearer session-token-1', reason: r.url.path);
+        expect(
+          r.headers['Authorization'],
+          'Bearer session-token-1',
+          reason: r.url.path,
+        );
         expect(r.headers['X-Device-Id'], deviceId, reason: r.url.path);
       }
     });
@@ -382,7 +410,9 @@ void main() {
     });
 
     test('204(본문 없음)도 성공으로 받는다 — 로그아웃', () async {
-      final api = ApiClient(client: MockClient((_) async => http.Response('', 204)));
+      final api = ApiClient(
+        client: MockClient((_) async => http.Response('', 204)),
+      );
       expect(await api.postJson('/api/auth/logout', const {}), isNull);
     });
   });
@@ -420,7 +450,10 @@ void main() {
       expect(storage.saved, isNull);
       expect(expired, 1);
       expect(
-        apiErrorHint(apiExceptionFor(401, null, sessionRejected: true), fallback: 'x'),
+        apiErrorHint(
+          apiExceptionFor(401, null, sessionRejected: true),
+          fallback: 'x',
+        ),
         kSessionExpiredMessage,
       );
     });
@@ -431,14 +464,19 @@ void main() {
       await session.restore(now: DateTime.utc(2026, 10, 22));
       final api = ApiClient(
         client: MockClient(
-          (_) async => _json(401, {
-            'detail': '앱 인증 정보가 맞지 않아요. 앱을 최신 버전으로 업데이트해 주세요',
-          }),
+          (_) async =>
+              _json(401, {'detail': '앱 인증 정보가 맞지 않아요. 앱을 최신 버전으로 업데이트해 주세요'}),
         ),
       );
       await expectLater(
         api.getJson('/api/reports'),
-        throwsA(isA<ApiException>().having((e) => e.message, 'message', kAppAuthFailedMessage)),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            kAppAuthFailedMessage,
+          ),
+        ),
       );
       expect(session.isLoggedIn, isTrue);
       expect(SessionCredentials.instance.token, 'session-token-1');
@@ -497,7 +535,7 @@ void main() {
       expect(kakao.logouts, 1);
       // 로그아웃하면 시작 화면으로 간다 (2026-10-26)
       expect(find.byType(StartScreen), findsOneWidget);
-      expect(find.koText('로그아웃했어요'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing); // 안내 문구 없이 시작 화면으로
     });
 
     testWidgets('탈퇴는 확인을 받는다 — 취소하면 아무것도 지우지 않는다', (tester) async {
@@ -532,7 +570,10 @@ void main() {
     });
 
     testWidgets('서버 삭제가 실패하면 카카오 연결을 끊지 않고 로그인도 그대로', (tester) async {
-      auth.deleteError = const ApiException('잠깐 문제가 생겼어요. 다시 시도해 주세요', statusCode: 500);
+      auth.deleteError = const ApiException(
+        '잠깐 문제가 생겼어요. 다시 시도해 주세요',
+        statusCode: 500,
+      );
       final session = await loggedIn();
       await tester.pumpWidget(_app(session, initial: '/my'));
       await tester.pumpAndSettle();
@@ -567,7 +608,10 @@ void main() {
       expect(lines.any((l) => l.contains('서버 지역')), isFalse);
       expect(empty.any((s) => s.title == '문의'), isFalse);
 
-      final filled = privacyPolicySections(serverRegion: '싱가포르', contact: 'team@example.com');
+      final filled = privacyPolicySections(
+        serverRegion: '싱가포르',
+        contact: 'team@example.com',
+      );
       final filledLines = [for (final s in filled) ...s.lines];
       expect(filledLines, contains('서버 지역 — 싱가포르'));
       expect(filled.last.title, '문의');
@@ -575,7 +619,9 @@ void main() {
     });
 
     test('받는 것 — 회원번호(암호화 값)·기기 id·분석 기록, 이름·이메일은 안 받음', () {
-      final all = [for (final s in privacyPolicySections()) ...s.lines].join('\n');
+      final all = [
+        for (final s in privacyPolicySections()) ...s.lines,
+      ].join('\n');
       expect(all, contains('카카오 회원번호'));
       expect(all, contains('암호화 값'));
       expect(all, contains('이름·이메일·닉네임·프로필 사진은 받지 않아요'));

@@ -119,6 +119,10 @@ flutter:
           weight: 600
         - asset: assets/fonts/Pretendard-Bold.otf
           weight: 700
+    # 주아체(배민, OFL — assets/fonts/Jua-OFL.txt): 시작 화면 앱 이름 제목에만 쓴다 (2026-10-26)
+    - family: Jua
+      fonts:
+        - asset: assets/fonts/Jua-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -178,7 +178,7 @@
   폰과 컴퓨터를 같은 와이파이(학교 망이면 폰 핫스팟)에 두고 무선 디버깅으로 연결 →
   `cd frontend && flutter run --dart-define=API_BASE_URL=<Railway 주소> --dart-define=APP_KEY=<키> --dart-define=DEV_TOOLS=true` →
   코드를 받으면(`git pull`) 터미널에서 **`r`**(핫 리로드). 마이 맨 아래 **'개발: 로딩 화면 미리보기'**는 서버를 부르지 않는다(크레딧 0원).
-  **`scripts\개발시작.bat`**(노트북 서버 + `adb reverse` + `flutter run`)은 카카오 네이티브 앱 키를 처음 한 번 묻고 넣어 켠다 → 개발 앱에도 카카오 버튼. 로그인까지 되려면 카카오 콘솔 → 플랫폼 → Android에 **개발 앱을 한 번 등록**(패키지명 `com.jeonseai.jeonse_ai.dev` + 그 창에 찍히는 이 PC의 키 해시) + `backend/.env`에 `KAKAO_APP_ID`·`ACCOUNT_HASH_SECRET`(Railway와 같은 값). 같은 폰이 두 번 잡혀도 하나만 골라 쓴다
+  **`scripts\개발시작.bat`**(노트북 서버 + `adb reverse` + `flutter run` + 자동 코드 받기 작은 창 — 1분마다 `git pull`, 새 코드가 오면 삐 소리 → 앱 창에서 `R`)은 카카오 네이티브 앱 키를 처음 한 번 묻고 넣어 켠다 → 개발 앱에도 카카오 버튼. 로그인까지 되려면 카카오 콘솔 → 플랫폼 → Android에 **개발 앱을 한 번 등록**(패키지명 `com.jeonseai.jeonse_ai.dev` + 그 창에 찍히는 이 PC의 키 해시) + `backend/.env`에 `KAKAO_APP_ID`·`ACCOUNT_HASH_SECRET`(Railway와 같은 값). 같은 폰이 두 번 잡혀도 하나만 골라 쓴다
 - 카카오 로그인용 **키 해시**(고정 키 기준): `IGUD29cSPI5wE4xw+utVjaQXR+A=` · 패키지명 `com.jeonseai.jeonse_ai`
   (카카오 개발자 콘솔 → 내 애플리케이션 → 플랫폼 → Android에 넣는다. 키 해시는 APK에서 누구나 읽을 수 있는 공개 값이다)
 

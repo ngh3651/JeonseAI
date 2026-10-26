@@ -6,6 +6,7 @@
 #   ③ 서버를 새 창에서 켜기(이미 켜져 있으면 그대로) → 켜질 때까지 기다리기
 #   ④ adb reverse(폰:8000 → PC:8000)
 #   ⑤ flutter run (이 창에서 — r = 화면 새로고침, R = 앱 다시 시작, q = 끝)
+#      + 자동 코드 받기 작은 창(1분마다 git pull) — 머지된 코드가 오면 삐 소리, 그때 R만 누르면 된다
 #      카카오 네이티브 앱 키를 넣어 켠다(처음 한 번 물어보고 기억) → 개발 앱에도 카카오 버튼이 보인다.
 #      개발 앱(`….jeonse_ai.dev`)으로 로그인까지 되려면 카카오 콘솔에 개발 앱을 한 번 등록해야 한다 —
 #      이 창이 ⑤에서 패키지명·키 해시를 보여 준다(NOW.md 6-2).
@@ -114,4 +115,28 @@ if ($kakaoKey) {
         Write-Host "  ! backend\.env에 KAKAO_APP_ID · ACCOUNT_HASH_SECRET(32자 이상)이 없어요 — Railway Variables와 같은 값으로 넣어야 노트북 서버에서 로그인이 돼요" -ForegroundColor Yellow
     }
 }
-flutter run -d $serial @defines
+# 자동 코드 받기 — Claude가 PR을 머지하면 1분 안에 이 PC로 받아 온다(작은 창, 앱을 끄면 같이 닫힌다).
+# 받은 뒤에는 이 창에서 R(앱 다시 시작)만 누르면 된다. 이 PC에서 고친 파일이 있으면 받지 않고 알려 준다.
+$pullLoop = @"
+`$Host.UI.RawUI.WindowTitle = '전세AI프 자동 코드 받기'
+Set-Location '$root'
+while (`$true) {
+    git fetch -q origin main 2>`$null
+    `$behind = (git rev-list --count HEAD..origin/main 2>`$null)
+    if (`$behind -and [int]`$behind -gt 0) {
+        git -c core.autocrlf=true pull --ff-only -q
+        if (`$LASTEXITCODE -eq 0) { Write-Host "`$(Get-Date -Format HH:mm) 새 코드 받음 — 앱 창에서 R 누르세요" -ForegroundColor Green; [console]::beep(880,200) }
+        else { Write-Host "`$(Get-Date -Format HH:mm) ! 받기 실패 — 이 PC에서 고친 파일이 있어요" -ForegroundColor Yellow }
+    }
+    Start-Sleep -Seconds 60
+}
+"@
+# 여러 줄·따옴표가 깨지지 않게 인코딩해서 넘긴다
+$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($pullLoop))
+$puller = Start-Process powershell -WindowStyle Minimized -PassThru -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encoded
+Write-Host "  자동 코드 받기 켬(작은 창) — 새 코드가 오면 삐 소리 + 이 창에서 R" -ForegroundColor Cyan
+try {
+    flutter run -d $serial @defines
+} finally {
+    if ($puller -and -not $puller.HasExited) { Stop-Process -Id $puller.Id -Force -ErrorAction SilentlyContinue }
+}

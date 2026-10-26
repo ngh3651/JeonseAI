@@ -39,6 +39,10 @@ UPRIGHT_RATIO = 0.6
 #: 가로·읽는 방향을 셀 만큼 낱말이 있어야 판단한다(그보다 적으면 표지 낱말만 본다)
 MIN_SHAPE_WORDS = 8
 
+#: 표지 낱말이 적은 쪽(요약쪽·거의 빈 쪽)도 **모양이 바로 서 있고 OCR이 자신 있게 읽었으면** 바로 선 것으로 본다 —
+#: 바로 찍은 쪽을 헛돌려 시간을 쓰지 않게(2026-10-26 심사 리뷰). 실제 바로 선 등기부 10장의 평균 확신도 0.987~0.998.
+CONFIDENT_READ = 0.9
+
 
 def enabled() -> bool:
     """`AUTO_ROTATE=off`면 끈다(지금까지처럼 받은 그대로만 읽는다)."""
@@ -73,14 +77,21 @@ class Reading:
     shape_words: int  # 가로·방향을 센 낱말 수(세 글자 이상)
     horizontal: float  # 그중 가로로 긴 비율
     left_to_right: float  # 그중 왼→오로 읽힌 비율(꼭짓점 순서)
+    confidence: float = 0.0  # 그중 OCR 확신도 평균
 
     @property
     def upright(self) -> bool:
+        shape_ok = (
+            self.shape_words >= MIN_SHAPE_WORDS
+            and self.horizontal >= UPRIGHT_RATIO
+            and self.left_to_right >= UPRIGHT_RATIO
+        )
         if self.markers < MIN_MARKERS:
-            return False
+            # 표지 낱말이 적은 쪽 — 모양이 바로 서 있고 자신 있게 읽혔으면 바로 선 것
+            return shape_ok and self.confidence >= CONFIDENT_READ
         if self.shape_words < MIN_SHAPE_WORDS:
             return True  # 낱말이 적으면 표지 낱말만으로 판단
-        return self.horizontal >= UPRIGHT_RATIO and self.left_to_right >= UPRIGHT_RATIO
+        return shape_ok
 
 
 def read_shape(raw: dict) -> Reading:
@@ -90,6 +101,7 @@ def read_shape(raw: dict) -> Reading:
         containers = [raw]
     texts: list[str] = []
     counted = horizontal = ltr = 0
+    conf_sum = 0.0
     for page in containers:
         for w in page.get("words") or []:
             text = str(w.get("text", "") or "")
@@ -100,6 +112,7 @@ def read_shape(raw: dict) -> Reading:
             xs = [float(v.get("x", 0)) for v in verts]
             ys = [float(v.get("y", 0)) for v in verts]
             counted += 1
+            conf_sum += float(w.get("confidence", 0.0) or 0.0)
             if max(xs) - min(xs) > max(ys) - min(ys):
                 horizontal += 1
             # 꼭짓점은 읽는 순서(왼위 → 오위 → …)로 온다 — 첫 변이 왼→오면 바로 선 글자
@@ -114,6 +127,7 @@ def read_shape(raw: dict) -> Reading:
         shape_words=counted,
         horizontal=horizontal / counted if counted else 0.0,
         left_to_right=ltr / counted if counted else 0.0,
+        confidence=conf_sum / counted if counted else 0.0,
     )
 
 

@@ -234,3 +234,67 @@ def test_순서가_맞으면_pageOrder는_비어_있다(client, no_network):
 
 def test_OcrPage_기본_회전은_0():
     assert OcrPage(name="a", index=0, words=[], lines=[]).rotation == 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 리뷰 반영 (2026-10-26) — 헛돌리지 않기 · 다시 읽기는 보수적으로
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _plain_page(conf: float) -> dict:
+    """표지 낱말은 없지만 가로로 바로 선 글자 12개 — 요약쪽·거의 빈 쪽."""
+    words = []
+    for i in range(12):
+        x, y = 50, 40 + i * 30
+        words.append({
+            "text": f"가나다라{i}",
+            "confidence": conf,
+            "boundingBox": {"vertices": [{"x": x, "y": y}, {"x": x + 120, "y": y}, {"x": x + 120, "y": y + 20}, {"x": x, "y": y + 20}]},
+        })
+    return {"pages": [{"words": words}]}
+
+
+def test_표지_낱말이_적어도_모양이_바로_서고_자신있게_읽혔으면_돌리지_않는다():
+    assert orientation.read_shape(_plain_page(0.98)).upright
+    assert not orientation.read_shape(_plain_page(0.5)).upright, "자신 없게 읽혔으면(뒤집힌 글자를 억지로 읽음) 돌려 본다"
+
+
+def _ie_with(mortgages: int) -> dict:
+    raw = registry_raw()
+    raw["mortgages"] = raw["mortgages"] * mortgages
+    return raw
+
+
+def test_다시_읽은_쪽이_항목을_덜_찾으면_처음_결과를_쓰고_알린다(client, no_network, monkeypatch):
+    monkeypatch.setenv("AUTO_ROTATE", "on")
+    monkeypatch.setattr(orientation, "candidate_turns", lambda data: [90, 270, 180])
+    no_network(_ie_with(2), [EMPTY, GOOD])
+    reads = iter([_ie_with(2), _ie_with(0)])  # 처음엔 근저당 2건, 다시 읽으니 0건
+    monkeypatch.setattr(
+        extraction, "extract_registry",
+        lambda images, run_id=None: extraction.RegistryExtract.from_raw(next(reads)),
+    )
+    resp = post_analyze(client, [turned(dotted(PAGE_W, PAGE_H), 270)])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["seniorDebtAmount"] > 0, "위험을 덜 찾은 쪽으로 바뀌지 않는다"
+    assert any("결과가 달랐어요" in n for n in body["checkedNotes"])
+
+
+def test_다시_읽기가_실패하면_처음_결과로_판정하고_다시_찍기를_알린다(client, no_network, monkeypatch):
+    monkeypatch.setenv("AUTO_ROTATE", "on")
+    monkeypatch.setattr(orientation, "candidate_turns", lambda data: [90, 270, 180])
+    no_network(registry_raw(), [EMPTY, GOOD])
+    calls = {"n": 0}
+    real = extraction.extract_registry
+
+    def flaky(images, run_id=None):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise extraction.ExtractionError(502, "다시 읽기 실패")
+        return real(images, run_id=run_id)
+
+    monkeypatch.setattr(extraction, "extract_registry", flaky)
+    resp = post_analyze(client, [turned(dotted(PAGE_W, PAGE_H), 270)])
+    assert resp.status_code == 200, resp.text
+    assert any("다시 찍어 주세요" in n for n in resp.json()["checkedNotes"])

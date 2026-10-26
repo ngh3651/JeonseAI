@@ -197,6 +197,12 @@ class _ReportScreenState extends State<ReportScreen> {
             ? '이 장을 잘못 읽었다면 결과가 달라질 수 있어요. 그 장만 다시 찍어 새로 분석해 주세요.'
             : '이 장을 잘못 읽었다면 결과가 달라질 수 있어요. 등기부를 다시 찍어 새로 분석해 주세요.',
         onRetake: canRetake ? (page) => _retakeAndReanalyze(context, report, paths, page) : null,
+        // 서버가 쪽 번호로 순서를 세웠으면 그 쪽 번호로 말한다(뷰어와 같은 번호 — §9.12). 다시 찍기는 업로드 번호 그대로.
+        pageNumberOf: (index) {
+          final count = paths.isNotEmpty ? paths.length : report.pageOrder.length;
+          final at = report.pageDisplayOrder(count).indexOf(index);
+          return at >= 0 ? at + 1 : index + 1;
+        },
       ),
       const SizedBox(height: AppSpacing.xl),
     ];

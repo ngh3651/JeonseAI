@@ -175,7 +175,6 @@ class ApiClient {
 
   /// 이 앱이 보내는 모든 요청의 공통 헤더 (기기 id + 빌드 때 넣은 앱 키).
   ///
-  /// 이 클라이언트를 거치지 않는 옛 경로(`RegistryUploadService.uploadImage`)도 이것을 쓴다 —
   /// 헤더의 정의는 이 한 곳뿐이다.
   static Future<Map<String, String>> commonHeaders() async => buildApiHeaders(
     deviceId: await DeviceId.instance.get(),

@@ -104,7 +104,8 @@ android {
     buildTypes {
         // 개발 빌드(`flutter run`)는 **다른 앱으로** 깔린다(2026-10-23) — 이름표 끝 `.dev` + 이름 '전세AI프 개발'.
         // 그래야 고정 링크 APK(시연용, 다른 서명)와 한 폰에 나란히 깔리고, 무선 디버깅 + 핫 리로드로 화면을 바로 본다.
-        // ⚠ 카카오 로그인은 이 개발 앱에서 안 된다(카카오 콘솔엔 시연용 패키지명·키 해시만 등록).
+        // 카카오 로그인은 카카오 콘솔에 개발 앱(패키지명 `….jeonse_ai.dev` + 이 PC 디버그 키의 키 해시)을
+        // 따로 등록해야 된다 — `scripts/개발시작.bat`이 두 값을 보여 준다(2026-10-26).
         debug {
             applicationIdSuffix = ".dev"
             manifestPlaceholders["appLabel"] = "전세AI프 개발"

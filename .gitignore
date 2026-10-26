@@ -102,3 +102,4 @@ data/review_3cases.md
 
 # 개발 한 번에 켜기 — 지난번 무선 디버깅 주소 (scripts/dev-start.ps1)
 scripts/.last-adb-address
+scripts/.kakao-native-app-key

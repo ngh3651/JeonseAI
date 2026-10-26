@@ -128,7 +128,15 @@ class CompareRow {
     this.gradeAfter,
     this.action,
     this.actionLabel,
+    this.group,
   });
+
+  /// 어느 칸의 줄인가 — owner(갑구 소유자) · seizure(갑구 압류·가압류) · debt(을구 빚) · grade(안전도). 옛 서버면 null
+  final String? group;
+
+  /// 새로 생기거나 없어지거나 바뀐 줄인가 (그대로·못 봄·안전도는 아니다)
+  bool get isChange =>
+      kind == CompareRowKind.added || kind == CompareRowKind.removed || kind == CompareRowKind.changed;
 
   final CompareRowKind kind;
   final CompareTone tone;
@@ -167,6 +175,7 @@ class CompareRow {
         : RiskGrade.fromLabel(json['gradeAfter'] as String),
     action: CompareAction.fromWire(json['action'] as String?),
     actionLabel: json['actionLabel'] as String?,
+    group: json['group'] as String?,
   );
 }
 

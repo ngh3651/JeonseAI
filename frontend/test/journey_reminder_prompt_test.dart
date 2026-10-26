@@ -22,10 +22,9 @@ import 'package:jeonse_ai/screens/journey/journey_screen.dart';
 import 'package:jeonse_ai/services/journey_reminder_service.dart';
 import 'package:jeonse_ai/services/journey_reminders.dart';
 import 'package:jeonse_ai/services/local_notifications_platform.dart';
-import 'package:jeonse_ai/services/text_share.dart';
 import 'package:jeonse_ai/state/app_session.dart';
+import 'package:jeonse_ai/state/journey_progress_store.dart';
 import 'package:jeonse_ai/state/journey_schedule_store.dart';
-import 'package:jeonse_ai/utils/korean_date.dart';
 import 'package:jeonse_ai/utils/money_format.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -117,6 +116,7 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     JourneyScheduleStore.instance.resetForTest();
+    JourneyProgressStore.instance.resetForTest();
     svc.resetForTest();
   });
 
@@ -142,11 +142,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(platform.permissionRequests, 1);
-      expect(platform.scheduled.length, 2); // 하루 전 9시 + 당일 8시
+      expect(platform.scheduled.length, 2); // 하루 전 8시 + 당일 8시
       expect(find.koTextContaining('알림을 맞춰 뒀어요'), findsOneWidget);
     });
 
-    testWidgets('거절하면 배너로 동작한다고 말한다 — 앱은 그대로', (tester) async {
+    testWidgets('거절해도 아무 안내도 띄우지 않는다 (2026-10-26)', (tester) async {
       platform = _FakePlatform(enabled: false, grant: false);
       svc.platformForTest = platform;
 
@@ -155,24 +155,24 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(platform.permissionRequests, 1);
-      expect(find.koText(kReminderFallbackMessage), findsOneWidget);
-      expect(find.text('알림 켜기'), findsOneWidget); // 나중에 설정에서 켤 길
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.koTextContaining('알림이 꺼져 있어요'), findsNothing);
+      expect(JourneyProgressStore.instance.notificationsOn, isFalse);
     });
 
-    testWidgets("'괜찮아요'를 고르면 시스템 권한 창을 띄우지 않는다", (tester) async {
+    testWidgets("'괜찮아요'를 고르면 시트만 닫는다 — 권한 창도 안내도 없다", (tester) async {
       platform = _FakePlatform(enabled: false);
       svc.platformForTest = platform;
 
       await _pumpSaver(tester, _withBalance(5));
-      // 거절하면 무엇을 직접 해야 하는지 버튼에 적혀 있다(서연 리뷰 #8)
       expect(find.koText(kReminderDeclineLabel), findsOneWidget);
       await tester.tap(find.koText(kReminderDeclineLabel));
       await tester.pumpAndSettle();
 
       expect(platform.permissionRequests, 0);
-      expect(find.koText(kReminderFallbackMessage), findsOneWidget);
-      expect(find.koText('알림이 꺼져 있어요 — 잔금 날 앱을 직접 열어야 경고를 볼 수 있어요'), findsOneWidget);
-      expect(find.text('알림 켜기'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.koTextContaining('알림이 꺼져 있어요'), findsNothing);
+      expect(find.koTextContaining('직접 열'), findsNothing);
       // 권한과 상관없이 예약은 걸어 둔다 — 나중에 설정에서 켜면 그대로 울린다
       expect(platform.scheduled.length, 2);
     });
@@ -186,47 +186,29 @@ void main() {
       expect(find.koText('그날 알림을 보내 드릴까요?'), findsNothing);
       expect(platform.permissionRequests, 0);
       final first = describeReminderTime(
-        DateTime(_day(4).year, _day(4).month, _day(4).day, 9),
+        DateTime(_day(4).year, _day(4).month, _day(4).day, 8),
       );
       expect(find.koText('알림을 맞춰 뒀어요 · 첫 알림 $first'), findsOneWidget);
     });
 
-    testWidgets('저장 뒤 [가족·배우자에게 보내기] — 별칭·잔금일·입주 다음 날 한 줄을 공유 창으로 (날짜는 서버로 안 감)', (tester) async {
+    testWidgets('저장 뒤 가족·배우자에게 보내기 버튼이 없다 (2026-10-26 기능 뺌)', (tester) async {
       platform = _FakePlatform(enabled: true);
       svc.platformForTest = platform;
-      final shared = <String>[];
-      TextShare.debugOverride((text, {subject}) async => shared.add(text));
-      addTearDown(() => TextShare.debugOverride(null));
-
-      final schedule = _withBalance(5).copyWith(JourneyDateKey.moveIn, _day(6));
-      await _pumpSaver(tester, schedule);
-      expect(find.text(kShareScheduleLabel), findsOneWidget);
-
-      await tester.tap(find.text(kShareScheduleLabel));
-      await tester.pumpAndSettle();
-      expect(shared, [familyScheduleText('정자동 빌라', schedule)]);
-      expect(
-        shared.single,
-        '[전세AI프] 정자동 빌라 · 잔금일 ${formatMonthDayWeekday(_day(5))} · '
-        '입주 다음 날 ${formatMonthDayWeekday(_day(7))} · 그날 등기부를 다시 떼어 확인해요',
+      await _pumpSaver(
+        tester,
+        _withBalance(5).copyWith(JourneyDateKey.moveIn, _day(6)),
       );
+      expect(find.textContaining('가족'), findsNothing);
+      expect(find.textContaining('배우자'), findsNothing);
     });
 
-    test('가족에게 보낼 일정 한 줄 — 날짜가 하나도 없으면 null', () {
-      expect(familyScheduleText('정자동 빌라', const JourneySchedule()), isNull);
-      expect(
-        familyScheduleText('', const JourneySchedule().copyWith(JourneyDateKey.balance, DateTime(2026, 11, 5))),
-        '[전세AI프] 우리 집 · 잔금일 ${formatMonthDayWeekday(DateTime(2026, 11, 5))} · 그날 등기부를 다시 떼어 확인해요',
-      );
-    });
-
-    testWidgets('걸 알림이 없으면(계약서 날짜만) 권한을 묻지 않는다', (tester) async {
+    testWidgets('걸 알림이 없으면(지난 날짜만) 권한을 묻지 않는다', (tester) async {
       platform = _FakePlatform(enabled: false);
       svc.platformForTest = platform;
 
       await _pumpSaver(
         tester,
-        const JourneySchedule().copyWith(JourneyDateKey.contract, _day(3)),
+        const JourneySchedule().copyWith(JourneyDateKey.contract, _day(-3)),
       );
 
       expect(find.koText('그날 알림을 보내 드릴까요?'), findsNothing);
@@ -238,7 +220,9 @@ void main() {
       await _pumpSaver(tester, _withBalance(5));
 
       expect(find.koText('그날 알림을 보내 드릴까요?'), findsNothing);
-      expect(find.koTextContaining('알림을 맞추지 못했어요'), findsOneWidget);
+      // 알림을 약속하지 않고, 꺼져 있다는 안내도 띄우지 않는다
+      expect(find.koTextContaining('알림을 맞춰 뒀어요'), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
     });
   });
 
@@ -278,10 +262,9 @@ void main() {
         schedule: _withBalance(10).copyWith(JourneyDateKey.moveIn, _day(11)),
         now: DateTime.now(),
       );
-      expect(plan.map((r) => r.fireAt.hour), [9, 8, 9]);
-      expect(kBalanceReminderPromise, contains('하루 전 오전 9시'));
-      expect(kBalanceReminderPromise, contains('당일 오전 8시'));
-      expect(kMoveInReminderPromise, contains('입주 다음 날 오전 9시'));
+      expect(plan.map((r) => r.fireAt.hour).toSet(), {8});
+      expect(kBalanceReminderPromise, contains('하루 전과 당일 오전 8시'));
+      expect(kMoveInReminderPromise, contains('입주 다음 날 오전 8시'));
     });
   });
 
@@ -291,7 +274,9 @@ void main() {
       alias: '정자동 빌라',
       address: '경기 성남시 분당구 정자동 456-7',
       analyzedAt: DateTime.now().subtract(const Duration(hours: 2)),
-      registryViewedAt: formatDate(DateTime.now().subtract(const Duration(days: 3))),
+      registryViewedAt: formatDate(
+        DateTime.now().subtract(const Duration(days: 3)),
+      ),
       grade: RiskGrade.caution,
       headline: '확인이 필요해요',
       nextAction: '확인 후 결정하세요',
@@ -303,7 +288,10 @@ void main() {
       evidences: const [],
     );
 
-    Future<void> pumpTimeline(WidgetTester tester, JourneySchedule schedule) async {
+    Future<void> pumpTimeline(
+      WidgetTester tester,
+      JourneySchedule schedule,
+    ) async {
       tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);
@@ -319,12 +307,20 @@ void main() {
             ChangeNotifierProvider<AnalysisRepository>(
               create: (_) => _OneReportRepo(report),
             ),
-            Provider<ContentRepository>(create: (_) => DummyContentRepository()),
+            Provider<ContentRepository>(
+              create: (_) => DummyContentRepository(),
+            ),
             ChangeNotifierProvider<JourneyScheduleStore>.value(
               value: JourneyScheduleStore.instance,
             ),
+            ChangeNotifierProvider<JourneyProgressStore>.value(
+              value: JourneyProgressStore.instance,
+            ),
           ],
-          child: MaterialApp(theme: buildAppTheme(), home: const JourneyScreen()),
+          child: MaterialApp(
+            theme: buildAppTheme(),
+            home: const JourneyScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -335,7 +331,7 @@ void main() {
 
       expect(find.koTextContaining('오늘이 잔금일이에요'), findsOneWidget);
       expect(find.koText(BalanceDueBanner.kBalanceDueMessage), findsOneWidget);
-      expect(find.koText('지금 다시 떼서 대조하기'), findsOneWidget);
+      expect(find.koText('최근 분석과 대조하기'), findsWidgets);
     });
 
     testWidgets('입주 다음 날 — 대항력 문구 + 대조 버튼', (tester) async {
@@ -348,14 +344,17 @@ void main() {
       expect(find.koText(BalanceDueBanner.kMoveInNextMessage), findsOneWidget);
       // 쉬운 본문은 조건부터(전입신고를 했다면) — 근거는 작은 글씨로
       expect(find.koTextContaining('이삿날 전입신고까지 마쳤다면'), findsOneWidget);
-      expect(find.koText(BalanceDueBanner.kMoveInNextLegalNote), findsOneWidget);
-      expect(find.koText('지금 다시 떼서 대조하기'), findsOneWidget);
+      expect(
+        find.koText(BalanceDueBanner.kMoveInNextLegalNote),
+        findsOneWidget,
+      );
+      expect(find.koText('최근 분석과 대조하기'), findsWidgets);
     });
 
     testWidgets('그 밖의 날에는 배너가 없다', (tester) async {
       await pumpTimeline(tester, _withBalance(5));
 
-      expect(find.koText('지금 다시 떼서 대조하기'), findsNothing);
+      expect(find.byType(BalanceDueBanner), findsNothing);
     });
   });
 

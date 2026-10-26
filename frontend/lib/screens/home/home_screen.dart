@@ -16,6 +16,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../models/property_reports.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
 import '../../state/app_session.dart';
@@ -44,7 +45,10 @@ class _HomeScreenState extends State<HomeScreen> {
         child: FutureBuilder<List<AnalysisReport>>(
           future: repo.getHistory(),
           builder: (context, snapshot) {
-            final List<AnalysisReport> history = snapshot.data ?? const [];
+            // 같은 집은 최신 리포트 1개만 (2026-10-26 같은 집 덮어쓰기)
+            final List<AnalysisReport> history = latestPerProperty(
+              snapshot.data ?? const [],
+            );
 
             return ListView(
               padding: const EdgeInsets.all(AppSpacing.screenPadding),

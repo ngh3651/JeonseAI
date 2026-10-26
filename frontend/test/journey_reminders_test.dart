@@ -1,6 +1,6 @@
 /// 계약 지킴이 알림 (P1-2) — **언제 울리는가**를 못 박는다.
 ///
-///   ① 잔금일 하루 전 오전 9시 · 잔금일 당일 오전 8시 · 입주 다음 날 오전 9시
+///   ① 모두 오전 8시 (2026-10-26) — 가계약금 날 · 계약서 날 · 잔금 하루 전 · 잔금 날 · 이사 날 · 입주 다음 날
 ///   ② 지난 시각은 예약하지 않는다
 ///   ③ 날짜를 바꾸면 다시 걸고, 지우면 취소한다 (같은 집·같은 종류 = 같은 id)
 ///   ④ 알림을 누르면 그 집의 여정 화면으로 간다
@@ -73,7 +73,7 @@ void main() {
   group('예약 계산 (순수 함수)', () {
     final now = DateTime(2026, 11, 1, 10, 0);
 
-    test('잔금일·이사일이 있으면 세 번 — 시각이 정확하다', () {
+    test('잔금일·이사일이 있으면 네 번 — 모두 오전 8시', () {
       final plan = planJourneyReminders(
         propertyKey: _key,
         alias: '정자동 빌라',
@@ -87,11 +87,13 @@ void main() {
       expect(plan.map((r) => r.kind), [
         JourneyReminderKind.balanceEve,
         JourneyReminderKind.balanceDay,
+        JourneyReminderKind.moveInDay,
         JourneyReminderKind.moveInNext,
       ]);
-      expect(plan[0].fireAt, DateTime(2026, 11, 4, 9)); // 잔금 하루 전 오전 9시
+      expect(plan[0].fireAt, DateTime(2026, 11, 4, 8)); // 잔금 하루 전 오전 8시
       expect(plan[1].fireAt, DateTime(2026, 11, 5, 8)); // 잔금 당일 오전 8시
-      expect(plan[2].fireAt, DateTime(2026, 11, 7, 9)); // 입주 다음 날 오전 9시
+      expect(plan[2].fireAt, DateTime(2026, 11, 6, 8)); // 이사 날 오전 8시
+      expect(plan[3].fireAt, DateTime(2026, 11, 7, 8)); // 입주 다음 날 오전 8시
     });
 
     test('문구는 약속한 말 그대로 + 제목에 집 이름', () {
@@ -105,12 +107,18 @@ void main() {
         now: now,
       );
 
-      expect(plan[0].body, '내일 돈 보내기 직전에 새로 뗀 등기부를 찍어 주세요 — 오늘 뗀 서류엔 내일 생긴 빚이 안 보여요');
+      expect(
+        plan[0].body,
+        '내일 돈 보내기 직전에 새로 뗀 등기부를 찍어 주세요 — 오늘 뗀 서류엔 내일 생긴 빚이 안 보여요',
+      );
       expect(plan[1].body, '입금 전 마지막 확인 — 오늘 뗀 등기부로 대조해 주세요');
-      expect(plan[2].title, startsWith('입주 다음 날 등기부 확인'));
+      final next = plan.firstWhere(
+        (r) => r.kind == JourneyReminderKind.moveInNext,
+      );
+      expect(next.title, startsWith('입주 다음 날 등기부 확인'));
       // 전입신고를 했을 때만 생긴다는 조건이 앞에 온다(주택임대차보호법 제3조)
-      expect(plan[2].body, startsWith('이삿날 전입신고를 했다면 오늘 0시부터 대항력이 생겨요'));
-      expect(plan[2].body, contains('이삿날 이후 새 빚이 없는지 다시 떼서 대조해 주세요'));
+      expect(next.body, startsWith('이삿날 전입신고를 했다면 오늘 0시부터 대항력이 생겨요'));
+      expect(next.body, contains('이삿날 이후 새 빚이 없는지 다시 떼서 대조해 주세요'));
       for (final r in plan) {
         expect(r.title, endsWith(' · 정자동 빌라'));
         // 출처 없는 수치를 지어내지 않는다 — 문구의 숫자는 여정 데이터에 이미 있는 '0시'(대항력)뿐
@@ -132,7 +140,10 @@ void main() {
         ),
         now: DateTime(2026, 11, 5, 9, 0),
       );
-      expect(plan.map((r) => r.kind), [JourneyReminderKind.moveInNext]);
+      expect(plan.map((r) => r.kind), [
+        JourneyReminderKind.moveInDay,
+        JourneyReminderKind.moveInNext,
+      ]);
     });
 
     test('정각 그 시각도 지난 것으로 본다 (플러그인은 과거 시각을 거부한다)', () {
@@ -140,7 +151,7 @@ void main() {
         propertyKey: _key,
         alias: '',
         schedule: _schedule(balance: DateTime(2026, 11, 5)),
-        now: DateTime(2026, 11, 4, 9, 0),
+        now: DateTime(2026, 11, 4, 8, 0),
       );
       expect(plan.map((r) => r.kind), [JourneyReminderKind.balanceDay]);
     });
@@ -158,7 +169,7 @@ void main() {
       expect(plan, isEmpty);
     });
 
-    test('가계약금·계약서 날짜만 있으면 알림은 없다 (약속한 세 가지만)', () {
+    test('가계약금·계약서 날에도 그날 오전 8시에 울린다', () {
       final schedule = const JourneySchedule()
           .copyWith(JourneyDateKey.downPayment, DateTime(2026, 11, 10))
           .copyWith(JourneyDateKey.contract, DateTime(2026, 11, 12));
@@ -168,17 +179,24 @@ void main() {
         schedule: schedule,
         now: now,
       );
-      expect(plan, isEmpty);
+      expect(plan.map((r) => r.kind), [
+        JourneyReminderKind.downPaymentDay,
+        JourneyReminderKind.contractDay,
+      ]);
+      expect(plan.map((r) => r.fireAt), [
+        DateTime(2026, 11, 10, 8),
+        DateTime(2026, 11, 12, 8),
+      ]);
     });
 
-    test('달이 바뀌어도 맞다 — 12월 1일 잔금이면 11월 30일 9시', () {
+    test('달이 바뀌어도 맞다 — 12월 1일 잔금이면 11월 30일 8시', () {
       final plan = planJourneyReminders(
         propertyKey: _key,
         alias: '',
         schedule: _schedule(balance: DateTime(2026, 12, 1)),
         now: now,
       );
-      expect(plan.first.fireAt, DateTime(2026, 11, 30, 9));
+      expect(plan.first.fireAt, DateTime(2026, 11, 30, 8));
     });
 
     test('집 이름이 비어 있으면 제목 뒤에 아무것도 붙이지 않는다', () {
@@ -197,7 +215,8 @@ void main() {
       final a = journeyReminderId(_key, JourneyReminderKind.balanceEve);
       expect(journeyReminderId(_key, JourneyReminderKind.balanceEve), a);
       final ids = journeyReminderIds(_key);
-      expect(ids.toSet().length, 3);
+      // 종류 6개 + 옛 방식(2026-10-22~25) id 3개 — 옛 알림도 지울 수 있게
+      expect(ids.toSet().length, 9);
       expect(ids.first, a);
       // 안드로이드 알림 id는 32비트 정수여야 한다
       for (final id in ids) {
@@ -207,7 +226,10 @@ void main() {
 
     test('다른 집은 다른 id', () {
       final other = journeyReminderIds('서울강남구역삼동123-45');
-      expect(other.toSet().intersection(journeyReminderIds(_key).toSet()), isEmpty);
+      expect(
+        other.toSet().intersection(journeyReminderIds(_key).toSet()),
+        isEmpty,
+      );
     });
 
     test('payload ↔ 매물 키', () {
@@ -219,8 +241,14 @@ void main() {
     });
 
     test('안내용 시각 표기 — 오전·오후', () {
-      expect(describeReminderTime(DateTime(2026, 11, 4, 9)), '11월 4일 (수) 오전 9시');
-      expect(describeReminderTime(DateTime(2026, 11, 4, 12)), '11월 4일 (수) 오후 12시');
+      expect(
+        describeReminderTime(DateTime(2026, 11, 4, 9)),
+        '11월 4일 (수) 오전 9시',
+      );
+      expect(
+        describeReminderTime(DateTime(2026, 11, 4, 12)),
+        '11월 4일 (수) 오후 12시',
+      );
     });
   });
 
@@ -246,8 +274,14 @@ void main() {
     });
 
     test('그 밖의 날에는 배너가 없다', () {
-      expect(journeyAlertToday(schedule, now: DateTime(2026, 11, 3, 9)), isNull);
-      expect(journeyAlertToday(schedule, now: DateTime(2026, 11, 6, 9)), isNull);
+      expect(
+        journeyAlertToday(schedule, now: DateTime(2026, 11, 3, 9)),
+        isNull,
+      );
+      expect(
+        journeyAlertToday(schedule, now: DateTime(2026, 11, 6, 9)),
+        isNull,
+      );
       expect(journeyAlertToday(const JourneySchedule()), isNull);
     });
 
@@ -278,7 +312,7 @@ void main() {
 
     tearDown(svc.resetForTest);
 
-    test('저장하면 건다 — 세 개', () async {
+    test('저장하면 건다 — 네 개', () async {
       await svc.sync(
         propertyKey: _key,
         alias: '정자동 빌라',
@@ -288,11 +322,10 @@ void main() {
         ),
         now: now,
       );
-      expect(platform.scheduled.length, 3);
-      expect(
-        platform.scheduled.values.map((r) => r.payload).toSet(),
-        {journeyReminderPayload(_key)},
-      );
+      expect(platform.scheduled.length, 4);
+      expect(platform.scheduled.values.map((r) => r.payload).toSet(), {
+        journeyReminderPayload(_key),
+      });
     });
 
     test('날짜를 바꾸면 새 시각으로 다시 건다 (옛 시각이 남지 않는다)', () async {
@@ -308,8 +341,9 @@ void main() {
         schedule: _schedule(balance: DateTime(2026, 11, 10)),
         now: now,
       );
-      final times = platform.scheduled.values.map((r) => r.fireAt).toList()..sort();
-      expect(times, [DateTime(2026, 11, 9, 9), DateTime(2026, 11, 10, 8)]);
+      final times = platform.scheduled.values.map((r) => r.fireAt).toList()
+        ..sort();
+      expect(times, [DateTime(2026, 11, 9, 8), DateTime(2026, 11, 10, 8)]);
     });
 
     test('연달아 두 번 저장해도 뒤의 일정만 남는다 (취소·예약이 뒤섞이지 않는다)', () async {
@@ -328,8 +362,9 @@ void main() {
       );
       await Future.wait([first, second]);
 
-      final times = platform.scheduled.values.map((r) => r.fireAt).toList()..sort();
-      expect(times, [DateTime(2026, 11, 9, 9), DateTime(2026, 11, 10, 8)]);
+      final times = platform.scheduled.values.map((r) => r.fireAt).toList()
+        ..sort();
+      expect(times, [DateTime(2026, 11, 9, 8), DateTime(2026, 11, 10, 8)]);
     });
 
     test('날짜를 지우면 취소한다', () async {
@@ -349,9 +384,10 @@ void main() {
         schedule: _schedule(moveIn: DateTime(2026, 11, 6)),
         now: now,
       );
-      expect(platform.scheduled.values.map((r) => r.kind), [
+      expect(platform.scheduled.values.map((r) => r.kind).toSet(), {
+        JourneyReminderKind.moveInDay,
         JourneyReminderKind.moveInNext,
-      ]);
+      });
       // 다 지우면 하나도 남지 않는다
       await svc.sync(
         propertyKey: _key,
@@ -377,7 +413,10 @@ void main() {
         now: now,
       );
       expect(platform.scheduled.length, 2);
-      expect(platform.scheduled.values.every((r) => r.title.endsWith('역삼동 오피스텔')), isTrue);
+      expect(
+        platform.scheduled.values.every((r) => r.title.endsWith('역삼동 오피스텔')),
+        isTrue,
+      );
     });
 
     test('플러그인이 실패해도 예외가 밖으로 나오지 않는다 (앱이 멈추지 않는다)', () async {
@@ -409,7 +448,10 @@ void main() {
 
       expect(platform.scheduled.length, 2);
       // 집 이름도 기억해 둔 것으로 붙는다
-      expect(platform.scheduled.values.every((r) => r.title.endsWith('정자동 빌라')), isTrue);
+      expect(
+        platform.scheduled.values.every((r) => r.title.endsWith('정자동 빌라')),
+        isTrue,
+      );
     });
 
     test('알림을 누르면 그 집을 고르고 여정 화면으로 간다', () async {

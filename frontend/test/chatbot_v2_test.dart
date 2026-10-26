@@ -40,7 +40,10 @@ class _FakeContentRepo implements ContentRepository {
     final fixed = answers[last];
     if (fixed != null) return ChatReply(answer: fixed);
     return ChatReply(
-      answer: ['$last 설명이에요.', for (var i = 2; i <= lines; i++) '$i번째 줄이에요.'].join('\n'),
+      answer: [
+        '$last 설명이에요.',
+        for (var i = 2; i <= lines; i++) '$i번째 줄이에요.',
+      ].join('\n'),
     );
   }
 
@@ -61,7 +64,9 @@ class _FakeContentRepo implements ContentRepository {
 }
 
 /// 안내를 이미 본 저장소 (첫 안내가 다른 시험을 흔들지 않게)
-MemoryChatHistoryRepository _seenHistory([List<ChatConversation> initial = const []]) {
+MemoryChatHistoryRepository _seenHistory([
+  List<ChatConversation> initial = const [],
+]) {
   final h = MemoryChatHistoryRepository(initial);
   h.markHint(ChatHint.swipe);
   h.markHint(ChatHint.drawerDot);
@@ -92,13 +97,21 @@ Future<_Harness> _pump(
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
   // 진동·클립보드 — 플랫폼 대신 받아 둔다
-  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
-    if (call.method == 'Clipboard.setData') {
-      h.clipboard = (call.arguments as Map)['text'] as String?;
-    }
-    return null;
-  });
-  addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method == 'Clipboard.setData') {
+        h.clipboard = (call.arguments as Map)['text'] as String?;
+      }
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
 
   await tester.pumpWidget(
     MultiProvider(
@@ -134,12 +147,19 @@ Future<void> _send(WidgetTester tester, String text) async {
 }
 
 /// [text] 줄이 들어 있는 AI 말풍선(밀기 위젯)
-Finder _botBubble(String text) =>
-    find.ancestor(of: find.koTextContaining(text).first, matching: find.byType(SwipeToQuote));
+Finder _botBubble(String text) => find.ancestor(
+  of: find.koTextContaining(text).first,
+  matching: find.byType(SwipeToQuote),
+);
 
 /// 말풍선 몸통(테두리를 가진 상자)
 BoxDecoration _bubbleDecoration(WidgetTester tester, String text) {
-  final box = find.descendant(of: _botBubble(text), matching: find.byType(AnimatedContainer)).first;
+  final box = find
+      .descendant(
+        of: _botBubble(text),
+        matching: find.byType(AnimatedContainer),
+      )
+      .first;
   return tester.widget<AnimatedContainer>(box).decoration! as BoxDecoration;
 }
 
@@ -153,10 +173,17 @@ Future<void> _openDrawer(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Finder get _drawerSearch =>
-    find.descendant(of: find.byType(ChatHistoryDrawer), matching: find.byType(TextField));
+Finder get _drawerSearch => find.descendant(
+  of: find.byType(ChatHistoryDrawer),
+  matching: find.byType(TextField),
+);
 
-ChatConversation _conv(String id, String title, DateTime at, {String answer = '답이에요.'}) => ChatConversation(
+ChatConversation _conv(
+  String id,
+  String title,
+  DateTime at, {
+  String answer = '답이에요.',
+}) => ChatConversation(
   id: id,
   title: title,
   createdAt: at,
@@ -169,59 +196,90 @@ ChatConversation _conv(String id, String title, DateTime at, {String answer = '�
 
 void main() {
   group('꾹 누르기 = 글자 선택 + 칩', () {
-    testWidgets('AI 말풍선 → 누른 줄 전체 선택 + [복사][답글] · 복사하면 "복사했어요" 2초', (tester) async {
-      final h = await _pump(tester, repo: _FakeContentRepo(answers: {'근저당권?': '근저당권은 담보 표시예요.\n은행이 먼저 받아 가요.'}));
+    testWidgets('AI 말풍선 → 누른 어절 선택 + [복사][답글] · 복사하면 "복사했어요" 2초', (
+      tester,
+    ) async {
+      final h = await _pump(
+        tester,
+        repo: _FakeContentRepo(
+          answers: {'근저당권?': '근저당권은 담보 표시예요.\n은행이 먼저 받아 가요.'},
+        ),
+      );
       await _send(tester, '근저당권?');
 
-      await tester.longPress(find.koText('은행이 먼저 받아 가요.'));
+      await tester.longPressAt(
+        tester.getTopLeft(find.koText('은행이 먼저 받아 가요.')) + const Offset(12, 8),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(ChatSelectionChip), findsOneWidget);
       expect(find.koText('복사'), findsOneWidget);
       expect(find.koText('답글'), findsOneWidget);
-      expect(find.text('Select all'), findsNothing, reason: '안드로이드 기본 메뉴 대신 칩만');
+      expect(
+        find.text('Select all'),
+        findsNothing,
+        reason: '안드로이드 기본 메뉴 대신 칩만',
+      );
       expect(find.text('Share'), findsNothing);
 
       await tester.tap(find.koText('복사'));
       await tester.pump();
       await tester.pump();
-      expect(h.clipboard, '은행이 먼저 받아 가요.', reason: '낱말이 아니라 누른 줄(문장) 전체');
+      // 2026-10-26: 줄 전체 고르기는 실기기에서 누른 글자 왼쪽이 통째로 잡혔다 → 누른 어절(손잡이로 넓힌다)
+      expect(h.clipboard, '은행이', reason: '누른 자리의 어절 하나');
       expect(find.byType(ChatSelectionChip), findsNothing);
-      expect(tester.widget<CopiedToast>(find.byType(CopiedToast)).visible, isTrue);
+      expect(
+        tester.widget<CopiedToast>(find.byType(CopiedToast)).visible,
+        isTrue,
+      );
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
-      expect(tester.widget<CopiedToast>(find.byType(CopiedToast)).visible, isFalse);
+      expect(
+        tester.widget<CopiedToast>(find.byType(CopiedToast)).visible,
+        isFalse,
+      );
     });
 
     testWidgets('내 말풍선 → [복사]만', (tester) async {
       final h = await _pump(tester);
       await _send(tester, '확정일자 언제 받아요');
-      await tester.longPress(find.koText('확정일자 언제 받아요'));
+      await tester.longPressAt(
+        tester.getTopLeft(find.koText('확정일자 언제 받아요')) + const Offset(12, 8),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(ChatSelectionChip), findsOneWidget);
       expect(find.koText('복사'), findsOneWidget);
       expect(find.koText('답글'), findsNothing);
       await tester.tap(find.koText('복사'));
       await tester.pump();
-      expect(h.clipboard, '확정일자 언제 받아요');
+      expect(h.clipboard, '확정일자');
       await tester.pumpAndSettle(const Duration(seconds: 3));
     });
 
     testWidgets('[답글] → 고른 글자만 인용', (tester) async {
-      final h = await _pump(tester, repo: _FakeContentRepo(answers: {'근저당권?': '근저당권은 담보 표시예요.\n은행이 먼저 받아 가요.'}));
+      final h = await _pump(
+        tester,
+        repo: _FakeContentRepo(
+          answers: {'근저당권?': '근저당권은 담보 표시예요.\n은행이 먼저 받아 가요.'},
+        ),
+      );
       await _send(tester, '근저당권?');
-      await tester.longPress(find.koText('은행이 먼저 받아 가요.'));
+      await tester.longPressAt(
+        tester.getTopLeft(find.koText('은행이 먼저 받아 가요.')) + const Offset(12, 8),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.koText('답글'));
       await tester.pumpAndSettle();
       expect(find.byType(QuoteBand), findsOneWidget);
-      expect(tester.widget<QuoteBand>(find.byType(QuoteBand)).quote, '은행이 먼저 받아 가요.');
+      expect(tester.widget<QuoteBand>(find.byType(QuoteBand)).quote, '은행이');
       await _send(tester, '왜요?');
-      expect(h.repo.sent.last.last.content, '$kQuoteLeadPart\n「은행이 먼저 받아 가요.」\n왜요?');
+      expect(h.repo.sent.last.last.content, '$kQuoteLeadPart\n「은행이」\n왜요?');
     });
   });
 
   group('왼쪽으로 밀어서 이어 묻기', () {
-    testWidgets('64 넘게 밀면 인용 띠 + 입력칸 포커스 + 테두리 primaryBright 2 · [X]로 취소', (tester) async {
+    testWidgets('64 넘게 밀면 인용 띠 + 입력칸 포커스 + 테두리 primaryBright 2 · [X]로 취소', (
+      tester,
+    ) async {
       await _pump(tester);
       await _send(tester, '가압류');
       expect(find.byType(QuoteBand), findsNothing);
@@ -230,7 +288,10 @@ void main() {
       expect(find.byType(QuoteBand), findsOneWidget);
       expect(find.koText(kQuoteBandLabel), findsOneWidget);
       expect(
-        find.descendant(of: find.byType(QuoteBand), matching: find.text('가압류 설명이에요.')),
+        find.descendant(
+          of: find.byType(QuoteBand),
+          matching: find.text('가압류 설명이에요.'),
+        ),
         findsOneWidget,
         reason: '인용 첫 줄',
       );
@@ -243,7 +304,10 @@ void main() {
       await tester.tap(find.byTooltip('인용 취소'));
       await tester.pumpAndSettle();
       expect(find.byType(QuoteBand), findsNothing);
-      expect((_bubbleDecoration(tester, '가압류 설명이에요.').border! as Border).top.color, AppColors.line);
+      expect(
+        (_bubbleDecoration(tester, '가압류 설명이에요.').border! as Border).top.color,
+        AppColors.line,
+      );
     });
 
     testWidgets('덜 밀면 제자리 · 인용 안 됨', (tester) async {
@@ -251,13 +315,19 @@ void main() {
       await _send(tester, '가압류');
       await _swipe(tester, '가압류 설명이에요.', 40);
       expect(find.byType(QuoteBand), findsNothing);
-      expect(find.byKey(const ValueKey('swipe-arrow')), findsNothing, reason: '놓으면 제자리');
+      expect(
+        find.byKey(const ValueKey('swipe-arrow')),
+        findsNothing,
+        reason: '놓으면 제자리',
+      );
     });
 
     testWidgets('미는 동안 화살표가 보이고 그림자가 생긴다', (tester) async {
       await _pump(tester);
       await _send(tester, '가압류');
-      final gesture = await tester.startGesture(tester.getCenter(_botBubble('가압류 설명이에요.')));
+      final gesture = await tester.startGesture(
+        tester.getCenter(_botBubble('가압류 설명이에요.')),
+      );
       await gesture.moveBy(const Offset(-20, 0));
       await gesture.moveBy(const Offset(-30, 0));
       await tester.pump();
@@ -276,7 +346,9 @@ void main() {
       expect(find.byType(QuoteBand), findsNothing);
     });
 
-    testWidgets('인용해서 보내면 내 말풍선 위 인용 칩 · 질문은 그대로 · 누르면 원래 답으로 스크롤 + 1초 반짝', (tester) async {
+    testWidgets('인용해서 보내면 내 말풍선 위 인용 칩 · 질문은 그대로 · 누르면 원래 답으로 스크롤 + 1초 반짝', (
+      tester,
+    ) async {
       final h = await _pump(tester, repo: _FakeContentRepo(lines: 6));
       await _send(tester, '첫 질문');
       await _send(tester, '둘째 질문');
@@ -295,17 +367,31 @@ void main() {
       expect(sent, contains('첫 질문 설명이에요.'), reason: '인용이 AI에게 간다');
 
       final viewport = tester.getRect(find.byType(SingleChildScrollView));
-      expect(tester.getRect(_botBubble('첫 질문 설명이에요.')).bottom, lessThan(viewport.top), reason: '원래 답은 화면 밖');
+      expect(
+        tester.getRect(_botBubble('첫 질문 설명이에요.')).bottom,
+        lessThan(viewport.top),
+        reason: '원래 답은 화면 밖',
+      );
 
       await tester.tap(find.byType(QuoteChip));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       final r = tester.getRect(_botBubble('첫 질문 설명이에요.'));
-      expect(r.bottom > viewport.top && r.top < viewport.bottom, isTrue, reason: '원래 답으로 스크롤');
-      expect((_bubbleDecoration(tester, '첫 질문 설명이에요.').border! as Border).top.color, AppColors.primaryBright);
+      expect(
+        r.bottom > viewport.top && r.top < viewport.bottom,
+        isTrue,
+        reason: '원래 답으로 스크롤',
+      );
+      expect(
+        (_bubbleDecoration(tester, '첫 질문 설명이에요.').border! as Border).top.color,
+        AppColors.primaryBright,
+      );
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
-      expect((_bubbleDecoration(tester, '첫 질문 설명이에요.').border! as Border).top.color, AppColors.line);
+      expect(
+        (_bubbleDecoration(tester, '첫 질문 설명이에요.').border! as Border).top.color,
+        AppColors.line,
+      );
     });
 
     testWidgets('기다리는 중 말풍선 · 연결 실패 안내는 밀기·꾹 누르기 없음', (tester) async {
@@ -313,7 +399,11 @@ void main() {
       await _send(tester, '가압류');
       // 기다리는 중·실패 줄에는 밀기 위젯이 붙지 않는다 (답 말풍선 1개에만)
       expect(find.byType(SwipeToQuote), findsOneWidget);
-      expect(find.byType(ChatSelectableText), findsNWidgets(2), reason: '내 말 1 + 답 1');
+      expect(
+        find.byType(ChatSelectableText),
+        findsNWidgets(2),
+        reason: '내 말 1 + 답 1',
+      );
     });
   });
 
@@ -331,12 +421,20 @@ void main() {
       expect(find.koText('지난 대화'), findsOneWidget);
       expect(find.koText('오늘'), findsOneWidget);
       expect(find.koText('가압류 알려줘'), findsOneWidget);
-      expect(find.koTextContaining('가압류 알려줘 설명이에요.'), findsOneWidget, reason: '시간 · 마지막 답 첫 줄');
+      expect(
+        find.koTextContaining('가압류 알려줘 설명이에요.'),
+        findsOneWidget,
+        reason: '시간 · 마지막 답 첫 줄',
+      );
 
       await tester.tap(find.koText('가압류 알려줘'));
       await tester.pumpAndSettle();
       expect(find.byType(ChatHistoryDrawer), findsNothing);
-      expect(find.koText('가압류 알려줘 설명이에요.'), findsOneWidget, reason: '그대로 다시 그림');
+      expect(
+        find.koText('가압류 알려줘 설명이에요.'),
+        findsOneWidget,
+        reason: '그대로 다시 그림',
+      );
 
       await _send(tester, '더 쉽게');
       final turns = h.repo.sent.last;
@@ -374,24 +472,40 @@ void main() {
       ]);
       await _pump(tester, history: history);
       await _openDrawer(tester);
-      for (final label in ['오늘', '어제', '지난 7일', chatGroupLabel(now.subtract(const Duration(days: 60)), now)]) {
+      for (final label in [
+        '오늘',
+        '어제',
+        '지난 7일',
+        chatGroupLabel(now.subtract(const Duration(days: 60)), now),
+      ]) {
         expect(find.koText(label), findsOneWidget, reason: label);
       }
       // 연 대화 표시
       await tester.tap(find.koText('어제 질문'));
       await tester.pumpAndSettle();
       await _openDrawer(tester);
-      final row = tester.widget<Material>(find.byKey(const ValueKey('chat-row-y')));
+      final row = tester.widget<Material>(
+        find.byKey(const ValueKey('chat-row-y')),
+      );
       expect(row.color, AppColors.primarySoft);
-      expect(tester.widget<Material>(find.byKey(const ValueKey('chat-row-t'))).color, AppColors.surface);
+      expect(
+        tester.widget<Material>(find.byKey(const ValueKey('chat-row-t'))).color,
+        AppColors.surface,
+      );
     });
 
-    testWidgets('검색 — 제목·본문, 개수 머리글, 맞은 글자 강조, 없으면 안내, [X]로 지우기', (tester) async {
+    testWidgets('검색 — 제목·본문, 개수 머리글, 맞은 글자 강조, 없으면 안내, [X]로 지우기', (
+      tester,
+    ) async {
       final now = DateTime.now();
       final history = _seenHistory([
         _conv('a', '근저당권이 뭐예요?', now),
-        _conv('b', '확정일자', now.subtract(const Duration(hours: 1)),
-            answer: '주민센터에 가서 계약서를 내밀면 근저당이 아니라 확정일자를 받아요.'),
+        _conv(
+          'b',
+          '확정일자',
+          now.subtract(const Duration(hours: 1)),
+          answer: '주민센터에 가서 계약서를 내밀면 근저당이 아니라 확정일자를 받아요.',
+        ),
         _conv('c', '전입신고', now.subtract(const Duration(hours: 2))),
       ]);
       await _pump(tester, history: history);
@@ -406,9 +520,16 @@ void main() {
       expect(find.textContaining('…'), findsOneWidget, reason: '앞이 잘린 본문 줄');
       // 맞은 글자는 primarySoft 바탕 + primaryDeep
       var highlighted = 0;
-      for (final rt in tester.widgetList<RichText>(find.descendant(of: find.byType(ChatHistoryDrawer), matching: find.byType(RichText)))) {
+      for (final rt in tester.widgetList<RichText>(
+        find.descendant(
+          of: find.byType(ChatHistoryDrawer),
+          matching: find.byType(RichText),
+        ),
+      )) {
         rt.text.visitChildren((span) {
-          if (span is TextSpan && span.style?.backgroundColor == AppColors.primarySoft && span.text == '근저당') {
+          if (span is TextSpan &&
+              span.style?.backgroundColor == AppColors.primarySoft &&
+              span.text == '근저당') {
             expect(span.style?.color, AppColors.primaryDeep);
             highlighted++;
           }
@@ -441,18 +562,37 @@ void main() {
       await tester.tap(find.koText('이름 바꾸기'));
       await tester.pumpAndSettle();
       expect(find.byType(Dialog), findsOneWidget, reason: '이름 바꾸기 창');
-      await tester.enterText(find.descendant(of: find.byType(Dialog), matching: find.byType(TextField)), '근저당 공부');
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byType(TextField),
+        ),
+        '근저당 공부',
+      );
       await tester.pump();
-      final save = find.ancestor(of: find.koText('바꾸기'), matching: find.byType(FilledButton));
-      expect(tester.widget<FilledButton>(save).onPressed, isNotNull, reason: '[바꾸기]가 켜져 있다');
+      final save = find.ancestor(
+        of: find.koText('바꾸기'),
+        matching: find.byType(FilledButton),
+      );
+      expect(
+        tester.widget<FilledButton>(save).onPressed,
+        isNotNull,
+        reason: '[바꾸기]가 켜져 있다',
+      );
       await tester.tap(save);
       await tester.pumpAndSettle();
       expect(find.byType(Dialog), findsNothing, reason: '창이 닫혔다');
-      expect((await history.list()).single.title, '근저당 공부', reason: '저장소에 바뀐 이름');
+      expect(
+        (await history.list()).single.title,
+        '근저당 공부',
+        reason: '저장소에 바뀐 이름',
+      );
       expect(find.koText('근저당 공부'), findsOneWidget, reason: '서랍 줄에 바뀐 이름');
     });
 
-    testWidgets('⋯ 시트 → 삭제 확인(빨간색 없음) → 사라짐 · 마지막 하나면 기록 없음 화면', (tester) async {
+    testWidgets('⋯ 시트 → 삭제 확인(빨간색 없음) → 사라짐 · 마지막 하나면 기록 없음 화면', (
+      tester,
+    ) async {
       final history = _seenHistory([_conv('a', '근저당권이 뭐예요?', DateTime.now())]);
       await _pump(tester, history: history);
       await _openDrawer(tester);
@@ -461,10 +601,16 @@ void main() {
       await tester.tap(find.koText('삭제'));
       await tester.pumpAndSettle();
       expect(find.koText('이 대화를 지울까요?'), findsOneWidget);
-      expect(find.koText("'근저당권이 뭐예요?' 대화가 이 폰에서 지워져요. 지운 대화는 다시 볼 수 없어요."), findsOneWidget);
+      expect(
+        find.koText("'근저당권이 뭐예요?' 대화가 이 폰에서 지워져요. 지운 대화는 다시 볼 수 없어요."),
+        findsOneWidget,
+      );
       final confirm = tester.widget<FilledButton>(find.byType(FilledButton));
       expect(confirm.style?.backgroundColor?.resolve({}), AppColors.primary);
-      expect(confirm.style?.backgroundColor?.resolve({}), isNot(AppColors.danger));
+      expect(
+        confirm.style?.backgroundColor?.resolve({}),
+        isNot(AppColors.danger),
+      );
 
       // 취소하면 그대로
       await tester.tap(find.koText('취소'));
@@ -504,13 +650,20 @@ void main() {
       expect(find.koText('아직 지난 대화가 없어요'), findsOneWidget);
       expect(find.koText('물어본 내용이 여기에 차곡차곡 쌓여요'), findsOneWidget);
       expect(tester.widget<TextField>(_drawerSearch).enabled, isFalse);
-      expect(find.koTextContaining('이 폰에만'), findsNothing, reason: '저장 위치 안내 문구는 넣지 않음');
+      expect(
+        find.koTextContaining('이 폰에만'),
+        findsNothing,
+        reason: '저장 위치 안내 문구는 넣지 않음',
+      );
     });
 
     testWidgets('서랍은 폭 300, 바깥을 누르면 닫힌다', (tester) async {
       await _pump(tester);
       await _openDrawer(tester);
-      expect(tester.getSize(find.byKey(const ValueKey('chat-drawer'))).width, kChatDrawerWidth);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('chat-drawer'))).width,
+        kChatDrawerWidth,
+      );
       await tester.tapAt(const Offset(340, 400));
       await tester.pumpAndSettle();
       expect(find.byType(ChatHistoryDrawer), findsNothing);
@@ -519,14 +672,19 @@ void main() {
     testWidgets('왼쪽으로 밀면 서랍이 닫힌다', (tester) async {
       await _pump(tester);
       await _openDrawer(tester);
-      await tester.drag(find.byKey(const ValueKey('chat-drawer')), const Offset(-150, 0));
+      await tester.drag(
+        find.byKey(const ValueKey('chat-drawer')),
+        const Offset(-150, 0),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(ChatHistoryDrawer), findsNothing);
     });
   });
 
   group('첫 안내 — 한 번만', () {
-    testWidgets('첫 답 1초 뒤 말풍선이 밀렸다 돌아오며 화살표가 비친다 · 다음 답엔 없다 · 다시 켜도 없다', (tester) async {
+    testWidgets('첫 답 1초 뒤 말풍선이 밀렸다 돌아오며 화살표가 비친다 · 다음 답엔 없다 · 다시 켜도 없다', (
+      tester,
+    ) async {
       final history = MemoryChatHistoryRepository();
       await _pump(tester, history: history);
       await tester.enterText(_input, '가압류');
@@ -536,16 +694,28 @@ void main() {
       expect(find.byKey(const ValueKey('swipe-arrow')), findsNothing);
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 200));
-      expect(find.byKey(const ValueKey('swipe-arrow')), findsOneWidget, reason: '1초 뒤 살짝 밀림');
+      expect(
+        find.byKey(const ValueKey('swipe-arrow')),
+        findsOneWidget,
+        reason: '1초 뒤 살짝 밀림',
+      );
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('swipe-arrow')), findsNothing, reason: '0.6초 뒤 제자리');
+      expect(
+        find.byKey(const ValueKey('swipe-arrow')),
+        findsNothing,
+        reason: '0.6초 뒤 제자리',
+      );
       expect(await history.hintSeen(ChatHint.swipe), isTrue);
 
       await tester.enterText(_input, '근저당');
       await tester.tap(find.byIcon(Icons.arrow_upward));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 1200));
-      expect(find.byKey(const ValueKey('swipe-arrow')), findsNothing, reason: '두 번째 답엔 안내 없음');
+      expect(
+        find.byKey(const ValueKey('swipe-arrow')),
+        findsNothing,
+        reason: '두 번째 답엔 안내 없음',
+      );
       await tester.pumpAndSettle();
 
       // 앱을 다시 켜도(같은 저장소) 없음
@@ -559,7 +729,11 @@ void main() {
     });
 
     testWidgets('애니메이션 끄기 설정이면 밀기 안내 생략', (tester) async {
-      await _pump(tester, history: MemoryChatHistoryRepository(), disableAnimations: true);
+      await _pump(
+        tester,
+        history: MemoryChatHistoryRepository(),
+        disableAnimations: true,
+      );
       await tester.enterText(_input, '가압류');
       await tester.tap(find.byIcon(Icons.arrow_upward));
       await tester.pump();
@@ -568,13 +742,19 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('처음 [새 대화]로 기록이 생기면 [지난 대화] 점 → 서랍을 열면 사라지고 다시 안 나온다', (tester) async {
+    testWidgets('처음 [새 대화]로 기록이 생기면 [지난 대화] 점 → 서랍을 열면 사라지고 다시 안 나온다', (
+      tester,
+    ) async {
       final history = MemoryChatHistoryRepository();
       await history.markHint(ChatHint.swipe);
       await _pump(tester, history: history);
       expect(find.byKey(const ValueKey('drawer-dot')), findsNothing);
       await _send(tester, '가압류');
-      expect(find.byKey(const ValueKey('drawer-dot')), findsNothing, reason: '기록에 넘어가기 전엔 없음');
+      expect(
+        find.byKey(const ValueKey('drawer-dot')),
+        findsNothing,
+        reason: '기록에 넘어가기 전엔 없음',
+      );
       await tester.tap(find.byTooltip('새 대화'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('drawer-dot')), findsOneWidget);
@@ -587,10 +767,18 @@ void main() {
       await _send(tester, '근저당');
       await tester.tap(find.byTooltip('새 대화'));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('drawer-dot')), findsNothing, reason: '한 번만');
+      expect(
+        find.byKey(const ValueKey('drawer-dot')),
+        findsNothing,
+        reason: '한 번만',
+      );
 
       await _pump(tester, history: history);
-      expect(find.byKey(const ValueKey('drawer-dot')), findsNothing, reason: '다시 켜도 없음');
+      expect(
+        find.byKey(const ValueKey('drawer-dot')),
+        findsNothing,
+        reason: '다시 켜도 없음',
+      );
     });
 
     testWidgets('점을 본 뒤 서랍을 안 열고 앱을 다시 켜면 점은 남아 있다', (tester) async {
@@ -610,12 +798,17 @@ void main() {
       await _pump(
         tester,
         textScale: 1.3,
-        repo: _FakeContentRepo(answers: {
-          '근저당권?': '근저당권은 집을 담보로 돈을 빌렸다는 아주 긴 표시예요. 은행이 먼저 받아 가는 권리라서 꼭 확인해야 해요.\n은행이 먼저 받아 가요.',
-        }),
+        repo: _FakeContentRepo(
+          answers: {
+            '근저당권?':
+                '근저당권은 집을 담보로 돈을 빌렸다는 아주 긴 표시예요. 은행이 먼저 받아 가는 권리라서 꼭 확인해야 해요.\n은행이 먼저 받아 가요.',
+          },
+        ),
       );
       await _send(tester, '근저당권?');
-      await tester.longPress(find.koText('은행이 먼저 받아 가요.'));
+      await tester.longPressAt(
+        tester.getTopLeft(find.koText('은행이 먼저 받아 가요.')) + const Offset(12, 8),
+      );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '칩');
       await tester.tap(find.koText('복사'));

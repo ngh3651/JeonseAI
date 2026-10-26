@@ -26,16 +26,29 @@ import '../../services/api_client.dart';
 import '../../utils/korean_date.dart';
 import '../common/analyze_gate.dart';
 import '../journey/journey_actions.dart';
-import '../loading/analysis_loading_screen.dart' show LoadingStepLine, kAnalysisTypicalWait;
+import '../loading/analysis_loading_screen.dart'
+    show LoadingStepLine, kAnalysisTypicalWait;
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
 import 'compare_result_view.dart';
 
 /// 대조 요청 — 여정 화면이 `push`의 `extra`로 넘긴다.
 class CompareRequest {
-  const CompareRequest({required this.report, this.imagePaths = const []});
+  const CompareRequest({
+    required this.report,
+    this.imagePaths = const [],
+    this.initialResult,
+    this.initialError,
+  });
 
   final AnalysisReport report;
+
+  /// 이미 받은 결과 — 여정의 대조 시트가 '일부만 맞춰봄·다른 집' 같은 결과를 이 화면에 넘길 때.
+  /// 있으면 **서버를 다시 부르지 않고** 바로 그린다(대조 1번 = 분석 1번 비용, 2026-10-26).
+  final CompareResult? initialResult;
+
+  /// 이미 받은 오류 — 사진 거절(그 장만 다시 찍기)·앱 업데이트 안내를 이 화면이 맡는다.
+  final ApiException? initialError;
 
   /// 이번에 뗀 등기부 사진. **비어 있을 수 있다** — 기준이 없는 리포트는 사진을 받기
   /// 전에 서버가 "기준 없음"으로 답한다.
@@ -96,7 +109,20 @@ class _CompareScreenState extends State<CompareScreen> {
   @override
   void initState() {
     super.initState();
-    _run();
+    final given = widget.request?.initialResult;
+    final error = widget.request?.initialError;
+    if (given != null) {
+      _result = given;
+      _running = false;
+    } else if (error != null) {
+      _running = false;
+      _errorMessage = error.message;
+      _errorStatus = error.statusCode;
+      _needsAppUpdate = error.needsAppUpdate;
+      _captureCheck = error.captureCheck;
+    } else {
+      _run();
+    }
   }
 
   @override
@@ -171,7 +197,8 @@ class _CompareScreenState extends State<CompareScreen> {
         if (p.severe && p.index != index) p,
     ];
     setState(() {
-      _imagePaths = List<String>.of(_imagePaths)..[index] = result.newPaths.last;
+      _imagePaths = List<String>.of(_imagePaths)
+        ..[index] = result.newPaths.last;
       _replacedPages.add(index);
       // 아직 바꿀 심한 장이 남았으면 안내만 줄이고 기다린다(같은 사진을 또 보내지 않게).
       if (severeLeft.isNotEmpty) {
@@ -297,8 +324,8 @@ class _CompareScreenState extends State<CompareScreen> {
     if (result == null) return '등기부 대조';
     final String alias = (result.baseline.alias ?? '').trim();
     return switch (result.outcome) {
-      CompareOutcome.changed || CompareOutcome.partial =>
-        alias.isEmpty ? '등기부 대조 결과' : '$alias · 대조 결과',
+      CompareOutcome.changed ||
+      CompareOutcome.partial => alias.isEmpty ? '등기부 대조 결과' : '$alias · 대조 결과',
       _ => '등기부 대조',
     };
   }
@@ -324,7 +351,9 @@ class _CompareScreenState extends State<CompareScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Center(child: MascotSafe(size: 96, state: MascotState.analyzing)),
+          const Center(
+            child: MascotSafe(size: 96, state: MascotState.analyzing),
+          ),
           const SizedBox(height: AppSpacing.lg),
           const AppText(
             '두 등기부를 맞춰보고 있어요',
@@ -371,7 +400,10 @@ class _CompareScreenState extends State<CompareScreen> {
                 for (int i = 0; i < _steps.length; i++)
                   if (i < _shownSteps) ...[
                     if (i > 0) const SizedBox(height: AppSpacing.md),
-                    LoadingStepLine(text: _steps[i], active: i == _shownSteps - 1),
+                    LoadingStepLine(
+                      text: _steps[i],
+                      active: i == _shownSteps - 1,
+                    ),
                   ],
               ],
             ),
@@ -407,10 +439,7 @@ class _CompareScreenState extends State<CompareScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: AppSpacing.xl),
-        AppSecondaryButton(
-          label: '여정으로 돌아가기',
-          onPressed: () => context.pop(),
-        ),
+        AppSecondaryButton(label: '여정으로 돌아가기', onPressed: () => context.pop()),
       ],
     );
   }
@@ -420,7 +449,9 @@ class _CompareScreenState extends State<CompareScreen> {
     // '크레딧' 같은 내부 말은 빼고 지금 상태와 할 일만(지수 리뷰 #4)
     const String tail = '아직 대조하지 않았어요. 문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.';
     if (_replacedPages.isEmpty) return '${_errorMessage ?? ''}\n$tail';
-    final done = (_replacedPages.toList()..sort()).map((i) => '${i + 1}쪽').join(', ');
+    final done = (_replacedPages.toList()..sort())
+        .map((i) => '${i + 1}쪽')
+        .join(', ');
     final left = [
       for (final p in check.pages)
         if (p.severe) '${p.index + 1}쪽',
@@ -431,13 +462,13 @@ class _CompareScreenState extends State<CompareScreen> {
 
   Widget _errorBody() {
     final capture = _captureCheck;
-    if (capture != null && capture.pages.isNotEmpty) return _captureRejectedBody(capture);
+    if (capture != null && capture.pages.isNotEmpty)
+      return _captureRejectedBody(capture);
     final bool isInputProblem =
         _errorStatus == 400 || _errorStatus == 413 || _errorStatus == 415;
     final bool isQuotaProblem = _errorStatus == 402 || _errorStatus == 429;
     final bool needsAppUpdate = _needsAppUpdate || _errorStatus == 401;
-    final message =
-        _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
+    final message = _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
 
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.xxxl),

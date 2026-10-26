@@ -8,6 +8,7 @@
 /// - /gallery: 디자인 시스템 카탈로그 (제품 진입점 없음)
 library;
 
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import '../design_system/gallery/component_gallery_screen.dart';
@@ -47,10 +48,7 @@ final appRouter = GoRouter(
           LoginScreen(next: state.uri.queryParameters['next']),
     ),
     // 개인정보 처리방침 (시작·로그인·마이에서 push)
-    GoRoute(
-      path: '/privacy',
-      builder: (_, _) => const PrivacyPolicyScreen(),
-    ),
+    GoRoute(path: '/privacy', builder: (_, _) => const PrivacyPolicyScreen()),
     GoRoute(path: '/guide', builder: (_, _) => const RegistryGuideScreen()),
 
     // ── 메인 셸 (하단 탭) ──────────────────────────────────────
@@ -99,7 +97,11 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/report/:id',
       builder: (_, state) =>
-          ReportScreen(reportId: state.pathParameters['id']!),
+          // id로 key를 준다 — 이전 리포트로 바꿔 끼울 때(같은 경로 모양) 화면을 새로 만들게 (2026-10-26)
+          ReportScreen(
+            key: ValueKey('report-${state.pathParameters['id']}'),
+            reportId: state.pathParameters['id']!,
+          ),
     ),
     // 원본 사진 위 하이라이트 뷰어 (분석 직후 그 세션에서만 — 사진이 없으면 진입점이 숨는다)
     GoRoute(

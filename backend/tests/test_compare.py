@@ -127,6 +127,9 @@ def test_새로_생긴_근저당을_금액과_접수일까지_짚는다():
     assert "1억 2,000만원" in added.detail
     assert added.receiptDate == "2026-08-01", "접수일이 없으면 앱이 '계약서 쓴 다음 날'을 말할 수 없다"
     assert result.daysBetween == 27, "두 서류 날짜 차이를 세지 못했다"
+    # 줄마다 어느 칸인지 — 앱이 갑구·을구 두 줄로 묶는다 (2026-10-26)
+    assert added.group == "debt"
+    assert {r.group for r in result.rows} == {"owner", "debt", "seizure", "grade"}
 
 
 def test_등급이_내려가면_안전도_행이_danger로_나간다():
@@ -472,3 +475,38 @@ def test_kind_칸을_잘못_적으면_action으로_떨어진다(bad, monkeypatch
     monkeypatch.setattr(journey, "_STAGES_PATH", path)
 
     assert journey.load_stages()[0].kind == "action"
+
+
+# ── 같은 집 덮어쓰기 (2026-10-26) — 같은 주소는 최신 5건만 남는다 ─────────────────
+def test_같은_집은_최신_5건만_남고_다른_집은_그대로다():
+    device = "dev-prune-test"
+    for i in range(7):
+        r = _report(f"prune-{i}")
+        # 띄어쓰기가 달라도 같은 집이다
+        if i % 2:
+            r = r.model_copy(update={"address": r.address.replace(" ", "  ")})
+        store.add(r, device_id=device)
+    other = _report("prune-other").model_copy(update={"address": "서울 마포구 성산동 100-1"})
+    store.add(other, device_id=device)
+
+    removed = store.prune_versions("경기 성남시 분당구 정자동 456-7", device_id=device)
+
+    left = [r.id for r in store.list_reports(device_id=device) if r.id.startswith("prune-")]
+    assert removed == 2
+    assert "prune-other" in left
+    assert len([x for x in left if x != "prune-other"]) == 5
+    # 가장 오래된 두 건이 지워졌다
+    assert "prune-0" not in left and "prune-1" not in left
+
+
+def test_주소가_비어_있으면_묶지_않는다():
+    assert store.prune_versions("  ", device_id="dev-prune-empty") == 0
+
+
+def test_여정_단계는_칩_이름과_어디서를_싣는다():
+    stages = journey.load_stages()
+    assert [s.chip for s in stages] == [
+        "분석", "가계약금", "계약서", "잔금", "이사", "입주 후", "보증보험", "만기 전", "반환",
+    ]
+    assert stages[1].items[0].where == "인터넷등기소 · 열람 700원"
+    assert stages[1].items[2].where is None

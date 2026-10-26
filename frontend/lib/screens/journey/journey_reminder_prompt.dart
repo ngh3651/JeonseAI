@@ -2,7 +2,7 @@
 ///
 /// 왜 앱을 켤 때가 아니라 이때인가: 이유 없이 뜬 권한 창은 대개 거절된다. 잔금일·이사일을 넣은 순간이
 /// "그날 알려 드릴게요"가 가장 자연스럽게 들리는 때다.
-/// 거절해도 앱은 그대로 돈다 — 그날 앱을 열면 여정·홈 화면 맨 위 배너가 같은 말을 한다.
+/// 거절하면 시트만 닫는다 — '알림이 꺼져 있어요' 같은 안내는 어디에도 띄우지 않는다(2026-10-26 확정).
 library;
 
 import 'package:flutter/material.dart';
@@ -12,12 +12,10 @@ import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
-import '../../models/content_models.dart';
 import '../../services/journey_reminder_service.dart';
 import '../../services/journey_reminders.dart';
+import '../../state/journey_progress_store.dart';
 import '../../state/journey_schedule_store.dart';
-import '../../utils/korean_date.dart';
-import '../common/share_feedback.dart';
 
 /// 알림 권한을 묻기 전에 말하는 이유 (2026-10-23 지수 #5·#6 · 서연 #5).
 const String kReminderPermissionReason =
@@ -25,41 +23,20 @@ const String kReminderPermissionReason =
     '전입신고 효력은 다음 날 0시부터라 그 하루가 빈틈이에요. '
     '돈 보내기 전에 등기부를 다시 떼 보라고 그날 알려 드릴게요.';
 
-/// 알림이 꺼져 있을 때의 한 줄 — 앱 안 배너가 무엇을 대신하는지 말한다.
-/// 2026-10-23(서연 #8): "배너로 알려 드려요"는 앱을 안 열면 아무 일도 없다는 사실을 가렸다 — 그대로 말한다.
-const String kReminderFallbackMessage = '알림이 꺼져 있어요 — 잔금 날 앱을 직접 열어야 경고를 볼 수 있어요';
-
-/// 권한 시트의 거절 버튼 — 거절하면 무엇을 직접 해야 하는지 버튼에 적는다.
-const String kReminderDeclineLabel = '괜찮아요 (잔금 날 앱을 직접 열게요)';
-
-/// 날짜를 저장한 뒤 [가족·배우자에게 보내기] — 별칭·잔금일·입주 다음 날 한 줄 (2026-10-23 서연 리뷰 #6·P2-17).
-///
-/// 날짜는 지금처럼 **이 폰에만** 저장한다 — 서버로 보내지 않고, 사용자가 고른 사람에게 공유 창으로만 나간다.
-/// 둘 다 없으면 null(버튼을 달지 않는다).
-String? familyScheduleText(String alias, JourneySchedule schedule) {
-  final DateTime? balance = schedule.balance;
-  final DateTime? moveInNext = schedule[JourneyDateKey.moveInNext];
-  if (balance == null && moveInNext == null) return null;
-  final name = alias.trim();
-  return [
-    name.isEmpty ? '[전세AI프] 우리 집' : '[전세AI프] $name',
-    if (balance != null) '잔금일 ${formatMonthDayWeekday(balance)}',
-    if (moveInNext != null) '입주 다음 날 ${formatMonthDayWeekday(moveInNext)}',
-    '그날 등기부를 다시 떼어 확인해요',
-  ].join(' · ');
-}
-
-/// 저장 뒤 안내의 [가족·배우자에게 보내기] 라벨.
-const String kShareScheduleLabel = '가족·배우자에게 보내기';
+/// 권한 시트의 거절 버튼 — 누르면 시트만 닫는다(안내 문구·배너·토스트 없음, 2026-10-26).
+const String kReminderDeclineLabel = '괜찮아요';
 
 /// 알림 종류 → 사람이 읽는 때 (권한 안내 목록에 쓴다).
 String reminderMomentLabel(JourneyReminderKind kind) => switch (kind) {
   JourneyReminderKind.balanceEve => '잔금 하루 전',
   JourneyReminderKind.balanceDay => '잔금 당일 아침',
   JourneyReminderKind.moveInNext => '입주 다음 날',
+  JourneyReminderKind.downPaymentDay => '가계약금 보내는 날',
+  JourneyReminderKind.contractDay => '계약서 쓰는 날',
+  JourneyReminderKind.moveInDay => '이사 날',
 };
 
-/// 일정 시트에서 저장한 뒤 부른다. 알림 예약 → (꺼져 있으면) 이유 + 권한 → 결과 한 줄.
+/// 일정 시트에서 저장한 뒤 부른다. 알림 예약 → (꺼져 있으면) 이유 + 권한 → 켜졌을 때만 한 줄.
 Future<void> applyJourneyReminders(
   BuildContext context, {
   required String propertyKey,
@@ -88,52 +65,22 @@ Future<void> applyJourneyReminders(
     }
   }
 
+  // '일정마다 오전 8시에 알려 드려요' 줄은 알림이 켜져 있을 때만 보인다(여정 화면).
+  await JourneyProgressStore.instance.setNotificationsOn(enabled);
+  if (!context.mounted || enabled != true)
+    return; // 꺼져 있으면 아무 안내도 띄우지 않는다(2026-10-26)
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
-  messenger.hideCurrentSnackBar();
-  // [가족·배우자에게 보내기] — 날짜를 함께 아는 사람이 있으면 그날을 놓치지 않는다(서연 리뷰 #6)
-  final String? familyText = familyScheduleText(alias, schedule);
-  if (enabled == true) {
-    messenger.showSnackBar(
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
       SnackBar(
         content: AppText(
           '알림을 맞춰 뒀어요 · 첫 알림 ${describeReminderTime(plan.first.fireAt)}',
         ),
-        duration: const Duration(seconds: 6),
-        action: familyText == null
-            ? null
-            : SnackBarAction(
-                label: kShareScheduleLabel,
-                onPressed: () {
-                  if (context.mounted) shareWithFeedback(context, familyText);
-                },
-              ),
+        duration: const Duration(seconds: 4),
       ),
     );
-  } else if (enabled == false) {
-    messenger.showSnackBar(
-      SnackBar(
-        content: const AppText(kReminderFallbackMessage),
-        duration: const Duration(seconds: 6),
-        action: SnackBarAction(label: '알림 켜기', onPressed: svc.openSettings),
-      ),
-    );
-  } else {
-    // 이 휴대폰에서 알림 기능 자체를 쓸 수 없다(초기화 실패 등) — 알림을 약속하지 않는다.
-    messenger.showSnackBar(
-      SnackBar(
-        content: const AppText('이 휴대폰에서는 알림을 맞추지 못했어요. 그날 앱을 열면 맨 위 배너로 알려 드려요'),
-        action: familyText == null
-            ? null
-            : SnackBarAction(
-                label: kShareScheduleLabel,
-                onPressed: () {
-                  if (context.mounted) shareWithFeedback(context, familyText);
-                },
-              ),
-      ),
-    );
-  }
 }
 
 /// 권한을 묻기 전에 **왜** 필요한지 말하는 시트. [알림 받기] = true, 그 밖 = false/null.
@@ -207,7 +154,7 @@ Future<bool?> showReminderPermissionSheet(
             ),
             const SizedBox(height: AppSpacing.md),
             AppText(
-              '알림은 이 휴대폰 안에서만 울려요. 날짜는 서버로 보내지 않아요. '
+              '일정마다 오전 8시에 울려요. 알림은 이 휴대폰 안에서만 울리고, 날짜는 서버로 보내지 않아요. '
               '몇 분 늦게 울릴 수 있어요.',
               style: AppTypography.caption,
             ),

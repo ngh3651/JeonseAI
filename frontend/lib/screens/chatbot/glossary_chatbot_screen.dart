@@ -30,6 +30,7 @@ import '../../repositories/analysis_repository.dart';
 import '../../repositories/chat_history_repository.dart';
 import '../../repositories/content_repository.dart';
 import '../../services/api_client.dart';
+import '../../state/chat_handoff.dart';
 import '../../state/report_focus.dart';
 import 'chat_answer_parser.dart';
 import 'chat_history_drawer.dart';
@@ -68,14 +69,23 @@ const List<String> kSuggestedQuestions = [
 ];
 
 /// 미는 동안 말풍선 그림자 (그림자 색만 하드코딩 예외 — 검정 10%)
-const List<BoxShadow> kLiftedShadow = [BoxShadow(color: Color(0x1A000000), offset: Offset(0, 6), blurRadius: 16)];
+const List<BoxShadow> kLiftedShadow = [
+  BoxShadow(color: Color(0x1A000000), offset: Offset(0, 6), blurRadius: 16),
+];
 
 enum _Kind { user, bot, loading, failed }
 
 class _Msg {
-  const _Msg.user(this.id, this.text, {this.quote}) : kind = _Kind.user, retryQuery = null, retryQuote = null;
+  const _Msg.user(this.id, this.text, {this.quote})
+    : kind = _Kind.user,
+      retryQuery = null,
+      retryQuote = null;
 
-  const _Msg.bot(this.id, this.text) : kind = _Kind.bot, quote = null, retryQuery = null, retryQuote = null;
+  const _Msg.bot(this.id, this.text)
+    : kind = _Kind.bot,
+      quote = null,
+      retryQuery = null,
+      retryQuote = null;
 
   const _Msg.loading()
     : id = 'loading',
@@ -86,7 +96,9 @@ class _Msg {
       retryQuote = null;
 
   /// 연결 실패 — [다시 시도]가 재질문할 원문(과 인용)을 들고 있다
-  const _Msg.failed(this.id, this.text, this.retryQuery, this.retryQuote) : kind = _Kind.failed, quote = null;
+  const _Msg.failed(this.id, this.text, this.retryQuery, this.retryQuote)
+    : kind = _Kind.failed,
+      quote = null;
 
   final String id;
   final _Kind kind;
@@ -165,6 +177,16 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     }
     _loadHints();
     _fillReportFocus();
+    // 다른 화면에서 꾹 눌러 [챗봇에 묻기]로 넘긴 글 (2026-10-26) — 인용 띠로 받아 이어 묻게 한다
+    ChatHandoff.pending.addListener(_takeHandoff);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _takeHandoff());
+  }
+
+  void _takeHandoff() {
+    final text = ChatHandoff.pending.value;
+    if (text == null || !mounted) return;
+    ChatHandoff.pending.value = null;
+    _startQuote('', text);
   }
 
   /// 리포트를 아직 안 열었으면 **가장 최근 리포트**를 챗봇이 알게 한다 (2026-10-26). 실패하면 리포트 없이 답한다.
@@ -173,7 +195,10 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     try {
       final history = await context.read<AnalysisRepository>().getHistory();
       if (history.isNotEmpty && ReportFocus.current.value == null) {
-        ReportFocus.current.value = ReportRef(history.first.id, history.first.alias);
+        ReportFocus.current.value = ReportRef(
+          history.first.id,
+          history.first.alias,
+        );
       }
     } catch (_) {
       // 기록을 못 불러와도 챗봇은 일반 답으로 동작한다
@@ -193,6 +218,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
 
   @override
   void dispose() {
+    ChatHandoff.pending.removeListener(_takeHandoff);
     _flashTimer?.cancel();
     _toastTimer?.cancel();
     _inputCtrl.dispose();
@@ -201,7 +227,8 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     super.dispose();
   }
 
-  String _newId() => '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${_seq++}';
+  String _newId() =>
+      '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${_seq++}';
 
   GlobalKey _keyFor(String id) => _keys.putIfAbsent(id, GlobalKey.new);
 
@@ -247,7 +274,12 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       ok = true;
     } on ApiException catch (e) {
       // 429(질문 너무 많음)는 서버 문장 그대로, 그 밖은 연결 문제로 본다
-      reply = _Msg.failed(_newId(), e.statusCode == 429 ? e.message : kChatFailedMessage, q, quote);
+      reply = _Msg.failed(
+        _newId(),
+        e.statusCode == 429 ? e.message : kChatFailedMessage,
+        q,
+        quote,
+      );
     } catch (_) {
       reply = _Msg.failed(_newId(), kChatFailedMessage, q, quote);
     }
@@ -257,7 +289,8 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       setState(() => _sending = false);
       return;
     }
-    final nudge = ok && !_swipeHintSeen && !MediaQuery.disableAnimationsOf(context);
+    final nudge =
+        ok && !_swipeHintSeen && !MediaQuery.disableAnimationsOf(context);
     setState(() {
       _messages.removeWhere((m) => m.isLoading);
       _messages.add(reply);
@@ -298,13 +331,17 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     if (id == null || entries.isEmpty || !_dirty) return;
     _dirty = false;
     final now = DateTime.now();
-    await _history.save(ChatConversation(
-      id: id,
-      title: _convTitle.isEmpty ? chatTitleFrom(entries.first.text) : _convTitle,
-      createdAt: _convCreated ?? now,
-      updatedAt: now,
-      entries: entries,
-    ));
+    await _history.save(
+      ChatConversation(
+        id: id,
+        title: _convTitle.isEmpty
+            ? chatTitleFrom(entries.first.text)
+            : _convTitle,
+        createdAt: _convCreated ?? now,
+        updatedAt: now,
+        entries: entries,
+      ),
+    );
   }
 
   void _clearScreen() {
@@ -339,11 +376,16 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       _convTitle = c.title;
       _convCreated = c.createdAt;
       for (final e in c.entries) {
-        _messages.add(e.isUser ? _Msg.user(e.id, e.text, quote: e.quote) : _Msg.bot(e.id, e.text));
+        _messages.add(
+          e.isUser
+              ? _Msg.user(e.id, e.text, quote: e.quote)
+              : _Msg.bot(e.id, e.text),
+        );
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollCtrl.hasClients) _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+      if (_scrollCtrl.hasClients)
+        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
     });
   }
 
@@ -401,7 +443,12 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   void _jumpTo(String id) {
     final ctx = _keys[id]?.currentContext;
     if (ctx == null) return;
-    Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300), curve: Curves.easeOut, alignment: 0.1);
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+      alignment: 0.1,
+    );
     _flashTimer?.cancel();
     setState(() => _flashId = id);
     _flashTimer = Timer(const Duration(seconds: 1), () {
@@ -443,7 +490,11 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
               padding: const EdgeInsets.only(right: AppSpacing.sm),
               child: IconButton(
                 tooltip: '새 대화',
-                icon: const Icon(Icons.refresh, size: AppSize.iconMd, color: AppColorsNext.textStrong),
+                icon: const Icon(
+                  Icons.refresh,
+                  size: AppSize.iconMd,
+                  color: AppColorsNext.textStrong,
+                ),
                 onPressed: _newChat,
               ),
             ),
@@ -454,7 +505,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
           Expanded(
             child: Stack(
               children: [
-                Positioned.fill(child: _messages.isEmpty ? _emptyState() : _conversation()),
+                Positioned.fill(
+                  child: _messages.isEmpty ? _emptyState() : _conversation(),
+                ),
                 // "복사했어요" — 입력 줄 위 8
                 Positioned(
                   left: AppSpacing.screenPadding,
@@ -492,7 +545,10 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                   key: const ValueKey('drawer-dot'),
                   width: AppSpacing.sm,
                   height: AppSpacing.sm,
-                  decoration: const BoxDecoration(color: AppColors.primaryBright, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryBright,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
           ],
@@ -508,9 +564,16 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   Widget _emptyState() {
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding, vertical: AppSpacing.xxl),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.screenPadding,
+          vertical: AppSpacing.xxl,
+        ),
         child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: (box.maxHeight - AppSpacing.xxl * 2).clamp(0.0, double.infinity).toDouble()),
+          constraints: BoxConstraints(
+            minHeight: (box.maxHeight - AppSpacing.xxl * 2)
+                .clamp(0.0, double.infinity)
+                .toDouble(),
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -546,7 +609,11 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                     height: MediaQuery.textScalerOf(context).scale(18),
                     semanticLabel: 'Upstage',
                   ),
-                  AppText(kChatAiNotice, textAlign: TextAlign.center, style: AppTypographyNext.caption),
+                  AppText(
+                    kChatAiNotice,
+                    textAlign: TextAlign.center,
+                    style: AppTypographyNext.caption,
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.xxl),
@@ -574,12 +641,26 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: AppSize.minTouchTarget),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
             child: Row(
               children: [
-                Expanded(child: AppText(q, style: AppTypographyNext.body.copyWith(color: AppColorsNext.textStrong))),
+                Expanded(
+                  child: AppText(
+                    q,
+                    style: AppTypographyNext.body.copyWith(
+                      color: AppColorsNext.textStrong,
+                    ),
+                  ),
+                ),
                 const SizedBox(width: AppSpacing.sm),
-                const Icon(Icons.north_east, size: AppSize.iconSm, color: AppColors.primary),
+                const Icon(
+                  Icons.north_east,
+                  size: AppSize.iconSm,
+                  color: AppColors.primary,
+                ),
               ],
             ),
           ),
@@ -614,9 +695,16 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                   child: Padding(
                     // 말하는 사람이 바뀌면 24, 같은 사람이 이어지면 8
                     padding: EdgeInsets.only(
-                      top: i == 0 ? 0.0 : (_messages[i - 1].isUser == _messages[i].isUser ? AppSpacing.sm : AppSpacing.xxl),
+                      top: i == 0
+                          ? 0.0
+                          : (_messages[i - 1].isUser == _messages[i].isUser
+                                ? AppSpacing.sm
+                                : AppSpacing.xxl),
                     ),
-                    child: _message(_messages[i], last: i == _messages.length - 1),
+                    child: _message(
+                      _messages[i],
+                      last: i == _messages.length - 1,
+                    ),
                   ),
                 ),
             ],
@@ -649,7 +737,10 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
         constraints: BoxConstraints(maxWidth: _bubbleMax),
         child: Container(
           key: ValueKey('user-bubble-${m.id}'),
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
           decoration: const BoxDecoration(
             color: AppColors.primary,
             borderRadius: BorderRadius.only(
@@ -664,14 +755,22 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (quote != null) ...[
-                QuoteChip(quote: quote.text, onTap: () => _jumpTo(quote.sourceId)),
+                QuoteChip(
+                  quote: quote.text,
+                  onTap: () => _jumpTo(quote.sourceId),
+                ),
                 const SizedBox(height: AppSpacing.sm),
               ],
               ChatSelectableText(
                 onCopy: _copy,
                 // 흰 글자가 묻히지 않게 내 말풍선 선택 바탕은 primaryDeep
                 selectionColor: AppColors.primaryDeep,
-                child: AppText(m.text, style: AppTypographyNext.body.copyWith(color: AppColors.surface)),
+                child: AppText(
+                  m.text,
+                  style: AppTypographyNext.body.copyWith(
+                    color: AppColors.surface,
+                  ),
+                ),
               ),
             ],
           ),
@@ -722,7 +821,10 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             padding: running
-                ? const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md)
+                ? const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.md,
+                  )
                 : const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
               color: AppColors.surface,
@@ -741,7 +843,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
           top: 0,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
-            child: running ? const SafeRunning(key: ValueKey('run')) : const SafeHold(key: ValueKey('hold')),
+            child: running
+                ? const SafeRunning(key: ValueKey('run'))
+                : const SafeHold(key: ValueKey('hold')),
           ),
         ),
         // 이름 줄 '세이프'는 뺐다(2026-10-24, 규혁) — 마스코트만으로 누가 답하는지 보인다
@@ -756,7 +860,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       children: [
         const _TypingDots(),
         const SizedBox(width: AppSpacing.md),
-        Flexible(child: AppText(kChatLoadingMessage, style: AppTypographyNext.caption)),
+        Flexible(
+          child: AppText(kChatLoadingMessage, style: AppTypographyNext.caption),
+        ),
       ],
     );
   }
@@ -774,21 +880,31 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
           switch (blocks[b].kind) {
             ChatBlockKind.paragraph => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [for (final line in blocks[b].lines) _inlineText(line, body)],
+              children: [
+                for (final line in blocks[b].lines) _inlineText(line, body),
+              ],
             ),
             ChatBlockKind.numbered => _listBlock(
               blocks[b].lines,
               (i) => _NumberBadge(number: blocks[b].numbers[i]),
               body,
             ),
-            ChatBlockKind.bullets => _listBlock(blocks[b].lines, (_) => const _BulletDot(), body),
+            ChatBlockKind.bullets => _listBlock(
+              blocks[b].lines,
+              (_) => const _BulletDot(),
+              body,
+            ),
           },
         ],
       ],
     );
   }
 
-  Widget _listBlock(List<String> items, Widget Function(int) marker, TextStyle body) {
+  Widget _listBlock(
+    List<String> items,
+    Widget Function(int) marker,
+    TextStyle body,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -809,7 +925,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
 
   /// 한 줄 — 글 · **굵게**(primaryDeep) · 주소 칸(누를 수 없음, 밑줄 없음)
   Widget _inlineText(String line, TextStyle body) {
-    final bold = AppTypographyNext.bodyStrong.copyWith(color: AppColors.primaryDeep);
+    final bold = AppTypographyNext.bodyStrong.copyWith(
+      color: AppColors.primaryDeep,
+    );
     return AppText.rich(
       TextSpan(
         style: body,
@@ -834,7 +952,11 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AppText(m.text, textAlign: TextAlign.center, style: AppTypographyNext.body),
+          AppText(
+            m.text,
+            textAlign: TextAlign.center,
+            style: AppTypographyNext.body,
+          ),
           const SizedBox(height: AppSpacing.md),
           SizedBox(
             height: AppSize.minTouchTarget,
@@ -870,7 +992,10 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding, vertical: AppSpacing.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+            vertical: AppSpacing.md,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -895,20 +1020,28 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                       style: AppTypographyNext.body,
                       decoration: InputDecoration(
                         hintText: quoting != null ? kQuoteHint : kChatHint,
-                        hintStyle: AppTypographyNext.body.copyWith(color: AppColorsNext.textMuted),
+                        hintStyle: AppTypographyNext.body.copyWith(
+                          color: AppColorsNext.textMuted,
+                        ),
                         counterText: '',
                         filled: true,
                         fillColor: AppColors.surface,
                         isDense: true,
                         constraints: const BoxConstraints(minHeight: 52),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.md),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xl,
+                          vertical: AppSpacing.md,
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(AppRadius.pill),
                           borderSide: enabledSide,
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(AppRadius.pill),
-                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                          borderSide: const BorderSide(
+                            color: AppColors.primary,
+                            width: 2,
+                          ),
                         ),
                       ),
                     ),
@@ -925,7 +1058,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                         color: _sending ? AppColors.line : AppColors.primary,
                         shape: const CircleBorder(),
                         child: InkWell(
-                          onTap: _sending ? null : () => _ask(_inputCtrl.text, quote: _quoting),
+                          onTap: _sending
+                              ? null
+                              : () => _ask(_inputCtrl.text, quote: _quoting),
                           customBorder: const CircleBorder(),
                           child: SizedBox(
                             width: AppSize.minTouchTarget,
@@ -933,7 +1068,9 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                             child: Icon(
                               Icons.arrow_upward,
                               size: AppSize.iconMd,
-                              color: _sending ? AppColorsNext.textMuted : AppColors.surface,
+                              color: _sending
+                                  ? AppColorsNext.textMuted
+                                  : AppColors.surface,
                             ),
                           ),
                         ),
@@ -965,10 +1102,16 @@ class _NumberBadge extends StatelessWidget {
         width: d,
         height: d,
         alignment: Alignment.center,
-        decoration: const BoxDecoration(color: AppColors.primarySoft, shape: BoxShape.circle),
+        decoration: const BoxDecoration(
+          color: AppColors.primarySoft,
+          shape: BoxShape.circle,
+        ),
         child: Text(
           '$number',
-          style: AppTypographyNext.caption.copyWith(color: AppColors.primary, height: 1),
+          style: AppTypographyNext.caption.copyWith(
+            color: AppColors.primary,
+            height: 1,
+          ),
         ),
       ),
     );
@@ -982,7 +1125,9 @@ class _BulletDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final body = AppTypographyNext.body;
-    final lineHeight = MediaQuery.textScalerOf(context).scale(body.fontSize!) * (body.height ?? 1);
+    final lineHeight =
+        MediaQuery.textScalerOf(context).scale(body.fontSize!) *
+        (body.height ?? 1);
     return SizedBox(
       width: 24,
       height: lineHeight,
@@ -990,7 +1135,10 @@ class _BulletDot extends StatelessWidget {
         child: Container(
           width: 6,
           height: 6,
-          decoration: const BoxDecoration(color: AppColors.primaryBright, shape: BoxShape.circle),
+          decoration: const BoxDecoration(
+            color: AppColors.primaryBright,
+            shape: BoxShape.circle,
+          ),
         ),
       ),
     );
@@ -1008,7 +1156,10 @@ class _AddressChip extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(minHeight: 24),
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(AppRadius.sm)),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
       child: Text(text, style: AppTypographyNext.caption),
     );
   }
@@ -1022,7 +1173,8 @@ class _TypingDots extends StatefulWidget {
   State<_TypingDots> createState() => _TypingDotsState();
 }
 
-class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderStateMixin {
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
@@ -1065,7 +1217,10 @@ class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderState
                 child: Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(color: AppColors.primaryBright, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryBright,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             ],

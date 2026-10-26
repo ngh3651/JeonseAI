@@ -19,14 +19,15 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/content_models.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
-import '../report/registry_mark_sheet.dart' show kSheetEnterDuration, kSheetExitDuration;
+import '../report/registry_mark_sheet.dart'
+    show kSheetEnterDuration, kSheetExitDuration;
 
 /// 잔금 칸 아래 약속 — **실제 알림 시각과 같아야 한다** (journey_reminders.dart 의 ①②).
 const String kBalanceReminderPromise =
-    '잔금 하루 전 오전 9시와 당일 오전 8시에 등기부를 다시 떼라고 알림을 보내 드려요';
+    '잔금 하루 전과 당일 오전 8시에 등기부를 다시 떼라고 알림을 보내 드려요';
 
 /// 이사 칸 아래 약속 — journey_reminders.dart 의 ③.
-const String kMoveInReminderPromise = '입주 다음 날 오전 9시에도 한 번 더 알려 드려요';
+const String kMoveInReminderPromise = '이사 날과 입주 다음 날 오전 8시에도 알려 드려요';
 
 /// 일정 시트를 연다. 저장하면 새 일정을, 그냥 닫으면 null을 돌려준다.
 ///
@@ -247,7 +248,9 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
                   child: AppText(
                     value == null ? '아직 안 정했어요' : formatMonthDayWeekday(value),
                     style: value == null
-                        ? AppTypography.body.copyWith(color: AppColors.textMuted)
+                        ? AppTypography.body.copyWith(
+                            color: AppColors.textMuted,
+                          )
                         : AppTypography.title,
                   ),
                 ),
@@ -262,7 +265,7 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
           ),
         ),
         const SizedBox(height: 6),
-        // 실제 동작과 같은 말 (2026-10-22): 휴대폰 알림 = 하루 전 오전 9시 + 당일 오전 8시.
+        // 실제 동작과 같은 말 (2026-10-26): 휴대폰 알림 = 모두 오전 8시 (하루 전 + 당일).
         // 알림을 끄면 그날 앱 맨 위 배너로 같은 말을 한다(journey_reminders.dart).
         AppText(kBalanceReminderPromise, style: AppTypography.caption),
       ],

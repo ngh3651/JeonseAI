@@ -1,6 +1,7 @@
 /// go_router 설정 (IA.md §2·§3·§7).
 ///
-/// - 진입: 온보딩 → 시작(S-02) → 메인 셸
+/// - 진입: 로그인돼 있으면 바로 홈, 아니면 시작(S-02 — 카카오·둘러보기) → 메인 셸.
+///   온보딩 3장은 2026-10-26에 없앴다(첫 실행·로그아웃 뒤 모두 시작 화면으로).
 /// - 메인 셸(하단 탭 4개): 홈·여정·챗봇·마이
 /// - 분석 종속·진입 화면은 셸 밖 push (탭이 아닌 화면 — IA §2)
 /// - 리포트에서 여는 체크리스트는 push(back=리포트)라 별도 /checklist 경로 사용 (gap-checker 반영)
@@ -23,7 +24,6 @@ import '../screens/loading/analysis_loading_screen.dart';
 import '../screens/loading/loading_preview_screen.dart';
 import '../screens/my/my_screen.dart';
 import '../screens/my/privacy_policy_screen.dart';
-import '../screens/onboarding/onboarding_screen.dart';
 import '../screens/pricing/checkout_screen.dart';
 import '../screens/pricing/pricing_screen.dart';
 import '../screens/questions/question_generator_screen.dart';
@@ -32,12 +32,13 @@ import '../screens/report/report_screen.dart';
 import '../screens/search/property_search_screen.dart';
 import '../screens/shell/main_shell.dart';
 import '../screens/simulator/loss_simulator_screen.dart';
+import '../state/app_session.dart';
 
 final appRouter = GoRouter(
-  // 온보딩부터 전체 흐름 시연 (첫 실행 한정 처리는 향후 영속화 시 — Phase D/E)
-  initialLocation: '/onboarding',
+  // 첫 화면 — main이 세션을 복원한 뒤 처음 이 라우터를 읽는다(전역 final = 처음 쓸 때 만들어짐).
+  // 로그인돼 있으면(시연 폰) 바로 홈, 아니면 시작 화면(로그인·둘러보기). 로그아웃·탈퇴 뒤에도 시작 화면으로 간다.
+  initialLocation: AppSession.instance.isLoggedIn ? '/home' : '/start',
   routes: [
-    GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
     GoRoute(path: '/start', builder: (_, _) => const StartScreen()),
     // 카카오 로그인 (2026-10-22) — next가 있으면 끝난 뒤 그 경로로 이어 간다
     GoRoute(

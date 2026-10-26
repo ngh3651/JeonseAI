@@ -495,7 +495,9 @@ void main() {
       expect(SessionCredentials.instance.token, isNull);
       expect(auth.loggedOut, ['session-token-1']); // 지운 세션을 실어 서버에도 끝낸다
       expect(kakao.logouts, 1);
-      expect(find.koText('로그인 없이 둘러보는 중'), findsOneWidget);
+      // 로그아웃하면 시작 화면으로 간다 (2026-10-26)
+      expect(find.byType(StartScreen), findsOneWidget);
+      expect(find.koText('로그아웃했어요'), findsOneWidget);
     });
 
     testWidgets('탈퇴는 확인을 받는다 — 취소하면 아무것도 지우지 않는다', (tester) async {
@@ -526,6 +528,7 @@ void main() {
       expect(session.isGuest, isTrue);
       expect(storage.saved, isNull);
       expect(find.koText('탈퇴했어요. 서버의 기록을 모두 지웠어요'), findsOneWidget);
+      expect(find.byType(StartScreen), findsOneWidget);
     });
 
     testWidgets('서버 삭제가 실패하면 카카오 연결을 끊지 않고 로그인도 그대로', (tester) async {

@@ -30,12 +30,13 @@ class AccountSection extends StatelessWidget {
 
   Future<void> _signOut(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
     await context.read<AppSession>().signOut();
+    // 로그아웃하면 시작 화면으로 — 다시 로그인하거나 둘러보기를 고른다 (2026-10-26)
+    router.go('/start');
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: AppText('로그아웃했어요. 이제 로그인 없이 둘러봐요')),
-      );
+      ..showSnackBar(const SnackBar(content: AppText('로그아웃했어요')));
   }
 
   @override
@@ -152,6 +153,7 @@ class AccountSection extends StatelessWidget {
 Future<void> confirmAndDeleteAccount(BuildContext context) async {
   final session = context.read<AppSession>();
   final messenger = ScaffoldMessenger.of(context);
+  final router = GoRouter.of(context);
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -183,6 +185,8 @@ Future<void> confirmAndDeleteAccount(BuildContext context) async {
     message = '탈퇴했어요. 서버의 기록은 모두 지웠지만 카카오 연결은 끊지 못했어요 — '
         '카카오 계정 설정에서 직접 끊을 수 있어요';
   }
+  // 탈퇴했으면 시작 화면으로 (로그아웃과 같다 — 2026-10-26)
+  if (result.deleted) router.go('/start');
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: AppText(message)));

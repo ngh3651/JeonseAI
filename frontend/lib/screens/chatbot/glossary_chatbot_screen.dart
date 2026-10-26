@@ -26,9 +26,11 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/chat_history.dart';
+import '../../repositories/analysis_repository.dart';
 import '../../repositories/chat_history_repository.dart';
 import '../../repositories/content_repository.dart';
 import '../../services/api_client.dart';
+import '../../state/report_focus.dart';
 import 'chat_answer_parser.dart';
 import 'chat_history_drawer.dart';
 import 'chat_history_logic.dart';
@@ -162,6 +164,20 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       _history = MemoryChatHistoryRepository();
     }
     _loadHints();
+    _fillReportFocus();
+  }
+
+  /// 리포트를 아직 안 열었으면 **가장 최근 리포트**를 챗봇이 알게 한다 (2026-10-26). 실패하면 리포트 없이 답한다.
+  Future<void> _fillReportFocus() async {
+    if (ReportFocus.current.value != null) return;
+    try {
+      final history = await context.read<AnalysisRepository>().getHistory();
+      if (history.isNotEmpty && ReportFocus.current.value == null) {
+        ReportFocus.current.value = ReportRef(history.first.id, history.first.alias);
+      }
+    } catch (_) {
+      // 기록을 못 불러와도 챗봇은 일반 답으로 동작한다
+    }
   }
 
   Future<void> _loadHints() async {
@@ -222,7 +238,11 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     late final _Msg reply;
     var ok = false;
     try {
-      final answer = await context.read<ContentRepository>().chat(buildChatTurns(_entries));
+      // 지금 보는(또는 가장 최근) 리포트를 함께 보낸다 — 서버가 그 리포트를 알고 답한다(판정은 바꾸지 않음)
+      final answer = await context.read<ContentRepository>().chat(
+        buildChatTurns(_entries),
+        reportId: ReportFocus.current.value?.id,
+      );
       reply = _Msg.bot(_newId(), answer.answer);
       ok = true;
     } on ApiException catch (e) {
@@ -528,6 +548,21 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                   ),
                   AppText(kChatAiNotice, textAlign: TextAlign.center, style: AppTypographyNext.caption),
                 ],
+              ),
+              // 챗봇이 어느 리포트를 알고 답하는지 — 모르는 리포트 이야기로 오해하지 않게 (2026-10-26)
+              ValueListenableBuilder<ReportRef?>(
+                valueListenable: ReportFocus.current,
+                builder: (context, ref, _) => ref == null
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.only(top: AppSpacing.xs),
+                        child: AppText(
+                          "'${ref.alias}' 리포트 내용을 알고 답해요",
+                          key: const ValueKey('chat-report-focus'),
+                          textAlign: TextAlign.center,
+                          style: AppTypographyNext.caption,
+                        ),
+                      ),
               ),
               const SizedBox(height: AppSpacing.xxl),
               for (int i = 0; i < kSuggestedQuestions.length; i++) ...[

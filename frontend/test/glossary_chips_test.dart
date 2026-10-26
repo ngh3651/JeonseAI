@@ -50,7 +50,7 @@ class _FakeContentRepo implements ContentRepository {
   Future<List<GlossaryTerm>> glossaryTerms() async => const [];
 
   @override
-  Future<ChatReply> chat(List<ChatTurn> messages) async {
+  Future<ChatReply> chat(List<ChatTurn> messages, {String? reportId}) async {
     sent.add(List.of(messages));
     if (fail) throw const ApiException('연결 실패');
     if (pending != null) return pending!.future;

@@ -440,3 +440,77 @@ def test_주의_기준을_위험이라고_하면_고쳐_쓰게_한다(fake_llm):
     r = chat.answer("집 너무 비싸 ㅜ")
     assert len(p.calls) == 2 and "'주의' 기준" in p.calls[1]["user"]
     assert r.layer == "AI-고쳐씀"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 리포트를 아는 챗봇 (2026-10-26) — "왜 위험해?"엔 리포트 근거로, "계약해도 돼?"엔 판단 없이
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _danger_report():
+    from app import dummy_data
+
+    r = dummy_data.get_history()[0].model_copy(deep=True)
+    r.grade = "위험"
+    r.headline = "보증금을 돌려받지 못할 수 있어요"
+    r.seniorDebtAmount = 360_000_000
+    r.evidences[3].grade = "위험"
+    r.evidences[3].detailText = "지금 살아 있는 빚 3억 6,000만원 · 2건 — 집값의 72%예요"
+    return r
+
+
+def test_리포트를_주면_AI가_리포트_내용을_받는다(fake_llm):
+    p = fake_llm(_a("리포트에서는 먼저 받아 가는 빚이 3억 6,000만원이라 **위험**으로 나왔어요."))
+    r = chat.reply([_u("왜 위험이야?")], report=_danger_report())
+    system = p.calls[0]["system"]
+    assert "이 사용자의 안전도 리포트" in system
+    assert "종합 판정(규칙 엔진 결과): 위험" in system
+    assert "3억 6,000만원" in system
+    assert r.mode == chat.MODE_NORMAL, "리포트가 낸 등급을 전하는 건 검사를 통과한다"
+
+
+def test_리포트_없이는_지금과_같다(fake_llm):
+    p = fake_llm(_a("안녕하세요!", "small_talk"))
+    chat.reply([_u("안녕")])
+    assert "이 사용자의 안전도 리포트" not in p.calls[0]["system"]
+
+
+def test_리포트에_나온_퍼센트는_쓸_수_있고_없는_퍼센트는_막힌다(fake_llm):
+    fake_llm(_a("리포트에서는 빚이 집값의 72%예요."))
+    assert chat.reply([_u("빚이 얼마나 돼?")], report=_danger_report()).mode == chat.MODE_NORMAL
+    p = fake_llm(_a("빚이 집값의 77%예요."), _a("빚이 집값의 77%예요."))
+    r = chat.reply([_u("빚이 얼마나 돼?")], report=_danger_report())
+    assert r.mode == chat.MODE_FALLBACK and len(p.calls) == 2
+
+
+def test_리포트에_없는_등급은_말할_수_없다(fake_llm):
+    """리포트는 '위험'인데 '양호'라고 하면 걸린다 — 판정을 바꾸지 못한다."""
+    p = fake_llm(_a("리포트에서는 양호로 나왔어요."), _a("리포트에서는 양호로 나왔어요."))
+    report = _danger_report()
+    for e in report.evidences:
+        e.grade = "위험"
+    r = chat.reply([_u("결과가 어때?")], report=report)
+    assert r.mode == chat.MODE_FALLBACK and len(p.calls) == 2
+
+
+def test_리포트가_있어도_계약해도_되냐엔_판단하지_않는다(fake_llm):
+    p = fake_llm(_a("리포트가 위험이니 계약하셔도 돼요."), _a("리포트가 위험이니 계약하셔도 돼요."))
+    r = chat.reply([_u("이 집 계약해도 돼?")], report=_danger_report())
+    assert "조심" in p.calls[0]["system"] or "판단을 요구" in p.calls[0]["system"]
+    assert r.mode == chat.MODE_FALLBACK, "계약 허락은 리포트가 있어도 막힌다"
+
+
+def test_POST_chat_reportId로_내_리포트를_찾는다(client, fake_llm):
+    p = fake_llm(_a("리포트에서는 보증금이 시세의 48%예요."))
+    h = {"X-Device-Id": "dev-test-3"}
+    r = client.post("/api/chat", json={"messages": [_u("전세가율 얼마야?")], "reportId": "dummy-example"}, headers=h)
+    assert r.status_code == 200
+    assert "이 사용자의 안전도 리포트" in p.calls[0]["system"]
+    assert r.json()["mode"] == "normal"
+
+
+def test_POST_chat_없는_reportId면_리포트_없이_답한다(client, fake_llm):
+    p = fake_llm(_a("안녕하세요!", "small_talk"))
+    r = client.post("/api/chat", json={"messages": [_u("안녕")], "reportId": "nope"}, headers={"X-Device-Id": "dev-test-4"})
+    assert r.status_code == 200
+    assert "이 사용자의 안전도 리포트" not in p.calls[0]["system"]

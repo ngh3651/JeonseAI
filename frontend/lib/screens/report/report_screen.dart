@@ -31,6 +31,7 @@ import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
+import '../../state/report_focus.dart';
 import '../../utils/money_format.dart';
 import '../common/share_feedback.dart';
 import '../journey/journey_actions.dart' show startRegistryCompare;
@@ -93,6 +94,10 @@ class _ReportScreenState extends State<ReportScreen> {
   void initState() {
     super.initState();
     _reportFuture = context.read<AnalysisRepository>().getReport(reportId);
+    // 챗봇이 이 리포트를 알고 답하게 — 리포트를 읽다 모르는 걸 챗봇에 물어볼 때 (2026-10-26)
+    _reportFuture.then((r) {
+      if (r != null) ReportFocus.current.value = ReportRef(r.id, r.alias);
+    }, onError: (_) {});
   }
 
   /// '사진 속 이름 가리기'가 바뀌면 글자 속 이름도 **바로** 다시 가린다. 가리기는 모델을 만들 때 한 곳에서 하고

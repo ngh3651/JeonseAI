@@ -273,7 +273,20 @@ def chat_allowed_numbers(user_texts: Iterable[str], extra: Iterable[float] = ())
     return allowed
 
 
-def check_chat_reply(text: str, *, allowed: set[float], careful: bool = False) -> tuple[str, str] | None:
+#: 리포트의 등급 글자 → 그 등급 단어 패턴 이름 (리포트를 아는 챗봇이 **리포트가 낸 등급만** 그대로 전할 수 있게)
+GRADE_LABEL_OF = {"양호": "등급단어-양호", "확인 필요": "등급단어-확인필요", "위험": "등급단어-위험라벨"}
+
+#: 리포트가 이미 낸 결과를 전할 때는 "기준을 넘었어요"가 판정이 아니라 **리포트 내용의 인용**이다
+_REPORT_QUOTABLE = {"기준-적용", "기준-넘음"}
+
+
+def check_chat_reply(
+    text: str,
+    *,
+    allowed: set[float],
+    careful: bool = False,
+    report_grades: Iterable[str] | None = None,
+) -> tuple[str, str] | None:
     """챗봇 답을 내보내도 되나. 통과면 None, 아니면 `(분류, 쉬운 말 사유)`.
 
     분류는 로그용(사용자 글이 섞이지 않는다), 사유는 AI에게 고쳐 쓰라고 돌려줄 문장이다.
@@ -286,12 +299,27 @@ def check_chat_reply(text: str, *, allowed: set[float], careful: bool = False) -
     hit = banned_hit(text)
     if hit:
         return (f"금지표현-{hit}", "'안전해요·문제없어요·걱정 마세요·안심하세요' 같은 단정 표현은 쓸 수 없어요")
-    hit = grade_word_hit(text)
-    if hit:
-        return (f"등급단어-{hit}", "'양호·확인 필요·위험 등급' 같은 등급 이름은 쓸 수 없어요")
     squeezed = _squeeze(text)
-    verdict_msg = "집이나 계약, 가격이 괜찮은지 판단하는 말은 할 수 없어요. 판단 없이 확인할 방법만 알려 주세요"
+    # 리포트를 아는 챗봇(2026-10-26): 리포트·근거 카드가 **실제로 낸** 등급 단어만 허용한다 — 다른 등급을 말하면 걸린다
+    report_mode = report_grades is not None
+    quotable = {GRADE_LABEL_OF[g] for g in (report_grades or ()) if g in GRADE_LABEL_OF}
+    for name, pattern in _GRADE_LABEL_PATTERNS:
+        if pattern.search(squeezed) and name not in quotable:
+            return (
+                name,
+                "리포트에 없는 등급 이름은 쓸 수 없어요. 리포트가 낸 결과만 '리포트에서는 ~로 나왔어요'처럼 전해 주세요"
+                if report_mode
+                else "'양호·확인 필요·위험 등급' 같은 등급 이름은 쓸 수 없어요",
+            )
+    verdict_msg = (
+        "집이나 계약, 가격이 괜찮은지 판단하는 말은 할 수 없어요. 리포트 결과는 '리포트에서는 ~로 나왔어요'처럼 "
+        "리포트가 판단한 것으로만 전하고, 계약 여부는 정하지 말아 주세요"
+        if report_mode
+        else "집이나 계약, 가격이 괜찮은지 판단하는 말은 할 수 없어요. 판단 없이 확인할 방법만 알려 주세요"
+    )
     for name, pattern in _CHAT_VERDICT_PATTERNS + (_CHAT_CAREFUL_PATTERNS if careful else ()):
+        if report_mode and name in _REPORT_QUOTABLE:
+            continue
         if pattern.search(squeezed):
             return (name, verdict_msg)
     for name, pattern in _CHAT_VERDICT_RAW_PATTERNS:

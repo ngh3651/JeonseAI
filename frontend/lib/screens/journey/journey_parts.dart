@@ -434,7 +434,7 @@ class ScheduleCard extends StatelessWidget {
           else
             AppText('넣은 일정이 모두 지났어요', style: AppTypographyNext.caption),
           const SizedBox(height: 20),
-          _Circles(progress: progress),
+          _Circles(progress: progress, onTap: onEdit),
           const SizedBox(height: 20),
           SizedBox(
             height: 56,
@@ -501,9 +501,12 @@ class ScheduleCard extends StatelessWidget {
 
 /// 날짜 원 4개 + 사이 선. 잔금만 56(가장 큰 돈이 나가는 날), 나머지 44.
 class _Circles extends StatelessWidget {
-  const _Circles({required this.progress});
+  const _Circles({required this.progress, required this.onTap});
 
   final JourneyProgress progress;
+
+  /// 원을 누르면(특히 빈 [+] 원) 일정 넣기 시트 — [일정 넣기] 버튼과 같다 (2026-10-27)
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -534,7 +537,26 @@ class _Circles extends StatelessWidget {
                     width: cell,
                     child: Column(
                       children: [
-                        SizedBox(height: 56, child: Center(child: _circle(c))),
+                        SizedBox(
+                          height: 56,
+                          child: Center(
+                            child: Semantics(
+                              button: true,
+                              label: '${circleLabel(kScheduleCircleKeys[c])} 날짜 넣기',
+                              child: GestureDetector(
+                                key: ValueKey('journey-circle-tap-$c'),
+                                behavior: HitTestBehavior.opaque,
+                                onTap: onTap,
+                                // 누를 자리는 56×56 이상 (원 44라도)
+                                child: SizedBox(
+                                  width: 56,
+                                  height: 56,
+                                  child: Center(child: _circle(c)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 6),
                         FittedBox(
                           fit: BoxFit.scaleDown,

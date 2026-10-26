@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import secrets
 import sqlite3
 import threading
@@ -220,7 +221,7 @@ def list_reports(*, device_id: str) -> list[Report]:
     except Exception as e:  # noqa: BLE001
         _log.error(f"[이력] ⚠ 기록 DB를 읽지 못해 예시 리포트만 보냅니다 ({type(e).__name__})")
         rows = []
-    return _parse_reports(rows) + list(_example_reports())
+    return _fill_property_ids(_parse_reports(rows), device_id=device_id) + list(_example_reports())
 
 
 def get(report_id: str, *, device_id: str) -> Report | None:
@@ -232,7 +233,7 @@ def get(report_id: str, *, device_id: str) -> Report | None:
         "SELECT report_json FROM reports WHERE device_id = ? AND id = ?",
         (device_id, report_id),
     )
-    found = _parse_reports(rows)
+    found = _fill_property_ids(_parse_reports(rows), device_id=device_id)
     return found[0] if found else None
 
 
@@ -249,37 +250,84 @@ def add(report: Report, *, device_id: str) -> None:
 KEEP_VERSIONS_PER_PROPERTY = 5
 
 
-def property_key(address: str) -> str:
-    """같은 집인지 가르는 키 — 주소에서 띄어쓰기를 뺀 것 (앱 `journeyPropertyKey`와 같은 규칙)."""
-    return "".join((address or "").split())
+#: 등기부 소재지에 붙어 나오는 도로명 병기 — 이 뒤는 읽을 때마다 붙었다 빠졌다 해서 같은 집 키에서 뺀다.
+_ROAD_NOTE_RE = re.compile(r"[\[(（]\s*도로명\s*주소\s*[\])）].*$")
+#: 주소를 못 읽은 리포트의 자리표시 (`report_builder`) — 이런 리포트끼리는 묶지 않는다.
+_UNKNOWN_ADDRESS_PREFIX = "주소미확인"
 
 
-def prune_versions(address: str, *, device_id: str, keep: int = KEEP_VERSIONS_PER_PROPERTY) -> int:
-    """같은 집의 리포트를 최신 [keep]개만 남기고 지운다 (2026-10-26 같은 집 덮어쓰기). 지운 개수를 돌려준다.
+def property_id(unique_number: str | None) -> str | None:
+    """부동산고유번호 → 숫자만. 숫자가 10자리 미만이면(잘못 읽음) None — 엉뚱한 집끼리 묶지 않게."""
+    digits = re.sub(r"\D", "", unique_number or "")
+    return digits if len(digits) >= 10 else None
+
+
+def property_key(address: str | None) -> str:
+    """주소로 같은 집을 가르는 키 — 도로명 병기('[도로명주소] …')를 떼고 띄어쓰기를 뺀 것.
+
+    앱 `addressPropertyKey`와 같은 규칙. 주소를 못 읽었으면 빈 문자열(묶지 않는다).
+    """
+    head = _ROAD_NOTE_RE.sub("", address or "")
+    key = "".join(head.split())
+    return "" if key.startswith(_UNKNOWN_ADDRESS_PREFIX) else key
+
+
+def same_property(a: Report, b: Report) -> bool:
+    """같은 집인가 (2026-10-27). 고유번호가 **둘 다** 있으면 그것만 본다, 아니면 주소 키로 견준다.
+
+    앱 `groupByProperty`와 같은 규칙. 판정과는 상관없다 — 목록을 묶고 지난 리포트를 정리하는 데만 쓴다.
+    """
+    if a.propertyId and b.propertyId:
+        return a.propertyId == b.propertyId
+    ka, kb = property_key(a.address), property_key(b.address)
+    return bool(ka) and ka == kb
+
+
+def _fill_property_ids(reports: list[Report], *, device_id: str) -> list[Report]:
+    """고유번호 칸이 생기기 전(2026-10-27 전)에 저장된 리포트 → 대조 기준 스냅샷의 고유번호로 채운다."""
+    missing = [r for r in reports if r.propertyId is None and r.id not in EXAMPLE_IDS]
+    if not missing:
+        return reports
+    try:
+        rows = _db().execute(
+            "SELECT report_id, snapshot_json FROM snapshots WHERE device_id = ?", (device_id,)
+        )
+    except Exception as e:  # noqa: BLE001 — 못 채우면 앱이 주소로 묶는다
+        _log.error(f"[이력] ⚠ 고유번호를 채우지 못함 — 주소로 묶습니다 ({type(e).__name__})")
+        return reports
+    ids: dict[str, str] = {}
+    for report_id, raw in rows:
+        try:
+            pid = property_id(json.loads(raw).get("unique_number"))
+        except Exception:  # noqa: BLE001
+            continue
+        if pid:
+            ids[report_id] = pid
+    return [
+        r.model_copy(update={"propertyId": ids[r.id]}) if r.propertyId is None and r.id in ids else r
+        for r in reports
+    ]
+
+
+def prune_versions(report: Report, *, device_id: str, keep: int = KEEP_VERSIONS_PER_PROPERTY) -> int:
+    """[report]와 같은 집의 리포트를 최신 [keep]개만 남기고 지운다 (2026-10-26 같은 집 덮어쓰기). 지운 개수를 돌려준다.
 
     같은 집을 다시 분석·대조하면 화면에는 최신 1개만 보이고, 지난 것은 '이전 리포트'에서 최근 5건까지 본다.
-    그보다 오래된 것은 대조 기준·판례 캐시와 함께 지운다. 주소를 못 읽은 리포트(빈 주소)는 묶지 않는다.
+    그보다 오래된 것은 대조 기준·판례 캐시와 함께 지운다. 같은 집 = [same_property] (고유번호 → 주소).
     """
-    key = property_key(address)
-    if not key:
-        return 0
     try:
         rows = list(
             _db().execute(
-                "SELECT id, report_json FROM reports WHERE device_id = ? ORDER BY created_at DESC, rowid DESC",
+                "SELECT report_json FROM reports WHERE device_id = ? ORDER BY created_at DESC, rowid DESC",
                 (device_id,),
             )
         )
     except Exception as e:  # noqa: BLE001 — 정리 실패가 분석 결과를 막지 않게
         _log.error(f"[이력] ⚠ 같은 집 정리를 건너뜀 ({type(e).__name__})")
         return 0
-    same: list[str] = []
-    for report_id, raw in rows:
-        try:
-            if property_key(Report.model_validate_json(raw).address) == key:
-                same.append(report_id)
-        except Exception:  # noqa: BLE001
-            continue
+    target = _fill_property_ids([report], device_id=device_id)[0]
+    history = _fill_property_ids(_parse_reports(rows), device_id=device_id)
+    same = [r.id for r in history if r.id == target.id or same_property(r, target)]
     stale = same[keep:]
     for report_id in stale:
         remove(report_id, device_id=device_id)

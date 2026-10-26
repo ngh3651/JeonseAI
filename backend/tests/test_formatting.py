@@ -28,3 +28,9 @@ from app.services.formatting import short_address
 )
 def test_short_address(full, expected):
     assert short_address(full) == expected
+
+
+def test_short_address_drops_road_name_note():
+    # 실기기 2026-10-27: 별칭이 비면 이 값이 홈 카드 제목이 된다 — 도로명 병기까지 붙어 세 줄이 됐다
+    got = short_address("서울특별시 서초구 서초동 1557-8 주건축물 제1동 [도로명주소] 서울특별시 서초구 반포대로26길 35")
+    assert got == "서초동 1557-8 주건축물 제1동"

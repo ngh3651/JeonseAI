@@ -88,6 +88,7 @@ class CompareDoc {
     this.analyzedAt,
     this.grade,
     this.pageCount,
+    this.propertyId,
   });
 
   final String? reportId;
@@ -102,12 +103,16 @@ class CompareDoc {
   /// 이번에 올린 사진 장수
   final int? pageCount;
 
+  /// 부동산고유번호 숫자만 — 폰에 저장된 이 집의 계약 일정을 찾는 열쇠 ([propertyKeyFor])
+  final String? propertyId;
+
   factory CompareDoc.fromJson(Map<String, dynamic> json) => CompareDoc(
     reportId: json['reportId'] as String?,
     alias: json['alias'] as String?,
     address: json['address'] as String?,
     viewedAt: json['viewedAt'] as String?,
     analyzedAt: json['analyzedAt'] as String?,
+    propertyId: json['propertyId'] as String?,
     grade: json['grade'] == null
         ? null
         : RiskGrade.fromLabel(json['grade'] as String),

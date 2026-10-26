@@ -15,7 +15,6 @@ import 'package:jeonse_ai/models/content_models.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/repositories/content_repository.dart';
-import 'package:jeonse_ai/screens/journey/balance_due_banner.dart';
 import 'package:jeonse_ai/screens/journey/journey_reminder_prompt.dart';
 import 'package:jeonse_ai/screens/journey/journey_schedule_sheet.dart';
 import 'package:jeonse_ai/screens/journey/journey_screen.dart';
@@ -326,35 +325,19 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('잔금 당일 — "오늘이 잔금일이에요" + 대조 버튼', (tester) async {
+    // 2026-10-27 홈_종버튼_시안: 여정 화면 안에도 큰 배너를 띄우지 않는다 — 그날은 단계 칩 D-day·리포트 카드 회색 띠로
+    testWidgets('잔금 당일에도 여정 화면에 큰 배너가 없다', (tester) async {
       await pumpTimeline(tester, _withBalance(0));
-
-      expect(find.koTextContaining('오늘이 잔금일이에요'), findsOneWidget);
-      expect(find.koText(BalanceDueBanner.kBalanceDueMessage), findsOneWidget);
-      expect(find.koText('최근 분석과 대조하기'), findsWidgets);
+      expect(find.koTextContaining('오늘이 잔금일이에요'), findsNothing);
+      expect(find.koTextContaining('돈을 보내기 직전에'), findsNothing);
     });
 
-    testWidgets('입주 다음 날 — 대항력 문구 + 대조 버튼', (tester) async {
+    testWidgets('입주 다음 날에도 큰 배너가 없다', (tester) async {
       await pumpTimeline(
         tester,
         const JourneySchedule().copyWith(JourneyDateKey.moveIn, _day(-1)),
       );
-
-      expect(find.koTextContaining('오늘은 입주 다음 날이에요'), findsOneWidget);
-      expect(find.koText(BalanceDueBanner.kMoveInNextMessage), findsOneWidget);
-      // 쉬운 본문은 조건부터(전입신고를 했다면) — 근거는 작은 글씨로
-      expect(find.koTextContaining('이삿날 전입신고까지 마쳤다면'), findsOneWidget);
-      expect(
-        find.koText(BalanceDueBanner.kMoveInNextLegalNote),
-        findsOneWidget,
-      );
-      expect(find.koText('최근 분석과 대조하기'), findsWidgets);
-    });
-
-    testWidgets('그 밖의 날에는 배너가 없다', (tester) async {
-      await pumpTimeline(tester, _withBalance(5));
-
-      expect(find.byType(BalanceDueBanner), findsNothing);
+      expect(find.koTextContaining('오늘은 입주 다음 날이에요'), findsNothing);
     });
   });
 

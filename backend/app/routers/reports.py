@@ -129,8 +129,8 @@ def analyze(
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
     analysis_cache.remember(cache_key, report, device_id=device_id)
-    # 같은 집은 최신 5건만 (화면엔 최신 1개 — 앱이 주소로 묶는다)
-    store.prune_versions(report.address, device_id=device_id)
+    # 같은 집은 최신 5건만 (화면엔 최신 1개 — 앱이 고유번호·주소로 묶는다)
+    store.prune_versions(report, device_id=device_id)
     return report
 
 
@@ -197,7 +197,7 @@ def compare_registry(
         _log.info(f"[대조] 다른 집이라 이번 분석({current_report.id})을 이력에서 지웠습니다")
     else:
         # 새 등기부로 만든 리포트가 그 집의 최신 리포트가 된다 — 같은 집은 최신 5건만
-        store.prune_versions(current_report.address, device_id=device_id)
+        store.prune_versions(current_report, device_id=device_id)
     return result
 
 

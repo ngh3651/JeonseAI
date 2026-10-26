@@ -7,6 +7,7 @@
 
 import importlib.util
 import logging
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -57,7 +58,33 @@ async def _lifespan(_app: FastAPI):
             updater.start_background()
         except Exception as e:  # noqa: BLE001
             logger.info(f"[판례 업데이트] ⚠ 알람시계를 띄우지 못함 ({type(e).__name__})")
+        # 판례 검색 준비를 미리 (2026-10-26) — 첫 '판례 보기'가 색인 읽기까지 기다리지 않게. 뒤에서만 돈다.
+        threading.Thread(target=_warm_precedents, name="precedent-warmup", daemon=True).start()
     yield
+
+
+def _warm_precedents(wait_seconds: int = 1800, poll: float = 10.0) -> None:
+    """판례 색인이 준비되면(시작 준비가 내려받는 중일 수 있다) 검색기를 한 번 만들어 둔다.
+
+    ⚠ 색인이 **다 만들어진 뒤에만**(meta.json) 만든다 — 빈 색인으로 검색기를 만들면 재시작 전까지 판례가 0건으로 굳는다.
+    외부 호출(임베딩·Solar) 없음 — 파일만 읽는다. 실패해도 첫 요청이 지금처럼 만들 뿐이다.
+    """
+    try:
+        from .services.precedent import service as precedent_service
+        from .services.precedent.store import current_index_dir
+
+        waited = 0.0
+        while not (current_index_dir() / "meta.json").is_file():
+            if waited >= wait_seconds:
+                logger.info("[판례] 미리 준비 — 색인이 아직 없어 건너뜀(첫 요청 때 만든다)")
+                return
+            time.sleep(poll)
+            waited += poll
+        t0 = time.perf_counter()
+        precedent_service.get_service()
+        logger.info(f"[판례] 미리 준비 끝 — 검색기 적재 {time.perf_counter() - t0:.1f}초")
+    except Exception as e:  # noqa: BLE001 — 미리 준비가 서버를 깨뜨리지 않는다
+        logger.info(f"[판례] 미리 준비 실패 — 첫 요청 때 만든다 ({type(e).__name__})")
 
 
 # `DISABLE_DOCS=1`이면 API 문서(/docs·/openapi.json)를 끈다 — 공개 배포에서 API 지도를 숨긴다(2026-10-22).

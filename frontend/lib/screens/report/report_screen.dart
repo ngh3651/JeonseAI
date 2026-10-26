@@ -29,6 +29,8 @@ import '../../models/analysis_report.dart';
 import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../repositories/content_repository.dart';
+import '../../state/case_prefetch.dart';
 import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import '../../state/report_focus.dart';
@@ -98,6 +100,12 @@ class _ReportScreenState extends State<ReportScreen> {
     _reportFuture.then((r) {
       if (r != null) ReportFocus.current.value = ReportRef(r.id, r.alias);
     }, onError: (_) {});
+    // 판례를 뒤에서 미리 받아 둔다 — 리포트를 읽는 동안 준비돼 '판례 보기'가 바로 뜬다(2026-10-26)
+    try {
+      CasePrefetch.warm(context.read<ContentRepository>(), reportId);
+    } catch (_) {
+      // 판례 저장소가 없는 화면(테스트 등) — 판례 화면이 그때 받는다
+    }
   }
 
   /// '사진 속 이름 가리기'가 바뀌면 글자 속 이름도 **바로** 다시 가린다. 가리기는 모델을 만들 때 한 곳에서 하고

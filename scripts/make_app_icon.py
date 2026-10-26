@@ -7,6 +7,7 @@
 - 안드로이드 시연 앱(`src/main/res`) — 적응형 아이콘(바탕색 + 심볼 + 테마 아이콘용 한 색) + 옛 기기용 PNG
 - 안드로이드 **개발 앱**('전세AI프 개발', `src/debug/res`) — 같은 아이콘 + 아래에 '개발' 띠 (두 앱이 헷갈리지 않게)
 - iOS `AppIcon.appiconset` (투명 없음 — 애플 규칙)
+- **앱 켤 때 화면**(스플래시) — 하얀 화면 대신 초록 바탕 + 가운데 심볼 (안드로이드 옛 방식·12 이상 방식, iOS LaunchScreen)
 
 쓰는 법 (저장소 맨 위에서):
     pip install cairosvg pillow
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 
 import cairosvg
@@ -142,10 +144,77 @@ def write_ios() -> None:
         full(px, dev=False, rounded=False).convert("RGB").save(folder / name)
 
 
+#: 스플래시 심볼 높이(dp/pt) — 화면 가운데에 작지 않게
+SPLASH_DP = 120
+DENSITY = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
+
+
+def write_splash() -> None:
+    res = APP / "android/app/src/main/res"
+    for dpi, k in DENSITY.items():
+        folder = res / f"drawable-{dpi}"
+        folder.mkdir(parents=True, exist_ok=True)
+        symbol(round(SPLASH_DP * k)).save(folder / "splash_symbol.png")
+    layer = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        "<!-- 앱 켤 때 화면 — 만든 곳: scripts/make_app_icon.py -->\n"
+        '<layer-list xmlns:android="http://schemas.android.com/apk/res/android">\n'
+        '    <item android:drawable="@color/ic_launcher_background" />\n'
+        "    <item>\n"
+        '        <bitmap android:gravity="center" android:src="@drawable/splash_symbol" />\n'
+        "    </item>\n"
+        "</layer-list>\n"
+    )
+    for folder in ("drawable", "drawable-v21"):
+        (res / folder / "launch_background.xml").write_text(layer, encoding="utf-8")
+    # 안드로이드 12 이상은 시스템 스플래시(바탕색 + 동그란 아이콘)를 쓴다 — 같은 초록 + 아이콘 심볼로
+    v31 = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        "<!-- 안드로이드 12+ 앱 켤 때 화면 — 만든 곳: scripts/make_app_icon.py -->\n"
+        "<resources>\n"
+        '    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">\n'
+        '        <item name="android:windowBackground">@drawable/launch_background</item>\n'
+        '        <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>\n'
+        '        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>\n'
+        "    </style>\n"
+        '    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">\n'
+        '        <item name="android:windowBackground">?android:colorBackground</item>\n'
+        "    </style>\n"
+        "</resources>\n"
+    )
+    for folder in ("values-v31", "values-night-v31"):
+        (res / folder).mkdir(parents=True, exist_ok=True)
+        (res / folder / "styles.xml").write_text(
+            v31.replace("Theme.Light", "Theme.Black") if "night" in folder else v31, encoding="utf-8"
+        )
+
+    # iOS — LaunchImage(심볼) + LaunchScreen 바탕색
+    ios = APP / "ios/Runner"
+    img = ios / "Assets.xcassets/LaunchImage.imageset"
+    base = symbol(SPLASH_DP)
+    for scale, name in ((1, "LaunchImage.png"), (2, "LaunchImage@2x.png"), (3, "LaunchImage@3x.png")):
+        symbol(SPLASH_DP * scale).save(img / name)
+    board = ios / "Base.lproj/LaunchScreen.storyboard"
+    text = board.read_text(encoding="utf-8")
+    r, g, b = (c / 255 for c in BG)
+    text = re.sub(
+        r'<color key="backgroundColor" red="[^"]*" green="[^"]*" blue="[^"]*"',
+        f'<color key="backgroundColor" red="{r:.4f}" green="{g:.4f}" blue="{b:.4f}"',
+        text,
+    )
+    text = re.sub(
+        r'<image name="LaunchImage" width="[^"]*" height="[^"]*"/>',
+        f'<image name="LaunchImage" width="{base.width}" height="{base.height}"/>',
+        text,
+    )
+    board.write_text(text, encoding="utf-8")
+
+
 def main() -> None:
     write_android(APP / "android/app/src/main/res", dev=False)
     write_android(APP / "android/app/src/debug/res", dev=True)
     write_ios()
+    write_splash()
     preview = Image.new("RGBA", (560, 300), (245, 245, 245, 255))
     preview.alpha_composite(full(240, dev=False, rounded=True), (20, 30))
     preview.alpha_composite(full(240, dev=True, rounded=True), (300, 30))

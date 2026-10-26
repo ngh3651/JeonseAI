@@ -48,7 +48,12 @@ class CaptureIssuePanel extends StatelessWidget {
     this.onRetake,
     this.retakeParticle = '',
     this.retakeLabel = '다시 찍기',
+    this.pageNumberOf,
   });
+
+  /// 업로드 번호(0부터) → 화면에 쓸 **쪽 번호**(1부터). 없으면 올린 순서(+1).
+  /// 리포트는 서버가 쪽 번호를 읽어 정한 순서(§9.12)를 넘긴다 — 뷰어의 쪽 번호와 같아지게(2026-10-26).
+  final int Function(int index)? pageNumberOf;
 
   final CaptureCheck check;
 
@@ -102,8 +107,9 @@ class CaptureIssuePanel extends StatelessWidget {
             const SizedBox(height: AppSpacing.md),
             _PageRow(
               page: page,
+              pageNumber: pageNumberOf?.call(page.index) ?? page.index + 1,
               onRetake: onRetake == null ? null : () => onRetake!(page),
-              retakeLabel: '${page.index + 1}쪽$retakeParticle $retakeLabel',
+              retakeLabel: '${pageNumberOf?.call(page.index) ?? page.index + 1}쪽$retakeParticle $retakeLabel',
             ),
           ],
         ],
@@ -113,9 +119,10 @@ class CaptureIssuePanel extends StatelessWidget {
 }
 
 class _PageRow extends StatelessWidget {
-  const _PageRow({required this.page, required this.onRetake, required this.retakeLabel});
+  const _PageRow({required this.page, required this.pageNumber, required this.onRetake, required this.retakeLabel});
 
   final CapturePageIssue page;
+  final int pageNumber;
   final VoidCallback? onRetake;
   final String retakeLabel;
 
@@ -126,7 +133,7 @@ class _PageRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppText(
-          '${page.index + 1}쪽 · ${page.shortLabel}${page.severe ? '' : ' $kSoftIssueNote'}',
+          '$pageNumber쪽 · ${page.shortLabel}${page.severe ? '' : ' $kSoftIssueNote'}',
           style: AppTypography.label.copyWith(color: AppColors.textStrong),
         ),
         if (page.tip.isNotEmpty) ...[

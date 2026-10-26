@@ -457,13 +457,29 @@ def analyze(
     assert extract is not None  # ie_error가 없으면 반드시 값이 있다
     # 가로·거꾸로 찍은 장을 OCR이 바로 세웠으면(2026-10-26) IE도 **바로 선 사진으로** 한 번 더 읽는다 —
     # 판정 재료(IE)가 누운 글자를 잘못 읽은 채로 남지 않게. 실패하면 처음 읽은 결과를 그대로 쓴다.
+    rotation_note: str | None = None
     if ocr_result.rotated:
         turned = [i + 1 for i, r in enumerate(ocr_result.rotations(len(images))) if r]
         _log.info(f"[방향] {turned}번째 사진을 바로 세움 → IE를 바로 선 사진으로 다시 읽음")
         try:
-            extract = extraction.extract_registry(ocr_result.upright_images, run_id=run_id)
+            reread = extraction.extract_registry(ocr_result.upright_images, run_id=run_id)
+            # 보수적 편향(CLAUDE.md §2-3): 다시 읽은 쪽이 위험 항목을 **덜** 찾았으면 처음 결과를 쓴다 —
+            # 위험을 놓치는 쪽으로 바뀌지 않게. 같거나 더 찾았으면 바로 선 사진으로 읽은 결과를 쓴다.
+            before, after = document_gate.entry_count(extract), document_gate.entry_count(reread)
+            if after >= before:
+                extract = reread
+            else:
+                _log.info(f"[방향] 다시 읽은 쪽이 등기 항목을 덜 찾음({before}→{after}) — 처음 결과를 그대로 씀")
+                rotation_note = (
+                    f"{', '.join(map(str, turned))}번째 사진이 옆으로·거꾸로 찍혀 바로 세워 다시 읽었는데 결과가 달랐어요 "
+                    "— 더 많이 찾은 쪽으로 판정했어요. 바로 세워 다시 찍으면 더 정확해요"
+                )
         except Exception as e:  # noqa: BLE001 — 다시 읽기가 실패해도 처음 결과로 계속
             _log.info(f"[방향] IE 다시 읽기 실패 — 처음 읽은 결과로 계속 ({type(e).__name__})")
+            rotation_note = (
+                f"{', '.join(map(str, turned))}번째 사진이 옆으로·거꾸로 찍혀 글자를 잘못 읽었을 수 있어요 "
+                "— 바로 세워 다시 찍어 주세요"
+            )
     # 등기부가 아닌 사진(키보드·화면 등)이면 여기서 멈춘다 — 리포트·기록을 만들지 않는다 (2026-10-24).
     # 등기부인데 못 읽은 것과 가른다: IE가 아무것도 못 찾았고 OCR에도 등기부 낱말이 없을 때만.
     if document_gate.looks_not_registry(extract, ocr_result.pages):
@@ -572,6 +588,8 @@ def analyze(
         report.pageOrder = list(doc_check.page_order)
     if ocr_result.pages:
         report.pageRotations = ocr_result.rotations(len(images))
+    if rotation_note:
+        report.checkedNotes = [*report.checkedNotes, rotation_note]
     # 화면엔 실명, 저장은 가린 사본 (2026-10-22) — 사람 이름 목록. 앱 가리기 스위치가 쓰고, `store.add`가 이 목록으로
     # 가린 사본을 만든다. ⚠ 목록이 비면 저장 사본에 실명(집주인 제목)이 남으므로, 실패해도 집주인 이름만은 꼭 넣는다.
     try:

@@ -60,6 +60,11 @@ def ie_found_anything(extract: RegistryExtract) -> bool:
     return any(getattr(extract, f, None) for f in _ENTRY_FIELDS)
 
 
+def entry_count(extract: RegistryExtract) -> int:
+    """IE가 찾은 등기 항목 수(현 소유자 + 권리 항목) — 두 번 읽은 결과를 견줄 때 쓴다."""
+    return len(extract.current_owners or []) + sum(len(getattr(extract, f, None) or []) for f in _ENTRY_FIELDS)
+
+
 def ocr_marker_count(pages) -> int | None:
     """OCR 글자 속 등기부 표지 낱말 수. OCR 결과가 없으면 None."""
     if not pages:

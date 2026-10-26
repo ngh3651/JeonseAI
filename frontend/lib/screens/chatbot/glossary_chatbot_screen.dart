@@ -270,7 +270,11 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   /// 지금 대화를 지난 대화로 저장 (이어 물으면 마지막 시각이 바뀌어 목록 맨 위로)
   Future<void> _persist() async {
     final id = _convId;
-    final entries = _entries;
+    // 답을 못 받은 마지막 질문은 저장하지 않는다 — 나중에 열면 [다시 시도] 없이 질문만 덩그러니 남는다
+    final entries = List.of(_entries);
+    while (entries.isNotEmpty && entries.last.isUser) {
+      entries.removeLast();
+    }
     if (id == null || entries.isEmpty || !_dirty) return;
     _dirty = false;
     final now = DateTime.now();

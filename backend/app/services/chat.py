@@ -194,7 +194,8 @@ def criteria_block() -> str:
     return "\n".join(
         [
             f"· 전세가율(보증금 ÷ 집값): {t.JEONSE_RATIO_CAUTION_PCT}%를 넘으면 '주의', "
-            f"{t.JEONSE_RATIO_DANGER_PCT}%를 넘으면 '위험 신호'로 봐요 (HUG 전세보증금반환보증 담보인정비율 기준). "
+            f"{t.JEONSE_RATIO_DANGER_PCT}%를 넘으면 '위험 신호'로 봐요 ({t.JEONSE_RATIO_CAUTION_PCT}%는 한국부동산원 임대차 시장 사이렌의 주의 구간, "
+            f"{t.JEONSE_RATIO_DANGER_PCT}%는 HUG 전세보증금반환보증 담보인정비율). "
             f"⚠ {t.JEONSE_RATIO_CAUTION_PCT}%는 '주의'예요 — '위험'이라고 하지 마세요.",
             f"· 선순위 채권(나보다 먼저 받아 가는 빚) ÷ 집값: {t.SENIOR_DEBT_RATIO_DANGER_PCT}%를 넘으면 위험 신호 "
             "(HUG 전세보증 가입 요건).",

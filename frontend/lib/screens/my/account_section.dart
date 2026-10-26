@@ -29,14 +29,10 @@ class AccountSection extends StatelessWidget {
   const AccountSection({super.key});
 
   Future<void> _signOut(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
     final router = GoRouter.of(context);
     await context.read<AppSession>().signOut();
-    // 로그아웃하면 시작 화면으로 — 다시 로그인하거나 둘러보기를 고른다 (2026-10-26)
+    // 로그아웃하면 시작 화면으로 — 다시 로그인하거나 둘러보기를 고른다 (2026-10-26, 안내 문구 없음)
     router.go('/start');
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: AppText('로그아웃했어요')));
   }
 
   @override

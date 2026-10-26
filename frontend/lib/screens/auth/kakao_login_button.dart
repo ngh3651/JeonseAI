@@ -21,6 +21,14 @@ const Color kKakaoYellow = Color(0xFFFEE500);
 const Color kKakaoSymbol = Color(0xFF000000);
 const Color kKakaoLabel = Color(0xD9000000); // 검정 85%
 
+/// 카카오 버튼 글자 — OS 기본 서체(`sans-serif` = 안드로이드 시스템 글꼴) 16 · w600 · 검정 85%.
+const TextStyle kakaoLabelStyle = TextStyle(
+  fontFamily: 'sans-serif',
+  fontSize: 16,
+  fontWeight: FontWeight.w600,
+  color: kKakaoLabel,
+);
+
 class KakaoLoginButton extends StatelessWidget {
   const KakaoLoginButton({
     super.key,
@@ -51,7 +59,8 @@ class KakaoLoginButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             onTap: busy ? null : onPressed,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              // 심볼은 왼쪽에서 18, 글자는 버튼 정가운데 (2026-10-26 시작 화면 리디자인)
+              padding: const EdgeInsets.symmetric(horizontal: 18),
               child: Row(
                 children: [
                   const SizedBox(
@@ -66,16 +75,12 @@ class KakaoLoginButton extends StatelessWidget {
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
+                                strokeWidth: 2.5,
                                 color: kKakaoLabel,
                               ),
                             )
-                          : AppText(
-                              label,
-                              style: AppTypography.button.copyWith(
-                                color: kKakaoLabel,
-                              ),
-                            ),
+                          // 카카오 버튼 글자만 OS 기본 서체 (앱 서체 Pretendard를 쓰지 않는다)
+                          : const AppText(label, style: kakaoLabelStyle),
                     ),
                   ),
                   // 심볼과 같은 폭 — 글자가 버튼 한가운데 오게
@@ -128,14 +133,8 @@ Future<bool> runKakaoLogin(BuildContext context) async {
   final session = context.read<AppSession>();
   final messenger = ScaffoldMessenger.maybeOf(context);
   final outcome = await session.signInWithKakao();
-  if (outcome.ok) {
-    messenger
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: AppText('카카오로 로그인했어요. 기록이 계정에 남아요')),
-      );
-    return true;
-  }
+  // 성공하면 아무 말 없이 다음 화면으로 (2026-10-26 — '로그인했어요' 안내 없앰)
+  if (outcome.ok) return true;
   if (outcome.result == LoginResult.failed ||
       outcome.result == LoginResult.unavailable) {
     messenger

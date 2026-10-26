@@ -220,15 +220,22 @@ class ChatReply {
 
 /// S-11 계약 여정 체크리스트 — 단계별 할 일.
 class JourneyItem {
-  const JourneyItem({required this.text, required this.why});
+  const JourneyItem({required this.text, required this.why, this.where});
 
+  /// 할 일 한 줄 제목
   final String text;
 
-  /// "왜 해야 하나요?" 펼침 설명
+  /// "왜 ·" 펼침 설명 — `**굵게**` 표시가 들어 있을 수 있다
   final String why;
 
-  factory JourneyItem.fromJson(Map<String, dynamic> json) =>
-      JourneyItem(text: json['text'] as String, why: json['why'] as String);
+  /// "어디서 ·" 장소·전화·비용. 없으면 그 줄을 그리지 않는다 (2026-10-26)
+  final String? where;
+
+  factory JourneyItem.fromJson(Map<String, dynamic> json) => JourneyItem(
+    text: json['text'] as String,
+    why: json['why'] as String,
+    where: (json['where'] as String?)?.trim().isEmpty ?? true ? null : json['where'] as String,
+  );
 }
 
 /// 단계의 성격 — 화면이 도트·카드를 어떻게 그릴지 정한다 (S-11).
@@ -290,9 +297,15 @@ class JourneyStage {
     this.askDates = false,
     this.agency,
     this.dateKey,
+    this.chip,
   });
 
   final String title;
+
+  /// 단계 칩 줄의 짧은 이름 (예: "가계약금"). 없으면 [title]
+  final String? chip;
+
+  String get chipLabel => (chip == null || chip!.trim().isEmpty) ? title : chip!;
 
   /// 단계명 아래 쉬운 부제 (예: "나머지 보증금을 보내는 날")
   final String subtitle;
@@ -328,5 +341,6 @@ class JourneyStage {
     askDates: json['askDates'] as bool? ?? false,
     agency: json['agency'] as String?,
     dateKey: JourneyDateKey.fromWire(json['dateKey'] as String?),
+    chip: json['chip'] as String?,
   );
 }

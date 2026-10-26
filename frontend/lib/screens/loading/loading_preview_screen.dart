@@ -48,6 +48,5 @@ class _NeverEndingRepository extends AnalysisRepository {
   Future<CompareResult> compareRegistry(
     String reportId,
     List<String> imagePaths,
-  ) =>
-      Completer<CompareResult>().future;
+  ) => Completer<CompareResult>().future;
 }

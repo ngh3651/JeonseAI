@@ -88,10 +88,8 @@ class NameRedactionBox extends StatelessWidget {
   const NameRedactionBox({super.key});
 
   @override
-  Widget build(BuildContext context) => const CustomPaint(
-    painter: _RedactionPainter(),
-    child: SizedBox.expand(),
-  );
+  Widget build(BuildContext context) =>
+      const CustomPaint(painter: _RedactionPainter(), child: SizedBox.expand());
 }
 
 class _RedactionPainter extends CustomPainter {

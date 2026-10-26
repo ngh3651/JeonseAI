@@ -26,6 +26,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../models/property_reports.dart';
 import '../../models/registry_mark_kind.dart';
 import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
@@ -41,6 +42,8 @@ import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
 import 'market_price_reanalyze.dart';
 import 'registry_entry_card.dart';
+import '../common/ask_selection.dart';
+import 'report_history_sheet.dart';
 import 'report_share.dart';
 import '../../design_system/text/app_text.dart';
 
@@ -92,10 +95,16 @@ class _ReportScreenState extends State<ReportScreen> {
 
   String get reportId => widget.reportId;
 
+  /// 같은 집의 지난 리포트를 찾으려고 받는 전체 이력 — 시계 버튼(이전 리포트)과 '지난 리포트' 띠 (2026-10-26)
+  List<AnalysisReport> _history = const [];
+
   @override
   void initState() {
     super.initState();
     _reportFuture = context.read<AnalysisRepository>().getReport(reportId);
+    context.read<AnalysisRepository>().getHistory().then((h) {
+      if (mounted) setState(() => _history = h);
+    }, onError: (_) {});
     // 챗봇이 이 리포트를 알고 답하게 — 리포트를 읽다 모르는 걸 챗봇에 물어볼 때 (2026-10-26)
     _reportFuture.then((r) {
       if (r != null) ReportFocus.current.value = ReportRef(r.id, r.alias);
@@ -147,10 +156,24 @@ class _ReportScreenState extends State<ReportScreen> {
           );
         }
 
+        final versions = versionsOf(report, _history);
+        final bool isPast =
+            versions.isNotEmpty && versions.first.id != report.id;
         return Scaffold(
           appBar: AppBar(
             title: AppText(report.alias),
             actions: [
+              // 이전 리포트 — 같은 집은 최신 1개만 보이고, 지난 것은 여기서 (2026-10-26)
+              IconButton(
+                key: const ValueKey('report-history-button'),
+                icon: const Icon(Icons.history),
+                tooltip: '이전 리포트',
+                onPressed: () => showReportHistorySheet(
+                  context,
+                  current: report,
+                  versions: versions,
+                ),
+              ),
               // 글자 요약을 안드로이드 공유 창으로 — 이름은 기본으로 가린다(report_share.dart)
               IconButton(
                 icon: const Icon(Icons.ios_share),
@@ -159,32 +182,41 @@ class _ReportScreenState extends State<ReportScreen> {
               ),
             ],
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(AppSpacing.screenPadding),
-            children: [
-              if (_isStale(report)) _staleBanner(context, report),
-              _conclusionHeader(report),
-              const SizedBox(height: AppSpacing.xl),
-              // 촬영 검사에서 '확인 필요'가 나온 장 (P1-1, 2026-10-22) — 판정은 그대로, 사진만 권한다.
-              ..._captureNotice(context, report),
-              // [D15 · 2026-08-14] 결론 헤더와 진입 카드 사이에 있던 아웃라인 버튼
-              // '중개사 질문 모아 보기'를 뺐다. 자세한 사유는 아래 주석 참고.
-              _originPhotoEntry(context, report),
-              const AppText('근거 살펴보기', style: AppTypography.title),
-              const SizedBox(height: AppSpacing.xs),
-              AppText('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
-              const SizedBox(height: AppSpacing.md),
-              ..._evidenceCards(context, report),
-              // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
-              ?_priceGapCard(report),
-              const SizedBox(height: AppSpacing.xl),
-              const AppText('다음 행동', style: AppTypography.title),
-              const SizedBox(height: AppSpacing.md),
-              ..._actionArea(context, report),
-              const SizedBox(height: AppSpacing.xxl),
-              _disclaimer(report),
-              const SizedBox(height: AppSpacing.xxxl),
-            ],
+          // 글자를 꾹 눌러 [챗봇에 묻기] (2026-10-26)
+          body: AskSelectionArea(
+            child: ListView(
+              padding: const EdgeInsets.all(AppSpacing.screenPadding),
+              children: [
+                if (isPast)
+                  PastReportBand(
+                    report: report,
+                    onLatest: () =>
+                        context.pushReplacement('/report/${versions.first.id}'),
+                  ),
+                if (_isStale(report)) _staleBanner(context, report),
+                _conclusionHeader(report),
+                const SizedBox(height: AppSpacing.xl),
+                // 촬영 검사에서 '확인 필요'가 나온 장 (P1-1, 2026-10-22) — 판정은 그대로, 사진만 권한다.
+                ..._captureNotice(context, report),
+                // [D15 · 2026-08-14] 결론 헤더와 진입 카드 사이에 있던 아웃라인 버튼
+                // '중개사 질문 모아 보기'를 뺐다. 자세한 사유는 아래 주석 참고.
+                _originPhotoEntry(context, report),
+                const AppText('근거 살펴보기', style: AppTypography.title),
+                const SizedBox(height: AppSpacing.xs),
+                AppText('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
+                const SizedBox(height: AppSpacing.md),
+                ..._evidenceCards(context, report),
+                // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
+                ?_priceGapCard(report),
+                const SizedBox(height: AppSpacing.xl),
+                const AppText('다음 행동', style: AppTypography.title),
+                const SizedBox(height: AppSpacing.md),
+                ..._actionArea(context, report),
+                const SizedBox(height: AppSpacing.xxl),
+                _disclaimer(report),
+                const SizedBox(height: AppSpacing.xxxl),
+              ],
+            ),
           ),
         );
       },
@@ -209,10 +241,14 @@ class _ReportScreenState extends State<ReportScreen> {
         message: canRetake
             ? '이 장을 잘못 읽었다면 결과가 달라질 수 있어요. 그 장만 다시 찍어 새로 분석해 주세요.'
             : '이 장을 잘못 읽었다면 결과가 달라질 수 있어요. 등기부를 다시 찍어 새로 분석해 주세요.',
-        onRetake: canRetake ? (page) => _retakeAndReanalyze(context, report, paths, page) : null,
+        onRetake: canRetake
+            ? (page) => _retakeAndReanalyze(context, report, paths, page)
+            : null,
         // 서버가 쪽 번호로 순서를 세웠으면 그 쪽 번호로 말한다(뷰어와 같은 번호 — §9.12). 다시 찍기는 업로드 번호 그대로.
         pageNumberOf: (index) {
-          final count = paths.isNotEmpty ? paths.length : report.pageOrder.length;
+          final count = paths.isNotEmpty
+              ? paths.length
+              : report.pageOrder.length;
           final at = report.pageDisplayOrder(count).indexOf(index);
           return at >= 0 ? at + 1 : index + 1;
         },
@@ -251,7 +287,9 @@ class _ReportScreenState extends State<ReportScreen> {
         imagePaths: updated,
         deposit: report.deposit,
         // 시세는 사용자가 **직접 넣은** 값만 다시 보낸다(자동 조회 값은 서버가 다시 찾는다)
-        marketPrice: report.marketPriceSource == MarketPriceSource.manual ? report.marketPrice : null,
+        marketPrice: report.marketPriceSource == MarketPriceSource.manual
+            ? report.marketPrice
+            : null,
         alias: report.alias,
       ),
     );
@@ -303,7 +341,9 @@ class _ReportScreenState extends State<ReportScreen> {
                 mark: preview,
                 // 뱃지는 **따져볼 곳만** 센다. 집주인 이름·주소는 위험이 아니라
                 // 대조할 곳이라, 전체 개수를 적으면 사실과 다른 말이 된다.
-                examineCount: MarkLegend.examineCount(marks.map((m) => m.markKind)),
+                examineCount: MarkLegend.examineCount(
+                  marks.map((m) => m.markKind),
+                ),
                 totalCount: marks.length,
                 // '사진 속 이름 가리기'가 켜지면 스트립에 함께 비치는 이름 칸도 덮는다.
                 pageMarks: [
@@ -394,7 +434,9 @@ class _ReportScreenState extends State<ReportScreen> {
               Expanded(
                 child: AppText(
                   '${formatDaysAgo(report.analyzedAt)} 결과예요 — 계약 직전엔 최신 등기부등본으로 재확인하세요',
-                  style: AppTypography.caption.copyWith(color: AppColors.textBody),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textBody,
+                  ),
                 ),
               ),
             ],
@@ -632,17 +674,25 @@ class _ReportScreenState extends State<ReportScreen> {
 
   /// 근거 카드의 행동 버튼. **실제로 도는 것만** 그린다 — "곧 제공" 같은 가짜 버튼을 두지 않는다
   /// (2026-10-23 서연 리뷰 #4: 심사위원이 누르면 끝). 모르는 라벨이거나 지금 할 수 없으면 null(버튼 없음).
-  Widget? _evidenceAction(BuildContext context, AnalysisReport report, EvidenceItem evidence) {
+  Widget? _evidenceAction(
+    BuildContext context,
+    AnalysisReport report,
+    EvidenceItem evidence,
+  ) {
     final String? label = evidence.actionLabel;
     if (label == null) return null;
     final VoidCallback? onPressed = switch (label) {
       '중개사에게 물어볼 질문 보기' => () => context.push('/questions/$reportId'),
       // 시세를 넣고 같은 사진·같은 보증금으로 새로 분석 — 사진이 이 폰에 없으면 버튼을 그리지 않는다
-      '시세 입력하기' => canReanalyzeWithMarketPrice(report)
-          ? () => reanalyzeWithMarketPrice(context, report)
-          : null,
+      '시세 입력하기' =>
+        canReanalyzeWithMarketPrice(report)
+            ? () => reanalyzeWithMarketPrice(context, report)
+            : null,
       // 단독·다가구: 앞순위 보증금은 등기부에 없다 — 집주인·중개사에게 서류를 달라고 할 문자를 공유 창으로
-      '앞순위 보증금 확인하기' => () => shareWithFeedback(context, _priorDepositRequest(report)),
+      '앞순위 보증금 확인하기' => () => shareWithFeedback(
+        context,
+        _priorDepositRequest(report),
+      ),
       _ => null,
     };
     if (onPressed == null) return null;

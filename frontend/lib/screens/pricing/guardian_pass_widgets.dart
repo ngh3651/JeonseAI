@@ -22,7 +22,11 @@ const String kGuardianPassBadgeLabel = '지킴이 패스';
 
 /// 패스가 있으면 "지킴이 패스", 없으면 아무것도 그리지 않는다.
 class GuardianPassBadge extends StatelessWidget {
-  const GuardianPassBadge({super.key, this.store, this.padding = EdgeInsets.zero});
+  const GuardianPassBadge({
+    super.key,
+    this.store,
+    this.padding = EdgeInsets.zero,
+  });
 
   /// 테스트가 넣는다. 없으면 앱 전체의 [PassStore.instance].
   final PassStore? store;

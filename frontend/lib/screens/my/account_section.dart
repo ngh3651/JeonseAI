@@ -40,11 +40,16 @@ class AccountSection extends StatelessWidget {
     final session = context.watch<AppSession>();
     return ListenableBuilder(
       listenable: BoothMode.instance,
-      builder: (context, _) => _card(context, session, booth: BoothMode.instance.on),
+      builder: (context, _) =>
+          _card(context, session, booth: BoothMode.instance.on),
     );
   }
 
-  Widget _card(BuildContext context, AppSession session, {required bool booth}) {
+  Widget _card(
+    BuildContext context,
+    AppSession session, {
+    required bool booth,
+  }) {
     final String title;
     final String caption;
     if (session.isLoggedIn) {
@@ -95,7 +100,9 @@ class AccountSection extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () => editDisplayName(context),
-                  child: AppText(session.displayName == null ? '이름 정하기' : '바꾸기'),
+                  child: AppText(
+                    session.displayName == null ? '이름 정하기' : '바꾸기',
+                  ),
                 ),
               ],
             ),
@@ -103,10 +110,7 @@ class AccountSection extends StatelessWidget {
           ],
           if (session.isLoggedIn && booth)
             // 부스 모드 — 로그아웃·회원 탈퇴를 숨긴 이유를 한 줄로(버튼이 '사라진' 게 아니라 '숨긴' 것이다)
-            AppText(
-              '부스 모드라 로그아웃·회원 탈퇴는 숨겼어요',
-              style: AppTypography.caption,
-            )
+            AppText('부스 모드라 로그아웃·회원 탈퇴는 숨겼어요', style: AppTypography.caption)
           else if (session.isLoggedIn) ...[
             AppSecondaryButton(
               label: '로그아웃',
@@ -135,7 +139,10 @@ class AccountSection extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               onPressed: () => context.push('/privacy'),
-              icon: const Icon(Icons.privacy_tip_outlined, size: AppSize.iconSm),
+              icon: const Icon(
+                Icons.privacy_tip_outlined,
+                size: AppSize.iconSm,
+              ),
               label: const AppText('개인정보 처리방침'),
             ),
           ),
@@ -178,7 +185,8 @@ Future<void> confirmAndDeleteAccount(BuildContext context) async {
   } else if (result.kakaoUnlinked) {
     message = '탈퇴했어요. 서버의 기록을 모두 지웠어요';
   } else {
-    message = '탈퇴했어요. 서버의 기록은 모두 지웠지만 카카오 연결은 끊지 못했어요 — '
+    message =
+        '탈퇴했어요. 서버의 기록은 모두 지웠지만 카카오 연결은 끊지 못했어요 — '
         '카카오 계정 설정에서 직접 끊을 수 있어요';
   }
   // 탈퇴했으면 시작 화면으로 (로그아웃과 같다 — 2026-10-26)
@@ -221,7 +229,9 @@ class _NameDialog extends StatefulWidget {
 }
 
 class _NameDialogState extends State<_NameDialog> {
-  late final TextEditingController _controller = TextEditingController(text: widget.initial);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
 
   @override
   void dispose() {

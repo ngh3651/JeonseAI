@@ -48,7 +48,11 @@ class _AppVersionLineState extends State<AppVersionLine> {
     messenger
       ?..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: AppText(toggled ? kBoothModeOnMessage : kBoothModeOffMessage)),
+        SnackBar(
+          content: AppText(
+            toggled ? kBoothModeOnMessage : kBoothModeOffMessage,
+          ),
+        ),
       );
   }
 
@@ -70,12 +74,16 @@ class _AppVersionLineState extends State<AppVersionLine> {
               onTap: _onTap,
               borderRadius: BorderRadius.circular(AppRadius.sm),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: AppSize.minTouchTarget),
+                constraints: const BoxConstraints(
+                  minHeight: AppSize.minTouchTarget,
+                ),
                 child: Center(
                   child: AppText(
                     _booth.on ? '$version · 부스 모드' : version,
                     textAlign: TextAlign.center,
-                    style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textMuted,
+                    ),
                   ),
                 ),
               ),

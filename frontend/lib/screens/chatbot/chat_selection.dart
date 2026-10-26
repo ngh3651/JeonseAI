@@ -1,8 +1,9 @@
 /// 챗봇 v2 — 꾹 누르기 = 바로 글자 선택 + 칩 (메뉴 없음) (2026-10-24).
 ///
-/// - 말풍선을 꾹 누르면(안드로이드 기본 0.5초) 진동 1번 + **누른 줄(문장) 전체**가 선택된 채로 시작한다.
-///   Flutter 기본은 낱말 하나를 고르지만, [_LinePickDelegate]가 "낱말 고르기"를 "그 줄 고르기"로 바꾼다.
-///   (답은 서버가 문장마다 줄을 바꿔 보내고, 화면은 줄마다 글자 칸을 따로 그린다 → 한 줄 = 한 문장)
+/// - 말풍선을 꾹 누르면(안드로이드 기본 0.5초) 진동 1번 + **누른 어절(띄어쓰기 단위 낱말)**이 선택된 채로 시작한다.
+///   2026-10-26: 예전에는 "그 줄 전체"를 골랐는데(문단 고르기), 실기기에서 누른 글자 **왼쪽이 통째로** 선택되는
+///   일이 있었다 → Flutter 기본 낱말 고르기로 되돌렸다. 한국어는 [keepAll]의 줄바꿈 금지 부호 덕분에 어절 하나가 잡힌다.
+///   더 넓히려면 손잡이를 끈다.
 /// - 손잡이(14×14 물방울, primary)로 늘이고 줄인다.
 /// - 안드로이드 기본 메뉴(전체 선택·공유 등) 대신 [ChatSelectionChip]: AI 답 [복사][답글], 내 말 [복사].
 library;
@@ -22,24 +23,18 @@ const double kChatHandleSize = 14;
 /// 칩 아이콘 크기
 const double kChatChipIcon = 18;
 
-/// 꾹 누르면 낱말 대신 그 줄(문단) 전체를 고른다
-class _LinePickDelegate extends StaticSelectionContainerDelegate {
-  @override
-  SelectionResult dispatchSelectionEvent(SelectionEvent event) {
-    if (event is SelectWordSelectionEvent) {
-      return super.dispatchSelectionEvent(SelectParagraphSelectionEvent(globalPosition: event.globalPosition));
-    }
-    return super.dispatchSelectionEvent(event);
-  }
-}
+/// 선택 묶음 — 꾹 누르면 Flutter 기본대로 **어절**을 고른다(2026-10-26, 문단 고르기는 왼쪽이 통째로 잡히는 일이 있었다).
+class _LinePickDelegate extends StaticSelectionContainerDelegate {}
 
 /// 손잡이만 바꾼 선택 도구 — 14×14 물방울, primary. (메뉴는 [ChatSelectionChip]이 그린다)
 ///
 /// [TextSelectionHandleControls]를 섞어야 SelectionArea가 메뉴를 `contextMenuBuilder`(우리 칩)로 그린다
 /// — 섞지 않으면 옛 방식(`buildToolbar`, 안드로이드 기본 메뉴)으로 간다.
-class ChatSelectionControls extends MaterialTextSelectionControls with TextSelectionHandleControls {
+class ChatSelectionControls extends MaterialTextSelectionControls
+    with TextSelectionHandleControls {
   @override
-  Size getHandleSize(double textLineHeight) => const Size(kChatHandleSize, kChatHandleSize);
+  Size getHandleSize(double textLineHeight) =>
+      const Size(kChatHandleSize, kChatHandleSize);
 
   @override
   Widget buildHandle(
@@ -48,7 +43,8 @@ class ChatSelectionControls extends MaterialTextSelectionControls with TextSelec
     double textHeight, [
     VoidCallback? onTap,
   ]) {
-    if (type == TextSelectionHandleType.collapsed) return const SizedBox.shrink();
+    if (type == TextSelectionHandleType.collapsed)
+      return const SizedBox.shrink();
     return CustomPaint(
       size: const Size(kChatHandleSize, kChatHandleSize),
       painter: _DropHandlePainter(left: type == TextSelectionHandleType.left),
@@ -56,11 +52,15 @@ class ChatSelectionControls extends MaterialTextSelectionControls with TextSelec
   }
 
   @override
-  Offset getHandleAnchor(TextSelectionHandleType type, double textLineHeight) => switch (type) {
-    TextSelectionHandleType.left => const Offset(kChatHandleSize, 0),
-    TextSelectionHandleType.right => Offset.zero,
-    TextSelectionHandleType.collapsed => const Offset(kChatHandleSize / 2, 0),
-  };
+  Offset getHandleAnchor(TextSelectionHandleType type, double textLineHeight) =>
+      switch (type) {
+        TextSelectionHandleType.left => const Offset(kChatHandleSize, 0),
+        TextSelectionHandleType.right => Offset.zero,
+        TextSelectionHandleType.collapsed => const Offset(
+          kChatHandleSize / 2,
+          0,
+        ),
+      };
 }
 
 /// 물방울 — 동그라미에 글자 쪽 모서리 하나만 뾰족
@@ -74,13 +74,26 @@ class _DropHandlePainter extends CustomPainter {
     final r = Radius.circular(size.width / 2);
     final rect = Offset.zero & size;
     final rrect = left
-        ? RRect.fromRectAndCorners(rect, topLeft: r, topRight: Radius.zero, bottomLeft: r, bottomRight: r)
-        : RRect.fromRectAndCorners(rect, topLeft: Radius.zero, topRight: r, bottomLeft: r, bottomRight: r);
+        ? RRect.fromRectAndCorners(
+            rect,
+            topLeft: r,
+            topRight: Radius.zero,
+            bottomLeft: r,
+            bottomRight: r,
+          )
+        : RRect.fromRectAndCorners(
+            rect,
+            topLeft: Radius.zero,
+            topRight: r,
+            bottomLeft: r,
+            bottomRight: r,
+          );
     canvas.drawRRect(rrect, Paint()..color = AppColors.primary);
   }
 
   @override
-  bool shouldRepaint(_DropHandlePainter oldDelegate) => oldDelegate.left != left;
+  bool shouldRepaint(_DropHandlePainter oldDelegate) =>
+      oldDelegate.left != left;
 }
 
 /// 고를 수 있는 말풍선 글 — 꾹 누르면 줄 선택 + 칩.
@@ -131,7 +144,8 @@ class _ChatSelectableTextState extends State<ChatSelectableText> {
     final onReply = widget.onReply;
     return SelectionArea(
       selectionControls: _controls,
-      onSelectionChanged: (content) => _selected = stripWordJoiner(content?.plainText ?? ''),
+      onSelectionChanged: (content) =>
+          _selected = stripWordJoiner(content?.plainText ?? ''),
       contextMenuBuilder: (context, region) => ChatSelectionChip(
         anchors: region.contextMenuAnchors,
         onCopy: () => _act(region, widget.onCopy),
@@ -148,11 +162,22 @@ class _ChatSelectableTextState extends State<ChatSelectableText> {
 
 /// 선택한 줄 위 8에 뜨는 칩 — 바탕 textStrong · 글자 surface · pill · 칸 높이 최소 48
 class ChatSelectionChip extends StatelessWidget {
-  const ChatSelectionChip({super.key, required this.anchors, required this.onCopy, this.onReply});
+  const ChatSelectionChip({
+    super.key,
+    required this.anchors,
+    required this.onCopy,
+    this.onReply,
+    this.replyLabel = '답글',
+    this.replyIcon = Icons.reply,
+  });
 
   final TextSelectionToolbarAnchors anchors;
   final VoidCallback onCopy;
   final VoidCallback? onReply;
+
+  /// 두 번째 칸 — 챗봇 안에서는 [답글], 다른 화면에서는 [챗봇에 묻기]
+  final String replyLabel;
+  final IconData replyIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -160,11 +185,18 @@ class ChatSelectionChip extends StatelessWidget {
     final adjust = Offset(AppSpacing.sm, top);
     final below = anchors.secondaryAnchor ?? anchors.primaryAnchor;
     return Padding(
-      padding: EdgeInsets.fromLTRB(AppSpacing.sm, top, AppSpacing.sm, AppSpacing.sm),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.sm,
+        top,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
       child: CustomSingleChildLayout(
         delegate: TextSelectionToolbarLayoutDelegate(
-          anchorAbove: anchors.primaryAnchor - const Offset(0, AppSpacing.sm) - adjust,
-          anchorBelow: below + const Offset(0, AppSpacing.sm + kChatHandleSize) - adjust,
+          anchorAbove:
+              anchors.primaryAnchor - const Offset(0, AppSpacing.sm) - adjust,
+          anchorBelow:
+              below + const Offset(0, AppSpacing.sm + kChatHandleSize) - adjust,
         ),
         child: Material(
           color: AppColorsNext.textStrong,
@@ -175,14 +207,22 @@ class ChatSelectionChip extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _ChipButton(icon: Icons.content_copy, label: '복사', onTap: onCopy),
+                _ChipButton(
+                  icon: Icons.content_copy,
+                  label: '복사',
+                  onTap: onCopy,
+                ),
                 if (onReply != null) ...[
                   Container(
                     width: 1,
                     margin: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                     color: AppColorsNext.textMuted,
                   ),
-                  _ChipButton(icon: Icons.reply, label: '답글', onTap: onReply!),
+                  _ChipButton(
+                    icon: replyIcon,
+                    label: replyLabel,
+                    onTap: onReply!,
+                  ),
                 ],
               ],
             ),
@@ -194,7 +234,11 @@ class ChatSelectionChip extends StatelessWidget {
 }
 
 class _ChipButton extends StatelessWidget {
-  const _ChipButton({required this.icon, required this.label, required this.onTap});
+  const _ChipButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
@@ -217,7 +261,12 @@ class _ChipButton extends StatelessWidget {
               children: [
                 Icon(icon, size: kChatChipIcon, color: AppColors.surface),
                 const SizedBox(width: AppSpacing.xs),
-                AppText(label, style: AppTypographyNext.bodyStrong.copyWith(color: AppColors.surface)),
+                AppText(
+                  label,
+                  style: AppTypographyNext.bodyStrong.copyWith(
+                    color: AppColors.surface,
+                  ),
+                ),
               ],
             ),
           ),

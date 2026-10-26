@@ -62,7 +62,8 @@ class SafeRunning extends StatefulWidget {
   State<SafeRunning> createState() => _SafeRunningState();
 }
 
-class _SafeRunningState extends State<SafeRunning> with SingleTickerProviderStateMixin {
+class _SafeRunningState extends State<SafeRunning>
+    with SingleTickerProviderStateMixin {
   /// 한 걸음 0.36초 (프레임 4장 × 90ms)
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
@@ -70,7 +71,8 @@ class _SafeRunningState extends State<SafeRunning> with SingleTickerProviderStat
   );
 
   /// 원본 560을 화면 크기(56 × 기기 배율)로만 풀어 둔다 — 메모리 절약
-  int _cacheWidth(BuildContext context) => (kSafeSize * MediaQuery.devicePixelRatioOf(context)).round();
+  int _cacheWidth(BuildContext context) =>
+      (kSafeSize * MediaQuery.devicePixelRatioOf(context)).round();
 
   @override
   void didChangeDependencies() {
@@ -78,7 +80,11 @@ class _SafeRunningState extends State<SafeRunning> with SingleTickerProviderStat
     // 첫 바퀴에 프레임이 깜빡이지 않게 미리 풀어 둔다
     final w = _cacheWidth(context);
     for (final f in kSafeRunFrames) {
-      precacheImage(ResizeImage(AssetImage(f), width: w), context, onError: (_, _) {});
+      precacheImage(
+        ResizeImage(AssetImage(f), width: w),
+        context,
+        onError: (_, _) {},
+      );
     }
     if (MediaQuery.disableAnimationsOf(context)) {
       _ctrl.stop();
@@ -109,7 +115,8 @@ class _SafeRunningState extends State<SafeRunning> with SingleTickerProviderStat
             final angle = wave * 4 * math.pi / 180; // 기울기 -4° ↔ +4°
             final frame = kSafeRunFrames.isEmpty
                 ? kSafeDefaultAsset
-                : kSafeRunFrames[(t * kSafeRunFrames.length).floor() % kSafeRunFrames.length];
+                : kSafeRunFrames[(t * kSafeRunFrames.length).floor() %
+                      kSafeRunFrames.length];
             return Transform.translate(
               offset: Offset(0, dy),
               child: Transform.rotate(
@@ -165,7 +172,10 @@ class _SafeFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DecoratedBox(
-      decoration: BoxDecoration(color: AppColors.primarySoft, shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        shape: BoxShape.circle,
+      ),
       child: Icon(Icons.pets, color: AppColors.primary),
     );
   }

@@ -3,7 +3,7 @@
 /// 대조 결과 화면에 하나만 뜬다(결론 헤더 바로 아래 — 리포트의 '등급 → 결정' 순서와 같게, D2).
 /// 결과를 읽고 "그래서 뭘 하라는 거지?"에서 멈추지 않게.
 ///
-///   - 위험 줄이 있는 `changed` → **잔금 보내기 전에 멈추세요** + 달라진 점 한 줄 + 중개사·가족에게 보내기 + 상담처
+///   - 위험 줄이 있는 `changed` → **잔금 보내기 전에 멈추세요** + 달라진 점 한 줄 + 중개사에게 보내기 + 상담처 (가족에게 보내기는 2026-10-26에 뺐다)
 ///   - 달라진 위험이 없는 `changed` → **입금 전 마지막 체크리스트** (여정 데이터의 잔금 단계 항목)
 ///   - `partial` → **빠진 쪽만 더 찍기** (먼저 찍은 장은 그대로 두고 새 장을 덧붙여 다시 대조)
 ///   - 기준 없음·다른 집 → 카드 없음 (그 화면이 이미 할 일 하나만 말한다)
@@ -84,7 +84,9 @@ List<String> dangerSummaryFor(CompareResult result) => [
       final String? first = row.kind == CompareRowKind.added
           ? row.detail?.split('\n').first.trim()
           : null;
-      return first == null || first.isEmpty ? row.title : '${row.title} ($first)';
+      return first == null || first.isEmpty
+          ? row.title
+          : '${row.title} ($first)';
     }(),
 ];
 
@@ -137,21 +139,6 @@ String brokerMessageFor(
   return b.toString();
 }
 
-/// 가족·배우자에게 보낼 **요약판** — 중개사 문자에서 인사·질문을 뺐다(서연 리뷰 #6).
-String familyMessageFor(CompareResult result, {bool balancePassed = false}) {
-  final b = StringBuffer()..writeln('[전세AI프] 등기부를 다시 떼어 보니 처음 서류와 달라진 점이 있어요');
-  _writePlace(b, result);
-  for (final line in dangerSummaryFor(result)) {
-    b.writeln('- $line');
-  }
-  b.write(
-    balancePassed
-        ? '중개사·집주인에게 확인하고 있어요 · 규칙 기반 대조'
-        : '확인한 뒤에 잔금을 보내려고 해요 · 규칙 기반 대조',
-  );
-  return b.toString();
-}
-
 /// "집: …" 다음 줄에 "서류: 7월 9일 ↔ 8월 5일 등기부" (서연 리뷰 #2·#6 — 어느 서류끼리 견줬는지).
 void _writePlace(StringBuffer b, CompareResult result) {
   final String? address = result.baseline.address?.trim();
@@ -196,7 +183,9 @@ class CompareNextStepCard extends StatelessWidget {
         balancePassed: balancePassed,
       ),
       // 여정으로 돌아가는 버튼은 화면 맨 아래에 이미 있다 — 카드에 같은 버튼을 겹쳐 두지 않는다(D3)
-      CompareNextStep.finalChecklist => _ChecklistCard(balancePassed: balancePassed),
+      CompareNextStep.finalChecklist => _ChecklistCard(
+        balancePassed: balancePassed,
+      ),
       CompareNextStep.recapture => _RecaptureCard(
         onAddMissing: onAddMissing,
         keptPhotoCount: keptPhotoCount,
@@ -327,10 +316,6 @@ class _StopCardState extends State<_StopCard> {
     if (mounted) setState(() => _sending = false);
   }
 
-  /// [가족·배우자에게 보내기] — 인사·질문을 뺀 요약판.
-  Future<void> _sendToFamily() =>
-      _copyAndShare(familyMessageFor(widget.result, balancePassed: widget.balancePassed));
-
   Future<void> _copyAndShare(String message) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
     var copied = false;
@@ -345,7 +330,8 @@ class _StopCardState extends State<_StopCard> {
       TextShareOutcome.opened when copied => '복사도 해 뒀어요 — 문자나 카톡 창에 붙여 넣어도 돼요',
       TextShareOutcome.opened => '공유 창을 열었어요',
       TextShareOutcome.copied => '공유 창을 열지 못해 복사해 뒀어요. 문자나 카톡 창에 붙여 넣어 주세요',
-      TextShareOutcome.failed when copied => '공유 창을 열지 못했어요. 복사해 둔 글을 문자나 카톡 창에 붙여 넣어 주세요',
+      TextShareOutcome.failed when copied =>
+        '공유 창을 열지 못했어요. 복사해 둔 글을 문자나 카톡 창에 붙여 넣어 주세요',
       TextShareOutcome.failed => '보내지 못했어요. 잠시 후 다시 눌러 주세요',
     };
     messenger
@@ -391,12 +377,6 @@ class _StopCardState extends State<_StopCard> {
           loading: _sending,
           onPressed: _sending ? null : _sendToBroker,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        AppSecondaryButton(
-          label: '가족·배우자에게 보내기',
-          icon: Icons.family_restroom,
-          onPressed: _sending ? null : _sendToFamily,
-        ),
         const SizedBox(height: AppSpacing.md),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -410,7 +390,9 @@ class _StopCardState extends State<_StopCard> {
             Expanded(
               child: AppText(
                 '$kCounselingLine $kCounselingSearchHint',
-                style: AppTypography.caption.copyWith(color: AppColors.textBody),
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.textBody,
+                ),
               ),
             ),
           ],
@@ -444,7 +426,8 @@ class _ChecklistCardState extends State<_ChecklistCard> {
       _items = repo.journeyStages().then(
         (stages) => [
           for (final s in stages)
-            if (passed ? s.dateKey == JourneyDateKey.moveInNext : s.isBalance) ...s.items,
+            if (passed ? s.dateKey == JourneyDateKey.moveInNext : s.isBalance)
+              ...s.items,
         ],
       );
     }
@@ -510,7 +493,12 @@ class _ChecklistCardState extends State<_ChecklistCard> {
                 style: AppTypography.bodyStrong,
               ),
               const SizedBox(height: 2),
-              AppText(item.why, style: AppTypography.caption.copyWith(color: AppColors.textBody)),
+              AppText(
+                item.why,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.textBody,
+                ),
+              ),
             ],
           ),
         ),

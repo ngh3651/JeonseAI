@@ -4,7 +4,7 @@
 /// 그래서 "내일 큰돈이 나간다"는 사실을 아는 순간(사용자가 잔금일을 넣은 순간) 앱은
 /// **가장 크게** 그 하루를 말해야 한다.
 ///
-/// ⚠ 경고 문구 뒤에는 반드시 행동 버튼 (IA.md §0). 이 배너는 항상 [다시 떼서 대조하기]를
+/// ⚠ 경고 문구 뒤에는 반드시 행동 버튼 (IA.md §0). 이 배너는 항상 [최근 분석과 대조하기]를
 ///   달고 다닌다 — 문구만 있는 형태로 쓰지 않는다.
 ///
 /// 2026-10-22: 휴대폰 알림(잔금 하루 전·당일·입주 다음 날)과 **같은 세 날**에 뜬다
@@ -26,10 +26,8 @@ import '../pricing/guardian_pass_widgets.dart';
 /// 오늘 띄울 배너의 제목·본문(+ 법 조문 꼬리표). 오늘이 세 날 중 하나가 아니면 null.
 ///
 /// [isMoveInNext]면 잔금 이야기(홈의 '잔금 직전 확인이…' 한 줄)를 붙이지 않는다(D4 — 그날은 잔금이 이미 끝났다).
-({String title, String message, String? legalNote, bool isMoveInNext})? journeyBannerFor(
-  JourneySchedule schedule, {
-  DateTime? now,
-}) {
+({String title, String message, String? legalNote, bool isMoveInNext})?
+journeyBannerFor(JourneySchedule schedule, {DateTime? now}) {
   final kind = journeyAlertToday(schedule, now: now);
   if (kind == null) return null;
   return switch (kind) {
@@ -53,6 +51,8 @@ import '../pricing/guardian_pass_widgets.dart';
       legalNote: BalanceDueBanner.kMoveInNextLegalNote,
       isMoveInNext: true,
     ),
+    // 배너는 잔금 하루 전·당일·입주 다음 날 세 날에만 뜬다 — 나머지 알림 날은 알림만
+    _ => null,
   };
 }
 
@@ -158,7 +158,7 @@ class BalanceDueBanner extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onCompare,
               icon: const Icon(Icons.compare_arrows, size: AppSize.iconSm),
-              label: const AppText('지금 다시 떼서 대조하기'),
+              label: const AppText('최근 분석과 대조하기'),
             ),
           ),
           if (onGuide != null) ...[
@@ -198,10 +198,17 @@ class BalanceDueBanner extends StatelessWidget {
                   TextButton(
                     onPressed: onEditSchedule,
                     style: TextButton.styleFrom(
-                      minimumSize: const Size(AppSize.minTouchTarget, AppSize.minTouchTarget),
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                      minimumSize: const Size(
+                        AppSize.minTouchTarget,
+                        AppSize.minTouchTarget,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                      ),
                       foregroundColor: AppColors.textStrong,
-                      textStyle: AppTypography.label.copyWith(fontWeight: FontWeight.w600),
+                      textStyle: AppTypography.label.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     child: const AppText(
                       '일정 수정',

@@ -39,7 +39,8 @@ const String kAddMissingLabel = '빠진 쪽만 더 찍기';
 String addressHead(String address) {
   final words = address.trim().split(RegExp(r'\s+'));
   for (int i = 1; i < words.length; i++) {
-    if (RegExp(r'(동|로|길|읍|면|리|가)$').hasMatch(words[i]) && words[i].length >= 2) {
+    if (RegExp(r'(동|로|길|읍|면|리|가)$').hasMatch(words[i]) &&
+        words[i].length >= 2) {
       return words.sublist(0, i + 1).join(' ');
     }
   }
@@ -85,7 +86,9 @@ class CompareResultView extends StatelessWidget {
   bool get _balancePassed {
     final address = result.baseline.address;
     if (address == null || address.trim().isEmpty) return false;
-    final balance = JourneyScheduleStore.instance.scheduleFor(journeyPropertyKey(address)).balance;
+    final balance = JourneyScheduleStore.instance
+        .scheduleFor(journeyPropertyKey(address))
+        .balance;
     if (balance == null) return false;
     final t = now ?? DateTime.now();
     final today = DateTime(t.year, t.month, t.day);
@@ -185,10 +188,7 @@ class CompareResultView extends StatelessWidget {
             onPressed: onBackToJourney,
           ),
           const SizedBox(height: AppSpacing.sm),
-          AppSecondaryButton(
-            label: '중개사에게 물어볼 질문 만들기',
-            onPressed: onQuestions,
-          ),
+          AppSecondaryButton(label: '중개사에게 물어볼 질문 만들기', onPressed: onQuestions),
         ],
       ],
     );
@@ -227,9 +227,12 @@ class CompareResultView extends StatelessWidget {
   /// 주소는 앞부분(동·로·길까지)만 — 호수까지 화면에 크게 남기지 않는다.
   String? get _contextLine {
     final parts = <String>[
-      if ((result.baseline.alias ?? '').trim().isNotEmpty) result.baseline.alias!.trim(),
-      if ((result.baseline.address ?? '').trim().isNotEmpty) addressHead(result.baseline.address!),
-      if (compareDocumentDates(result) != null) '${compareDocumentDates(result)} 등기부',
+      if ((result.baseline.alias ?? '').trim().isNotEmpty)
+        result.baseline.alias!.trim(),
+      if ((result.baseline.address ?? '').trim().isNotEmpty)
+        addressHead(result.baseline.address!),
+      if (compareDocumentDates(result) != null)
+        '${compareDocumentDates(result)} 등기부',
     ];
     return parts.isEmpty ? null : parts.join(' · ');
   }
@@ -365,9 +368,7 @@ class CompareResultView extends StatelessWidget {
             if (i > 0) const SizedBox(height: AppSpacing.xs),
             AppText(
               lines[i],
-              style: i == 0
-                  ? AppTypography.bodyStrong
-                  : AppTypography.caption,
+              style: i == 0 ? AppTypography.bodyStrong : AppTypography.caption,
             ),
           ],
           if (scheduleNote != null) ...[
@@ -388,9 +389,9 @@ class CompareResultView extends StatelessWidget {
     final address = result.baseline.address;
     if (address == null) return null;
 
-    final schedule = context
-        .read<JourneyScheduleStore>()
-        .scheduleFor(journeyPropertyKey(address));
+    final schedule = context.read<JourneyScheduleStore>().scheduleFor(
+      journeyPropertyKey(address),
+    );
     for (final key in const [
       JourneyDateKey.contract,
       JourneyDateKey.downPayment,
@@ -456,7 +457,10 @@ class CompareResultView extends StatelessWidget {
   Widget _ruleBasedNotice() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 14),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: 14,
+      ),
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -744,7 +748,9 @@ class CompareResultView extends StatelessWidget {
   String get _baselineAddressLine {
     final viewed = parseRegistryViewedAt(result.baseline.viewedAt);
     final address = result.baseline.address ?? '주소 확인 필요';
-    return viewed == null ? address : '$address · ${formatMonthDay(viewed)}자 서류';
+    return viewed == null
+        ? address
+        : '$address · ${formatMonthDay(viewed)}자 서류';
   }
 
   String get _currentUnknownLine {
@@ -756,13 +762,19 @@ class CompareResultView extends StatelessWidget {
 
   Widget _sideLabel(String label, Color color) => AppText(
     label,
-    style: AppTypography.label.copyWith(color: color, fontWeight: FontWeight.w700),
+    style: AppTypography.label.copyWith(
+      color: color,
+      fontWeight: FontWeight.w700,
+    ),
   );
 
   Widget _grayNote({required IconData icon, required String text}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 14),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: 14,
+      ),
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(AppRadius.lg),

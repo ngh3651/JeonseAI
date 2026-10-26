@@ -3,10 +3,8 @@
 /// 플러그인(flutter_local_notifications)을 전혀 모른다. 일정과 '지금'을 넣으면 예약할 알림
 /// 목록이 나온다 — 그래서 위젯·플러그인 없이 단위 테스트한다(test/journey_reminders_test.dart).
 ///
-/// 울리는 때 (전부 **그 폰의 시각** 기준 — 사용자가 고른 날짜도 그 폰의 달력 날짜다):
-///   ① 잔금일 하루 전 오전 9시     — 내일 돈 보내기 직전에 새로 뗀 등기부를 찍어 주세요
-///   ② 잔금일 당일 오전 8시        — 입금 전 마지막 확인
-///   ③ 이사(입주) 다음 날 오전 9시 — 대항력이 생기는 날, 새 빚이 없는지 확인
+/// 울리는 때 — **모두 오전 8시** (2026-10-26 여정 디자인 확정, 그 폰의 시각 기준):
+///   가계약금 날 · 계약서 날 · 잔금 하루 전 · 잔금 날 · 이사 날 · 입주 다음 날
 /// - **이미 지난 시각은 예약하지 않는다** (플러그인도 지난 시각은 거부한다).
 /// - 문구의 법적 사실(대항력은 입주 다음 날 0시)은 여정 데이터(`journey_stages.json`)의
 ///   '입주 다음 날' 단계 문구를 그대로 따른다. 새 수치를 만들지 않는다.
@@ -18,16 +16,28 @@ import '../models/content_models.dart';
 import '../state/journey_schedule_store.dart';
 import '../utils/korean_date.dart';
 
-/// 알림 세 가지. [slot]은 알림 id 끝자리, [hour]는 울리는 시(그 폰의 시각).
+/// 모든 알림이 울리는 시 (그 폰의 시각) — 2026-10-26 확정: 전부 오전 8시.
+const int kReminderHour = 8;
+
+/// 알림 종류. [slot]은 알림 id 끝자리.
 enum JourneyReminderKind {
-  /// 잔금일 하루 전 오전 9시
-  balanceEve(slot: 0, hour: 9, dayOffset: -1),
+  /// 잔금일 하루 전 오전 8시
+  balanceEve(slot: 0, hour: kReminderHour, dayOffset: -1),
 
   /// 잔금일 당일 오전 8시
-  balanceDay(slot: 1, hour: 8, dayOffset: 0),
+  balanceDay(slot: 1, hour: kReminderHour, dayOffset: 0),
 
-  /// 이사(입주) 다음 날 오전 9시
-  moveInNext(slot: 2, hour: 9, dayOffset: 1);
+  /// 이사(입주) 다음 날 오전 8시
+  moveInNext(slot: 2, hour: kReminderHour, dayOffset: 1),
+
+  /// 가계약금 보내는 날 오전 8시
+  downPaymentDay(slot: 3, hour: kReminderHour, dayOffset: 0),
+
+  /// 계약서 쓰는 날 오전 8시
+  contractDay(slot: 4, hour: kReminderHour, dayOffset: 0),
+
+  /// 이사 날 오전 8시
+  moveInDay(slot: 5, hour: kReminderHour, dayOffset: 0);
 
   const JourneyReminderKind({
     required this.slot,
@@ -88,23 +98,28 @@ String? journeyKeyFromPayload(String? payload) {
   return key.isEmpty ? null : key;
 }
 
-/// 알림 id — 매물 키의 FNV-1a 해시(27비트) × 4 + 종류 칸.
+/// 알림 id — 매물 키의 FNV-1a 해시(26비트) × 8 + 종류 칸 (2026-10-26: 종류가 6개라 칸을 8로 넓혔다).
 ///
 /// ⚠ Dart의 `String.hashCode`는 실행마다 같다는 보장이 없어 쓰지 않는다 — id가 바뀌면 옛 알림을
 ///   취소하지 못한다. 결과는 2^29보다 작아 안드로이드 알림 id(32비트 정수) 범위 안이다.
-int journeyReminderId(String propertyKey, JourneyReminderKind kind) {
+int _fnv(String propertyKey) {
   var hash = 0x811c9dc5;
   for (final unit in utf8.encode(propertyKey)) {
     hash ^= unit;
     hash = (hash * 0x01000193) & 0xFFFFFFFF;
   }
-  return (hash & 0x07FFFFFF) * 4 + kind.slot;
+  return hash;
 }
 
-/// 그 집의 알림 id 세 개 (취소할 때 — 날짜가 없어져도 지워야 한다).
+int journeyReminderId(String propertyKey, JourneyReminderKind kind) =>
+    (_fnv(propertyKey) & 0x03FFFFFF) * 8 + kind.slot;
+
+/// 그 집의 알림 id 전부 (취소할 때 — 날짜가 없어져도 지워야 한다).
+/// 옛 방식(× 4, 세 종류 — 2026-10-22~25 앱)으로 걸린 알림도 함께 지운다.
 List<int> journeyReminderIds(String propertyKey) => [
   for (final kind in JourneyReminderKind.values)
     journeyReminderId(propertyKey, kind),
+  for (int slot = 0; slot < 3; slot++) (_fnv(propertyKey) & 0x07FFFFFF) * 4 + slot,
 ];
 
 /// 일정 → 예약할 알림 목록 (울리는 순서대로). 지난 시각은 빠진다.
@@ -144,6 +159,18 @@ List<JourneyReminder> planJourneyReminders({
 
   final DateTime? balance = schedule.balance;
   add(
+    JourneyReminderKind.downPaymentDay,
+    schedule.dates[JourneyDateKey.downPayment],
+    '오늘 가계약금 보내는 날이에요',
+    '보내기 전에 등기부를 다시 떼서 대조해 주세요 — 적은 돈이라도 보내면 되돌리기 어려워요',
+  );
+  add(
+    JourneyReminderKind.contractDay,
+    schedule.dates[JourneyDateKey.contract],
+    '오늘 계약서 쓰는 날이에요',
+    '도장 찍기 직전에 등기부를 다시 떼서 대조해 주세요',
+  );
+  add(
     JourneyReminderKind.balanceEve,
     balance,
     '내일 잔금 보내는 날이에요',
@@ -155,6 +182,12 @@ List<JourneyReminder> planJourneyReminders({
     balance,
     '오늘 잔금 보내는 날이에요',
     '입금 전 마지막 확인 — 오늘 뗀 등기부로 대조해 주세요',
+  );
+  add(
+    JourneyReminderKind.moveInDay,
+    schedule.dates[JourneyDateKey.moveIn],
+    '오늘 이사하는 날이에요',
+    '오늘 꼭 전입신고 — 확정일자도 같이 받아 두세요',
   );
   add(
     JourneyReminderKind.moveInNext,

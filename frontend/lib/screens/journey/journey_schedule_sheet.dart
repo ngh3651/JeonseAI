@@ -19,7 +19,8 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../models/content_models.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../utils/korean_date.dart';
-import '../report/registry_mark_sheet.dart' show kSheetEnterDuration, kSheetExitDuration;
+import '../report/registry_mark_sheet.dart'
+    show kSheetEnterDuration, kSheetExitDuration;
 
 /// 잔금 칸 아래 약속 — **실제 알림 시각과 같아야 한다** (journey_reminders.dart 의 ①②).
 const String kBalanceReminderPromise =
@@ -247,7 +248,9 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
                   child: AppText(
                     value == null ? '아직 안 정했어요' : formatMonthDayWeekday(value),
                     style: value == null
-                        ? AppTypography.body.copyWith(color: AppColors.textMuted)
+                        ? AppTypography.body.copyWith(
+                            color: AppColors.textMuted,
+                          )
                         : AppTypography.title,
                   ),
                 ),

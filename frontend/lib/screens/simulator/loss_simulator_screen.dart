@@ -177,7 +177,10 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
           value: _insured,
           onChanged: (v) => setState(() => _insured = v),
           // C3: 시뮬레이션임이 드러나는 제목 (feedback4 목업)
-          title: const AppText('보증보험 적용 시 시뮬레이션', style: AppTypography.bodyStrong),
+          title: const AppText(
+            '보증보험 적용 시 시뮬레이션',
+            style: AppTypography.bodyStrong,
+          ),
           subtitle: AppText(
             '가입 가능 여부를 확인하면 보험 적용 결과를 볼 수 있어요',
             style: AppTypography.caption,
@@ -286,9 +289,9 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
           AppText(
             canReanalyze
                 ? '시세가 입력되지 않아 보증금을 기준으로 계산한 예시예요. '
-                    '시세를 입력하면 더 정확해져요.'
+                      '시세를 입력하면 더 정확해져요.'
                 : '시세가 입력되지 않아 보증금을 기준으로 계산한 예시예요. '
-                    '시세를 넣어 새로 분석하면 더 정확해져요.',
+                      '시세를 넣어 새로 분석하면 더 정확해져요.',
             // 연앰버 바탕 위 앰버 글자는 대비가 모자라다(D8) — 글자는 본문색
             style: AppTypography.body.copyWith(color: AppColors.textBody),
           ),

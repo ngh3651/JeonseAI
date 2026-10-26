@@ -303,12 +303,16 @@ class ChatResponse(BaseModel):
 class JourneyItem(BaseModel):
     text: str
     why: str
+    # 어디서 하는 일인지 — 장소·전화·비용을 " · "로 (2026-10-26 여정 디자인). 없으면 null(옛 앱은 무시)
+    where: Optional[str] = None
 
 
 class JourneyStage(BaseModel):
     title: str
     subtitle: str
     items: list[JourneyItem]
+    # 단계 칩 줄의 짧은 이름 (예: "가계약금") — 없으면 앱이 제목을 쓴다 (2026-10-26)
+    chip: Optional[str] = None
     # ── S-11 재설계 (2026-08-14) — 아래는 전부 선택적. 옛 앱은 무시해도 종전과 같이 동작한다.
     # 단계는 이제 **체크박스 목록이 아니라 매물에 붙은 타임라인**이라, 각 단계가 어떤
     # 성격인지(끝난 일/할 일/한참 뒤 일)와 어떤 행동을 붙일지를 데이터가 들고 있어야 한다.
@@ -361,6 +365,8 @@ class CompareRow(BaseModel):
     # 이 줄에 붙는 행동 — recapture(빠진 쪽 다시 찍기) | analyze(새로 분석)
     action: Optional[str] = None
     actionLabel: Optional[str] = None
+    # 어느 칸의 줄인가 — owner(갑구 소유자) · seizure(갑구 압류·가압류) · debt(을구 빚) · grade(안전도). 없으면 null
+    group: Optional[str] = None
 
 
 class CompareResult(BaseModel):

@@ -28,6 +28,7 @@ import 'state/booth_mode.dart';
 import 'services/api_client.dart';
 import 'services/device_id.dart';
 import 'services/journey_reminder_service.dart';
+import 'state/journey_progress_store.dart';
 import 'state/journey_schedule_store.dart';
 import 'state/pass_store.dart';
 import 'state/privacy_settings.dart';
@@ -43,6 +44,8 @@ Future<void> main() async {
   // 계약 일정(잔금일 등)은 **이 기기에만** 있다 — 여정 화면과 홈 D-1 배너가 곧바로
   // 그릴 수 있게 먼저 올린다(첫 프레임에 배너가 깜빡이며 나타나지 않도록).
   await JourneyScheduleStore.instance.restore();
+  // 여정 진행 기록(단계 완료·대조 기록·알림 켜짐 여부, 2026-10-26) — 이 기기에만
+  await JourneyProgressStore.instance.restore();
   // '사진 속 이름 가리기'를 첫 화면부터 저장된 값으로 그린다(켜 둔 채 껐다 켰는데 이름이 한 번 비치면 안 된다).
   await PrivacySettings.instance.restore();
   // 부스 모드(2026-10-23) — 켜져 있으면 첫 화면부터 로그아웃·회원 탈퇴·기록 지우기를 숨긴다.
@@ -149,6 +152,10 @@ class JeonseSafeApp extends StatelessWidget {
         // 계약 일정 — 기기 로컬 저장. 여정 화면과 홈 배너가 같은 값을 본다.
         ChangeNotifierProvider<JourneyScheduleStore>.value(
           value: JourneyScheduleStore.instance,
+        ),
+        // 여정 진행 기록 — 단계 완료·등기부 대조 기록 (이 기기에만)
+        ChangeNotifierProvider<JourneyProgressStore>.value(
+          value: JourneyProgressStore.instance,
         ),
       ],
       child: MaterialApp.router(

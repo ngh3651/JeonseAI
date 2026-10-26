@@ -42,7 +42,12 @@ class QuoteBand extends StatelessWidget {
             Container(width: 3, color: AppColors.primaryBright),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.xs, 0, AppSpacing.xs),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.xs,
+                  0,
+                  AppSpacing.xs,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -51,13 +56,17 @@ class QuoteBand extends StatelessWidget {
                       kQuoteBandLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypographyNext.caption.copyWith(color: AppColors.primary),
+                      style: AppTypographyNext.caption.copyWith(
+                        color: AppColors.primary,
+                      ),
                     ),
                     Text(
                       firstChatLine(quote),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypographyNext.caption.copyWith(color: AppColorsNext.textMuted),
+                      style: AppTypographyNext.caption.copyWith(
+                        color: AppColorsNext.textMuted,
+                      ),
                     ),
                   ],
                 ),
@@ -65,8 +74,15 @@ class QuoteBand extends StatelessWidget {
             ),
             IconButton(
               tooltip: '인용 취소',
-              constraints: const BoxConstraints(minWidth: AppSize.minTouchTarget, minHeight: AppSize.minTouchTarget),
-              icon: const Icon(Icons.close, size: AppSize.iconSm, color: AppColorsNext.textMuted),
+              constraints: const BoxConstraints(
+                minWidth: AppSize.minTouchTarget,
+                minHeight: AppSize.minTouchTarget,
+              ),
+              icon: const Icon(
+                Icons.close,
+                size: AppSize.iconSm,
+                color: AppColorsNext.textMuted,
+              ),
               onPressed: onCancel,
             ),
           ],
@@ -98,20 +114,31 @@ class QuoteChip extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: AppSize.minTouchTarget),
+            constraints: const BoxConstraints(
+              minHeight: AppSize.minTouchTarget,
+            ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.subdirectory_arrow_right, size: AppSize.iconXs, color: AppColors.primarySoft),
+                  const Icon(
+                    Icons.subdirectory_arrow_right,
+                    size: AppSize.iconXs,
+                    color: AppColors.primarySoft,
+                  ),
                   const SizedBox(width: AppSpacing.xs),
                   Flexible(
                     child: Text(
                       line,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypographyNext.caption.copyWith(color: AppColors.primarySoft),
+                      style: AppTypographyNext.caption.copyWith(
+                        color: AppColors.primarySoft,
+                      ),
                     ),
                   ),
                 ],
@@ -138,14 +165,18 @@ class CopiedToast extends StatelessWidget {
         tween: Tween<double>(end: visible ? 0 : AppSpacing.sm),
         duration: duration,
         curve: Curves.easeOut,
-        builder: (context, dy, child) => Transform.translate(offset: Offset(0, dy), child: child),
+        builder: (context, dy, child) =>
+            Transform.translate(offset: Offset(0, dy), child: child),
         child: AnimatedOpacity(
           opacity: visible ? 1 : 0,
           duration: duration,
           child: Semantics(
             liveRegion: visible,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.md),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl,
+                vertical: AppSpacing.md,
+              ),
               decoration: BoxDecoration(
                 color: AppColorsNext.textStrong,
                 borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -153,10 +184,19 @@ class CopiedToast extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.check_circle, size: AppSize.iconSm, color: AppColors.primaryBright),
+                  const Icon(
+                    Icons.check_circle,
+                    size: AppSize.iconSm,
+                    color: AppColors.primaryBright,
+                  ),
                   const SizedBox(width: AppSpacing.sm),
                   Flexible(
-                    child: AppText(kCopiedMessage, style: AppTypographyNext.caption.copyWith(color: AppColors.surface)),
+                    child: AppText(
+                      kCopiedMessage,
+                      style: AppTypographyNext.caption.copyWith(
+                        color: AppColors.surface,
+                      ),
+                    ),
                   ),
                 ],
               ),

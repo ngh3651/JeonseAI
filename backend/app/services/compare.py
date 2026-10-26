@@ -388,6 +388,7 @@ def _group_rows(
                 subtitle = "기준이 된 서류에서 그 쪽을 읽지 못해 견줄 수 없어요"
             rows.append(
                 CompareRow(
+                    group=group.id,
                     kind="unknown",
                     tone="caution",
                     marker="?",
@@ -407,6 +408,7 @@ def _group_rows(
         if added:
             rows.append(
                 CompareRow(
+                    group=group.id,
                     kind="added",
                     tone="danger",
                     marker="+",
@@ -421,6 +423,7 @@ def _group_rows(
         if removed:
             rows.append(
                 CompareRow(
+                    group=group.id,
                     kind="removed",
                     tone="neutral",
                     marker="−",
@@ -434,6 +437,7 @@ def _group_rows(
             detail = _summary(cur_items) + " · 변동 없음" if cur_items else group.empty_detail
             rows.append(
                 CompareRow(
+                    group=group.id,
                     kind="same",
                     tone="neutral",
                     marker="=",
@@ -622,6 +626,9 @@ def compare(base: RegistrySnapshot, cur: RegistrySnapshot) -> CompareResult:
     owner_row, owner_ok = _owner_row(base, cur)
     group_rows, group_compared, unknown_groups = _group_rows(base, cur)
     grade_row, grade_ok = _grade_row(base, cur, debt_unknown="debt" in unknown_groups)
+    # 줄마다 어느 칸인지 붙인다 — 앱이 '갑구 · 주인과 압류 / 을구 · 집에 걸린 빚' 두 줄로 묶어 보여 준다(2026-10-26)
+    owner_row = owner_row.model_copy(update={"group": "owner"})
+    grade_row = grade_row.model_copy(update={"group": "grade"})
 
     rows = [owner_row, *group_rows, grade_row]
     total = 2 + len(GROUPS)  # 집주인 + 묶음들 + 안전도

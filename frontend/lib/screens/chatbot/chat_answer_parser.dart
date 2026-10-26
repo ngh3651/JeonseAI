@@ -58,8 +58,8 @@ List<ChatBlock> parseChatAnswer(String text) {
     final ChatBlockKind lineKind = n != null
         ? ChatBlockKind.numbered
         : b != null
-            ? ChatBlockKind.bullets
-            : ChatBlockKind.paragraph;
+        ? ChatBlockKind.bullets
+        : ChatBlockKind.paragraph;
     if (kind != lineKind) flush();
     kind = lineKind;
     if (n != null) {
@@ -85,7 +85,8 @@ class ChatInline {
   final String text;
 
   @override
-  bool operator ==(Object other) => other is ChatInline && other.kind == kind && other.text == text;
+  bool operator ==(Object other) =>
+      other is ChatInline && other.kind == kind && other.text == text;
 
   @override
   int get hashCode => Object.hash(kind, text);
@@ -107,11 +108,13 @@ List<ChatInline> parseChatInline(String line) {
   void addPlain(String s) {
     var cursor = 0;
     for (final m in _addressRe.allMatches(s)) {
-      if (m.start > cursor) out.add(ChatInline(ChatInlineKind.text, s.substring(cursor, m.start)));
+      if (m.start > cursor)
+        out.add(ChatInline(ChatInlineKind.text, s.substring(cursor, m.start)));
       out.add(ChatInline(ChatInlineKind.address, m.group(0)!));
       cursor = m.end;
     }
-    if (cursor < s.length) out.add(ChatInline(ChatInlineKind.text, s.substring(cursor)));
+    if (cursor < s.length)
+      out.add(ChatInline(ChatInlineKind.text, s.substring(cursor)));
   }
 
   var cursor = 0;

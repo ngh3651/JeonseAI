@@ -17,6 +17,7 @@ import '../../design_system/components/risk_badge.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../models/property_reports.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
 import '../../state/app_session.dart';
@@ -44,7 +45,8 @@ class _MyScreenState extends State<MyScreen> {
   @override
   void initState() {
     super.initState();
-    _repo = context.read<AnalysisRepository>()..addListener(_onRepositoryChanged);
+    _repo = context.read<AnalysisRepository>()
+      ..addListener(_onRepositoryChanged);
     _reload();
   }
 
@@ -58,6 +60,9 @@ class _MyScreenState extends State<MyScreen> {
     _historyFuture = _repo.getHistory();
   }
 
+  /// 마지막으로 받은 전체 이력 (같은 집 지난 리포트 포함) — 삭제할 때 같은 집을 모두 찾는다
+  List<AnalysisReport> _allHistory = const [];
+
   /// 분석·삭제, 그리고 '사진 속 이름 가리기'를 바꿨을 때(저장소가 알린다) 목록을 다시 읽는다 —
   /// 이 화면이 그 스위치가 있는 곳이라, 켜는 순간 아래 목록의 이름도 바로 가려져야 한다.
   void _onRepositoryChanged() {
@@ -68,8 +73,8 @@ class _MyScreenState extends State<MyScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const AppText('이 리포트를 삭제할까요?'),
-        content: const AppText('삭제하면 되돌릴 수 없어요'),
+        title: const AppText('이 집의 리포트를 삭제할까요?'),
+        content: const AppText('지난 리포트까지 모두 지워져요. 삭제하면 되돌릴 수 없어요'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -84,7 +89,12 @@ class _MyScreenState extends State<MyScreen> {
     );
     if (!(ok ?? false) || !mounted) return;
     try {
-      await context.read<AnalysisRepository>().deleteReport(report.id);
+      // 같은 집의 지난 리포트까지 함께 지운다 — 최신만 지우면 그 아래 지난 리포트가 다시 '최신'으로 올라온다
+      final repo = context.read<AnalysisRepository>();
+      final versions = versionsOf(report, _allHistory);
+      for (final v in versions) {
+        await repo.deleteReport(v.id);
+      }
     } on ApiException catch (e) {
       // 예시 리포트 403, 서버 연결 실패 등 — 서버가 준 한국어 메시지 그대로 표시
       if (mounted) {
@@ -117,7 +127,10 @@ class _MyScreenState extends State<MyScreen> {
     _shownLoggedIn = session.isLoggedIn;
 
     return Scaffold(
-      appBar: AppBar(title: const AppText('마이'), automaticallyImplyLeading: false),
+      appBar: AppBar(
+        title: const AppText('마이'),
+        automaticallyImplyLeading: false,
+      ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
@@ -166,7 +179,10 @@ class _MyScreenState extends State<MyScreen> {
             padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Column(
               children: [
-                const AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
+                const AppText(
+                  '분석 이력을 불러오지 못했어요',
+                  style: AppTypography.bodyStrong,
+                ),
                 const SizedBox(height: AppSpacing.xs),
                 AppText(
                   apiErrorHint(snapshot.error, fallback: '서버 연결을 확인해 주세요'),
@@ -183,7 +199,9 @@ class _MyScreenState extends State<MyScreen> {
             ),
           );
         }
-        final history = snapshot.data ?? const [];
+        // 같은 집은 최신 리포트 1개만 — 지난 리포트는 리포트 화면의 시계 버튼에서 본다 (2026-10-26)
+        _allHistory = snapshot.data ?? const [];
+        final history = latestPerProperty(_allHistory);
         if (history.isEmpty) {
           return AppCard(
             padding: const EdgeInsets.all(AppSpacing.xxl),
@@ -248,7 +266,10 @@ class _MyScreenState extends State<MyScreen> {
             builder: (context, _) => BoothMode.instance.on
                 ? const SizedBox(width: AppSpacing.sm)
                 : IconButton(
-                    icon: const Icon(Icons.delete_outline, size: AppSize.iconSm),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: AppSize.iconSm,
+                    ),
                     tooltip: '삭제',
                     onPressed: () => _delete(report),
                   ),
@@ -292,15 +313,24 @@ class PrivacySettingsCard extends StatelessWidget {
             builder: (context, _) => SwitchListTile(
               value: settings.hideNamesInPhotos,
               onChanged: settings.setHideNamesInPhotos,
-              title: const AppText('사진 속 이름 가리기', style: AppTypography.bodyStrong),
+              title: const AppText(
+                '사진 속 이름 가리기',
+                style: AppTypography.bodyStrong,
+              ),
               // 약속을 넘지 않는다 — 덮는 것은 **분석을 마친 사진**의 이름·주민번호 칸이다(서버가 위치를 보낸다).
               // 분석 전 촬영 화면·사진 트레이는 위치를 몰라 못 덮으므로 그 사실을 함께 적는다.
-              subtitle: const AppText(kHideNamesSwitchDescription, style: AppTypography.caption),
+              subtitle: const AppText(
+                kHideNamesSwitchDescription,
+                style: AppTypography.caption,
+              ),
               contentPadding: EdgeInsets.zero,
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          const AppText(RegistryPhotoStore.retentionNotice, style: AppTypography.caption),
+          const AppText(
+            RegistryPhotoStore.retentionNotice,
+            style: AppTypography.caption,
+          ),
         ],
       ),
     );

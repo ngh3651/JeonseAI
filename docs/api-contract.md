@@ -262,16 +262,18 @@ JourneyStage {
   compare:  boolean,        // [UI] 이 단계에 [다시 떼서 대조하기]를 붙일지 (기본 false)
   askDates: boolean,        // [UI] 이 단계에서 계약 일정 입력을 권할지 (기본 false)
   agency:   string | null,  // [UI] 어디서 하는 일인지 칩 (예: "주민센터에서")
-  dateKey:  string | null   // [UI] 붙는 일정 칸 — downPayment|contract|balance|moveIn|moveInNext
+  dateKey:  string | null,  // [UI] 붙는 일정 칸 — downPayment|contract|balance|moveIn|moveInNext
+  chip:     string | null   // [UI] 단계 칩 줄의 짧은 이름 (예: "가계약금", 2026-10-26). 없으면 title
 }
 JourneyItem {
-  text: string,             // [UI] 할 일
-  why:  string              // [설명] "왜 해야 하나요?" 펼침 설명
+  text:  string,            // [UI] 할 일 (한 줄 제목)
+  why:   string,            // [설명] "왜 ·" 펼침 설명. **굵게** 표시 가능
+  where: string | null      // [설명] "어디서 ·" 장소·전화·비용 (2026-10-26). 없으면 그 줄을 안 그린다
 }
 ```
 - 여정 데이터는 **정적**(모든 사용자 동일)이고 정본은 `backend/data/journey_stages.json`이다(비개발 팀원이 직접 편집).
 - **날짜 값은 계약에 없다.** 잔금일·이사일은 **기기에만 저장**하고(S-11 State Management), 어디까지 왔는지는 앱이 그 날짜로 계산한다. 서버는 "무엇을 언제 해야 하는가"라는 단계 정의만 준다.
-- `kind="analysis"` 단계의 완료는 상태가 아니라 **"분석 기록이 있다"는 사실**이다 — 사용자가 바꿀 수 없다.
+- `kind="analysis"` 단계의 완료는 상태가 아니라 **"분석 기록이 있다"는 사실**이다 — 사용자가 바꿀 수 없다. 다른 단계는 날짜가 지나면 완료이고, 앱에서 칩을 한 번 더 눌러 직접 켜고 끌 수 있다(기기에만 저장, 2026-10-26).
 - `dateKey="moveInNext"`(입주 다음 날)는 **사용자에게 묻지 않는다.** 앱이 이사일 +1일로 계산한다.
 
 ### 2.9 `CompareResult` — 등기부 대조 (2026-08-14 추가 · S-11)
@@ -309,7 +311,8 @@ CompareRow {
   gradeBefore: string | null,
   gradeAfter:  string | null,
   action:      string | null, // "recapture" | "analyze"
-  actionLabel: string | null
+  actionLabel: string | null,
+  group: string | null       // owner(갑구 소유자) | seizure(갑구 압류·가압류) | debt(을구 빚) | grade(안전도) — 앱이 두 줄로 묶는다(2026-10-26)
 }
 ```
 

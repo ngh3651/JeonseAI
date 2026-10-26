@@ -116,9 +116,9 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _shoot());
   }
 
-  void _finish() => Navigator.of(context).pop(
-    CaptureLoopResult(newPaths: List.of(_taken), hitLimit: _hitLimit),
-  );
+  void _finish() => Navigator.of(
+    context,
+  ).pop(CaptureLoopResult(newPaths: List.of(_taken), hitLimit: _hitLimit));
 
   Future<void> _shoot() async {
     if (_busy) return;
@@ -204,7 +204,9 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
         const Expanded(
           child: Center(
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+              padding: EdgeInsets.symmetric(
+                horizontal: AppSpacing.screenPadding,
+              ),
               child: AppText(
                 '카메라를 여는 중이에요…',
                 style: TextStyle(color: Colors.white70),
@@ -355,7 +357,11 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.no_photography_outlined, color: Colors.white70, size: 40),
+          const Icon(
+            Icons.no_photography_outlined,
+            color: Colors.white70,
+            size: 40,
+          ),
           const SizedBox(height: AppSpacing.lg),
           AppText(
             '카메라 권한이 필요해요',
@@ -479,7 +485,11 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
       ),
       textStyle: AppTypography.button,
     );
-    return FilledButton(onPressed: onPressed, style: style, child: AppText(label));
+    return FilledButton(
+      onPressed: onPressed,
+      style: style,
+      child: AppText(label),
+    );
   }
 }
 
@@ -519,9 +529,9 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
   late final List<String> _paths = List.of(widget.paths);
   late int _index = widget.initialIndex.clamp(0, widget.paths.length - 1);
 
-  void _close({int? retakeIndex}) => Navigator.of(context).pop(
-    PhotoViewerResult(paths: List.of(_paths), retakeIndex: retakeIndex),
-  );
+  void _close({int? retakeIndex}) => Navigator.of(
+    context,
+  ).pop(PhotoViewerResult(paths: List.of(_paths), retakeIndex: retakeIndex));
 
   void _delete() {
     setState(() {
@@ -595,12 +605,18 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
                     children: [
                       // '앞으로/뒤로'만 있으면 '이전 장 보기'로 읽혔다 → 무엇을 옮기는지(순서) 붙인다.
                       Expanded(
-                        child: _flat('순서 앞으로', _index > 0 ? () => _reorder(-1) : null),
+                        child: _flat(
+                          '순서 앞으로',
+                          _index > 0 ? () => _reorder(-1) : null,
+                        ),
                       ),
                       const SizedBox(width: AppSpacing.sm),
                       // 이 장을 **그 자리에서** 바꾼다(맨 뒤에 붙이지 않는다).
                       Expanded(
-                        child: _flat('이 장 다시 찍기', () => _close(retakeIndex: _index)),
+                        child: _flat(
+                          '이 장 다시 찍기',
+                          () => _close(retakeIndex: _index),
+                        ),
                       ),
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
@@ -643,7 +659,11 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
         ),
         Positioned(
           left: AppSpacing.xs,
-          child: _round(Icons.chevron_left, _index > 0 ? () => _move(-1) : null, '이전 장'),
+          child: _round(
+            Icons.chevron_left,
+            _index > 0 ? () => _move(-1) : null,
+            '이전 장',
+          ),
         ),
         Positioned(
           right: AppSpacing.xs,
@@ -662,7 +682,9 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
       height: 54,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.screenPadding,
+        ),
         itemCount: _paths.length,
         separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
         itemBuilder: (context, i) => GestureDetector(
@@ -683,7 +705,8 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
               child: Image.file(
                 File(_paths[i]),
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black26),
+                errorBuilder: (_, _, _) =>
+                    const ColoredBox(color: Colors.black26),
               ),
             ),
           ),
@@ -706,26 +729,27 @@ class _PhotoViewerRouteState extends State<PhotoViewerRoute> {
     ),
   );
 
-  Widget _round(IconData icon, VoidCallback? onTap, String semantic) => Semantics(
-    button: true,
-    label: semantic,
-    child: Material(
-      color: Colors.white.withValues(alpha: onTap == null ? 0.04 : 0.14),
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: AppSize.minTouchTarget,
-          height: AppSize.minTouchTarget,
-          child: Icon(
-            icon,
-            color: Colors.white.withValues(alpha: onTap == null ? 0.3 : 1),
+  Widget _round(IconData icon, VoidCallback? onTap, String semantic) =>
+      Semantics(
+        button: true,
+        label: semantic,
+        child: Material(
+          color: Colors.white.withValues(alpha: onTap == null ? 0.04 : 0.14),
+          shape: const CircleBorder(),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const CircleBorder(),
+            child: SizedBox(
+              width: AppSize.minTouchTarget,
+              height: AppSize.minTouchTarget,
+              child: Icon(
+                icon,
+                color: Colors.white.withValues(alpha: onTap == null ? 0.3 : 1),
+              ),
+            ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 
   Widget _flat(String label, VoidCallback? onPressed) => FilledButton(
     onPressed: onPressed,

@@ -36,6 +36,7 @@ class _ItemTemplate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str
     why: str
+    where: Optional[str] = None
 
 
 class _StageTemplate(BaseModel):
@@ -43,6 +44,7 @@ class _StageTemplate(BaseModel):
     title: str
     subtitle: str
     items: list[_ItemTemplate]
+    chip: Optional[str] = None
     kind: str = "action"
     compare: bool = False
     askDates: bool = False
@@ -95,7 +97,8 @@ def _to_stage(t: _StageTemplate, index: int) -> JourneyStage:
     return JourneyStage(
         title=t.title,
         subtitle=t.subtitle,
-        items=[JourneyItem(text=i.text, why=i.why) for i in t.items],
+        items=[JourneyItem(text=i.text, why=i.why, where=(i.where or None)) for i in t.items],
+        chip=(t.chip or None),
         kind=kind,
         compare=t.compare,
         askDates=t.askDates,

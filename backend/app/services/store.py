@@ -245,6 +245,49 @@ def add(report: Report, *, device_id: str) -> None:
     )
 
 
+#: 같은 집(주소가 같은 리포트)에 남기는 최대 개수 — 앱의 '이전 리포트'·폰 원본 보관(최근 5건)과 같다.
+KEEP_VERSIONS_PER_PROPERTY = 5
+
+
+def property_key(address: str) -> str:
+    """같은 집인지 가르는 키 — 주소에서 띄어쓰기를 뺀 것 (앱 `journeyPropertyKey`와 같은 규칙)."""
+    return "".join((address or "").split())
+
+
+def prune_versions(address: str, *, device_id: str, keep: int = KEEP_VERSIONS_PER_PROPERTY) -> int:
+    """같은 집의 리포트를 최신 [keep]개만 남기고 지운다 (2026-10-26 같은 집 덮어쓰기). 지운 개수를 돌려준다.
+
+    같은 집을 다시 분석·대조하면 화면에는 최신 1개만 보이고, 지난 것은 '이전 리포트'에서 최근 5건까지 본다.
+    그보다 오래된 것은 대조 기준·판례 캐시와 함께 지운다. 주소를 못 읽은 리포트(빈 주소)는 묶지 않는다.
+    """
+    key = property_key(address)
+    if not key:
+        return 0
+    try:
+        rows = list(
+            _db().execute(
+                "SELECT id, report_json FROM reports WHERE device_id = ? ORDER BY created_at DESC, rowid DESC",
+                (device_id,),
+            )
+        )
+    except Exception as e:  # noqa: BLE001 — 정리 실패가 분석 결과를 막지 않게
+        _log.error(f"[이력] ⚠ 같은 집 정리를 건너뜀 ({type(e).__name__})")
+        return 0
+    same: list[str] = []
+    for report_id, raw in rows:
+        try:
+            if property_key(Report.model_validate_json(raw).address) == key:
+                same.append(report_id)
+        except Exception:  # noqa: BLE001
+            continue
+    stale = same[keep:]
+    for report_id in stale:
+        remove(report_id, device_id=device_id)
+    if stale:
+        _log.info(f"[이력] 같은 집 지난 리포트 {len(stale)}건 정리 (최신 {keep}건 유지)")
+    return len(stale)
+
+
 def remove(report_id: str, *, device_id: str) -> None:
     """이 기기의 리포트와 그 대조 기준·판례 캐시를 지운다. 예시는 지우지 않는다."""
     if report_id in EXAMPLE_IDS:

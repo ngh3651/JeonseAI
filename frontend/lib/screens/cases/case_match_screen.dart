@@ -21,6 +21,7 @@ import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 import '../../state/case_prefetch.dart';
 import '../../services/api_client.dart';
+import '../common/ask_selection.dart';
 import 'case_card.dart';
 
 export 'case_card.dart' show kRiskTagLabel, riskTagLabel, kMaxCardTags;
@@ -40,7 +41,9 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
   late Future<(AnalysisReport?, List<CaseMatch>)> _future;
 
   /// 판례 창고 상태 — 안내 줄 옆 "2026.10.24 기준". 판례 목록과 따로 받아 화면을 막지 않는다.
-  late final Future<PrecedentStatus?> _status = context.read<ContentRepository>().precedentStatus();
+  late final Future<PrecedentStatus?> _status = context
+      .read<ContentRepository>()
+      .precedentStatus();
 
   @override
   void initState() {
@@ -65,49 +68,58 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: AppText('판례 매칭', style: AppTypographyNext.title)),
-      body: FutureBuilder<(AnalysisReport?, List<CaseMatch>)>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return _error(context, retryable: true, error: snapshot.error);
-          }
-          final (report, cases) = snapshot.data!;
-          if (report == null) {
-            return _error(context);
-          }
-          final labels = [for (final p in report.riskLabels) riskTagLabel(p)];
+      // 글자를 꾹 눌러 [챗봇에 묻기] (2026-10-26)
+      body: AskSelectionArea(
+        child: FutureBuilder<(AnalysisReport?, List<CaseMatch>)>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return _error(context, retryable: true, error: snapshot.error);
+            }
+            final (report, cases) = snapshot.data!;
+            if (report == null) {
+              return _error(context);
+            }
+            final labels = [for (final p in report.riskLabels) riskTagLabel(p)];
 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenPadding,
-              AppSpacing.md,
-              AppSpacing.screenPadding,
-              AppSpacing.xxxl,
-            ),
-            children: [
-              FutureBuilder<PrecedentStatus?>(
-                future: _status,
-                builder: (_, s) => CaseMatchHeader(asOf: s.data?.asOfLabel),
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding,
+                AppSpacing.md,
+                AppSpacing.screenPadding,
+                AppSpacing.xxxl,
               ),
-              const SizedBox(height: AppSpacing.xxl),
-              CaseRiskBox(labels: labels),
-              const SizedBox(height: AppSpacing.xxxl),
-              if (cases.isEmpty)
-                const CaseEmptyBox()
-              else ...[
-                AppText(caseCountTitle(cases), style: AppTypographyNext.title),
-                const SizedBox(height: AppSpacing.md),
-                for (int i = 0; i < cases.length; i++) ...[
-                  CaseCard(key: ValueKey(cases[i].caseNo), match: cases[i]), // 전부 닫힌 채로 시작(2026-10-24 규혁)
+              children: [
+                FutureBuilder<PrecedentStatus?>(
+                  future: _status,
+                  builder: (_, s) => CaseMatchHeader(asOf: s.data?.asOfLabel),
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+                CaseRiskBox(labels: labels),
+                const SizedBox(height: AppSpacing.xxxl),
+                if (cases.isEmpty)
+                  const CaseEmptyBox()
+                else ...[
+                  AppText(
+                    caseCountTitle(cases),
+                    style: AppTypographyNext.title,
+                  ),
                   const SizedBox(height: AppSpacing.md),
+                  for (int i = 0; i < cases.length; i++) ...[
+                    CaseCard(
+                      key: ValueKey(cases[i].caseNo),
+                      match: cases[i],
+                    ), // 전부 닫힌 채로 시작(2026-10-24 규혁)
+                    const SizedBox(height: AppSpacing.md),
+                  ],
                 ],
               ],
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

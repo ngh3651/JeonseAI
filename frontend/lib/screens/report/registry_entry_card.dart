@@ -128,9 +128,7 @@ RegistryHighlight? previewMarkOf(List<RegistryHighlight> marks) {
   if (marks.isEmpty) return null;
   final risky = marks.where((m) => m.markKind.isRisk).toList();
   final pool = risky.isNotEmpty ? risky : marks;
-  return pool.reduce(
-    (a, b) => b.markKind.weight > a.markKind.weight ? b : a,
-  );
+  return pool.reduce((a, b) => b.markKind.weight > a.markKind.weight ? b : a);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -350,7 +348,9 @@ class _PreviewStripState extends State<_PreviewStrip> {
       builder: (context, snapshot) {
         final raw = snapshot.data;
         // 90·270°로 돌려 그리면 바로 선 사진의 가로세로는 파일과 반대다
-        final pageSize = raw != null && widget.source.quarterTurns.isOdd ? Size(raw.height, raw.width) : raw;
+        final pageSize = raw != null && widget.source.quarterTurns.isOdd
+            ? Size(raw.height, raw.width)
+            : raw;
         // 크기를 못 읽었으면 스트립을 통째로 생략한다 — 배율을 모르는 채로 그리면
         // 엉뚱한 자리를 확대해 보여 주게 되고, 그건 없는 것만 못하다.
         if (pageSize == null || pageSize.width <= 0) {
@@ -413,9 +413,7 @@ class _PreviewStripState extends State<_PreviewStrip> {
       //   그 위에 사진을 덮어 그려서 선이 사라진다(2026-07-27 실기기에서 확인).
       position: DecorationPosition.foreground,
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.viewerEntryDivider),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.viewerEntryDivider)),
       ),
       child: ClipRect(
         child: Stack(
@@ -462,7 +460,9 @@ class _PreviewStripState extends State<_PreviewStrip> {
                   color: AppColors.markRedaction,
                   child: Center(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                      ),
                       child: AppText(
                         kWholePageCoverLabel,
                         textAlign: TextAlign.center,

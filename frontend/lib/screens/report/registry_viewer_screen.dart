@@ -482,7 +482,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
         final data = snapshot.data?.withCurrentPrivacy();
         if (data?.report == null || data!.paths.isEmpty) return _emptyScaffold();
 
-        final report = data!.report!;
+        final report = data.report!;
         final marks = data.marks;
         // 문서와 레일이 **같은 기하**를 봐야 한다. 각자 LayoutBuilder로 재면 레일 쪽만
         // SafeArea 좌우 인셋을 빼고 재게 되어, 쪽 높이·전체 높이가 미세하게 달라지고

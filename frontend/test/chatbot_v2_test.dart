@@ -16,6 +16,7 @@ import 'package:jeonse_ai/screens/chatbot/chat_quote.dart';
 import 'package:jeonse_ai/screens/chatbot/chat_selection.dart';
 import 'package:jeonse_ai/screens/chatbot/chat_swipe.dart';
 import 'package:jeonse_ai/screens/chatbot/glossary_chatbot_screen.dart';
+import 'package:jeonse_ai/state/report_focus.dart';
 import 'package:provider/provider.dart';
 
 import 'support/ko_finders.dart';
@@ -29,10 +30,12 @@ class _FakeContentRepo implements ContentRepository {
   /// 기본 답 줄 수 — 길게 만들면 화면 밖으로 밀린다
   final int lines;
   final List<List<ChatTurn>> sent = [];
+  final List<String?> reportIds = [];
 
   @override
-  Future<ChatReply> chat(List<ChatTurn> messages) async {
+  Future<ChatReply> chat(List<ChatTurn> messages, {String? reportId}) async {
     sent.add(List.of(messages));
+    reportIds.add(reportId);
     final last = messages.last.content.split('\n').last;
     final fixed = answers[last];
     if (fixed != null) return ChatReply(answer: fixed);
@@ -80,8 +83,11 @@ Future<_Harness> _pump(
   ChatHistoryRepository? history,
   double textScale = 1.0,
   bool disableAnimations = false,
+  ReportRef? focus,
 }) async {
   final h = _Harness(repo ?? _FakeContentRepo(), history ?? _seenHistory());
+  ReportFocus.current.value = focus;
+  addTearDown(() => ReportFocus.current.value = null);
   tester.view.physicalSize = const Size(360 * 3, 760 * 3);
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
@@ -659,6 +665,22 @@ void main() {
       await _pump(tester, textScale: 1.3);
       await _openDrawer(tester);
       expect(tester.takeException(), isNull, reason: '기록 없음');
+    });
+  });
+
+  group('리포트를 아는 챗봇', () {
+    testWidgets('보던 리포트 id를 함께 보내고, 빈 화면에 어느 리포트인지 알린다', (tester) async {
+      final h = await _pump(tester, focus: const ReportRef('r9', '행복아파트 101호'));
+      expect(find.koText("'행복아파트 101호' 리포트 내용을 알고 답해요"), findsOneWidget);
+      await _send(tester, '왜 위험이야?');
+      expect(h.repo.reportIds.single, 'r9');
+    });
+
+    testWidgets('리포트가 없으면 id 없이 보내고 안내 줄도 없다', (tester) async {
+      final h = await _pump(tester);
+      expect(find.byKey(const ValueKey('chat-report-focus')), findsNothing);
+      await _send(tester, '안녕');
+      expect(h.repo.reportIds.single, isNull);
     });
   });
 }

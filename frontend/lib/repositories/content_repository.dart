@@ -23,7 +23,8 @@ abstract class ContentRepository {
   /// 챗봇 — 최근 대화(마지막 = 이번 질문) → 답 하나 (계약 §3.21 · 2026-10-24).
   ///
   /// 판정 요구 알아채기·AI 답·검사·기본 문장은 전부 서버 쪽 일이다. 앱은 그리기만 한다.
-  Future<ChatReply> chat(List<ChatTurn> messages);
+  /// [reportId]: 사용자가 보던 리포트(2026-10-26) — 서버가 그 리포트(이 사용자 것만, 이름 가린 사본)를 알고 답한다.
+  Future<ChatReply> chat(List<ChatTurn> messages, {String? reportId});
 
   /// 계약 여정 단계.
   Future<List<JourneyStage>> journeyStages();
@@ -172,7 +173,7 @@ class DummyContentRepository implements ContentRepository {
 
   /// 서버 챗봇의 **아주 얇은 흉내** — 위젯 테스트가 서버 없이 대화를 그릴 수 있을 만큼만.
   @override
-  Future<ChatReply> chat(List<ChatTurn> messages) async {
+  Future<ChatReply> chat(List<ChatTurn> messages, {String? reportId}) async {
     final q = messages.isEmpty ? '' : messages.last.content.trim();
     for (final t in await glossaryTerms()) {
       if (q.contains(t.term)) {

@@ -285,6 +285,9 @@ class ChatRequest(BaseModel):
     """`POST /api/chat` — 마지막 줄이 이번 질문(`user`)이어야 한다. 앞의 것은 맥락."""
 
     messages: list[ChatMessage] = Field(min_length=1, max_length=20)
+    # 사용자가 보던 리포트 id (2026-10-26, 선택) — 있으면 챗봇이 그 리포트(이 사용자 것만)를 알고 답한다.
+    # 없거나 남의 것·없는 id면 그냥 리포트 없이 답한다(에러 아님).
+    reportId: Optional[str] = Field(default=None, max_length=100)
 
 
 class ChatResponse(BaseModel):

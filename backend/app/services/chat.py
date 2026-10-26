@@ -39,7 +39,12 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from . import llm, terms, text_guard, thresholds
-from .llm.prompts import CHAT_CAREFUL_ADDENDUM, CHAT_REPAIR_MESSAGE, CHAT_SYSTEM_PROMPT
+from .llm.prompts import (
+    CHAT_CAREFUL_ADDENDUM,
+    CHAT_REPAIR_MESSAGE,
+    CHAT_REPORT_ADDENDUM,
+    CHAT_SYSTEM_PROMPT,
+)
 
 _log = logging.getLogger("jeonseai")
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -222,11 +227,66 @@ def facts_block() -> str:
     return "\n".join(lines) or "· (없음)"
 
 
-def system_prompt(careful: bool) -> str:
+def system_prompt(careful: bool, report_text: str | None = None) -> str:
     base = CHAT_SYSTEM_PROMPT.format(
         glossary=glossary_block(), criteria=criteria_block(), facts=facts_block()
     )
-    return base + (CHAT_CAREFUL_ADDENDUM if careful else "")
+    report_part = CHAT_REPORT_ADDENDUM.format(report=report_text) if report_text else ""
+    return base + report_part + (CHAT_CAREFUL_ADDENDUM if careful else "")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 사용자의 리포트 (2026-10-26 — "챗봇이 내 리포트를 알아야 맞춤으로 답한다", 규혁)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 재료는 **서버에 남은 가린 사본**(`store.get` — 사람 이름 `홍○○`)이다 → 설명용 LLM 입력에 실명이 없다(CLAUDE.md §2-5).
+# 리포트의 등급·근거는 **규칙 엔진이 이미 낸 결과**라, 챗봇은 그것을 전하고 풀어 줄 뿐 바꾸거나 새로 만들지 않는다(§2-1).
+
+
+def _won(v: int | None) -> str:
+    """원 → '1억 2,000만원' 꼴 (없으면 '모름')."""
+    if v is None:
+        return "모름"
+    if v == 0:
+        return "0원"
+    eok, man = divmod(int(v) // 10_000, 10_000)
+    parts = ([f"{eok}억"] if eok else []) + ([f"{man:,}만"] if man else [])
+    return (" ".join(parts) or "0") + "원"
+
+
+def report_block(report) -> tuple[str, list[float]]:
+    """리포트 → (AI에게 줄 글, 그 글에 나온 숫자들). 숫자는 답에 써도 되는 수로 더한다."""
+    lines = [
+        f"· 매물: {report.alias}",
+        f"· 종합 판정(규칙 엔진 결과): {report.grade} — {report.headline}",
+        f"· 가장 큰 위험: {report.topRiskSummary}" if report.topRiskSummary else "",
+        f"· 다음 할 일(리포트 안내): {report.nextAction}" if report.nextAction else "",
+        f"· 보증금 {_won(report.deposit)} · 집값(시세) {_won(report.marketPrice)}"
+        + (f" (기준일 {report.marketPriceAsOf})" if report.marketPrice and report.marketPriceAsOf else "")
+        + f" · 나보다 먼저 받아 가는 빚(선순위 채권) 합계 {_won(report.seniorDebtAmount)}",
+        f"· 등기부를 뗀 날(열람일): {report.registryViewedAt}" if report.registryViewedAt else "",
+        "· 근거 카드:",
+    ]
+    for e in report.evidences:
+        detail = " ".join(x for x in (e.statusLabel, e.easyExplanation, e.detailText) if x)
+        lines.append(f"  - {e.title}: {e.grade} — {detail[:300]}")
+    if report.riskFacts:
+        lines.append("· 등기부에서 찾은 위험 항목:")
+        for f in report.riskFacts[:8]:
+            amount = f", 금액 {_won(f.amount)}" if f.amount else ""
+            when = f", 접수 {f.receiptDate}" if f.receiptDate else ""
+            holder = f", 권리자 {f.holder}" if f.holder else ""
+            lines.append(f"  - {f.kind}{when}{amount}{holder}")
+    if report.checkedNotes:
+        lines.append("· 확인 메모: " + " / ".join(n.replace("**", "") for n in report.checkedNotes[:6]))
+    text = "\n".join(x for x in lines if x)
+    numbers = [value for _, value in text_guard.extract_numbers(text)]
+    return text, numbers
+
+
+def report_grades(report) -> set[str]:
+    """리포트에 실제로 나온 등급 글자들(종합 + 근거 카드) — 챗봇이 그대로 전할 수 있는 것."""
+    return {report.grade, *(e.grade for e in report.evidences)}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -396,12 +456,15 @@ def stats() -> dict:
     return {**_stats, "recentRejects": list(_recent_rejects)}
 
 
-def reply(messages: Iterable[dict | Turn]) -> ChatReply:
-    """최근 대화 → 화면에 그릴 답. **어떤 실패에도 예외를 던지지 않는다.**"""
-    return _record(_reply(messages))
+def reply(messages: Iterable[dict | Turn], report=None) -> ChatReply:
+    """최근 대화 → 화면에 그릴 답. **어떤 실패에도 예외를 던지지 않는다.**
+
+    `report`: 사용자가 보던 리포트(서버의 가린 사본, `contract.Report`) — 있으면 그 내용을 알고 답한다(2026-10-26).
+    """
+    return _record(_reply(messages, report))
 
 
-def _reply(messages: Iterable[dict | Turn]) -> ChatReply:
+def _reply(messages: Iterable[dict | Turn], report=None) -> ChatReply:
     turns = _clean_turns(messages)
     if not turns or turns[-1].role != "user":
         return ChatReply(answer=RETRY_FALLBACK, mode=MODE_FALLBACK, layer="빈질문")
@@ -417,7 +480,7 @@ def _reply(messages: Iterable[dict | Turn]) -> ChatReply:
         return _fallback(question, careful, layer="AI꺼짐", text=OFFLINE_FALLBACK)
 
     try:
-        return _generate(turns, careful)
+        return _generate(turns, careful, report)
     except Exception as e:  # noqa: BLE001 — 구조적 방어선: 챗봇이 화면을 깨뜨리지 않는다
         _log.error(f"[챗봇] ⚠ 예기치 못한 예외 — 기본 문장으로 ({type(e).__name__})", exc_info=True)
         return _fallback(question, careful, layer="예외", text=OFFLINE_FALLBACK, llm_calls=1)
@@ -437,17 +500,26 @@ def _parse(payload: dict) -> tuple[str | None, str | None, str]:
     return tidy(parsed.answer), parsed.kind, ""
 
 
-def _generate(turns: list[Turn], careful: bool) -> ChatReply:
+def _generate(turns: list[Turn], careful: bool, report=None) -> ChatReply:
     question = turns[-1].content
     provider = llm.chat_provider()
     if not provider.available:
         _log.info(f"[챗봇:{provider.name}] API 키 없음 — 기본 문장")
         return _fallback(question, careful, layer="키없음", text=OFFLINE_FALLBACK)
 
-    system = system_prompt(careful)
+    report_text, report_numbers, grades = None, [], None
+    if report is not None:
+        try:
+            report_text, report_numbers = report_block(report)
+            grades = report_grades(report)
+            _log.info(f"[챗봇] 리포트를 알고 답함 — 등급 {report.grade} · 근거 {len(report.evidences)}개")
+        except Exception as e:  # noqa: BLE001 — 리포트 글을 못 만들면 리포트 없이 답한다
+            _log.info(f"[챗봇] 리포트 글 만들기 실패 — 리포트 없이 답함 ({type(e).__name__})")
+            report_text, report_numbers, grades = None, [], None
+    system = system_prompt(careful, report_text)
     history = [{"role": t.role, "content": t.content} for t in turns[:-1]]
     allowed = text_guard.chat_allowed_numbers(
-        [t.content for t in turns if t.role == "user"], criteria_numbers()
+        [t.content for t in turns if t.role == "user"], [*criteria_numbers(), *report_numbers]
     )
     user_msg = question
     calls = 0
@@ -470,7 +542,9 @@ def _generate(turns: list[Turn], careful: bool) -> ChatReply:
         text, kind, why = _parse(payload)
         code = "스키마" if why else ""
         if not why:
-            verdict = text_guard.check_chat_reply(text or "", allowed=allowed, careful=careful)
+            verdict = text_guard.check_chat_reply(
+                text or "", allowed=allowed, careful=careful, report_grades=grades
+            )
             if verdict is None:
                 mix = criteria_mixup(text or "")
                 verdict = ("기준혼동", mix) if mix else None

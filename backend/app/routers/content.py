@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from .. import dummy_data
-from ..dependencies import checked_device_id, limit_chat
+from ..dependencies import checked_device_id, get_current_user, limit_chat
 from ..schemas.contract import (
     ChatRequest,
     ChatResponse,
@@ -25,7 +25,7 @@ from ..schemas.contract import (
     JourneyStage,
     PrecedentStatus,
 )
-from ..services import chat, journey
+from ..services import chat, journey, store
 
 router = APIRouter(prefix="/api", tags=["content"])
 
@@ -51,6 +51,7 @@ def chat_reply(
     body: ChatRequest,
     request: Request,
     x_device_id: Optional[str] = Header(default=None, alias="X-Device-Id"),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
 ) -> ChatResponse:
     """챗봇 (계약 §3.21 · 2026-10-24). 최근 대화 → 답 하나. **항상 200**(AI가 못 답하면 기본 문장).
 
@@ -63,8 +64,19 @@ def chat_reply(
     if len(last.content.strip()) > chat.MAX_USER_CHARS:
         raise HTTPException(status_code=400, detail=f"질문은 {chat.MAX_USER_CHARS}자까지 보낼 수 있어요")
     limit_chat(request, checked_device_id(x_device_id) or "no-device")
-    r = chat.reply([m.model_dump() for m in body.messages])
+    r = chat.reply([m.model_dump() for m in body.messages], report=_own_report(body.reportId, x_device_id, authorization))
     return ChatResponse(answer=r.answer, mode=r.mode, model=r.model)
+
+
+def _own_report(report_id: Optional[str], x_device_id: Optional[str], authorization: Optional[str]):
+    """이 사용자의 리포트(서버의 **가린 사본**) — 없거나 남의 것·세션 오류면 None(리포트 없이 답한다)."""
+    if not report_id:
+        return None
+    try:
+        owner = get_current_user(x_device_id=x_device_id, authorization=authorization)
+        return store.get(report_id, device_id=owner)
+    except Exception:  # noqa: BLE001 — 리포트를 못 찾아도 챗봇은 답한다
+        return None
 
 
 @router.get("/glossary/lookup", response_model=GlossaryAnswer)

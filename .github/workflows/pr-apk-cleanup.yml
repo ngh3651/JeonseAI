@@ -1,0 +1,23 @@
+# PR을 닫으면(합치든 그냥 닫든) 그 PR의 미리보기 APK(app-preview 릴리스의 pr-<번호>.apk)를 지운다 (2026-10-26).
+# 미리보기 APK는 ci.yml의 'PR 미리보기 APK 링크 올리기'가 올린다.
+name: PR 미리보기 APK 지우기
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    name: 미리보기 APK 지우기
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh release delete-asset app-preview "pr-${PR}.apk" --yes -R "$GITHUB_REPOSITORY" \
+            && echo "지웠어요: pr-${PR}.apk" || echo "지울 미리보기 APK가 없어요"

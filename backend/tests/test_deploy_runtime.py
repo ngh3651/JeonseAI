@@ -582,3 +582,19 @@ def test_DISABLE_DOCS면_API_문서가_꺼진다(monkeypatch):
     finally:
         monkeypatch.delenv("DISABLE_DOCS")
         importlib.reload(main)
+
+
+def test_판례_미리_준비는_색인이_다_만들어진_뒤에만_검색기를_만든다(monkeypatch, tmp_path):
+    """빈 색인으로 검색기를 만들면 재시작 전까지 판례 0건으로 굳는다 — meta.json이 생길 때까지 기다린다 (2026-10-26)."""
+    from app import main
+    from app.services.precedent import service as precedent_service
+    from app.services.precedent import store as pstore
+
+    made: list[int] = []
+    monkeypatch.setattr(pstore, "current_index_dir", lambda: tmp_path)
+    monkeypatch.setattr(precedent_service, "get_service", lambda: made.append(1))
+    main._warm_precedents(wait_seconds=0, poll=0)
+    assert made == [], "색인이 없으면 만들지 않는다"
+    (tmp_path / "meta.json").write_text("{}", encoding="utf-8")
+    main._warm_precedents(wait_seconds=0, poll=0)
+    assert made == [1]

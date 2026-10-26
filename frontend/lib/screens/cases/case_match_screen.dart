@@ -19,6 +19,7 @@ import '../../models/analysis_report.dart';
 import '../../models/content_models.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
+import '../../state/case_prefetch.dart';
 import '../../services/api_client.dart';
 import 'case_card.dart';
 
@@ -54,7 +55,8 @@ class _CaseMatchScreenState extends State<CaseMatchScreen> {
       // 칩(위험 패턴)은 리포트에서, 판례 목록은 서버 파생 결과에서 (계약 §2.2·§3.5)
       final report = await analysisRepo.getReport(reportId);
       if (report == null) return (null, const <CaseMatch>[]);
-      final cases = await contentRepo.matchedCases(reportId);
+      // 리포트를 열 때 미리 받아 둔 판례가 있으면 바로 쓴다(받는 중이면 이어서 기다린다) — 2026-10-26
+      final cases = await CasePrefetch.get(contentRepo, reportId);
       return (report, cases);
     }();
   }

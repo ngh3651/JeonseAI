@@ -84,7 +84,8 @@ jobs:
     name: APK 빌드
     runs-on: ubuntu-latest
     permissions:
-      contents: write # main에서 고정 링크(app-latest 릴리스)에 APK를 올릴 때만 쓴다
+      contents: write # main에서 고정 링크(app-latest 릴리스)에, PR에서 미리보기(app-preview 릴리스)에 APK를 올린다
+      pull-requests: write # PR에 '폰에서 이 링크로 설치' 댓글을 단다
     defaults:
       run:
         working-directory: frontend
@@ -199,6 +200,32 @@ jobs:
               --title "전세AI프 최신 앱 (자동)" --notes "$NOTES" -R "$GITHUB_REPOSITORY"
           fi
           echo "올렸어요: https://github.com/${GITHUB_REPOSITORY}/releases/download/app-latest/jeonseai.apk"
+      # PR 미리보기 (2026-10-26) — main을 기다리지 않고 폰에서 링크 하나로 그 PR 앱을 깔아 본다.
+      # app-preview 릴리스에 pr-<번호>.apk로 올리고, PR에 링크 댓글을 하나 단다(새로 올리면 같은 댓글을 고친다).
+      # ⚠ 시연 앱('전세AI프')과 같은 앱이라 **덮어 설치**된다(기록은 그대로). main에 합쳐지면 고정 링크 APK로 다시 덮으면 된다.
+      # 같은 저장소의 PR + 고정 키일 때만(다른 저장소에서 온 PR엔 비밀값이 없다). PR을 닫으면 pr-apk-cleanup.yml이 지운다.
+      - name: PR 미리보기 APK 링크 올리기 (PR + 고정 키일 때만)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.signing.outputs.kind == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          NAME="pr-${PR}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$NAME"
+          if ! gh release view app-preview -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create app-preview --prerelease --target main --title "PR 미리보기 앱 (자동)" \
+              --notes "PR마다 pr-<번호>.apk가 올라와요. PR을 닫으면 지워져요." -R "$GITHUB_REPOSITORY"
+          fi
+          gh release upload app-preview "$NAME" --clobber -R "$GITHUB_REPOSITORY"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/app-preview/${NAME}"
+          BODY=$(printf '%s\n' \
+            "📱 **폰에서 이 PR 앱 깔기**: [${NAME}](${URL})" \
+            "" \
+            "누르면 받아져요 → 설치. 시연 앱('전세AI프') 위에 덮어 설치돼요(기록 그대로)." \
+            "빌드 ${GITHUB_RUN_NUMBER} · ${GITHUB_SHA::7} · $(TZ=Asia/Seoul date '+%m-%d %H:%M') KST")
+          gh pr comment "$PR" --edit-last --body "$BODY" -R "$GITHUB_REPOSITORY" 2>/dev/null \
+            || gh pr comment "$PR" --body "$BODY" -R "$GITHUB_REPOSITORY"
+          echo "올렸어요: $URL"
       - name: 고정 링크를 건너뛴 이유
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.signing.outputs.kind != 'release'
         run: echo "::notice::고정 서명 키 비밀값(ANDROID_SIGNING_BUNDLE)이 없어 고정 링크에 올리지 않았어요 — 이번 APK는 Artifacts에만 있어요."

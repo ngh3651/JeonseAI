@@ -317,7 +317,13 @@ CompareRow {
   gradeAfter:  string | null,
   action:      string | null, // "recapture" | "analyze"
   actionLabel: string | null,
-  group: string | null       // owner(갑구 소유자) | seizure(갑구 압류·가압류) | debt(을구 빚) | grade(안전도) — 앱이 두 줄로 묶는다(2026-10-26)
+  group: string | null,      // owner(갑구 소유자) | seizure(갑구 압류·가압류) | debt(을구 빚) | grade(안전도) — 앱이 두 줄로 묶는다(2026-10-26)
+  items: CompareItem[]       // added·removed 줄의 항목 — 한 건에 한 줄(2026-10-27). 그 밖의 줄은 []
+}
+CompareItem {
+  label:       string,        // 압류 · 가압류 · 경매개시결정 · 근저당권 …
+  receiptDate: string | null, // 접수일 YYYY-MM-DD
+  amountText:  string | null  // 금액이 붙는 종류만: "채권최고액 1억 2,000만원" · 못 읽었거나 0원이면 "금액 확인 필요"
 }
 ```
 
@@ -326,7 +332,7 @@ CompareRow {
 | result | 조건 | 화면이 하는 일 |
 |---|---|---|
 | `changed` | 같은 집 + 모든 항목을 맞춰봄 | 변한 것과 **안 변한 것을 모두** 보여준다 |
-| `partial` | 못 읽은 항목이 있거나 같은 집인지 확인 못 함 | 못 본 것을 `unknown`으로 말하고 "달라진 게 없다는 뜻이 아니에요" + 행동 버튼 |
+| `partial` | 못 읽은 항목이 있거나 같은 집인지 확인 못 함 · **두 서류 중 하나라도 빠진 쪽(`missingPages`)이 있음**(2026-10-27 — 이때는 어떤 칸도 견주지 않는다) | 못 본 것을 `unknown`으로 말하고 "달라진 게 없다는 뜻이 아니에요" + 행동 버튼 |
 | `no_baseline` | 기준 리포트에 추출 스냅샷이 없음(이 기능 이전 이력) | 비난이 아니라 초대 톤. **사진을 받기 전에** 나온다 |
 | `different_property` | 고유번호(없으면 소재지·전용면적)가 다름 | **수치를 아예 렌더하지 않는다.** 이번 분석은 이력에서도 지운다 |
 
@@ -395,6 +401,7 @@ MarketPriceAlternative {
   | `deposit` | integer | ✅ | 예정 보증금(원) |
   | `marketPrice` | integer | ✖ | 매매 시세(원). 없으면 전세가율 근거가 "확인 필요"로 |
   | `alias` | string | ✖ | 매물 별칭. 없으면 서버가 표제부 주소를 별칭으로 |
+  | `replaces` | string | ✖ | 이 분석이 **대신하는** 리포트 id — 빠진 쪽을 보충해 다시 낸 경우(2026-10-27). 같은 집이면 그 리포트를 지운 뒤 `changeFromPrevious`를 만든다 |
 
 - **응답 200**: `Report`(§2.1, `evidences` 포함) 하나.
 - **참고**: 옛 통신 검증용 `POST /api/upload`는 2026-10-26에 지웠다 — `/api/analyze`가 그 역할을 대체했다.
@@ -440,6 +447,7 @@ MarketPriceAlternative {
 - **목적**: 기준 리포트의 등기부와 **이번에 뗀 등기부**를 맞춰본다 (S-11 화면 6).
 - **인증**: 개발 모드 통과(§1.2).
 - **요청**: `multipart/form-data`, 필드 `files`(이미지 여러 장). **사진 없이도 호출할 수 있다.**
+  선택 필드 `replaces` = 앞 대조로 생긴(빠진 쪽이 있던) 리포트 id — 빠진 쪽을 더 찍어 다시 대조할 때. 같은 집이면 지운다(기준 리포트는 지우지 않는다).
 - **처리**: 새 사진을 그대로 분석 파이프라인에 태워(**기준과 같은 보증금·시세**) 새 리포트를 만들고, 그 추출 스냅샷을 기준 스냅샷과 견준다. 등급 변화를 말할 수 있는 이유가 이것이다 — 두 등급 모두 규칙 엔진 산출물이다.
 - **응답 200**: `CompareResult`(§2.9).
   - 기준 스냅샷이 없으면 **사진을 읽지 않고** `no_baseline`으로 답한다(찍게 해 놓고 마지막에 못 한다고 말하지 않기 위해 — 앱은 `Report.comparable`로 미리 안다).

@@ -95,6 +95,10 @@ def analyze(
     deposit: int = Form(..., description="예정 보증금(원)"),
     marketPrice: Optional[int] = Form(default=None, description="매매 시세(원, 선택)"),
     alias: Optional[str] = Form(default=None, description="매물 별칭(선택)"),
+    replaces: Optional[str] = Form(
+        default=None,
+        description="이 분석이 **대신하는** 리포트 id(선택) — 빠진 쪽을 보충해 다시 낸 경우. 같은 집이면 그 리포트를 지운다",
+    ),
     device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
 ) -> Report:
     """등기부 사진 + 입력값으로 분석해 리포트를 만든다 (E-1c 실배선).
@@ -128,12 +132,38 @@ def analyze(
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
+    # 빠진 쪽 보충이면 덜 찍은 리포트를 이 리포트로 **대신한다** — 기록이 두 줄로 남지 않게, 그리고
+    # 바로 전 리포트가 덜 찍은 것이 되어 틀린 변동이 잡히지 않게 (2026-10-27). 견주기 **전에** 지운다.
+    _drop_replaced(report, replaces, device_id=device_id)
     # 같은 집 바로 전 리포트와 견준 결과를 싣는다 — 홈에서 다시 분석해도 '등기부 변동 기록'에 남게 (2026-10-27)
     report = _attach_change(report, device_id=device_id)
     analysis_cache.remember(cache_key, report, device_id=device_id)
     # 같은 집은 최신 5건만 (화면엔 최신 1개 — 앱이 고유번호·주소로 묶는다)
     store.prune_versions(report, device_id=device_id)
     return report
+
+
+def _drop_replaced(
+    new: Report, replaces: Optional[str], *, device_id: str, keep: frozenset[str] = frozenset()
+) -> None:
+    """[new]가 대신하는 리포트([replaces])를 지운다 — **같은 집일 때만**. 아니면 그대로 둔다.
+
+    빠진 쪽을 보충한 분석은 새 분석이 아니라 **같은 서류를 마저 낸 것**이다. 덜 찍은 리포트가 남으면
+    '등기부 변동 기록'이 두 줄이 되고, 다음 대조가 덜 찍은 서류를 기준으로 삼는다.
+    """
+    if not replaces or replaces == new.id or replaces in store.EXAMPLE_IDS or replaces in keep:
+        return
+    try:
+        old = store.get(replaces, device_id=device_id)
+        if old is None:
+            return
+        if not store.same_property(old, new):
+            _log.info(f"[이력] 대신할 리포트 {replaces}가 다른 집이라 그대로 둡니다")
+            return
+        store.remove(replaces, device_id=device_id)
+        _log.info(f"[이력] 빠진 쪽 보충 — 덜 찍은 리포트 {replaces}를 {new.id}로 대신했습니다")
+    except Exception as e:  # noqa: BLE001 — 정리 실패로 분석 결과를 잃지 않는다
+        _log.error(f"[이력] ⚠ 덜 찍은 리포트를 지우지 못함 — 두 줄로 남습니다 ({type(e).__name__})")
 
 
 def _attach_change(report: Report, *, device_id: str) -> Report:
@@ -166,6 +196,10 @@ def compare_registry(
     request: Request,
     report_id: str,
     files: list[UploadFile] = File(default=[], description="이번에 뗀 등기부 사진(여러 장)"),
+    replaces: Optional[str] = Form(
+        default=None,
+        description="이 대조가 **대신하는** 리포트 id(선택) — 빠진 쪽을 더 찍어 다시 대조한 경우(앞 대조로 생긴 리포트)",
+    ),
     device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
 ) -> CompareResult:
     """기준 리포트의 등기부와 **이번에 뗀 등기부**를 맞춰본다 (계약 여정 S-11).
@@ -229,6 +263,8 @@ def compare_registry(
             store.add(current_report, device_id=device_id)
         except Exception as e:  # noqa: BLE001
             _log.error(f"[대조] ⚠ 대조 결과를 리포트에 싣지 못함 ({type(e).__name__})")
+        # 빠진 쪽을 더 찍어 다시 대조했으면 앞 대조로 생긴(덜 찍은) 리포트를 지운다 — 기준 리포트는 지키고 (2026-10-27)
+        _drop_replaced(current_report, replaces, device_id=device_id, keep=frozenset({report_id}))
         # 새 등기부로 만든 리포트가 그 집의 최신 리포트가 된다 — 같은 집은 최신 5건만
         store.prune_versions(current_report, device_id=device_id)
     return result

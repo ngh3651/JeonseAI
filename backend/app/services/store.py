@@ -83,6 +83,7 @@ def snapshot_from_json(text: str) -> RegistrySnapshot:
     raw = json.loads(text)
     raw["owner_keys"] = tuple(raw.get("owner_keys") or ())
     raw["missing_fields"] = tuple(raw.get("missing_fields") or ())
+    raw["missing_pages"] = tuple(raw.get("missing_pages") or ())  # 2026-10-27 전 스냅샷엔 없다
     raw["entries"] = {
         name: tuple(Fingerprint(**fp) for fp in fps)
         for name, fps in (raw.get("entries") or {}).items()

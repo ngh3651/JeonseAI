@@ -279,8 +279,30 @@ def same_property(a: Report, b: Report) -> bool:
     """
     if a.propertyId and b.propertyId:
         return a.propertyId == b.propertyId
-    ka, kb = property_key(a.address), property_key(b.address)
+    # 쪽 머리 주소(호수까지)가 둘 다 있으면 그것으로 — IE 주소는 쪽에 따라 건물 주소(호수 없음)가 되기도 한다
+    if a.propertyAddress and b.propertyAddress:
+        ka, kb = property_key(a.propertyAddress), property_key(b.propertyAddress)
+    else:
+        ka, kb = property_key(a.address), property_key(b.address)
     return bool(ka) and ka == kb
+
+
+def previous_version(report: Report, *, device_id: str) -> Report | None:
+    """[report]와 같은 집의 **바로 전** 리포트 (없으면 None) — '등기부 변동 기록'에 한 줄을 만들 때."""
+    try:
+        rows = list(
+            _db().execute(
+                "SELECT report_json FROM reports WHERE device_id = ? ORDER BY created_at DESC, rowid DESC",
+                (device_id,),
+            )
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    target = _fill_property_ids([report], device_id=device_id)[0]
+    for r in _fill_property_ids(_parse_reports(rows), device_id=device_id):
+        if r.id != target.id and r.analyzedAt <= target.analyzedAt and same_property(r, target):
+            return r
+    return None
 
 
 def _fill_property_ids(reports: list[Report], *, device_id: str) -> list[Report]:

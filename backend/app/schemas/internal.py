@@ -161,6 +161,10 @@ class RegistryExtract(BaseModel):
     jeonse_rights: list[MoneyEntry] = Field(default_factory=list)
     lease_registrations: list[RegistryEntry] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
+    # 사진 묶음이 불완전하다 (2026-10-27) — 꼬리말 쪽 번호로 본 **빠진 쪽**이 있거나, 촬영 검사에서
+    # **잘 안 읽혔을 수 있는 장**(흐림·잘림·빛 번짐 …)이 있다. IE가 돌려준 값이 아니라 분석 조립(report_builder)이
+    # 사진 점검 결과로 켠다. 켜지면 아래 [doc_incomplete] 게이트가 '양호'를 막는다(보수적 편향 §2-3).
+    pages_incomplete: bool = False
 
     LIST_KEYS: ClassVar[tuple[str, ...]] = _LIST_KEYS
 
@@ -217,8 +221,16 @@ class RegistryExtract(BaseModel):
     @property
     def doc_incomplete(self) -> bool:
         """문서 신뢰도 게이트 — 주소·현소유자는 모든 등기부에 반드시 있으므로,
-        없으면 페이지 누락·추출 실패로 보고 어떤 항목도 '양호' 단정을 금지한다."""
-        return bool(self.missing_fields) or self.address is None or not self.current_owners
+        없으면 페이지 누락·추출 실패로 보고 어떤 항목도 '양호' 단정을 금지한다.
+
+        2026-10-27: 사진 점검에서 쪽이 빠졌거나 잘 안 읽힌 장이 있어도([pages_incomplete]) 같다 —
+        빠진 쪽에 근저당이 있으면 '양호'가 거짓말이 된다(위험을 놓치는 쪽 = 최악의 오류)."""
+        return (
+            bool(self.missing_fields)
+            or self.address is None
+            or not self.current_owners
+            or self.pages_incomplete
+        )
 
 
 # ── 판정 결과 모델 ───────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ import '../../models/analysis_report.dart';
 import '../../models/property_reports.dart';
 import '../../state/journey_progress_store.dart';
 import '../../utils/korean_date.dart';
+import '../journey/journey_compare_flow.dart' show reanalysisLogEntry;
 import '../journey/journey_parts.dart';
 
 /// "2026.09.30"
@@ -34,9 +35,11 @@ String versionSubline(
       ? '등기부 날짜 못 읽음'
       : '등기부 ${formatMonthDay(viewed)}자';
   if (isFirst) return '$doc · 첫 분석';
-  final log = (progress ?? JourneyProgressStore.instance).logForReport(
-    report.id,
-  );
+  // 여정에서 대조한 기록이 먼저, 없으면 서버가 바로 전 리포트와 견준 결과(2026-10-27 홈 다시 분석)
+  final log =
+      (progress ?? JourneyProgressStore.instance).logForReport(report.id) ??
+      (report.changeFromPrevious == null ? null : reanalysisLogEntry(report));
+  if (log != null && !log.compared) return doc;
   if (log == null) return doc;
   return log.changed ? '$doc · 변동 ${log.changedCount}건' : '$doc · 변동 없음';
 }

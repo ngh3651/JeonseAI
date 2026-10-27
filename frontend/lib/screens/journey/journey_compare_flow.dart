@@ -440,6 +440,46 @@ List<CompareSummaryLine> summarizeCompare(CompareResult result) {
 }
 
 /// 기록에 남길 바뀐 줄 — "을구 · 새로 생긴 빚이 있어요" / 상세(서버 문구 그대로 " · "로 이음)
+/// 여정 '등기부 변동 기록'의 줄들 (최신이 앞, 맨 아래 '첫 분석' 줄은 카드가 따로 그린다) — 2026-10-27.
+///
+/// - 여정의 [대조하기]로 남긴 기록(이 폰) 그대로
+/// - 그 밖에 같은 집을 **다시 분석**한 리포트(홈 등)마다 한 줄 — 서버가 바로 전 리포트와 견준 결과
+///   (`changeFromPrevious`)로 '변동 없음/N건'. 견준 기록이 없는 옛 리포트는 꼬리표 없이 "다시 분석"만.
+List<CompareLogEntry> journeyChangeLog(
+  PropertyReports property,
+  List<CompareLogEntry> local,
+) {
+  final logged = {
+    for (final e in local)
+      if (e.reportId != null) e.reportId!,
+  };
+  final first = property.first;
+  final entries = <CompareLogEntry>[
+    ...local,
+    for (final r in property.reports)
+      if (r.id != first.id && !logged.contains(r.id))
+        reanalysisLogEntry(r),
+  ]..sort((a, b) => b.at.compareTo(a.at));
+  return entries;
+}
+
+/// 다시 분석한 리포트 한 건 → 기록 한 줄 (전 리포트와 견준 결과가 없으면 `compared=false`).
+CompareLogEntry reanalysisLogEntry(AnalysisReport r) {
+  final change = r.changeFromPrevious;
+  final usable = change != null && change.outcome == CompareOutcome.changed;
+  return CompareLogEntry(
+    at: r.analyzedAt,
+    changedCount: usable
+        ? summarizeCompare(change).fold(0, (s, l) => s + l.count)
+        : 0,
+    reportId: r.id,
+    viewedAt: r.registryViewedAt,
+    lines: usable ? compareLogLines(change) : const [],
+    reanalysis: true,
+    compared: usable,
+  );
+}
+
 List<CompareLogLine> compareLogLines(CompareResult result) => [
   for (final line in summarizeCompare(result))
     for (final r in line.rows)

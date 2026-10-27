@@ -143,6 +143,10 @@
 | `checkedNotes` | string[] | [표시] | "무엇을 찾아봤나" 요약 — §9 (기본 `[]`) |
 | `registryViewedAt` | string \| null | [표시] | 등기부 열람일시 `YYYY.MM.DD` — §9 |
 | `propertyId` | string \| null | [메타] | 부동산고유번호 **숫자만**(10자리 이상, 못 읽으면 `null`) — 같은 집 묶기의 첫 기준(둘 다 있으면 이것만, 아니면 도로명 병기를 뗀 주소). 화면에 안 보임 (2026-10-27) |
+| `propertyAddress` | string \| null | [메타] | 쪽 머리 `[집합건물] …` 주소(호수까지) — 같은 집 묶기의 두 번째 기준(둘 다 있으면 이것으로). 화면에 안 보임 (2026-10-27) |
+| `missingPages` | int[] | [표시] | 꼬리말 쪽 번호(N/M)로 본 **빠진 쪽**(1부터, 기본 `[]`). 쪽 번호를 못 읽은 사진이 있으면 비운다 — '다시 올리기' 카드 (2026-10-27) |
+| `pageNumbers` | (int \| null)[] | [표시] | 올린 순서마다 꼬리말 쪽 번호(못 읽으면 null) — 카드가 문서 쪽 번호로 말한다 (2026-10-27) |
+| `changeFromPrevious` | `CompareResult` \| null | [표시] | 같은 집 **바로 전 리포트**와 견준 결과(사진·AI 호출 없이 스냅샷끼리) — 여정 '등기부 변동 기록' 한 줄. 판정은 바뀌지 않는다 (2026-10-27) |
 | `comparable` | boolean | [메타] | 이 분석을 **다음 등기부와 견줄 기준으로 쓸 수 있는가** — §2.9 (기본 `false`) |
 | `privacyMasks` · `privacyMasksReady` | `PrivacyMask[]` · boolean | [표시] | 사진 속 실명·주민번호 **자리**(글자 없음) — §9.8 (기본 `[]` · `false`) |
 | `captureCheck` | `CaptureCheck` \| null | [표시] | 촬영 품질 검사 — 장별 흐림·어두움·잘림 안내 §9.9 (기본 `null`). 심하면 분석 전 400 |

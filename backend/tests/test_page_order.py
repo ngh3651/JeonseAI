@@ -278,3 +278,32 @@ def test_중복이_없으면_그대로_통과한다():
     check = check_document(pages)
     assert check.ok_to_highlight_money is True
     assert check.notice is None
+
+
+# ── 일부 쪽만, 순서도 섞어 올림 (2026-10-27 실기기: 5쪽 중 2·3·4쪽) ─────────────────────
+def test_일부_쪽만_섞어_올리면_빠진_쪽을_말한다():
+    check = check_document([
+        paged(0, page_no=4, total=5),
+        paged(1, page_no=2, total=5),
+        paged(2, page_no=3, total=5),
+    ])
+    assert check.missing_pages == [1, 5]
+    assert check.page_numbers == [4, 2, 3]
+    assert check.notice and "1·5쪽이 빠졌어요" in check.notice
+
+
+def test_순서대로_일부만_올려도_빠진_쪽을_센다():
+    check = check_document([paged(i, page_no=n, total=5) for i, n in enumerate([2, 3, 4])])
+    assert check.missing_pages == [1, 5]
+    assert check.ok_to_highlight_money is False
+
+
+def test_쪽_번호를_못_읽은_장이_있으면_빠진_쪽을_단정하지_않는다():
+    check = check_document([paged(0, page_no=1, total=3), paged(1, page_no=0, total=3, marker=False)])
+    assert check.missing_pages == []
+    assert check.page_numbers == [1, None]
+
+
+def test_쪽_머리_주소를_읽는다():
+    check = check_document([paged(0, page_no=1, total=1)])
+    assert check.header_address == "행복아파트"

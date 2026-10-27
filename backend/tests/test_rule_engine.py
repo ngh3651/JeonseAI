@@ -351,3 +351,28 @@ def test_top_risk_summary_danger_keeps_jeonse_pct():
     v = rule_engine.evaluate(ex, deposit=int(market * 0.95), market_price=market, blacklist_entries=[])
     assert evidence(v, "jeonse_ratio").grade is Grade.DANGER
     assert "전세가율 95%" in fallback_texts.top_risk_summary(v)  # 숫자 노출(라벨만이 아니라)
+
+
+# ── 사진 묶음 불완전 게이트 (2026-10-27) — 빠진 쪽·잘 안 읽힌 장이 있으면 '양호' 금지 ─────────
+def test_빠진_쪽이나_잘_안_읽힌_장이_있으면_양호가_나오지_않는다(monkeypatch):
+    """깨끗한 집이라도 쪽이 빠졌으면 '확인 필요' — 빠진 쪽에 근저당이 있을 수 있다(보수적 편향 §2-3)."""
+    import app.services.rule_engine as re_mod
+
+    original = re_mod.evaluate
+
+    def with_incomplete(extract, **kw):
+        extract.pages_incomplete = True
+        return original(extract, **kw)
+
+    monkeypatch.setattr(re_mod, "evaluate", with_incomplete)
+    v = run_fixture("clean_house")
+    assert v.grade is Grade.CAUTION
+    assert all(ev.grade is not Grade.GOOD for ev in v.evidences)
+    assert "사진 쪽 빠짐·잘 안 읽힘" in v.doc_flags
+    assert any("쪽이 빠졌거나" in (ev.detail_text or "") for ev in v.evidences)
+
+
+def test_사진_묶음이_완전하면_그대로_양호():
+    v = run_fixture("clean_house")
+    assert v.grade is Grade.GOOD
+    assert "사진 쪽 빠짐·잘 안 읽힘" not in v.doc_flags

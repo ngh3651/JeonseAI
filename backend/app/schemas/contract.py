@@ -173,6 +173,16 @@ class Report(BaseModel):
     # 주소는 IE가 읽을 때마다 글자가 조금씩 달라진다('[도로명주소] …'가 붙었다 빠졌다) → 주소만으로는 같은 집이 둘로 갈린다.
     # 못 읽었으면 None (그땐 앱·서버 모두 주소로 묶는다).
     propertyId: Optional[str] = None
+    # 쪽 머리 '[집합건물] …' 주소(호수까지, 2026-10-27) — 같은 집 묶기의 두 번째 기준. 표시·판정에 쓰지 않는다.
+    # IE가 읽은 address는 쪽에 따라 건물 주소(호수 없음)가 되기도 해서, 일부 쪽만 올리면 다른 집으로 갈렸다.
+    propertyAddress: Optional[str] = None
+    # 꼬리말 쪽 번호(N/M)로 본 **빠진 쪽**(1부터) — 리포트의 '다시 올리기' 카드가 "1쪽 빠짐"으로 보여 준다.
+    missingPages: list[int] = Field(default_factory=list)
+    # 올린 순서마다 꼬리말에 찍힌 쪽 번호(못 읽은 장은 null) — 카드가 업로드 순서가 아니라 **문서 쪽 번호**로 말하게.
+    pageNumbers: list[Optional[int]] = Field(default_factory=list)
+    # 같은 집 바로 전 리포트와 견준 결과 (2026-10-27) — 홈에서 다시 분석해도 여정 '등기부 변동 기록'에 한 줄이 생긴다.
+    # 사진·AI 호출 없이 두 대조 기준 스냅샷만 맞춰 본다(compare.compare). 전 리포트가 없거나 견줄 수 없으면 None.
+    changeFromPrevious: Optional["CompareResult"] = None
     # [판례 설명 재료 — 2026-10-24] 살아 있는 위험 항목의 종류·접수일·금액·권리자 종류. 판정·화면에 쓰지 않는다.
     riskFacts: list[RiskFact] = Field(default_factory=list)
     # 이 분석을 **다음 등기부와 견줄 기준(baseline)으로 쓸 수 있는가** (2026-08-14 S-11).
@@ -496,3 +506,7 @@ class PrecedentStatus(BaseModel):
 
     docCount: Optional[int] = None  # 창고에 든 판례 수
     updatedAt: Optional[str] = None  # 마지막 업데이트 날짜 "YYYY-MM-DD"
+
+
+# Report.changeFromPrevious가 뒤에 정의된 CompareResult를 가리킨다 — 정의가 끝난 뒤 이어 준다.
+Report.model_rebuild()

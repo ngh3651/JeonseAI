@@ -389,7 +389,8 @@ def analyze(
 
     `capture`: 라우터가 IE·OCR **전에** 돌린 촬영 검사 결과(2026-10-22). 심한 장이 있으면 라우터가 이미
     거절했으므로 여기 오는 것은 '문제 없음' 또는 '가벼운 문제'뿐이다. OCR 뒤의 발견(쪽 번호 잘림)을 더해
-    `Report.captureCheck`에 싣는다 — **표시 전용**, 판정과 무관하다.
+    `Report.captureCheck`에 싣는다. 2026-10-27부터 잘 안 읽힌 장·빠진 쪽이 있으면 **'양호'만 막는다**
+    (`RegistryExtract.pages_incomplete` → doc_incomplete 게이트). 위험·확인 필요는 그대로다.
 
     **세 경로가 있고, 판정에 들어가는 것은 하나뿐이다** (2026-07-28):
 
@@ -568,6 +569,25 @@ def analyze(
             address=None, area_sqm=None, manual_price_won=market_price, auto=False
         )
 
+    # 촬영 검사 + OCR 뒤 발견(쪽 번호 안 보임 = 잘림 의심) — **판정 전에** 모은다 (2026-10-27).
+    # 빠진 쪽이나 잘 안 읽힌 장이 있으면 '양호'를 막는다(`RegistryExtract.pages_incomplete` → doc_incomplete 게이트).
+    try:
+        capture_after = capture_check.add_ocr_findings(capture, ocr_result.pages, len(images))
+    except Exception:  # noqa: BLE001 — 안내 한 줄 때문에 리포트를 잃지 않는다
+        _log.error("[촬영검사] ⚠ OCR 뒤 검사 실패 — 분석 전 검사 결과만 싣습니다", exc_info=True)
+        capture_after = capture
+    missing_pages = list(doc_check.missing_pages) if doc_check is not None else []
+    # 쪽 번호를 못 읽은 장 — 촬영 검사가 꺼졌거나 실패해도(capture=None) 게이트는 이걸로 막는다 (규칙 감사 2026-10-27)
+    unnumbered = doc_check is not None and any(n is None for n in doc_check.page_numbers)
+    extract.pages_incomplete = (
+        bool(missing_pages) or unnumbered or bool(capture_after and capture_after.pages)
+    )
+    if extract.pages_incomplete:
+        _log.info(
+            f"[판정] 사진 묶음 불완전 — 빠진 쪽 {missing_pages or '없음'} · 잘 안 읽힌 장 "
+            f"{[p.index + 1 for p in (capture_after.pages if capture_after else [])] or '없음'} → '양호' 금지"
+        )
+
     report, explain = _build(
         extract,
         deposit=deposit,
@@ -592,6 +612,11 @@ def analyze(
         report.checkedNotes = [*report.checkedNotes, rotation_note]
     # 같은 집 묶기의 첫 기준 (2026-10-27) — 표시·판정에 쓰지 않는다. 주소는 읽을 때마다 글자가 조금씩 달라진다.
     report.propertyId = store.property_id(extract.unique_number)
+    if doc_check is not None:
+        # 두 번째 기준(쪽 머리 주소) · 빠진 쪽 · 장마다 쪽 번호 — 표시·묶기 전용
+        report.propertyAddress = doc_check.header_address
+        report.missingPages = missing_pages
+        report.pageNumbers = list(doc_check.page_numbers)
     # 화면엔 실명, 저장은 가린 사본 (2026-10-22) — 사람 이름 목록. 앱 가리기 스위치가 쓰고, `store.add`가 이 목록으로
     # 가린 사본을 만든다. ⚠ 목록이 비면 저장 사본에 실명(집주인 제목)이 남으므로, 실패해도 집주인 이름만은 꼭 넣는다.
     try:
@@ -599,12 +624,8 @@ def analyze(
     except Exception:  # noqa: BLE001
         _log.error("[이름] ⚠ 사람 이름 목록을 만들지 못함 — 집주인 이름만으로 가립니다", exc_info=True)
         report.personNames = name_privacy.owner_names_fallback(extract)
-    try:
-        # 촬영 검사 + OCR 뒤 발견(쪽 번호 안 보임 = 잘림 의심) — 표시 전용. 판정은 이미 끝났다.
-        report.captureCheck = capture_check.add_ocr_findings(capture, ocr_result.pages, len(images))
-    except Exception:  # noqa: BLE001 — 안내 한 줄 때문에 리포트를 잃지 않는다
-        _log.error("[촬영검사] ⚠ OCR 뒤 검사 실패 — 분석 전 검사 결과만 싣습니다", exc_info=True)
-        report.captureCheck = capture
+    # 촬영 검사 결과(판정 전에 모은 것) — 리포트의 '다시 올리기' 카드
+    report.captureCheck = capture_after
     # ── 여기서부터 리포트는 **이미 완성됐다.** 아래는 기록·정리·로그뿐이다 ──────────
     # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
     # 2026-07-28 실기기 500이 정확히 이 모양이었다(리포트 완성 → 마지막 문장에서 사망).

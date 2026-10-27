@@ -18,6 +18,7 @@ import 'app/router.dart';
 import 'design_system/text/app_text.dart';
 import 'design_system/theme.dart';
 import 'repositories/analysis_repository.dart';
+import 'screens/home/today_schedule_sheet.dart';
 import 'repositories/api_analysis_repository.dart';
 import 'repositories/api_content_repository.dart';
 import 'repositories/chat_history_repository.dart';
@@ -46,6 +47,7 @@ Future<void> main() async {
   await JourneyScheduleStore.instance.restore();
   // 여정 진행 기록(단계 완료·대조 기록·알림 켜짐 여부, 2026-10-26) — 이 기기에만
   await JourneyProgressStore.instance.restore();
+  await TodayBellSeen.instance.restore();
   // '사진 속 이름 가리기'를 첫 화면부터 저장된 값으로 그린다(켜 둔 채 껐다 켰는데 이름이 한 번 비치면 안 된다).
   await PrivacySettings.instance.restore();
   // 부스 모드(2026-10-23) — 켜져 있으면 첫 화면부터 로그아웃·회원 탈퇴·기록 지우기를 숨긴다.

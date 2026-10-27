@@ -24,7 +24,6 @@ import 'package:jeonse_ai/screens/journey/journey_actions.dart'
     show kCompareGalleryLabel, kCompareShootLabel;
 import 'package:jeonse_ai/screens/compare/compare_screen.dart';
 import 'package:jeonse_ai/screens/loading/analysis_loading_screen.dart';
-import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:jeonse_ai/screens/search/capture_issue_panel.dart';
 import 'package:jeonse_ai/screens/search/capture_loop_route.dart';
 import 'package:jeonse_ai/screens/search/property_search_screen.dart';
@@ -784,79 +783,8 @@ void main() {
       expect(repo.sent.last, [retakes[2]]);
     });
   });
+  // 리포트의 다시 올리기 카드는 test/retake_card_test.dart (2026-10-27 새 시안)
 
-  group('리포트 — 가벼운 문제(다시 찍으면 더 정확해요)', () {
-    Future<void> pumpReport(
-      WidgetTester tester,
-      AnalysisReport report, {
-      List<String>? photos,
-    }) async {
-      tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
-      tester.view.devicePixelRatio = 3;
-      addTearDown(tester.view.reset);
-      if (photos != null)
-        RegistryPhotoStore.instance.register(report.id, photos);
-      final repo = _OneReport(report);
-      await tester.pumpWidget(
-        ChangeNotifierProvider<AnalysisRepository>.value(
-          value: repo,
-          child: MaterialApp(
-            theme: buildAppTheme(),
-            home: ReportScreen(
-              reportId: report.id,
-              captureOne: () async => retakes[0],
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
-
-    const soft = CaptureCheck(
-      ok: false,
-      pages: [
-        CapturePageIssue(
-          index: 2,
-          issues: ['cut_off'],
-          tip: '맨 아래 쪽 번호(예: 1/5)가 보이지 않아요. 네 모서리가 나오게 찍어 주세요.',
-        ),
-      ],
-    );
-
-    testWidgets('문제가 있는 장을 알리고, 사진이 있으면 [3쪽 다시 찍기] (결과를 누그러뜨리지 않는다 — D5)', (
-      tester,
-    ) async {
-      await pumpReport(
-        tester,
-        _report(id: 'r1', capture: soft),
-        photos: original,
-      );
-      expect(find.koText('글자를 잘못 읽었을 수 있는 장이 있어요'), findsOneWidget);
-      expect(find.koTextContaining('결과가 달라질 수 있어요'), findsOneWidget);
-      expect(find.koTextContaining('결과는 그대로 볼 수 있어요'), findsNothing);
-      // 등급 이름('확인 필요')과 같은 말을 쓰지 않는다
-      expect(find.koText('3쪽 · 잘림 (다시 찍으면 더 정확해요)'), findsOneWidget);
-      expect(find.koText('3쪽 · 잘림 (확인 필요)'), findsNothing);
-      expect(find.koTextContaining('네 모서리'), findsOneWidget);
-      expect(find.koText('3쪽 다시 찍기'), findsOneWidget);
-    });
-
-    testWidgets('사진이 폰에 없으면 안내만 (버튼 없음)', (tester) async {
-      await pumpReport(tester, _report(id: 'r2', capture: soft));
-      expect(find.koText('글자를 잘못 읽었을 수 있는 장이 있어요'), findsOneWidget);
-      expect(find.koText('3쪽 다시 찍기'), findsNothing);
-    });
-
-    testWidgets('문제가 없으면 아무것도 안 그린다', (tester) async {
-      await pumpReport(
-        tester,
-        _report(id: 'r3', capture: const CaptureCheck()),
-      );
-      expect(find.byType(CaptureIssuePanel), findsNothing);
-      await pumpReport(tester, _report(id: 'r4'));
-      expect(find.byType(CaptureIssuePanel), findsNothing);
-    });
-  });
 }
 
 /// 대조를 부르면 정해진 순서로 답하는 가짜 저장소 — 받은 사진 목록을 기록한다.
@@ -889,28 +817,4 @@ class _CompareRepository extends AnalysisRepository {
 
   @override
   Future<void> deleteReport(String id) async {}
-}
-
-class _OneReport extends AnalysisRepository {
-  _OneReport(this.report);
-
-  final AnalysisReport report;
-
-  @override
-  Future<AnalysisReport> analyze(AnalysisRequest request) async => report;
-
-  @override
-  Future<List<AnalysisReport>> getHistory() async => [report];
-
-  @override
-  Future<AnalysisReport?> getReport(String id) async => report;
-
-  @override
-  Future<void> deleteReport(String id) async {}
-
-  @override
-  Future<CompareResult> compareRegistry(
-    String reportId,
-    List<String> imagePaths,
-  ) => throw UnimplementedError();
 }

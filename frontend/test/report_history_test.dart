@@ -19,6 +19,7 @@ import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/repositories/content_repository.dart';
 import 'package:jeonse_ai/screens/common/ask_selection.dart';
+import 'package:jeonse_ai/screens/journey/journey_compare_flow.dart';
 import 'package:jeonse_ai/screens/report/report_history_sheet.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:jeonse_ai/state/chat_handoff.dart';
@@ -221,6 +222,33 @@ void main() {
       expect(schedules.selectedPropertyKey, '고유번호:11011996123456');
     });
 
+    test('등기부 변동 기록 — 홈에서 다시 분석한 것도 한 줄씩 (전 리포트와 견준 결과로 변동 없음/N건)', () {
+      final first = _r('f', daysAgo: 3);
+      final noDiff = AnalysisReport.fromJson({
+        ..._json('m', daysAgo: 1),
+        'changeFromPrevious': _change(changed: false),
+      });
+      final latest = AnalysisReport.fromJson({
+        ..._json('l', daysAgo: 0),
+        'changeFromPrevious': _change(changed: true),
+      });
+      final legacy = _r('old', daysAgo: 2); // 견준 기록이 없는 옛 리포트
+      final p = groupByProperty([latest, noDiff, legacy, first]).single;
+      final log = journeyChangeLog(p, const []);
+      expect(log.map((e) => e.reportId), ['l', 'm', 'old']);
+      expect(log.every((e) => e.reanalysis), isTrue);
+      expect(log[0].changedCount, 1);
+      expect(log[1].changed, isFalse);
+      expect(log[1].compared, isTrue);
+      expect(log[2].compared, isFalse, reason: '꼬리표 없이 "다시 분석"만');
+      // 여정에서 대조해 남긴 기록이 있으면 그 줄을 쓴다(겹치지 않는다)
+      final viaJourney = journeyChangeLog(p, [
+        CompareLogEntry(at: DateTime.now(), changedCount: 2, reportId: 'l', stageTitle: '잔금 보내는 날'),
+      ]);
+      expect(viaJourney.where((e) => e.reportId == 'l').single.reanalysis, isFalse);
+      expect(viaJourney.length, 3);
+    });
+
     test('같은 집은 최근 5건까지만', () {
       final many = [for (int i = 0; i < 7; i++) _r('m$i', daysAgo: i)];
       expect(groupByProperty(many).single.reports.length, kKeepReportVersions);
@@ -330,3 +358,36 @@ void main() {
     );
   });
 }
+
+Map<String, dynamic> _json(String id, {required int daysAgo}) {
+  final at = DateTime.now().subtract(Duration(days: daysAgo));
+  return {
+    'id': id,
+    'alias': '성산동 행복아파트',
+    'address': '서울 마포구 성산동 100-1',
+    'analyzedAt': at.toIso8601String(),
+    'grade': '양호',
+    'gaugeProgress': 0.3,
+    'headline': 'h',
+    'nextAction': 'n',
+    'topRiskSummary': 't',
+    'deposit': 240000000,
+    'seniorDebtAmount': 0,
+    'evidences': <Object>[],
+  };
+}
+
+Map<String, dynamic> _change({required bool changed}) => {
+  'result': 'changed',
+  'headline': changed ? '달라진 점이 1가지 있어요' : '달라진 점은 없었어요',
+  'baseline': {'reportId': 'prev'},
+  'current': {'reportId': 'cur'},
+  'rows': [
+    {
+      'kind': changed ? 'added' : 'same',
+      'title': '압류·가압류',
+      'detail': changed ? '새로 1건' : null,
+      'group': 'seizure',
+    },
+  ],
+};

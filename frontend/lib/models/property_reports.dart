@@ -2,7 +2,8 @@
 ///
 /// 같은 집인가 (2026-10-27, 서버 `store.same_property`와 같은 규칙):
 /// 1. **부동산고유번호**가 둘 다 있으면 그것만 본다 — 같으면 같은 집, 다르면 주소가 같아도 다른 집(같은 지번 다른 호실).
-/// 2. 한쪽이라도 없으면 **주소**로 — 도로명 병기('[도로명주소] …')를 떼고 띄어쓰기를 무시한다([addressPropertyKey]).
+/// 2. 한쪽이라도 없으면 **주소**로 — 쪽 머리 주소('[집합건물] … 제602호')가 둘 다 있으면 그것, 아니면 등기부 소재지.
+///    도로명 병기('[도로명주소] …')를 떼고 띄어쓰기를 무시한다([addressPropertyKey]).
 ///    주소는 읽을 때마다 글자가 조금씩 달라진다(실기기 2026-10-27: 같은 집이 둘로 갈림) → 고유번호가 먼저다.
 /// 3. 주소를 못 읽은 리포트는 묶지 않는다(서로 다른 집일 수 있다).
 ///
@@ -65,6 +66,7 @@ class PropertyReports {
     for (final r in reports) ...[
       journeyPropertyKey(r.address),
       if (addressPropertyKey(r.address) case final k?) k,
+      if (addressPropertyKey(r.propertyAddress) case final k?) k,
     ],
   }..remove(key);
 
@@ -85,8 +87,13 @@ bool sameProperty(AnalysisReport a, AnalysisReport b) {
   if (pa != null && pa.isNotEmpty && pb != null && pb.isNotEmpty) {
     return pa == pb;
   }
-  final ka = addressPropertyKey(a.address);
-  return ka != null && ka == addressPropertyKey(b.address);
+  // 쪽 머리 주소(호수까지)가 둘 다 있으면 그것으로 — IE 주소는 쪽에 따라 건물 주소(호수 없음)가 되기도 한다
+  final bool header =
+      (a.propertyAddress ?? '').isNotEmpty &&
+      (b.propertyAddress ?? '').isNotEmpty;
+  final ka = addressPropertyKey(header ? a.propertyAddress : a.address);
+  return ka != null &&
+      ka == addressPropertyKey(header ? b.propertyAddress : b.address);
 }
 
 /// 이력(최신순) → 집 묶음(최신 분석이 앞인 집부터).
@@ -120,7 +127,15 @@ List<PropertyReports> groupByProperty(List<AnalysisReport> reports) {
           propertyId: g
               .map((r) => r.propertyId)
               .firstWhere((p) => p != null && p.isNotEmpty, orElse: () => null),
-          address: g.first.address,
+          // 쪽 머리 주소(호수까지)가 있으면 그것이 더 흔들리지 않는다
+          address:
+              g
+                  .map((r) => r.propertyAddress)
+                  .firstWhere(
+                    (a) => a != null && a.isNotEmpty,
+                    orElse: () => null,
+                  ) ??
+              g.first.address,
           reportId: g.first.id,
         ),
         reports: g.take(kKeepReportVersions).toList(),

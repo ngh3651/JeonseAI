@@ -40,7 +40,16 @@ class CompareLogEntry {
     this.reportId,
     this.viewedAt,
     this.lines = const [],
+    this.reanalysis = false,
+    this.compared = true,
   });
+
+  /// 여정의 [대조하기]가 아니라 **다시 분석**(홈 등)으로 생긴 줄 — 제목 "다시 분석" (2026-10-27).
+  /// 이 폰에 저장하지 않는다 — 서버 리포트(`changeFromPrevious`)에서 그때그때 만든다.
+  final bool reanalysis;
+
+  /// 바로 전 리포트와 견줘 봤나. false면(옛 리포트라 견준 기록이 없음) '변동 없음/N건' 꼬리표를 달지 않는다.
+  final bool compared;
 
   /// 대조한 날 (그 폰의 날짜)
   final DateTime at;

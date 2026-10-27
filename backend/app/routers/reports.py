@@ -128,10 +128,37 @@ def analyze(
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
+    # 같은 집 바로 전 리포트와 견준 결과를 싣는다 — 홈에서 다시 분석해도 '등기부 변동 기록'에 남게 (2026-10-27)
+    report = _attach_change(report, device_id=device_id)
     analysis_cache.remember(cache_key, report, device_id=device_id)
     # 같은 집은 최신 5건만 (화면엔 최신 1개 — 앱이 고유번호·주소로 묶는다)
     store.prune_versions(report, device_id=device_id)
     return report
+
+
+def _attach_change(report: Report, *, device_id: str) -> Report:
+    """같은 집 바로 전 리포트 ↔ 이번 리포트의 대조 결과를 `changeFromPrevious`에 넣고 다시 저장한다.
+
+    사진·AI 호출 없이 두 대조 기준(스냅샷)만 맞춰 본다. **판정은 바뀌지 않는다** — 대조는 새 판정을 만들지 않는다.
+    전 리포트가 없거나, 스냅샷이 없거나, 다른 집으로 나오면 그대로 둔다. 실패해도 리포트는 그대로 나간다.
+    """
+    try:
+        prev = store.previous_version(report, device_id=device_id)
+        if prev is None:
+            return report
+        base = store.get_snapshot(prev.id, device_id=device_id)
+        cur = store.get_snapshot(report.id, device_id=device_id)
+        if base is None or cur is None:
+            return report
+        result = compare.compare(base, cur)
+        if result.result == "different_property":
+            return report
+        updated = report.model_copy(update={"changeFromPrevious": result})
+        store.add(updated, device_id=device_id)
+        return updated
+    except Exception as e:  # noqa: BLE001 — 기록 한 줄 때문에 분석 결과를 잃지 않는다
+        _log.error(f"[이력] ⚠ 전 리포트와 견주지 못함 — 기록 없이 계속 ({type(e).__name__})")
+        return report
 
 
 @router.post("/reports/{report_id}/compare", response_model=CompareResult)
@@ -196,6 +223,12 @@ def compare_registry(
         store.remove(current_report.id, device_id=device_id)
         _log.info(f"[대조] 다른 집이라 이번 분석({current_report.id})을 이력에서 지웠습니다")
     else:
+        # 이 대조 결과를 새 리포트에도 싣는다 — '등기부 변동 기록'이 홈 다시 분석과 같은 모양으로 남게 (2026-10-27)
+        try:
+            current_report = current_report.model_copy(update={"changeFromPrevious": result})
+            store.add(current_report, device_id=device_id)
+        except Exception as e:  # noqa: BLE001
+            _log.error(f"[대조] ⚠ 대조 결과를 리포트에 싣지 못함 ({type(e).__name__})")
         # 새 등기부로 만든 리포트가 그 집의 최신 리포트가 된다 — 같은 집은 최신 5건만
         store.prune_versions(current_report, device_id=device_id)
     return result

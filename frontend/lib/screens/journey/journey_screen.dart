@@ -368,9 +368,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
               onOpenLatest: () => context.push('/report/${property.latest.id}'),
             ),
           ],
-          // 요금제로 가는 입구 (2026-10-22, P2-1) — 패스가 없어도 위 단계·알림·대조는 그대로 쓴다
+          // 요금제 입구(계약 지킴이 패스)는 2026-10-27에 여정에서 뺐다 — 부스 체험에서 파는 제품이 아니고 화면이 어지럽다.
+          // 요금제는 마이 화면에서 그대로 열린다.
           const SizedBox(height: 16),
-          const GuardianPassEntry(),
         ],
       ),
     );

@@ -15,6 +15,7 @@ import '../models/analysis_report.dart';
 import '../models/compare_result.dart';
 import '../services/api_client.dart';
 import '../services/registry_upload_service.dart';
+import '../state/journey_progress_store.dart';
 import '../state/registry_photo_store.dart';
 import 'analysis_repository.dart';
 
@@ -61,6 +62,8 @@ class ApiAnalysisRepository extends AnalysisRepository {
           'marketPrice': '${request.marketPrice}',
         if (request.alias != null && request.alias!.trim().isNotEmpty)
           'alias': request.alias!.trim(),
+        if (request.replacesReportId != null)
+          'replaces': request.replacesReportId!,
       },
     );
     final body = json as Map<String, dynamic>;
@@ -86,8 +89,26 @@ class ApiAnalysisRepository extends AnalysisRepository {
       '[하이라이트] 리포트 ${report.id} — 좌표 ${report.highlights.length}건 수신, '
       '전송 사진 ${sentJpegPaths.length}장 (뷰어는 이 JPEG를 그대로 띄운다)',
     );
+    await _afterReplace(request.replacesReportId, report.id);
     notifyListeners(); // 이력이 바뀜 → 홈 갱신
     return report;
+  }
+
+  /// [oldId]를 [newId]가 대신했다 — 이 폰의 옛 사진·원본을 지우고, 그 리포트를 가리키던 여정 기록을 새 리포트로 옮긴다.
+  /// (서버는 같은 집일 때만 옛 리포트를 지운다 — 다른 집이면 서버에 남은 옛 리포트를 폰에서도 지우지 않는다.)
+  Future<void> _afterReplace(String? oldId, String? newId) async {
+    if (oldId == null || newId == null || oldId == newId) return;
+    try {
+      final stillThere = await _api.getJson(
+        '/api/reports/$oldId',
+        onNotFound: () => null,
+      );
+      if (stillThere != null) return; // 서버가 안 지웠다(다른 집 등) — 그대로 둔다
+      await RegistryPhotoStore.instance.forget(oldId);
+      await JourneyProgressStore.instance.replaceReportId(oldId, newId);
+    } catch (e) {
+      debugPrint('[이력] 대신한 리포트 정리 실패 ($oldId → $newId, ${e.runtimeType}) — 다음에 다시 열면 맞춰져요');
+    }
   }
 
   /// 기록 목록 — 서버 목록(순서·어떤 리포트가 있는지)에, 이 폰에 원본이 있는 것은 **원본**으로 바꿔 끼운다.
@@ -153,7 +174,20 @@ class ApiAnalysisRepository extends AnalysisRepository {
   Future<CompareResult> compareRegistry(
     String reportId,
     List<String> imagePaths,
-  ) async {
+  ) => _compare(reportId, imagePaths, replaces: null);
+
+  @override
+  Future<CompareResult> recompareRegistry(
+    String reportId,
+    List<String> imagePaths, {
+    required String replaces,
+  }) => _compare(reportId, imagePaths, replaces: replaces);
+
+  Future<CompareResult> _compare(
+    String reportId,
+    List<String> imagePaths, {
+    required String? replaces,
+  }) async {
     final files = <http.MultipartFile>[];
     final sentJpegPaths = <String>[];
     for (int i = 0; i < imagePaths.length; i++) {
@@ -175,7 +209,7 @@ class ApiAnalysisRepository extends AnalysisRepository {
     final json = await _api.postMultipart(
       '/api/reports/$reportId/compare',
       files: files,
-      fields: const {},
+      fields: {if (replaces != null) 'replaces': replaces},
     );
     final result = CompareResult.fromJson(json as Map<String, dynamic>);
 
@@ -186,6 +220,7 @@ class ApiAnalysisRepository extends AnalysisRepository {
       RegistryPhotoStore.instance.register(newId, sentJpegPaths);
       await RegistryPhotoStore.instance.keep(newId, sentJpegPaths);
     }
+    await _afterReplace(replaces, newId);
     // 이력이 바뀌었다(새 분석 추가 또는 다른 집이라 취소) → 홈·여정 갱신
     notifyListeners();
     debugPrint(

@@ -29,6 +29,7 @@ import '../../state/journey_progress_store.dart';
 import '../../utils/korean_date.dart';
 import '../compare/compare_screen.dart';
 import '../search/capture_loop_route.dart';
+import 'change_boxes.dart';
 import 'journey_actions.dart';
 import 'journey_parts.dart';
 
@@ -394,14 +395,54 @@ class CompareSummaryLine {
 
   int get count => rows.fold(0, (sum, r) => sum + rowItemCount(r));
   bool get changed => rows.isNotEmpty;
+
+  /// 새로 생기거나 달라진 건수 (없어진 것 빼고)
+  int get addedCount => rows
+      .where((r) => r.kind != CompareRowKind.removed)
+      .fold(0, (sum, r) => sum + rowItemCount(r));
+
+  /// 없어진 건수
+  int get removedCount => rows
+      .where((r) => r.kind == CompareRowKind.removed)
+      .fold(0, (sum, r) => sum + rowItemCount(r));
 }
 
-/// 줄 하나가 몇 건인가 — 서버 상세 첫 줄의 "N건"(예: "근저당권 1건 · 채권최고액 …"). 못 읽으면 1.
+/// 줄 하나가 몇 건인가 — 서버가 항목을 실었으면 그 수(2026-10-27). 옛 서버면 상세 첫 줄의 "N건"을 **모두** 더한다
+/// (예: "압류 1건 · 가압류 2건" = 3). 못 읽으면 1.
 int rowItemCount(CompareRow row) {
+  if (row.items.isNotEmpty) return row.items.length;
   final first = (row.detail ?? '').split('\n').first;
-  final m = RegExp(r'(\d+)건').firstMatch(first);
-  return m == null ? 1 : int.parse(m.group(1)!);
+  final counts = RegExp(r'(\d+)건').allMatches(first).map((m) => int.parse(m.group(1)!));
+  return counts.isEmpty ? 1 : counts.fold(0, (a, b) => a + b);
 }
+
+/// 결과 → 한 건에 한 줄 항목들 (갑구·을구 순서, 새로 생김 → 없어짐은 상자가 나눈다).
+/// 서버가 항목을 안 실은 줄(옛 서버·집주인 줄)은 제목·상세 첫 줄로 한 건을 만든다.
+List<CompareLogItem> compareLogItems(CompareResult result) => [
+  for (final line in summarizeCompare(result))
+    for (final r in line.rows)
+      if (r.items.isNotEmpty)
+        for (final i in r.items)
+          CompareLogItem(
+            kind: r.kind == CompareRowKind.removed
+                ? CompareLogItemKind.removed
+                : CompareLogItemKind.added,
+            label: i.label,
+            receiptDate: i.receiptDate,
+            note: i.amountText,
+          )
+      else
+        CompareLogItem(
+          kind: switch (r.kind) {
+            CompareRowKind.removed => CompareLogItemKind.removed,
+            CompareRowKind.added => CompareLogItemKind.added,
+            _ => CompareLogItemKind.changed,
+          },
+          label: r.title,
+          receiptDate: r.receiptDate,
+          note: (r.detail ?? '').split('\n').first.trim(),
+        ),
+];
 
 /// 결과 rows → 갑구·을구 두 줄. 서버가 칸(group)을 안 실은 옛 응답이면 제목 낱말로 나눈다.
 List<CompareSummaryLine> summarizeCompare(CompareResult result) {
@@ -454,13 +495,33 @@ List<CompareLogEntry> journeyChangeLog(
       if (e.reportId != null) e.reportId!,
   };
   final first = property.first;
+  final byId = {for (final r in property.reports) r.id: r};
   final entries = <CompareLogEntry>[
-    ...local,
+    for (final e in local) _refreshed(e, byId[e.reportId]),
     for (final r in property.reports)
       if (r.id != first.id && !logged.contains(r.id))
         reanalysisLogEntry(r),
   ]..sort((a, b) => b.at.compareTo(a.at));
   return entries;
+}
+
+/// 리포트가 보충본으로 바뀐 기록([CompareLogEntry.fromReport]) → 그 리포트의 '전 리포트와 견준 결과'로 다시 그린다.
+/// 날짜·단계는 그대로 둔다. 리포트를 못 찾으면 저장된 그대로.
+CompareLogEntry _refreshed(CompareLogEntry e, AnalysisReport? r) {
+  if (!e.fromReport || r == null) return e;
+  final fresh = reanalysisLogEntry(r);
+  return CompareLogEntry(
+    at: e.at,
+    changedCount: fresh.changedCount,
+    stageIndex: e.stageIndex,
+    stageTitle: e.stageTitle,
+    reportId: r.id,
+    viewedAt: r.registryViewedAt,
+    lines: fresh.lines,
+    items: fresh.items,
+    compared: fresh.compared,
+    fromReport: true,
+  );
 }
 
 /// 다시 분석한 리포트 한 건 → 기록 한 줄 (전 리포트와 견준 결과가 없으면 `compared=false`).
@@ -469,12 +530,11 @@ CompareLogEntry reanalysisLogEntry(AnalysisReport r) {
   final usable = change != null && change.outcome == CompareOutcome.changed;
   return CompareLogEntry(
     at: r.analyzedAt,
-    changedCount: usable
-        ? summarizeCompare(change).fold(0, (s, l) => s + l.count)
-        : 0,
+    changedCount: usable ? compareLogItems(change).length : 0,
     reportId: r.id,
     viewedAt: r.registryViewedAt,
     lines: usable ? compareLogLines(change) : const [],
+    items: usable ? compareLogItems(change) : const [],
     reanalysis: true,
     compared: usable,
   );
@@ -554,17 +614,17 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
         Navigator.of(context).pop(_Handoff(result: result));
         return;
       }
-      final lines = summarizeCompare(result);
       await progress.addCompare(
         widget.propertyKey,
         CompareLogEntry(
           at: DateTime.now(),
-          changedCount: lines.fold(0, (s, l) => s + l.count),
+          changedCount: compareLogItems(result).length,
           stageIndex: widget.stageIndex,
           stageTitle: widget.stageTitle,
           reportId: result.newReportId,
           viewedAt: result.current.viewedAt,
           lines: compareLogLines(result),
+          items: compareLogItems(result),
         ),
       );
       if (!mounted) return;
@@ -653,9 +713,6 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
     final lines = summarizeCompare(result);
     final int count = lines.fold(0, (s, l) => s + l.count);
     final bool changed = count > 0;
-    final bool onlyAdded = lines
-        .expand((l) => l.rows)
-        .every((r) => r.kind == CompareRowKind.added);
     final String from = viewedLabel(result.baseline.viewedAt, fallback: '지난');
     final String to = viewedLabel(result.current.viewedAt, fallback: '새');
     final String? newId = result.newReportId;
@@ -682,9 +739,7 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
       ),
       const SizedBox(height: 12),
       AppText(
-        !changed
-            ? '달라진 것 없어요'
-            : (onlyAdded ? '새로 생긴 게 $count건 있어요' : '달라진 게 $count건 있어요'),
+        changed ? '달라진 게 $count건 있어요' : '달라진 것 없어요',
         key: const ValueKey('compare-result-title'),
         textAlign: TextAlign.center,
         style: AppTypographyNext.headline,
@@ -701,11 +756,11 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
           const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
         _summaryRow(lines[i]),
       ],
-      for (final line in lines)
-        for (final r in line.rows) ...[
-          const SizedBox(height: 12),
-          _changeBox(line, r),
-        ],
+      if (changed) ...[
+        const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
+        const SizedBox(height: 16),
+        ChangeBoxes(items: compareLogItems(result)),
+      ],
       const SizedBox(height: 20),
       SizedBox(
         height: 56,
@@ -768,15 +823,7 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
             ),
           ),
           if (line.changed)
-            AppText(
-              line.rows.every((r) => r.kind == CompareRowKind.added)
-                  ? '새로 ${line.count}건'
-                  : '바뀜 ${line.count}건',
-              style: AppTypographyNext.caption.copyWith(
-                fontWeight: FontWeight.w700,
-                color: AppColorsNext.dangerText,
-              ),
-            )
+            _countTag(line)
           else
             AppText(
               '✓ 같음',
@@ -790,37 +837,30 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
     );
   }
 
-  /// 바뀐 줄 상자 — 서버 문구(제목·상세) 그대로. 새 빚이면 "먼저 갚게 될 수 있어요" 한 줄.
-  Widget _changeBox(CompareSummaryLine line, CompareRow r) {
-    final details = (r.detail ?? '')
-        .split('\n')
-        .where((s) => s.trim().isNotEmpty)
-        .toList();
-    final bool newDebt = line.gu == '을구' && r.kind == CompareRowKind.added;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.dangerSoft,
-        borderRadius: BorderRadius.circular(kRadiusMd),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  /// 요약 줄 오른쪽 — "새로 N"(빨강) · "없어짐 N"(초록), 사이에 연한 "·". "바뀜 N건"이라고 쓰지 않는다.
+  Widget _countTag(CompareSummaryLine line) {
+    final TextStyle base = AppTypographyNext.caption.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    final int added = line.addedCount;
+    final int removed = line.removedCount;
+    return AppText.rich(
+      TextSpan(
         children: [
-          AppText(
-            r.title,
-            style: AppTypographyNext.bodyStrong.copyWith(
-              color: AppColorsNext.dangerText,
+          if (added > 0)
+            TextSpan(
+              text: '새로 $added',
+              style: base.copyWith(color: AppColorsNext.dangerText),
             ),
-          ),
-          if (details.isNotEmpty)
-            AppText(
-              details.join(' · '),
-              style: AppTypographyNext.caption.copyWith(color: kJourneyBodySub),
+          if (added > 0 && removed > 0)
+            TextSpan(
+              text: '  ·  ',
+              style: base.copyWith(color: AppColors.line),
             ),
-          if (newDebt)
-            AppText(
-              '새 빚은 내 보증금보다 먼저 갚게 될 수 있어요',
-              style: AppTypographyNext.caption.copyWith(color: kJourneyBodySub),
+          if (removed > 0)
+            TextSpan(
+              text: '없어짐 $removed',
+              style: base.copyWith(color: AppColors.ok),
             ),
         ],
       ),

@@ -347,6 +347,8 @@ class _ReportScreenState extends State<ReportScreen> {
             ? report.marketPrice
             : null,
         alias: report.alias,
+        // 같은 서류를 마저 낸 것 — 새 리포트가 이 리포트를 대신한다(기록이 두 줄로 남지 않게, 2026-10-27)
+        replacesReportId: report.id,
       ),
     );
     // 새로 찍은 장도 서버가 거절했다(여전히 흐림 등) — 조용히 돌아오지 않고 이유를 말한다.

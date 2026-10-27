@@ -45,6 +45,14 @@ abstract class AnalysisRepository extends ChangeNotifier {
   /// 사진을 받기 전에 "기준 없음"으로 답하기 때문이다 — 찍게 해 놓고 마지막에 못
   /// 한다고 말하지 않기 위한 흐름이다(S-11).
   Future<CompareResult> compareRegistry(String reportId, List<String> imagePaths);
+
+  /// 빠진 쪽을 더 찍어 **다시** 대조한다 — 앞 대조로 생긴 리포트([replaces])를 새 결과가 대신한다 (2026-10-27).
+  /// 기본은 그냥 대조(서버 구현만 [replaces]를 보낸다).
+  Future<CompareResult> recompareRegistry(
+    String reportId,
+    List<String> imagePaths, {
+    required String replaces,
+  }) => compareRegistry(reportId, imagePaths);
 }
 
 /// 더미 구현 — 위험 vs 확인 필요 2세트 (plan.md C-2: 시나리오 B 대비 컷의 원형).

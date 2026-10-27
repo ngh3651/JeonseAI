@@ -15,6 +15,7 @@ import '../../models/property_reports.dart';
 import '../../models/risk_grade.dart';
 import '../../state/journey_progress_store.dart';
 import '../../utils/korean_date.dart';
+import 'change_boxes.dart';
 import 'journey_logic.dart';
 
 /// 단계 부제·왜 설명의 본문 보조색 (#3C4842)
@@ -1310,11 +1311,14 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _row(
-          dot: _dot(changed: e.changed),
+          // 없어진 것만 있는 대조(위험이 줄어든 경우)는 초록 ✓ · "없어짐 N건"(초록) — 빨강으로 칠하지 않는다 (2026-10-27)
+          dot: _dot(changed: e.changed && !e.onlyRemoved),
           date: slashDateWeekday(e.at),
           title: title,
           tag: !e.compared
               ? null
+              : e.onlyRemoved
+              ? ('없어짐 ${e.removedCount}건', false)
               : e.changed
               ? ('변동 ${e.changedCount}건', true)
               : ('변동 없음', false),
@@ -1334,19 +1338,22 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (e.changed && e.lines.isNotEmpty)
+                      if (e.changed && e.items.isNotEmpty)
+                        ChangeBoxes(items: e.items, padding: 12, gap: 8)
+                      else if (e.changed && e.lines.isNotEmpty)
+                        // 옛 기록(항목이 없던 때) — 서버 문구 그대로, "— 변동" 꼬리는 붙이지 않는다
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: AppColors.dangerSoft,
-                            borderRadius: BorderRadius.circular(kRadiusMd),
+                            borderRadius: BorderRadius.circular(kRadiusLg),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               for (final l in e.lines) ...[
                                 AppText(
-                                  '${l.title} — 변동',
+                                  l.title,
                                   style: AppTypographyNext.caption.copyWith(
                                     fontWeight: FontWeight.w700,
                                     color: AppColorsNext.dangerText,

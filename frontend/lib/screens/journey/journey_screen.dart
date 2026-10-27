@@ -255,7 +255,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
     final int selected = _selectedStage!;
     final logs = property == null
         ? const <CompareLogEntry>[]
-        : progressStore.logFor(property.key);
+        : journeyChangeLog(property, progressStore.logFor(property.key));
 
     // 글자를 꾹 눌러 [챗봇에 묻기] (2026-10-26)
     return AskSelectionArea(

@@ -1301,7 +1301,11 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
     final bool latest = i == 0;
     final bool expandable = latest || e.changed;
     final bool open = _open.contains(i);
-    final String title = e.stageTitle == null ? '등기부 대조' : '${e.stageTitle} 대조';
+    final String title = e.reanalysis
+        ? '다시 분석'
+        : e.stageTitle == null
+        ? '등기부 대조'
+        : '${e.stageTitle} 대조';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1309,7 +1313,11 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
           dot: _dot(changed: e.changed),
           date: slashDateWeekday(e.at),
           title: title,
-          tag: e.changed ? ('변동 ${e.changedCount}건', true) : ('변동 없음', false),
+          tag: !e.compared
+              ? null
+              : e.changed
+              ? ('변동 ${e.changedCount}건', true)
+              : ('변동 없음', false),
           expandable: expandable,
           open: open,
           onTap: expandable

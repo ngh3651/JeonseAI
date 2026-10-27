@@ -596,6 +596,25 @@ class DocumentCheck:
     # 그때는 앱이 그 줄을 아예 그리지 않는다(분석일로 대체하지 않는다 — 분석일을 쓰면
     # 오히려 "오늘 서류"라고 믿게 만들어 지금보다 나빠진다).
     viewed_at: str | None = None
+    # 등기부 꼬리말 표식(N/M)으로 본 **빠진 쪽 번호**(1부터, 2026-10-27). 표식을 하나도 못 읽었으면 빈 목록.
+    # 판정 게이트(빠진 쪽이 있으면 '양호' 금지)와 리포트의 '다시 올리기' 안내가 쓴다.
+    missing_pages: list[int] = field(default_factory=list)
+    # 올린 순서마다 꼬리말에 찍힌 쪽 번호 (못 읽은 장은 None) — 앱이 "1쪽이 잘 안 읽혔어요"를 **문서 쪽 번호로** 말한다.
+    page_numbers: list[int | None] = field(default_factory=list)
+    # 쪽 머리의 '[집합건물] …' 주소(띄어쓰기 한 칸으로 정리, 머리표 뗌) — 같은 집 묶기용. 표시·판정에 쓰지 않는다.
+    # 모든 쪽 머리에 같은 줄이 찍혀 있어 **어느 쪽을 올렸든** 같은 값이 나온다(호수까지 들어 있다).
+    header_address: str | None = None
+
+
+def header_address(pages: list[OcrPage]) -> str | None:
+    """쪽 머리의 '[집합건물] 서울특별시 … 제602호' → '서울특별시 … 제602호'. 없으면 None."""
+    for page in pages:
+        for line in page.lines:
+            if _PAGE_HEADER.match(line.display):
+                text = " ".join(_PAGE_HEADER.sub("", line.display).split())
+                if text:
+                    return text
+    return None
 
 
 def _page_footer_facts(
@@ -645,6 +664,19 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
     markers = [(i, m) for i, (m, _, _, _) in enumerate(facts) if m]
     issues = {iss for _, iss, _, _ in facts if iss}
     addresses = {addr for _, _, addr, _ in facts if addr}
+
+    # 쪽 번호·빠진 쪽·머리 주소 — **모든 return 경로보다 앞에서** 채운다 (2026-10-27).
+    # 예전에는 빠진 쪽을 ③에서만 셌다 → 순서가 어긋난 채 일부 쪽만 올리면(②에서 먼저 끝남)
+    # "순서가 달라요"만 나오고 빠진 쪽은 아무 말이 없었다(실기기: 5쪽 중 2·3·4쪽만 올림).
+    check.page_numbers = [m[0] if m else None for m, _, _, _ in facts]
+    check.header_address = header_address(pages)
+    # 쪽 번호를 못 읽은 사진이 있으면 그 사진이 '빠진 쪽'일 수 있다 → 어느 쪽이 빠졌는지 단정하지 않는다
+    # (그 사진은 촬영 검사가 '아래가 잘림'으로 따로 알리고, 판정 게이트도 그쪽으로 막힌다).
+    if markers and len(markers) == len(pages):
+        # 전체 쪽수는 가장 큰 값으로 — 표식마다 M이 다르게 읽혀도 빠진 쪽을 놓치지 않게(규칙 감사)
+        _total_pages = max(m[1] for _, m in markers)
+        _covered = {n for _, (n, _) in markers}
+        check.missing_pages = sorted(set(range(1, _total_pages + 1)) - _covered)
 
     # 열람일시 — 어느 쪽에서든 처음 읽힌 값. **모든 return 경로보다 앞에서** 채운다.
     # 사진 묶음 점검에 걸려 표시를 못 하더라도 "언제 뗀 서류인가"는 알려줘야 한다.
@@ -731,7 +763,13 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
             if order is None:
                 check.ok_to_highlight_any = False
                 check.ok_to_highlight_money = False
-                check.notice = "사진 순서가 등기부 쪽수와 달라요. 1쪽부터 순서대로 다시 올려 주세요."
+                check.notice = (
+                    # 빠진 쪽이 있으면 그 말이 먼저다 — 순서만 맞춰 다시 올려도 빠진 쪽은 그대로 빠져 있다
+                    f"등기부 {markers[0][1][1]}쪽 중 "
+                    f"{'·'.join(map(str, check.missing_pages))}쪽이 빠졌어요. 빠진 쪽까지 다시 올려 주세요."
+                    if check.missing_pages
+                    else "사진 순서가 등기부 쪽수와 달라요. 1쪽부터 순서대로 다시 올려 주세요."
+                )
                 check.reasons.append(f"페이지 표식 순서 어긋남 + 자동 정렬 조건 미충족: {seq}")
                 return check
             check.page_order = order

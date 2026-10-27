@@ -69,6 +69,7 @@ class CaptureLoopRoute extends StatefulWidget {
     this.captureOne = defaultCaptureOne,
     this.replacePage,
     this.replaceTip,
+    this.hint,
   });
 
   /// 들어올 때 이미 갖고 있던 장수 — 뱃지의 "n장째" 계산과 상한 판정에 쓴다.
@@ -86,6 +87,9 @@ class CaptureLoopRoute extends StatefulWidget {
 
   /// 바꾸는 장의 안내(서버가 쓴 "이유 + 다시 찍는 법") — 확인 화면 위에 그대로 보여 준다.
   final String? replaceTip;
+
+  /// 새로 더 찍을 때(바꾸기 아님) 위에 한 줄 — "빠진 5쪽을 찍어 주세요 — 종이 네 모서리와 …" (2026-10-27)
+  final String? hint;
 
   bool get isReplace => replacePage != null;
 
@@ -243,7 +247,8 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
         // 바꾸는 장이면 서버가 말한 "왜 문제였는지 + 어떻게 찍는지"를 다시 보여 준다.
         // ⚠ 그건 **아까 사진**의 문제다 — 앞에 '아까 사진:'을 붙인다. 안 붙이면 방금 찍은 새 사진도
         //   문제라고 읽혀 멀쩡한 사진을 또 다시 찍는다(지수 리뷰 #3).
-        if (widget.isReplace && (widget.replaceTip ?? '').isNotEmpty)
+        if ((widget.isReplace && (widget.replaceTip ?? '').isNotEmpty) ||
+            (!widget.isReplace && (widget.hint ?? '').isNotEmpty))
           Padding(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.screenPadding,
@@ -252,7 +257,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
               0,
             ),
             child: AppText(
-              '아까 사진: ${widget.replaceTip!}',
+              widget.isReplace ? '아까 사진: ${widget.replaceTip!}' : widget.hint!,
               textAlign: TextAlign.center,
               style: AppTypography.caption.copyWith(
                 color: Colors.white.withValues(alpha: 0.78),

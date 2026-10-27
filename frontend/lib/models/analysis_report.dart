@@ -8,6 +8,7 @@ library;
 
 import '../state/privacy_settings.dart';
 import '../utils/name_mask.dart';
+import 'compare_result.dart';
 import 'market_price_source.dart';
 import 'registry_mark_kind.dart';
 import 'risk_grade.dart';
@@ -339,6 +340,10 @@ class AnalysisReport {
     this.checkedNotes = const [],
     this.registryViewedAt,
     this.propertyId,
+    this.propertyAddress,
+    this.missingPages = const [],
+    this.pageNumbers = const [],
+    this.changeFromPrevious,
     this.comparable = false,
     this.privacyMasks = const [],
     this.privacyMasksReady = false,
@@ -367,6 +372,22 @@ class AnalysisReport {
   /// 주소는 읽을 때마다 글자가 조금씩 달라져(도로명 병기가 붙었다 빠졌다) 주소만으로는 같은 집이 둘로 갈린다.
   /// 못 읽었으면 null — 그땐 주소로 묶는다([groupByProperty]).
   final String? propertyId;
+
+  /// 쪽 머리 '[집합건물] …' 주소(호수까지) — 같은 집 묶기의 두 번째 기준. 화면에 보이지 않는다 (2026-10-27).
+  final String? propertyAddress;
+
+  /// 꼬리말 쪽 번호(N/M)로 본 **빠진 쪽**(1부터) — '다시 올리기' 카드의 "1쪽 빠짐".
+  final List<int> missingPages;
+
+  /// 올린 순서마다 꼬리말에 찍힌 쪽 번호(못 읽은 장은 null) — 카드가 **문서 쪽 번호**로 말한다.
+  final List<int?> pageNumbers;
+
+  /// 같은 집 바로 전 리포트와 견준 결과 — 여정 '등기부 변동 기록'의 한 줄 (없으면 null).
+  final CompareResult? changeFromPrevious;
+
+  /// 업로드 [index](0부터)의 문서 쪽 번호. 서버가 쪽 번호를 못 읽었으면 null.
+  int? pageNumberAt(int index) =>
+      index >= 0 && index < pageNumbers.length ? pageNumbers[index] : null;
 
   final DateTime analyzedAt;
 
@@ -562,6 +583,20 @@ class AnalysisReport {
     // 구버전 서버는 이 필드를 안 보낸다 → null → 앱은 그 줄을 그리지 않는다.
     registryViewedAt: json['registryViewedAt'] as String?,
     propertyId: json['propertyId'] as String?,
+    propertyAddress: json['propertyAddress'] as String?,
+    missingPages: [
+      for (final n in (json['missingPages'] as List? ?? const []))
+        if (n is int) n,
+    ],
+    pageNumbers: [
+      for (final n in (json['pageNumbers'] as List? ?? const []))
+        n is int ? n : null,
+    ],
+    changeFromPrevious: json['changeFromPrevious'] is Map<String, dynamic>
+        ? CompareResult.fromJson(
+            json['changeFromPrevious'] as Map<String, dynamic>,
+          )
+        : null,
     // 구버전 서버·옛 이력이면 없음 → false(대조 기준으로 쓸 수 없음)로 본다.
     comparable: json['comparable'] as bool? ?? false,
     // 사진 속 실명 자리 (§9.8). 옛 서버·옛 이력이면 없음 → 준비 안 됨(false) → 가리기가 켜지면 통째로 덮는다.

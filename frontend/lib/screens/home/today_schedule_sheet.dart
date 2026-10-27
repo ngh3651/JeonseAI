@@ -8,7 +8,10 @@
 /// 날짜는 이 휴대폰에만 있다([JourneyScheduleStore]) — 서버는 모른다.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design_system/text/app_text.dart';
@@ -66,6 +69,72 @@ List<TodayEvent> todayEvents(
   ];
 }
 
+/// 종 시트에서 **이미 본** 오늘 일정 (2026-10-27) — 본 뒤에는 빨간 점을 끈다. 이 폰에만, 오늘 것만 남긴다.
+///
+/// 새 일정이 오늘로 들어오면(다른 집·다른 날) 그것은 아직 안 본 것이라 점이 다시 켜진다. 날이 바뀌면 비운다.
+class TodayBellSeen extends ChangeNotifier {
+  TodayBellSeen._();
+
+  static final TodayBellSeen instance = TodayBellSeen._();
+
+  static const String _key = 'today_bell_seen_v1';
+
+  String _day = '';
+  final Set<String> _ids = {};
+
+  static String _dayOf(DateTime t) =>
+      '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+
+  static String idOf(TodayEvent e) => '${e.property.key}:${e.dateKey.name}';
+
+  Future<void> restore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key);
+      if (raw == null) return;
+      final m = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      _day = m['day'] as String? ?? '';
+      _ids
+        ..clear()
+        ..addAll([for (final x in (m['ids'] as List? ?? const [])) '$x']);
+    } catch (e) {
+      debugPrint('[종] 본 일정을 읽지 못했어요 (${e.runtimeType})');
+    }
+  }
+
+  @visibleForTesting
+  void resetForTest() {
+    _day = '';
+    _ids.clear();
+  }
+
+  /// 아직 안 본 오늘 일정이 있나 — 빨간 점
+  bool hasUnseen(List<TodayEvent> events, {DateTime? now}) {
+    final today = _dayOf(now ?? DateTime.now());
+    return events.any((e) => _day != today || !_ids.contains(idOf(e)));
+  }
+
+  /// 시트를 열었다 = 지금 있는 오늘 일정을 다 봤다.
+  Future<void> markSeen(List<TodayEvent> events, {DateTime? now}) async {
+    final today = _dayOf(now ?? DateTime.now());
+    if (_day != today) {
+      _day = today;
+      _ids.clear();
+    }
+    _ids.addAll(events.map(idOf));
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _key,
+        jsonEncode({'day': _day, 'ids': _ids.toList()}),
+      );
+    } catch (e) {
+      debugPrint('[종] 본 일정을 저장하지 못했어요 (${e.runtimeType})');
+    }
+  }
+}
+
 /// 홈 오른쪽 위 종 버튼 — 원 48, 흰 바탕 + line 테두리. 오늘 일정이 있으면 빨간 점.
 class TodayBellButton extends StatelessWidget {
   const TodayBellButton({
@@ -75,7 +144,7 @@ class TodayBellButton extends StatelessWidget {
     this.open = false,
   });
 
-  /// 오늘 일정이 있는 집이 하나라도 있나 — 빨간 점
+  /// 아직 안 본 오늘 일정이 있나 — 빨간 점 (시트를 열어 보면 꺼진다, [TodayBellSeen])
   final bool hasToday;
   final VoidCallback onPressed;
 

@@ -504,6 +504,8 @@ def _doc_flags(extract: RegistryExtract) -> list[str]:
         flags.append("현재 소유자 미추출")
     for key in extract.missing_fields:
         flags.append(f"{key} 항목 누락")
+    if extract.pages_incomplete:
+        flags.append("사진 쪽 빠짐·잘 안 읽힘")
     return flags
 
 

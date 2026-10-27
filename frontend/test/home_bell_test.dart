@@ -17,6 +17,7 @@ import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/repositories/content_repository.dart';
 import 'package:jeonse_ai/screens/home/home_screen.dart';
+import 'package:jeonse_ai/screens/home/today_schedule_sheet.dart';
 import 'package:jeonse_ai/state/app_session.dart';
 import 'package:jeonse_ai/state/journey_focus.dart';
 import 'package:jeonse_ai/state/journey_progress_store.dart';
@@ -112,6 +113,28 @@ void main() {
     JourneyScheduleStore.instance.resetForTest();
     JourneyProgressStore.instance.resetForTest();
     JourneyFocus.pending.value = null;
+    TodayBellSeen.instance.resetForTest();
+  });
+
+  testWidgets('종 시트를 열어 보면 빨간 점이 꺼진다 · 새 오늘 일정이 생기면 다시 켜진다', (tester) async {
+    await JourneyScheduleStore.instance.save(
+      _key(_a),
+      const JourneySchedule().copyWith(JourneyDateKey.balance, _today),
+    );
+    await _pumpHome(tester);
+    expect(find.byKey(const ValueKey('home-bell-dot')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('home-bell')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(10, 10)); // 시트 닫기
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home-bell-dot')), findsNothing);
+    // 다른 집에 오늘 일정이 새로 생겼다 → 다시 켜진다
+    await JourneyScheduleStore.instance.save(
+      _key(_b),
+      const JourneySchedule().copyWith(JourneyDateKey.moveIn, _today),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home-bell-dot')), findsOneWidget);
   });
 
   testWidgets('오늘 일정이 없으면 빨간 점 없음 · 시트엔 한 줄만', (tester) async {

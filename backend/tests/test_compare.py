@@ -569,3 +569,48 @@ def test_주소가_달리_읽혀도_고유번호가_같으면_한_집으로_정�
     assert store.prune_versions(latest, device_id=device) == 2
     left = [r.id for r in store.list_reports(device_id=device) if r.id.startswith("pp-")]
     assert len(left) == 5 and "pp-0" not in left
+
+
+# ── 같은 집 = 쪽 머리 주소 (2026-10-27 실기기: 일부 쪽만 올리면 다른 집으로 갈림) ───────────
+def test_쪽_머리_주소가_둘_다_있으면_그것으로_묶는다():
+    full = _report("hdr-a").model_copy(update={
+        "propertyId": "11011996123456",
+        "address": "서울특별시 서초구 서초동 1557-8 주건축물 제1동 [도로명주소] 서울특별시 서초구 반포대로26길 35",
+        "propertyAddress": "서울특별시 서초구 서초동 1557-8 주건축물 제1동 제6층 제602호",
+    })
+    partial = _report("hdr-b").model_copy(update={
+        "propertyId": None,  # 1쪽(고유번호)을 안 올림
+        "address": "서울특별시 서초구 서초동 1557-8 주건축물 제1동 제6층 제602호",
+        "propertyAddress": "서울특별시 서초구 서초동 1557-8 주건축물 제1동 제6층 제602호",
+    })
+    other_unit = partial.model_copy(update={
+        "id": "hdr-c",
+        "propertyAddress": "서울특별시 서초구 서초동 1557-8 주건축물 제1동 제6층 제603호",
+    })
+    assert store.same_property(full, partial)
+    assert not store.same_property(full, other_unit), "같은 건물 다른 호실은 다른 집"
+
+
+# ── 같은 집 바로 전 리포트와 견준 결과 (2026-10-27 '등기부 변동 기록') ─────────────────────
+def test_다시_분석하면_전_리포트와_견준_결과가_실린다():
+    from app.routers.reports import _attach_change
+
+    device = "dev-change-prev"
+    first = _report("chg-1").model_copy(update={"analyzedAt": "2026-10-27T10:00:00+09:00"})
+    second = _report("chg-2").model_copy(update={"analyzedAt": "2026-10-27T11:00:00+09:00"})
+    for r, ex in ((first, _extract()), (second, _extract(seizures=[{"receipt_date": "2026-10-20", "rank_number": "9"}]))):
+        store.add(r, device_id=device)
+        store.put_snapshot(
+            r.id,
+            compare.build_snapshot(ex, report=r, page_count=1, manual_market_price=None),
+            device_id=device,
+        )
+    updated = _attach_change(second, device_id=device)
+    assert updated.changeFromPrevious is not None
+    assert updated.changeFromPrevious.baseline.reportId == "chg-1"
+    assert any(row.kind == "added" for row in updated.changeFromPrevious.rows)
+    # 저장본에도 실린다(목록에서 다시 읽어도 보인다)
+    stored = store.get("chg-2", device_id=device)
+    assert stored is not None and stored.changeFromPrevious is not None
+    # 첫 분석엔 견줄 전 리포트가 없다
+    assert _attach_change(first, device_id=device).changeFromPrevious is None

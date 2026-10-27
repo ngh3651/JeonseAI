@@ -360,13 +360,16 @@ def test_선명한_사진이면_검사_결과가_ok다(client, no_network):
     assert resp.json()["captureCheck"] == {"ok": True, "pages": []}
 
 
-def test_검사가_판정을_바꾸지_않는다(client, no_network, base, monkeypatch):
-    """같은 IE 결과면 사진이 조금 흐리든 선명하든 등급·근거 카드가 같다."""
+def test_잘_안_읽힌_장이_있으면_양호가_나오지_않는다(client, no_network, base, monkeypatch):
+    """2026-10-27 바꿈 — 예전에는 '검사가 판정을 바꾸지 않는다'였다. 이제 잘 안 읽힌 장(흐림·잘림 …)이 있으면
+    어떤 카드도 '양호'가 될 수 없다(빠진 글자에 근저당이 있을 수 있다 — 보수적 편향 §2-3). '위험'은 그대로 위험이다."""
     no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))] * 2)
     sharp = _post(client, [blank_image(PAGE_W, PAGE_H)]).json()
     soft = _post(client, [jpeg(base.filter(ImageFilter.GaussianBlur(3.0)))]).json()
-    assert sharp["grade"] == soft["grade"]
-    assert [(e["id"], e["grade"]) for e in sharp["evidences"]] == [(e["id"], e["grade"]) for e in soft["evidences"]]
+    for body in (sharp, soft):  # 합성 쪽엔 쪽 번호가 없어 둘 다 '아래가 잘림' 장이 있다
+        assert body["captureCheck"]["pages"]
+        assert body["grade"] != "양호"
+        assert all(e["grade"] != "양호" for e in body["evidences"])
 
 
 def test_대조도_같은_검사를_한다(client, no_network, base):
@@ -383,3 +386,13 @@ def test_warn_모드에서는_심해도_분석한다(client, no_network, monkeyp
     resp = _post(client, [jpeg(base.filter(ImageFilter.GaussianBlur(4.0)))])
     assert resp.status_code == 200, resp.text
     assert resp.json()["captureCheck"]["pages"][0]["severe"] is True
+
+
+def test_촬영_검사를_꺼도_쪽_번호를_못_읽은_장이_있으면_양호가_아니다(client, no_network, monkeypatch):
+    """규칙 감사(2026-10-27): 촬영 검사가 꺼졌거나 실패해도(captureCheck 없음) 게이트는 쪽 번호로 막는다."""
+    monkeypatch.setenv("CAPTURE_CHECK", "off")
+    no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))])
+    body = _post(client, [blank_image(PAGE_W, PAGE_H)]).json()
+    assert body["grade"] != "양호"
+    assert all(e["grade"] != "양호" for e in body["evidences"])
+    assert body["pageNumbers"] == [None]

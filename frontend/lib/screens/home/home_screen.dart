@@ -4,6 +4,8 @@
 /// → 기능 바로가기. 빈 상태 포함 (user-scenario.md §6).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -40,6 +42,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openToday(List<TodayEvent> events) async {
     setState(() => _bellOpen = true);
+    // 열어 봤으면 빨간 점을 끈다 — 오늘 새로 생긴 일정이 있을 때만 다시 켜진다 (2026-10-27)
+    unawaited(TodayBellSeen.instance.markSeen(events));
     await showTodayScheduleSheet(context, events: events);
     if (mounted) setState(() => _bellOpen = false);
   }
@@ -85,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       0,
                     ),
                     child: TodayBellButton(
-                      hasToday: today.isNotEmpty,
+                      hasToday: TodayBellSeen.instance.hasUnseen(today),
                       open: _bellOpen,
                       onPressed: () => _openToday(today),
                     ),

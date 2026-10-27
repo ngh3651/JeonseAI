@@ -40,6 +40,7 @@ import '../common/share_feedback.dart';
 import '../journey/journey_actions.dart' show startRegistryCompare;
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
+import 'retake_notice_card.dart';
 import 'market_price_reanalyze.dart';
 import 'registry_entry_card.dart';
 import '../common/ask_selection.dart';
@@ -73,12 +74,16 @@ class ReportScreen extends StatefulWidget {
     super.key,
     required this.reportId,
     this.captureOne = defaultCaptureOne,
+    this.pickMany = defaultPickMany,
   });
 
   final String reportId;
 
   /// 카메라 주입 지점 — '그 장만 다시 찍기'에서 쓴다(테스트는 카메라 없이 가짜 함수를 넣는다).
   final CaptureOne captureOne;
+
+  /// 갤러리 주입 지점 — 다시 올리기 카드의 [갤러리에서 고르기]
+  final PickMany pickMany;
 
   @override
   State<ReportScreen> createState() => _ReportScreenState();
@@ -223,64 +228,115 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  /// 촬영 검사 안내 (P1-1, 2026-10-22) — 서버가 "가볍게 흐리다·쪽 번호가 잘렸다" 등으로 표시한 장.
+  /// 다시 올리기 안내 (2026-10-27 다시찍기_안내_시안) — 잘 안 읽힌 장 + 빠진 쪽.
   ///
-  /// 분석은 끝났고 **판정은 그대로다**. 다만 그 장의 글자를 잘못 읽었을 수 있으니, 그 장만 다시 찍어
-  /// **새로 분석**하길 권한다. 사진이 이 폰에 남아 있으면(최근 5건) 나머지 장은 그대로 쓰고 그 장만 바꾼다.
+  /// 분석은 끝났다. 잘 안 읽힌 장·빠진 쪽이 있으면 서버가 '양호'를 막았다(확인 필요 이상).
+  /// 사진이 이 폰에 남아 있으면(최근 5건) 문제인 쪽만 바꾸거나 더해 **같은 보증금·별칭으로** 새로 분석한다
+  /// → 같은 집의 새 리포트가 되고, 지난 것은 '이전 리포트'에 남는다.
   List<Widget> _captureNotice(BuildContext context, AnalysisReport report) {
-    final check = report.captureCheck;
-    if (check == null || check.pages.isEmpty) return const [];
     final paths = RegistryPhotoStore.instance.pathsFor(report.id);
-    final canRetake = paths.isNotEmpty;
-    // D5(2026-10-23): '결과는 그대로 볼 수 있어요'로 시작하면 결과를 누그러뜨린다 — 잘못 읽었으면 결과가
-    // **달라질 수 있다**는 사실을 먼저 말한다(보수적 편향). 장 줄 끝은 '(다시 찍으면 더 정확해요)'.
+    final pills = retakePillsFor(
+      report,
+      // 서버가 그 장의 쪽 번호를 못 읽었으면 정렬 순서(§9.12) → 올린 순서
+      fallbackPageNumber: (index) {
+        final count = paths.isNotEmpty ? paths.length : report.pageOrder.length;
+        final at = report.pageDisplayOrder(count).indexOf(index);
+        return at >= 0 ? at + 1 : index + 1;
+      },
+    );
+    if (pills.isEmpty) return const [];
     return [
-      CaptureIssuePanel(
-        check: check,
-        title: '글자를 잘못 읽었을 수 있는 장이 있어요',
-        message: canRetake
-            ? '이 장을 잘못 읽었다면 결과가 달라질 수 있어요. 그 장만 다시 찍어 새로 분석해 주세요.'
-            : '이 장을 잘못 읽었다면 결과가 달라질 수 있어요. 등기부를 다시 찍어 새로 분석해 주세요.',
-        onRetake: canRetake
-            ? (page) => _retakeAndReanalyze(context, report, paths, page)
-            : null,
-        // 서버가 쪽 번호로 순서를 세웠으면 그 쪽 번호로 말한다(뷰어와 같은 번호 — §9.12). 다시 찍기는 업로드 번호 그대로.
-        pageNumberOf: (index) {
-          final count = paths.isNotEmpty
-              ? paths.length
-              : report.pageOrder.length;
-          final at = report.pageDisplayOrder(count).indexOf(index);
-          return at >= 0 ? at + 1 : index + 1;
-        },
+      RetakeNoticeCard(
+        pills: pills,
+        onShoot: () => _retake(context, report, paths, pills, gallery: false),
+        onGallery: () => _retake(context, report, paths, pills, gallery: true),
       ),
       const SizedBox(height: AppSpacing.xl),
     ];
   }
 
-  /// 그 장만 다시 찍어 **같은 보증금·시세로** 새로 분석한다. 나머지 장은 이 폰에 남은 그 사진을 그대로 쓴다.
-  Future<void> _retakeAndReanalyze(
+  /// [다시 찍기]·[갤러리에서 고르기] → 문제인 쪽을 알약 순서대로 바꾸거나 더한 뒤 새로 분석한다.
+  ///
+  /// 사진이 폰에 없으면(오래된 리포트·보관 끔) 등기부 전체를 다시 찍거나 골라 새로 분석한다.
+  Future<void> _retake(
     BuildContext context,
     AnalysisReport report,
     List<String> paths,
-    CapturePageIssue page,
-  ) async {
-    if (page.index < 0 || page.index >= paths.length) return;
+    List<RetakePill> pills, {
+    required bool gallery,
+  }) async {
     final router = GoRouter.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final CaptureLoopResult? result = await Navigator.of(context).push(
-      MaterialPageRoute<CaptureLoopResult>(
-        fullscreenDialog: true,
-        builder: (_) => CaptureLoopRoute(
-          alreadyTaken: paths.length,
-          maxPhotos: paths.length,
-          captureOne: widget.captureOne,
-          replacePage: page.index,
-          replaceTip: page.tip,
-        ),
-      ),
-    );
-    if (!mounted || result == null || result.newPaths.isEmpty) return;
-    final updated = List<String>.of(paths)..[page.index] = result.newPaths.last;
+    final navigator = Navigator.of(context);
+    List<String>? updated;
+    if (paths.isEmpty) {
+      // 바꿀 원본이 없다 — 전체를 새로
+      if (gallery) {
+        final picked = await widget.pickMany();
+        if (picked.isNotEmpty) updated = picked;
+      } else {
+        final result = await navigator.push(
+          MaterialPageRoute<CaptureLoopResult>(
+            fullscreenDialog: true,
+            builder: (_) => CaptureLoopRoute(
+              alreadyTaken: 0,
+              maxPhotos: kRetakeMaxPhotos,
+              captureOne: widget.captureOne,
+              hint: '등기부 1쪽부터 차례로 찍어 주세요 — 종이 네 모서리와 맨 아래 쪽 번호가 나오게',
+            ),
+          ),
+        );
+        if (result != null && result.newPaths.isNotEmpty) updated = result.newPaths;
+      }
+    } else if (gallery) {
+      // 고른 사진을 알약 순서대로 끼운다 — 잘 안 읽힌 장은 바꾸고, 빠진 쪽은 더한다
+      final picked = await widget.pickMany();
+      if (picked.isNotEmpty) {
+        updated = List<String>.of(paths);
+        for (int i = 0; i < pills.length && i < picked.length; i++) {
+          final at = pills[i].uploadIndex;
+          if (at == null) {
+            updated.add(picked[i]);
+          } else if (at < updated.length) {
+            updated[at] = picked[i];
+          }
+        }
+      }
+    } else {
+      // 알약 순서대로 이어서 찍는다. 도중에 닫으면 아무것도 보내지 않는다.
+      final next = List<String>.of(paths);
+      for (final pill in pills) {
+        final at = pill.uploadIndex;
+        if (at != null && at >= next.length) continue;
+        final result = await navigator.push(
+          MaterialPageRoute<CaptureLoopResult>(
+            fullscreenDialog: true,
+            builder: (_) => at == null
+                ? CaptureLoopRoute(
+                    alreadyTaken: next.length,
+                    maxPhotos: next.length + 1,
+                    captureOne: widget.captureOne,
+                    hint: pill.tip,
+                  )
+                : CaptureLoopRoute(
+                    alreadyTaken: next.length,
+                    maxPhotos: next.length,
+                    captureOne: widget.captureOne,
+                    replacePage: at,
+                    replaceTip: pill.tip,
+                  ),
+          ),
+        );
+        if (!mounted || result == null || result.newPaths.isEmpty) return;
+        if (at == null) {
+          next.add(result.newPaths.last);
+        } else {
+          next[at] = result.newPaths.last;
+        }
+      }
+      updated = next;
+    }
+    if (!mounted || updated == null) return;
     final Object? returned = await router.push<Object?>(
       '/loading',
       extra: AnalysisRequest(
@@ -294,7 +350,6 @@ class _ReportScreenState extends State<ReportScreen> {
       ),
     );
     // 새로 찍은 장도 서버가 거절했다(여전히 흐림 등) — 조용히 돌아오지 않고 이유를 말한다.
-    // 이 리포트는 그대로라 아래 [다시 찍어 새로 분석]을 다시 누르면 된다.
     if (!mounted || returned is! CaptureRejection) return;
     messenger?.showSnackBar(
       SnackBar(

@@ -17,7 +17,10 @@ class ApiContentRepository implements ContentRepository {
   @override
   Future<PrecedentStatus?> precedentStatus() async {
     try {
-      final json = await _api.getJson('/api/precedents/status', onNotFound: () => null);
+      final json = await _api.getJson(
+        '/api/precedents/status',
+        onNotFound: () => null,
+      );
       if (json == null) return null;
       return PrecedentStatus.fromJson(json as Map<String, dynamic>);
     } catch (_) {
@@ -55,15 +58,13 @@ class ApiContentRepository implements ContentRepository {
   /// **AI가 답을 쓰고 한 번 고쳐 쓸 시간**이면 충분하다.
   @override
   Future<ChatReply> chat(List<ChatTurn> messages, {String? reportId}) async {
-    final recent = messages.length > 8 ? messages.sublist(messages.length - 8) : messages;
-    final json = await _api.postJson(
-      '/api/chat',
-      {
-        'messages': [for (final m in recent) m.toJson()],
-        'reportId': ?reportId,
-      },
-      timeout: const Duration(seconds: 30),
-    );
+    final recent = messages.length > 8
+        ? messages.sublist(messages.length - 8)
+        : messages;
+    final json = await _api.postJson('/api/chat', {
+      'messages': [for (final m in recent) m.toJson()],
+      'reportId': ?reportId,
+    }, timeout: const Duration(seconds: 30));
     return ChatReply.fromJson(json as Map<String, dynamic>);
   }
 

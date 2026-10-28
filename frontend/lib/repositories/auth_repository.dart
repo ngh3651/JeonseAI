@@ -87,6 +87,7 @@ class ApiAuthRepository implements AuthRepository {
 
   @override
   Future<MeStatus> setDisplayName(String name) async => MeStatus.fromJson(
-    await _api.postJson('/api/me/name', {'displayName': name}) as Map<String, dynamic>,
+    await _api.postJson('/api/me/name', {'displayName': name})
+        as Map<String, dynamic>,
   );
 }

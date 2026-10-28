@@ -56,17 +56,30 @@ abstract class AnalysisRepository extends ChangeNotifier {
   /// 이력 삭제.
   Future<void> deleteReport(String id);
 
+  /// 리포트의 **입력값 고치기** — 별칭·보증금·매매 시세 (계약 §3.23, 2026-10-29).
+  ///
+  /// 같은 리포트를 고친다(기록이 두 줄로 남지 않는다). 보증금·시세가 바뀌면 서버가 **같은 등기부로 판정만 다시** 한다
+  /// (사진을 다시 읽지 않는다). 서버에 재료가 없는 옛 리포트면 409(`ApiException.statusCode`) — 화면이 사진으로 다시 분석한다.
+  Future<AnalysisReport> updateInputs(String reportId, ReportInputs inputs) =>
+      throw UnsupportedError('이 저장소는 입력값 고치기를 지원하지 않아요');
+
   /// 등기부 대조 — 기준 리포트의 서류와 **이번에 뗀 서류**를 맞춰본다 (계약 §3.10).
   ///
   /// [imagePaths]가 비어 있어도 부를 수 있다. 기준이 없는 리포트(옛 이력)면 서버가
   /// 사진을 받기 전에 "기준 없음"으로 답하기 때문이다 — 찍게 해 놓고 마지막에 못
   /// 한다고 말하지 않기 위한 흐름이다(S-11).
-  Future<CompareResult> compareRegistry(String reportId, List<String> imagePaths);
+  Future<CompareResult> compareRegistry(
+    String reportId,
+    List<String> imagePaths,
+  );
 
   /// 손실 예상 (계약 §3.22) — 서버가 지역·용도별 매각가율로 계산한다. 못 받으면 null (화면이 '불러올 수 없어요').
   ///
   /// [marketPrice](원): 시뮬레이터에서 사용자가 넣은 매매 시세 — 이번 계산에만 쓴다(리포트는 그대로).
-  Future<LossEstimate?> getLossEstimate(String reportId, {int? marketPrice}) async => null;
+  Future<LossEstimate?> getLossEstimate(
+    String reportId, {
+    int? marketPrice,
+  }) async => null;
 
   /// 빠진 쪽을 더 찍어 **다시** 대조한다 — 앞 대조로 생긴 리포트([replaces])를 새 결과가 대신한다 (2026-10-27).
   /// 기본은 그냥 대조(서버 구현만 [replaces]를 보낸다).
@@ -98,6 +111,30 @@ class AnalysisCancelledException implements Exception {
 
   @override
   String toString() => 'AnalysisCancelledException';
+}
+
+/// 리포트 입력값 — 고친 **뒤의 전체 값** (계약 §3.23).
+@immutable
+class ReportInputs {
+  const ReportInputs({
+    required this.alias,
+    required this.deposit,
+    required this.marketPrice,
+  });
+
+  final String alias;
+
+  /// 원
+  final int deposit;
+
+  /// 원. null = 자동으로 찾은 시세를 쓴다(직접 넣은 값 없음)
+  final int? marketPrice;
+
+  Map<String, dynamic> toJson() => {
+    'alias': alias,
+    'deposit': deposit,
+    'marketPrice': marketPrice,
+  };
 }
 
 /// 더미 구현 — 위험 vs 확인 필요 2세트 (plan.md C-2: 시나리오 B 대비 컷의 원형).
@@ -171,7 +208,9 @@ class DummyAnalysisRepository extends AnalysisRepository {
       analyzedAt: analyzedAt,
       // 등기부를 뗀 날 ≠ 분석한 날. 실측 샘플(열람 7/9 · 분석 7/27)처럼 며칠 벌어져 있어야
       // "며칠 지난 등기부인가"를 다루는 화면(계약 여정)이 더미에서도 제대로 그려진다.
-      registryViewedAt: formatDate(analyzedAt.subtract(const Duration(days: 8))),
+      registryViewedAt: formatDate(
+        analyzedAt.subtract(const Duration(days: 8)),
+      ),
       grade: RiskGrade.danger,
       headline: '보증금을 지키기 어려운 신호가 보여요',
       // 상담처 전화번호는 Phase F에서 공식 홈페이지로 확인 후 병기
@@ -359,6 +398,27 @@ class DummyAnalysisRepository extends AnalysisRepository {
   Future<void> deleteReport(String id) async {
     _history.removeWhere((r) => r.id == id);
     notifyListeners();
+  }
+
+  /// 더미: 위험 템플릿을 새 입력값으로 다시 채운다(같은 id) — 판정은 예시 그대로다.
+  @override
+  Future<AnalysisReport> updateInputs(
+    String reportId,
+    ReportInputs inputs,
+  ) async {
+    final at = _history.indexWhere((r) => r.id == reportId);
+    if (at < 0) throw StateError('리포트를 찾을 수 없어요');
+    final old = _history[at];
+    final updated = _buildDangerReport(
+      id: old.id,
+      alias: inputs.alias,
+      analyzedAt: old.analyzedAt,
+      deposit: inputs.deposit,
+      marketPrice: inputs.marketPrice,
+    );
+    _history[at] = updated;
+    notifyListeners();
+    return updated;
   }
 
   /// 더미 이력에는 **대조 기준 스냅샷이 없다**(서버가 분석하며 남기는 것이다).

@@ -22,11 +22,13 @@ E-2: 질문은 data/questions.json 템플릿 실연동 완료. E-3: 판례도 �
 from __future__ import annotations
 
 import logging
+from dataclasses import replace as _replace
 from typing import Optional
 
 import anyio
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from .. import settings
 from ..dependencies import get_current_user, limit_analyze
@@ -193,6 +195,81 @@ def analyze(
     # 같은 집은 최신 5건만 (화면엔 최신 1개 — 앱이 고유번호·주소로 묶는다)
     store.prune_versions(report, device_id=device_id)
     return report
+
+
+class InputsUpdate(BaseModel):
+    """리포트 입력값 고치기 (2026-10-29) — 앱은 **고친 뒤의 전체 값**을 보낸다."""
+
+    alias: Optional[str] = Field(default=None, max_length=40, description="매물 별칭(비우면 그대로)")
+    deposit: int = Field(..., ge=1, description="예정 보증금(원)")
+    marketPrice: Optional[int] = Field(
+        default=None, ge=1, description="매매 시세(원). 없으면(null) 자동 조회 값을 쓴다"
+    )
+
+
+#: 재료가 없는 옛 리포트 — 앱이 이 말을 보면 폰에 남은 사진으로 다시 분석한다
+NO_KIT_DETAIL = "이 리포트는 사진으로 다시 분석해야 고칠 수 있어요"
+
+
+@router.patch("/reports/{report_id}", response_model=Report)
+def update_inputs(
+    request: Request,
+    report_id: str,
+    body: InputsUpdate,
+    device_id: str = Depends(get_current_user),
+) -> Report:
+    """보증금·시세·별칭 고치기 — **같은 리포트**를 고친다(기록이 두 줄로 남지 않는다).
+
+    - 별칭만 바뀌면: 이름만 바꾼다(다시 판정하지 않음).
+    - 보증금·시세가 바뀌면: 분석 때 남긴 등기부 내용으로 **판정만 다시** 한다 — 사진을 다시 읽지 않는다(IE·OCR 0회,
+      설명 문장만 AI). 판정은 규칙 엔진이 새로 낸다.
+    재료가 없는 옛 리포트는 409 — 앱이 폰에 남은 사진으로 다시 분석한다.
+    """
+    if report_id in getattr(store, "EXAMPLE_IDS", ()):
+        raise HTTPException(status_code=403, detail="예시 리포트는 고칠 수 없어요")
+    old = store.get(report_id, device_id=device_id)
+    if old is None:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없어요")
+    alias = (body.alias or "").strip() or old.alias
+    old_manual = old.marketPrice if old.marketPriceSource == "manual" else None
+    same_numbers = body.deposit == old.deposit and body.marketPrice == old_manual
+
+    if same_numbers:
+        if alias == old.alias:
+            return old
+        updated = old.model_copy(update={"alias": alias})
+    else:
+        kit = store.get_rejudge_kit(report_id, device_id=device_id)
+        if kit is None:
+            raise HTTPException(status_code=409, detail=NO_KIT_DETAIL)
+        limit_analyze(request, device_id)  # 설명 문장에 AI를 한 번 쓴다 — 분석 횟수로 센다
+        updated = report_builder.rejudge(
+            old, kit, deposit=body.deposit, market_price=body.marketPrice, alias=alias
+        )
+        analysis_cache.forget_report(report_id, device_id=device_id)
+        store.clear_cases(report_id, device_id=device_id)
+    store.update(updated, device_id=device_id)
+    try:  # 대조 기준의 입력값도 맞춘다 — 다음 대조가 고친 보증금을 기준으로 보게
+        snap = store.get_snapshot(report_id, device_id=device_id)
+        if snap is not None:
+            store.put_snapshot(
+                report_id,
+                _replace(
+                    snap,
+                    alias=updated.alias,
+                    deposit=updated.deposit,
+                    grade=updated.grade,
+                    manual_market_price=body.marketPrice,
+                ),
+                device_id=device_id,
+            )
+    except Exception as e:  # noqa: BLE001 — 대조 기준 맞추기 실패로 고친 결과를 잃지 않는다
+        _log.error(f"[대조] ⚠ 고친 입력값을 대조 기준에 반영하지 못함 ({type(e).__name__})")
+    _log.info(
+        f"[고치기] {report_id} — {'별칭만' if same_numbers else '다시 판정'}"
+        f" (등급 {old.grade} → {updated.grade})"
+    )
+    return updated
 
 
 def _drop_replaced(

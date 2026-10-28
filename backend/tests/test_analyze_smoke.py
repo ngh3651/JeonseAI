@@ -462,3 +462,84 @@ def test_IE가_비운_빚_금액을_사진_글자로_채워_끝까지_관통한�
     senior = next(e for e in report["evidences"] if e["id"] == "senior_debt")
     assert "금액을 못 읽은" not in (senior["detailText"] or "")
     assert any("사진 글자로 다시 읽었어요" in n for n in report["checkedNotes"])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 보증금·시세·별칭 고치기 (2026-10-29 QA) — 사진을 다시 읽지 않고 판정만 다시, 같은 리포트
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _analyzed(client, no_network):
+    pages = [gap_gu_page(0), eul_gu_page(with_cancel_row=False)]
+    pages[1] = OcrPage(
+        name="page_2.jpg", index=1, words=pages[1].words, lines=pages[1].lines,
+        width=PAGE_W, height=PAGE_H,
+    )
+    calls = no_network(registry_raw(), [raw_ocr_json(p) for p in pages])
+    resp = post_analyze(client, [blank_image(PAGE_W, PAGE_H) for _ in pages])
+    assert resp.status_code == 200, resp.text
+    return resp.json(), calls
+
+
+def test_보증금을_고치면_사진을_다시_읽지_않고_같은_리포트로_다시_판정한다(client, no_network):
+    report, calls = _analyzed(client, no_network)
+    before = len(client.get("/api/reports").json())
+    n_calls = len(calls)
+
+    resp = client.patch(
+        f"/api/reports/{report['id']}",
+        json={"deposit": 190_000_000, "marketPrice": 200_000_000, "alias": "고친 집"},
+    )
+    assert resp.status_code == 200, resp.text
+    fixed = resp.json()
+    assert fixed["id"] == report["id"]  # 같은 리포트 — 기록이 두 줄로 남지 않는다
+    assert fixed["deposit"] == 190_000_000 and fixed["marketPrice"] == 200_000_000
+    assert fixed["marketPriceSource"] == "manual"
+    assert fixed["alias"] == "고친 집"
+    # 빚 3,600만원 + 보증금 1억 9,000만원 = 시세의 113% → 규칙 엔진이 새로 '위험'
+    assert fixed["grade"] == "위험"
+    assert fixed["analyzedAt"] == report["analyzedAt"]
+    # 사진 표시(위치)는 그대로 — 이름은 서버 사본이라 가린 꼴이다(앱이 폰 원본의 실명으로 되돌린다)
+    assert [(h["page"], h["box"]) for h in fixed["highlights"]] == [
+        (h["page"], h["box"]) for h in report["highlights"]
+    ]
+    # IE·OCR을 다시 부르지 않았다 — 설명 문장(AI)만
+    new_calls = calls[n_calls:]
+    assert _IE_URL not in new_calls and _OCR_URL not in new_calls
+    assert len(client.get("/api/reports").json()) == before
+    assert client.get(f"/api/reports/{report['id']}").json()["deposit"] == 190_000_000
+
+
+def test_별칭만_고치면_다시_판정하지_않는다(client, no_network):
+    report, calls = _analyzed(client, no_network)
+    n_calls = len(calls)
+    resp = client.patch(
+        f"/api/reports/{report['id']}", json={"deposit": report["deposit"], "alias": "새 이름"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["alias"] == "새 이름"
+    assert resp.json()["grade"] == report["grade"]
+    assert calls[n_calls:] == []  # AI 호출 0회
+
+
+def test_재료가_없는_옛_리포트는_409로_사진_다시_분석을_알린다(client, no_network):
+    from app.services import store
+
+    report, _ = _analyzed(client, no_network)
+    store._db().execute("DELETE FROM rejudge_kits WHERE report_id = ?", (report["id"],))
+    resp = client.patch(f"/api/reports/{report['id']}", json={"deposit": 50_000_000})
+    assert resp.status_code == 409
+    assert "사진으로 다시 분석" in resp.json()["detail"]
+
+
+def test_다시_판정_재료에는_실명이_없다(client, no_network):
+    from app.services import store
+
+    report, _ = _analyzed(client, no_network)
+    kit = store.get_rejudge_kit(report["id"], device_id="legacy-device")
+    if kit is None:  # 기기 id 이름이 다른 환경 — 저장된 아무 재료나 본다
+        rows = store._db().execute("SELECT kit_json FROM rejudge_kits WHERE report_id = ?", (report["id"],))
+        kit = json.loads(rows[0][0])
+    text = json.dumps(kit, ensure_ascii=False)
+    assert "홍길동" not in text and "김영희" not in text
+    assert "홍○○" in text

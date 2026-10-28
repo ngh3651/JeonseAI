@@ -647,6 +647,9 @@ class AnalysisReport {
     namesHidden: namesHidden,
   );
 
+  /// 보증금·시세를 고치면 서버가 **사진 없이** 판정만 다시 할 수 있는가 (§3.23 · 2026-10-29). 옛 리포트·더미는 false.
+  bool get rejudgeReady => sourceJson?['rejudgeReady'] == true;
+
   /// 이 집에 **실제로 걸린 문제** 태그 — 판례 화면 '이 매물에서 눈에 띈 위험'(2026-10-29 QA).
   ///
   /// 서버가 규칙 엔진 건수로 만든 `riskTags`를 그대로 쓴다. 예전에는 카드 문장 속 글자로 골라서,

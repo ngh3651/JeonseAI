@@ -42,7 +42,7 @@ import '../journey/journey_actions.dart' show startRegistryCompare;
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
 import 'retake_notice_card.dart';
-import 'market_price_reanalyze.dart';
+import 'report_inputs_sheet.dart';
 import 'registry_entry_card.dart';
 import 'registry_findings.dart';
 import '../common/ask_selection.dart';
@@ -98,7 +98,7 @@ class _ReportScreenState extends State<ReportScreen> {
   /// 드물어 증상이 없었지만, 진입 카드에 사진 미리보기가 들어오면서 이미지 로딩·레이아웃
   /// 변화로 재빌드가 늘어난다. build마다 새 Future가 생기면 FutureBuilder가 로딩 분기로
   /// 되돌아가 화면이 깜빡이고 매번 서버 요청이 나간다(뷰어에서 실제로 겪은 문제다).
-  late final Future<AnalysisReport?> _reportFuture;
+  late Future<AnalysisReport?> _reportFuture;
 
   String get reportId => widget.reportId;
 
@@ -122,6 +122,24 @@ class _ReportScreenState extends State<ReportScreen> {
     } catch (_) {
       // 판례 저장소가 없는 화면(테스트 등) — 판례 화면이 그때 받는다
     }
+  }
+
+  /// 입력값을 고쳤으면 그 자리에서 새 리포트로 바꿔 그린다(같은 id — 화면을 다시 열지 않는다).
+  Future<void> _editInputs(
+    BuildContext context,
+    AnalysisReport report, {
+    bool focusPrice = false,
+  }) async {
+    final updated = await editReportInputs(
+      context,
+      report,
+      focusPrice: focusPrice,
+    );
+    if (updated == null || !mounted) return;
+    setState(() {
+      _reportFuture = Future.value(updated);
+    });
+    ReportFocus.current.value = ReportRef(updated.id, updated.alias);
   }
 
   /// '사진 속 이름 가리기'가 바뀌면 글자 속 이름도 **바로** 다시 가린다. 가리기는 모델을 만들 때 한 곳에서 하고
@@ -180,6 +198,13 @@ class _ReportScreenState extends State<ReportScreen> {
                   current: report,
                   versions: versions,
                 ),
+              ),
+              // 입력값 고치기 — 별칭·보증금·시세. 같은 리포트를 고친다(report_inputs_sheet.dart, 2026-10-29)
+              IconButton(
+                key: const ValueKey('report-edit-button'),
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: '보증금·시세·별칭 고치기',
+                onPressed: () => _editInputs(context, report),
               ),
               // 이 리포트를 PDF로 저장 — 폰 안에서 만들고 이름은 기본으로 가린다(report_pdf.dart)
               IconButton(
@@ -762,9 +787,11 @@ class _ReportScreenState extends State<ReportScreen> {
     final VoidCallback? onPressed = switch (label) {
       // '중개사에게 물어볼 질문 보기'는 리포트에서 뺐다 — 질문은 따로 항목이 있다 (2026-10-28)
       // 시세를 넣고 같은 사진·같은 보증금으로 새로 분석 — 사진이 이 폰에 없으면 버튼을 그리지 않는다
+      // 시세를 넣어 같은 등기부로 다시 판정 — 고치기 시트의 시세 칸으로 연다(2026-10-29, 기록이 두 줄로 남지 않는다).
+      // 숫자를 고칠 수 없는 옛 리포트(서버 재료도 폰 사진도 없음)면 버튼을 그리지 않는다
       '시세 입력하기' =>
-        canReanalyzeWithMarketPrice(report)
-            ? () => reanalyzeWithMarketPrice(context, report)
+        canEditReportNumbers(report)
+            ? () => _editInputs(context, report, focusPrice: true)
             : null,
       // 단독·다가구: 앞순위 보증금은 등기부에 없다 — 집주인·중개사에게 서류를 달라고 할 문자를 공유 창으로
       '앞순위 보증금 확인하기' => () => shareWithFeedback(

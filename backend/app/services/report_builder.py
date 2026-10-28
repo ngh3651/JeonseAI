@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from ..schemas.contract import CaptureCheck, Evidence, Highlight, MarketPriceAlternative, Report
-from ..schemas.internal import Grade, PriceProvenance, RegistryExtract, RuleVerdict
+from ..schemas.internal import EvidenceVerdict, Grade, PriceProvenance, RegistryExtract, RuleVerdict
 from . import (
     amount_recovery,
     artifacts,
@@ -146,6 +146,7 @@ def _build(
     checked_notes: list[str] | None = None,
     registry_viewed_at: str | None = None,
     price_info: "price_resolver.ResolvedPrice | None" = None,
+    blacklist_override: "EvidenceVerdict | None" = None,
 ) -> tuple[Report, "explanation.ExplanationResult"]:
     """조립 본체 — (Report, 설명 생성 결과)를 돌려준다.
 
@@ -158,7 +159,7 @@ def _build(
     if price_info is not None:
         market_price = price_info.price_won
     verdict: RuleVerdict = rule_engine.evaluate(
-        extract, deposit=deposit, market_price=market_price
+        extract, deposit=deposit, market_price=market_price, blacklist_override=blacklist_override
     )
     # 시세 **출처**를 설명 계층에 넘긴다 (2026-08-05).
     # ⚠ 규칙 엔진이 판정을 끝낸 **뒤에** 붙인다 — 판정이 이 값을 볼 수 없게 하려는 것이다.
@@ -402,6 +403,81 @@ def _layout_text_for(
         f" — 좌표는 여전히 Document OCR에서 옵니다"
     )
     return text
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 보증금·시세·별칭 고치기 (2026-10-29 QA) — 사진을 다시 읽지 않고 판정만 다시
+# ══════════════════════════════════════════════════════════════════════════════
+
+#: 고쳐도 그대로 두는 것 — 사진·등기부에서 나온 표시 정보(보증금·시세와 무관)
+_KEEP_ON_REJUDGE = (
+    "address", "analyzedAt", "highlights", "highlightNotice", "checkedNotes", "registryViewedAt",
+    "privacyMasks", "privacyMasksReady", "captureCheck", "personNames", "pageOrder", "pageRotations",
+    "propertyId", "propertyAddress", "missingPages", "pageNumbers", "houseTypes", "comparable",
+    "changeFromPrevious",
+)
+
+
+def rejudge_kit(extract: RegistryExtract, report: Report) -> dict:
+    """다시 판정 재료 — IE가 읽은 등기부(사람 이름은 가린 사본) + 실명이 필요했던 명단 대조 결과."""
+    names = name_privacy.person_names(extract) or list(report.personNames)
+    masked = name_privacy._mask_value(extract.model_dump(mode="json"), names)
+    blacklist = next((e for e in report.evidences if e.id == "blacklist"), None)
+    kit: dict = {"version": 1, "extract": masked}
+    if blacklist is not None:
+        kit["blacklist"] = {
+            "id": "blacklist",
+            "grade": blacklist.grade,
+            "status_label": blacklist.statusLabel,
+            "detail_text": blacklist.detailText,
+            "source_text": blacklist.sourceText,
+            "action_label": None,
+            # 명단 대조 사실(일치 이름은 원래 가린 꼴) — 설명 재료
+            "facts": {"matched": [], "list_size": None, "from_original_analysis": True},
+        }
+    return kit
+
+
+def rejudge(
+    old: Report,
+    kit: dict,
+    *,
+    deposit: int,
+    market_price: int | None,
+    alias: str | None,
+) -> Report:
+    """같은 등기부를 새 보증금·시세로 **다시 판정**한다 — 같은 리포트 id, IE·OCR 호출 없음(설명 문장만 AI).
+
+    판정은 규칙 엔진이 새로 낸다(앱은 숫자를 만들지 않는다). 사진에서 나온 표시 정보는 그대로 둔다.
+    시세는 분석 때와 같은 방식으로 다시 고른다 — 넣은 값이 있으면 그 값, 없으면 자동 조회(시세 DB·공공데이터, AI 아님).
+    """
+    extract = RegistryExtract.model_validate(kit["extract"])
+    blacklist = EvidenceVerdict.model_validate(kit["blacklist"]) if kit.get("blacklist") else None
+    try:
+        price_info = price_lookup.collect(
+            address=extract.address, area_sqm=extract.exclusive_area_sqm, manual_price_won=market_price
+        )
+    except Exception:  # noqa: BLE001
+        _log.error("[다시판정] ⚠ 시세 다시 고르기 실패 — 넣은 값만 씁니다", exc_info=True)
+        price_info = price_lookup.collect(
+            address=None, area_sqm=None, manual_price_won=market_price, auto=False
+        )
+    fresh, _ = _build(
+        extract,
+        deposit=deposit,
+        market_price=market_price,
+        alias=alias if alias is not None else old.alias,
+        report_id=old.id,
+        use_llm=True,
+        highlights=old.highlights,
+        highlight_notice=old.highlightNotice,
+        checked_notes=old.checkedNotes,
+        registry_viewed_at=old.registryViewedAt,
+        price_info=price_info,
+        blacklist_override=blacklist,
+    )
+    keep = {k: getattr(old, k) for k in _KEEP_ON_REJUDGE if hasattr(old, k)}
+    return fresh.model_copy(update=keep)
 
 
 def _incomplete_reason(
@@ -752,6 +828,12 @@ def analyze(
         report.comparable = True
     except Exception:  # noqa: BLE001
         _log.error("[대조] ⚠ 기준 스냅샷을 남기지 못했습니다 — 이 리포트는 대조 기준이 될 수 없어요", exc_info=True)
+    try:
+        # 보증금·시세를 나중에 고치면 사진을 다시 읽지 않고 판정만 다시 한다(2026-10-29) — 그 재료(이름 가린 사본)
+        store.put_rejudge_kit(report.id, rejudge_kit(extract, report), device_id=device_id)
+        report.rejudgeReady = True
+    except Exception:  # noqa: BLE001 — 재료를 못 남기면 고치기 때 사진으로 다시 분석한다(앱이 그렇게 안내)
+        _log.error("[다시판정] ⚠ 재료를 남기지 못했습니다 — 이 리포트는 사진으로만 다시 분석돼요", exc_info=True)
     try:
         store.add(report, device_id=device_id)
     except Exception:  # noqa: BLE001 — 이력 저장 실패로 이번 분석을 잃지 않는다

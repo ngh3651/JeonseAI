@@ -50,13 +50,21 @@ abstract final class ChatHint {
 }
 
 /// 상한·정렬을 한곳에서 — 메모리·폰 저장이 같은 규칙을 쓴다
-List<ChatConversation> upsertConversation(List<ChatConversation> all, ChatConversation c) {
+List<ChatConversation> upsertConversation(
+  List<ChatConversation> all,
+  ChatConversation c,
+) {
   final entries = c.entries.length > kChatHistoryMaxEntries
       ? c.entries.sublist(c.entries.length - kChatHistoryMaxEntries)
       : c.entries;
-  final next = [for (final x in all) if (x.id != c.id) x, c.copyWith(entries: entries)]
-    ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-  return next.length > kChatHistoryMaxConversations ? next.sublist(0, kChatHistoryMaxConversations) : next;
+  final next = [
+    for (final x in all)
+      if (x.id != c.id) x,
+    c.copyWith(entries: entries),
+  ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  return next.length > kChatHistoryMaxConversations
+      ? next.sublist(0, kChatHistoryMaxConversations)
+      : next;
 }
 
 /// 메모리 — 위젯 테스트, 그리고 폰 저장이 안 될 때의 대신
@@ -74,7 +82,8 @@ class MemoryChatHistoryRepository implements ChatHistoryRepository {
   Future<List<ChatConversation>> list() async => List.unmodifiable(_all);
 
   @override
-  Future<void> save(ChatConversation conversation) async => _all = upsertConversation(_all, conversation);
+  Future<void> save(ChatConversation conversation) async =>
+      _all = upsertConversation(_all, conversation);
 
   @override
   Future<void> rename(String id, String title) async {
@@ -82,7 +91,10 @@ class MemoryChatHistoryRepository implements ChatHistoryRepository {
   }
 
   @override
-  Future<void> delete(String id) async => _all = [for (final c in _all) if (c.id != id) c];
+  Future<void> delete(String id) async => _all = [
+    for (final c in _all)
+      if (c.id != id) c,
+  ];
 
   @override
   Future<bool> hintSeen(String key) async => _hints.contains(key);
@@ -128,7 +140,10 @@ class PrefsChatHistoryRepository implements ChatHistoryRepository {
     if (prefs == null) return;
     try {
       final all = await _memory.list();
-      await prefs.setString(_key, jsonEncode([for (final c in all) c.toJson()]));
+      await prefs.setString(
+        _key,
+        jsonEncode([for (final c in all) c.toJson()]),
+      );
     } catch (_) {
       // 저장 실패 — 이번 실행 동안은 메모리에 남아 있다
     }

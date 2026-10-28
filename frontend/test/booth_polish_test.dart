@@ -2,7 +2,7 @@
 ///
 ///   ① 리포트 PDF로 저장 (2026-10-29, 글자 요약 공유를 대신함 — 이름은 기본으로 가림, 사진은 넣지 않음)
 ///   ② 오래된 리포트의 [재분석] → [다시 떼서 대조]
-///   ③ 근거 카드의 [시세 입력하기]는 사진이 이 폰에 있을 때만 (누를 수 없는 버튼을 두지 않는다)
+///   ③ 근거 카드의 [시세 입력하기]는 숫자를 고칠 수 있을 때만 (서버 재료 또는 폰 사진 — 누를 수 없는 버튼을 두지 않는다)
 ///   ④ 앱 어디에도 "곧 제공되는 기능" 문구가 없다
 ///   ⑤ 부스 모드 — 앱 버전 줄 7번 연속 탭으로 켜고 끔, 켜면 로그아웃·회원 탈퇴·기록 지우기를 숨긴다
 ///   ⑥ '다시 뗀 등기부를 올려 주세요' 시트에서 막히지 않게 — [아직 안 뗐어요 — 떼는 법 보기] → 발급 가이드
@@ -25,6 +25,7 @@ import 'package:jeonse_ai/screens/my/app_version_line.dart';
 import 'package:jeonse_ai/screens/journey/journey_actions.dart';
 import 'package:jeonse_ai/screens/my/my_screen.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
+import 'package:jeonse_ai/screens/report/report_inputs_sheet.dart';
 import 'package:jeonse_ai/screens/report/report_pdf.dart';
 import 'package:jeonse_ai/services/kakao_login_gateway.dart';
 import 'package:jeonse_ai/services/session_credentials.dart';
@@ -136,11 +137,10 @@ void main() {
 
     test('근거는 위험 → 확인 필요 → 양호, 명단 미구축 카드는 빼고 면책 위 한 줄로', () {
       final data = reportPdfData(_shareReport());
-      expect([for (final e in data.evidences) e.grade], [
-        RiskGrade.danger,
-        RiskGrade.caution,
-        RiskGrade.ok,
-      ]);
+      expect(
+        [for (final e in data.evidences) e.grade],
+        [RiskGrade.danger, RiskGrade.caution, RiskGrade.ok],
+      );
       expect(data.texts.join('\n'), isNot(contains('위험 명단')));
       expect(data.blacklistPending, isTrue);
       expect(data.analyzedDate, '2026.10.22');
@@ -186,7 +186,9 @@ void main() {
       expect(raw, isNot(contains('/Subtype/Image')));
     });
 
-    testWidgets('PDF 버튼 → 시트(이름 가리기 켬) → [PDF 만들기] → 인쇄 창으로 PDF가 나간다', (tester) async {
+    testWidgets('PDF 버튼 → 시트(이름 가리기 켬) → [PDF 만들기] → 인쇄 창으로 PDF가 나간다', (
+      tester,
+    ) async {
       final saved = <(Uint8List, String)>[];
       PdfSave.debugOverride(
         print: (bytes, {required name}) async => saved.add((bytes, name)),
@@ -214,7 +216,11 @@ void main() {
       expect(saved.single.$2, startsWith('전세AI프_리포트_역삼동_오피스텔_'));
       expect(saved.single.$2, endsWith('.pdf'));
       expect(find.koText('PDF 만들기'), findsNothing, reason: '시트는 닫힌다');
-      expect(find.byType(SnackBar), findsNothing, reason: '저장했는지는 모르니 아무 말도 하지 않는다');
+      expect(
+        find.byType(SnackBar),
+        findsNothing,
+        reason: '저장했는지는 모르니 아무 말도 하지 않는다',
+      );
     });
 
     testWidgets('인쇄 창을 못 열면 공유 창으로, 그것도 안 되면 한 줄로 알린다', (tester) async {
@@ -329,7 +335,7 @@ void main() {
     final button = find.koText('시세 입력하기', skipOffstage: false);
     expect(button, findsOneWidget);
 
-    // 누르면 시세를 묻는다(같은 사진·같은 보증금으로 새로 분석)
+    // 누르면 입력값 고치기 시트의 시세 칸이 열린다(2026-10-29 — 같은 리포트를 고친다)
     await tester.scrollUntilVisible(
       find.koText('시세 입력하기'),
       200,
@@ -338,27 +344,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.koText('시세 입력하기'));
     await tester.pumpAndSettle();
-    expect(find.koText('매매 시세를 넣어 다시 분석할까요?'), findsOneWidget);
-    final TextButton go = tester.widget(
-      find.ancestor(
-        of: find.koText('다시 분석하기'),
-        matching: find.byType(TextButton),
-      ),
-    );
-    expect(go.onPressed, isNull, reason: '값을 넣기 전에는 누를 수 없다');
+    expect(find.koText('보증금·시세·별칭 고치기'), findsOneWidget);
     await tester.enterText(
-      find.byKey(const ValueKey('market-price-field')),
+      find.byKey(const ValueKey('inputs-price-field')),
       '30000',
     );
     await tester.pumpAndSettle();
-    final TextButton ready = tester.widget(
-      find.ancestor(
-        of: find.koText('다시 분석하기'),
-        matching: find.byType(TextButton),
-      ),
-    );
-    expect(ready.onPressed, isNotNull);
-    await tester.tap(find.koText('취소'));
+    expect(find.koText('저장하고 다시 판정하기'), findsOneWidget);
+    Navigator.of(tester.element(find.byType(ReportInputsSheet))).pop();
     await tester.pumpAndSettle();
   });
 

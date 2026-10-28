@@ -194,8 +194,16 @@ class DummyContentRepository implements ContentRepository {
       subtitle: '리포트가 못 보는 것 챙기기',
       kind: JourneyStageKind.analysis,
       items: [
-        JourneyItem(text: '등록된 중개사인지 조회', why: '자격 없는 사람이 중개사인 척하는 **사기**가 있어요', where: '국가공간정보포털 · 이름·상호로 검색'),
-        JourneyItem(text: '건축물대장 떼어 보기', why: '\'위반건축물\'이거나 \'근린생활시설\'이면 **보증보험·전세대출이 막힐 수 있어요**', where: '정부24 · 무료'),
+        JourneyItem(
+          text: '등록된 중개사인지 조회',
+          why: '자격 없는 사람이 중개사인 척하는 **사기**가 있어요',
+          where: '국가공간정보포털 · 이름·상호로 검색',
+        ),
+        JourneyItem(
+          text: '건축물대장 떼어 보기',
+          why: '\'위반건축물\'이거나 \'근린생활시설\'이면 **보증보험·전세대출이 막힐 수 있어요**',
+          where: '정부24 · 무료',
+        ),
       ],
     ),
     JourneyStage(
@@ -205,11 +213,28 @@ class DummyContentRepository implements ContentRepository {
       compare: true,
       dateKey: JourneyDateKey.downPayment,
       items: [
-        JourneyItem(text: '등기부 다시 떼서 대조', why: '등기부는 **뗀 날짜 기준으로만** 맞는 정보예요', where: '인터넷등기소 · 열람 700원'),
-        JourneyItem(text: '보증보험 가입 가능 확인', why: '가입이 안 되는 집은 문제가 생겨도 **대신 돌려줄 곳이 없어요**', where: 'HUG ☎1566-9009 · 중개사'),
-        JourneyItem(text: '집주인 계좌로만 보내기', why: '중개사·대리인·가족 계좌로 보낸 돈은 **되찾기 어려워요**'),
-        JourneyItem(text: '반환 조건 문자로 남기기', why: '"보증보험·대출이 안 되면 돌려준다"가 없으면 **계약금 전체를 물어야** 할 수도 있어요'),
-        JourneyItem(text: '재촉하면 멈추기', why: '"오늘 안 보내면 나가요"로 서두르게 한 뒤 **가계약금만 받고 사라지는** 사기가 흔해요'),
+        JourneyItem(
+          text: '등기부 다시 떼서 대조',
+          why: '등기부는 **뗀 날짜 기준으로만** 맞는 정보예요',
+          where: '인터넷등기소 · 열람 700원',
+        ),
+        JourneyItem(
+          text: '보증보험 가입 가능 확인',
+          why: '가입이 안 되는 집은 문제가 생겨도 **대신 돌려줄 곳이 없어요**',
+          where: 'HUG ☎1566-9009 · 중개사',
+        ),
+        JourneyItem(
+          text: '집주인 계좌로만 보내기',
+          why: '중개사·대리인·가족 계좌로 보낸 돈은 **되찾기 어려워요**',
+        ),
+        JourneyItem(
+          text: '반환 조건 문자로 남기기',
+          why: '"보증보험·대출이 안 되면 돌려준다"가 없으면 **계약금 전체를 물어야** 할 수도 있어요',
+        ),
+        JourneyItem(
+          text: '재촉하면 멈추기',
+          why: '"오늘 안 보내면 나가요"로 서두르게 한 뒤 **가계약금만 받고 사라지는** 사기가 흔해요',
+        ),
       ],
     ),
     JourneyStage(
@@ -219,11 +244,31 @@ class DummyContentRepository implements ContentRepository {
       compare: true,
       dateKey: JourneyDateKey.contract,
       items: [
-        JourneyItem(text: '도장 직전 등기부 대조', why: '도장 찍는 날 기준으로 다시 봐야 해요', where: '인터넷등기소 · 열람 700원'),
-        JourneyItem(text: '신분증 진짜인지 확인', why: '위조 신분증 사기가 있어요. **대리인이면 위임장·인감증명서 + 집주인과 영상통화**', where: '정부24 · ☎1382'),
-        JourneyItem(text: '주소·호수·이름 대조', why: '하나라도 다르면 **엉뚱한 집이나 엉뚱한 사람과** 계약하는 셈이에요', where: '계약서 ↔ 등기부'),
-        JourneyItem(text: '세금 체납·다른 세입자 보증금 기록 받기', why: '밀린 세금은 등기부에 안 보이는데 **내 보증금보다 먼저** 가져가요', where: '집주인이 보여줘야 하는 서류 (법)'),
-        JourneyItem(text: '확정일자 받기', why: '계약한 날 바로 받을 수 있어요. 전월세 신고를 하면 **자동으로** 붙어요', where: '주민센터 · 인터넷등기소 · 전월세 신고(30일 안)'),
+        JourneyItem(
+          text: '도장 직전 등기부 대조',
+          why: '도장 찍는 날 기준으로 다시 봐야 해요',
+          where: '인터넷등기소 · 열람 700원',
+        ),
+        JourneyItem(
+          text: '신분증 진짜인지 확인',
+          why: '위조 신분증 사기가 있어요. **대리인이면 위임장·인감증명서 + 집주인과 영상통화**',
+          where: '정부24 · ☎1382',
+        ),
+        JourneyItem(
+          text: '주소·호수·이름 대조',
+          why: '하나라도 다르면 **엉뚱한 집이나 엉뚱한 사람과** 계약하는 셈이에요',
+          where: '계약서 ↔ 등기부',
+        ),
+        JourneyItem(
+          text: '세금 체납·다른 세입자 보증금 기록 받기',
+          why: '밀린 세금은 등기부에 안 보이는데 **내 보증금보다 먼저** 가져가요',
+          where: '집주인이 보여줘야 하는 서류 (법)',
+        ),
+        JourneyItem(
+          text: '확정일자 받기',
+          why: '계약한 날 바로 받을 수 있어요. 전월세 신고를 하면 **자동으로** 붙어요',
+          where: '주민센터 · 인터넷등기소 · 전월세 신고(30일 안)',
+        ),
       ],
     ),
     JourneyStage(
@@ -233,10 +278,25 @@ class DummyContentRepository implements ContentRepository {
       compare: true,
       dateKey: JourneyDateKey.balance,
       items: [
-        JourneyItem(text: '이체 직전 등기부 대조', why: '잔금 직전에 이 집에 **새 빚(근저당)**이 생기는 일이 있어요. 계좌를 열어 둔 채 떼어 보고 바로 보내요', where: '인터넷등기소 · 열람 700원'),
-        JourneyItem(text: '계좌 주인 = 집주인', why: '집주인 이름처럼 꾸민 **모임통장 사기**가 있어요. 이름 뒤에 괄호나 다른 글자가 붙어 있으면 멈추세요'),
-        JourneyItem(text: '전 세입자 나가는지 확인', why: '그 사람이 돈을 못 받고 남아 있으면 **내 앞 순서**가 돼요', where: '전입세대확인서 · 주민센터'),
-        JourneyItem(text: '근저당 몫은 은행에 직접', why: '집주인에게 주면 **빚을 안 갚을 수 있어요**', where: '집주인 대출 은행 계좌'),
+        JourneyItem(
+          text: '이체 직전 등기부 대조',
+          why: '잔금 직전에 이 집에 **새 빚(근저당)**이 생기는 일이 있어요. 계좌를 열어 둔 채 떼어 보고 바로 보내요',
+          where: '인터넷등기소 · 열람 700원',
+        ),
+        JourneyItem(
+          text: '계좌 주인 = 집주인',
+          why: '집주인 이름처럼 꾸민 **모임통장 사기**가 있어요. 이름 뒤에 괄호나 다른 글자가 붙어 있으면 멈추세요',
+        ),
+        JourneyItem(
+          text: '전 세입자 나가는지 확인',
+          why: '그 사람이 돈을 못 받고 남아 있으면 **내 앞 순서**가 돼요',
+          where: '전입세대확인서 · 주민센터',
+        ),
+        JourneyItem(
+          text: '근저당 몫은 은행에 직접',
+          why: '집주인에게 주면 **빚을 안 갚을 수 있어요**',
+          where: '집주인 대출 은행 계좌',
+        ),
       ],
     ),
     JourneyStage(
@@ -246,8 +306,16 @@ class DummyContentRepository implements ContentRepository {
       agency: '주민센터·정부24',
       dateKey: JourneyDateKey.moveIn,
       items: [
-        JourneyItem(text: '이삿날 바로 전입신고', why: '이사 + 전입신고를 마쳐야 **대항력**이 생겨요. 하루 늦으면 빈틈도 하루 길어져요', where: '정부24 · 주민센터'),
-        JourneyItem(text: '확정일자도 같이 받기', why: '대항력과 확정일자가 **둘 다** 있어야 순서대로 돌려받아요', where: '주민센터'),
+        JourneyItem(
+          text: '이삿날 바로 전입신고',
+          why: '이사 + 전입신고를 마쳐야 **대항력**이 생겨요. 하루 늦으면 빈틈도 하루 길어져요',
+          where: '정부24 · 주민센터',
+        ),
+        JourneyItem(
+          text: '확정일자도 같이 받기',
+          why: '대항력과 확정일자가 **둘 다** 있어야 순서대로 돌려받아요',
+          where: '주민센터',
+        ),
         JourneyItem(text: '실제로 들어가 살기', why: '전입신고만 하고 안 살면 **대항력이 생기지 않아요**'),
       ],
     ),
@@ -258,7 +326,11 @@ class DummyContentRepository implements ContentRepository {
       compare: true,
       dateKey: JourneyDateKey.moveInNext,
       items: [
-        JourneyItem(text: '등기부로 새 빚 확인', why: '전입한 날부터 다음 날 0시 사이의 **하루 틈**에 근저당이 생기면 내 보증금보다 앞서요', where: '인터넷등기소 · 열람 700원'),
+        JourneyItem(
+          text: '등기부로 새 빚 확인',
+          why: '전입한 날부터 다음 날 0시 사이의 **하루 틈**에 근저당이 생기면 내 보증금보다 앞서요',
+          where: '인터넷등기소 · 열람 700원',
+        ),
       ],
     ),
     JourneyStage(
@@ -267,10 +339,25 @@ class DummyContentRepository implements ContentRepository {
       subtitle: '**입주하자마자 · 늦어도 계약 기간 절반 전에**',
       agency: 'HUG · HF · SGI',
       items: [
-        JourneyItem(text: '입주하자마자 신청', why: '늦을수록 그사이 새 빚이 생겨 **거절될 수 있어요**', where: 'HUG ☎1566-9009 · HF ☎1688-8114 · SGI ☎1670-7000'),
-        JourneyItem(text: '마감 = 계약 기간 절반 전', why: '2년 계약이면 **1년 안에** 신청해야 해요 (HUG 기준, 기관마다 달라요)'),
-        JourneyItem(text: '서류 챙기기', why: '보증금을 실제로 냈고 이 집에 산다는 증거예요', where: '확정일자 계약서 · 이체 기록 · 전입세대확인서'),
-        JourneyItem(text: '대출 은행에 먼저 묻기', why: '대출 때문에 **가입이 막히거나**, 은행에서 함께 가입하기도 해요', where: '대출받은 은행'),
+        JourneyItem(
+          text: '입주하자마자 신청',
+          why: '늦을수록 그사이 새 빚이 생겨 **거절될 수 있어요**',
+          where: 'HUG ☎1566-9009 · HF ☎1688-8114 · SGI ☎1670-7000',
+        ),
+        JourneyItem(
+          text: '마감 = 계약 기간 절반 전',
+          why: '2년 계약이면 **1년 안에** 신청해야 해요 (HUG 기준, 기관마다 달라요)',
+        ),
+        JourneyItem(
+          text: '서류 챙기기',
+          why: '보증금을 실제로 냈고 이 집에 산다는 증거예요',
+          where: '확정일자 계약서 · 이체 기록 · 전입세대확인서',
+        ),
+        JourneyItem(
+          text: '대출 은행에 먼저 묻기',
+          why: '대출 때문에 **가입이 막히거나**, 은행에서 함께 가입하기도 해요',
+          where: '대출받은 은행',
+        ),
       ],
     ),
     JourneyStage(
@@ -279,10 +366,24 @@ class DummyContentRepository implements ContentRepository {
       subtitle: '**만기 6개월 전부터 챙기기**',
       kind: JourneyStageKind.later,
       items: [
-        JourneyItem(text: '6~2개월 전에 알리기', why: '아무도 말하지 않으면 **같은 조건으로 자동 연장**돼요'),
-        JourneyItem(text: '기록이 남게 알리기', why: '보증보험으로 돌려받을 때 **언제 알렸는지** 증거가 필요해요', where: '문자 · 내용증명(우체국)'),
-        JourneyItem(text: '집주인 바뀌었는지 보기', why: '몰래 **돈 없는 사람에게 집을 넘기는** 사기가 있어요', where: '인터넷등기소 · 열람 700원'),
-        JourneyItem(text: '계약갱신요구권 쓰기', why: '한 번, 2년 더 살 수 있고 보증금은 **5%까지만** 올릴 수 있어요'),
+        JourneyItem(
+          text: '6~2개월 전에 알리기',
+          why: '아무도 말하지 않으면 **같은 조건으로 자동 연장**돼요',
+        ),
+        JourneyItem(
+          text: '기록이 남게 알리기',
+          why: '보증보험으로 돌려받을 때 **언제 알렸는지** 증거가 필요해요',
+          where: '문자 · 내용증명(우체국)',
+        ),
+        JourneyItem(
+          text: '집주인 바뀌었는지 보기',
+          why: '몰래 **돈 없는 사람에게 집을 넘기는** 사기가 있어요',
+          where: '인터넷등기소 · 열람 700원',
+        ),
+        JourneyItem(
+          text: '계약갱신요구권 쓰기',
+          why: '한 번, 2년 더 살 수 있고 보증금은 **5%까지만** 올릴 수 있어요',
+        ),
       ],
     ),
     JourneyStage(
@@ -291,9 +392,20 @@ class DummyContentRepository implements ContentRepository {
       subtitle: '**돈 받기 전에 주소 빼지 않기**',
       kind: JourneyStageKind.later,
       items: [
-        JourneyItem(text: '다 받은 뒤에 이사·전출', why: '받기 전에 주소를 빼면 **대항력과 순서가 사라져요**'),
-        JourneyItem(text: '못 받으면 임차권등기', why: '**등기부에 올라간 걸 확인한 뒤** 이사하면 순서가 지켜져요', where: '집 주소 관할 법원 · 대법원 전자소송'),
-        JourneyItem(text: '보증기관에 바로 연락', why: '집주인 대신 **보증기관이 돌려주는** 절차가 시작돼요', where: '가입한 보증기관'),
+        JourneyItem(
+          text: '다 받은 뒤에 이사·전출',
+          why: '받기 전에 주소를 빼면 **대항력과 순서가 사라져요**',
+        ),
+        JourneyItem(
+          text: '못 받으면 임차권등기',
+          why: '**등기부에 올라간 걸 확인한 뒤** 이사하면 순서가 지켜져요',
+          where: '집 주소 관할 법원 · 대법원 전자소송',
+        ),
+        JourneyItem(
+          text: '보증기관에 바로 연락',
+          why: '집주인 대신 **보증기관이 돌려주는** 절차가 시작돼요',
+          where: '가입한 보증기관',
+        ),
       ],
     ),
   ];

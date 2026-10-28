@@ -140,7 +140,9 @@ class ApiAnalysisRepository extends AnalysisRepository {
       await RegistryPhotoStore.instance.forget(oldId);
       await JourneyProgressStore.instance.replaceReportId(oldId, newId);
     } catch (e) {
-      debugPrint('[이력] 대신한 리포트 정리 실패 ($oldId → $newId, ${e.runtimeType}) — 다음에 다시 열면 맞춰져요');
+      debugPrint(
+        '[이력] 대신한 리포트 정리 실패 ($oldId → $newId, ${e.runtimeType}) — 다음에 다시 열면 맞춰져요',
+      );
     }
   }
 
@@ -149,10 +151,7 @@ class ApiAnalysisRepository extends AnalysisRepository {
   @override
   Future<List<AnalysisReport>> getHistory() async {
     final json = await _api.getJson('/api/reports') as List;
-    return [
-      for (final r in json)
-        await _originalOr(r as Map<String, dynamic>),
-    ];
+    return [for (final r in json) await _originalOr(r as Map<String, dynamic>)];
   }
 
   /// 리포트 단건 — **이 폰의 원본이 먼저다**(실명 — 실제 만난 계약자와 대조). 없을 때만 서버 사본(가린 이름).
@@ -182,6 +181,40 @@ class ApiAnalysisRepository extends AnalysisRepository {
       debugPrint('[폰원본] $id — 원본을 읽었지만 해석 실패 → 서버 사본을 씁니다 (${e.runtimeType})');
       return null;
     }
+  }
+
+  /// 입력값 고치기 — 서버가 같은 리포트를 고쳐 돌려준다(이름은 가린 사본). 이 폰에 **원본**(실명)이 있으면
+  /// 사진에서 나온 표시(형광펜·이름 목록·찾아본 것·가림 상자)는 원본 것을 그대로 두고 나머지만 새것으로 바꿔 저장한다 —
+  /// 보증금·시세와 무관한 것들이라, 이렇게 하면 계약자 대조용 실명이 화면에 그대로 남는다.
+  @override
+  Future<AnalysisReport> updateInputs(
+    String reportId,
+    ReportInputs inputs,
+  ) async {
+    final json = await _api.patchJson(
+      '/api/reports/$reportId',
+      inputs.toJson(),
+      timeout: const Duration(seconds: 60),
+    );
+    final body = Map<String, dynamic>.of(json as Map<String, dynamic>);
+    final original = await RegistryPhotoStore.instance.originalReport(reportId);
+    if (original != null) {
+      for (final key in const [
+        'highlights',
+        'personNames',
+        'checkedNotes',
+        'privacyMasks',
+        'privacyMasksReady',
+      ]) {
+        if (original.containsKey(key)) body[key] = original[key];
+      }
+      await RegistryPhotoStore.instance.updateOriginalReport(
+        reportId,
+        jsonEncode(body),
+      );
+    }
+    notifyListeners(); // 홈·마이 카드(별칭·등급) 갱신
+    return AnalysisReport.fromJson(body);
   }
 
   /// 기록 삭제 — 서버 기록과 **이 폰의 사진·원본 리포트**를 함께 지운다.

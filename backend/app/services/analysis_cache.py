@@ -119,6 +119,18 @@ def _forget(key: str, device_id: str) -> None:
     _execute("DELETE FROM analysis_cache WHERE device_id = ? AND cache_key = ?", (device_id, key))
 
 
+def forget_report(report_id: str, *, device_id: str) -> None:
+    """이 리포트를 가리키는 쪽지를 모두 지운다 — 보증금·시세를 고쳐 다시 판정한 리포트(2026-10-29).
+
+    쪽지 열쇠는 '사진 + **옛** 보증금·시세'인데 리포트 본문은 새 값으로 바뀌었다. 지우지 않으면 같은 사진을
+    옛 보증금으로 다시 보냈을 때 새 보증금 리포트가 돌아간다.
+    """
+    try:
+        _execute("DELETE FROM analysis_cache WHERE device_id = ? AND report_id = ?", (device_id, report_id))
+    except Exception:  # noqa: BLE001 — 캐시 정리 실패로 고치기를 막지 않는다(캐시는 24시간 뒤 저절로 빗나감)
+        _log.error("[캐시] ⚠ 고친 리포트의 쪽지를 지우지 못함", exc_info=True)
+
+
 def lookup(key: str, *, device_id: str) -> Report | None:
     """이 기기에서 같은 키로 만든 **기간 안의** 리포트. 없거나 지워졌거나 기간이 지났으면 None.
 

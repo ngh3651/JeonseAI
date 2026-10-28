@@ -8,7 +8,8 @@
 /// - 보증보험 토글(가입하면 0원) → 시뮬레이터와 상관없다. 가입 가능성은 리포트 근거 카드가 말한다
 /// - 시세가 없을 때 보증금을 기준가로 쓰던 계산 → 계산하지 않고 [시세 입력하기]
 ///
-/// 글은 줄이고 모양으로 말한다: 보증금 막대(돌려받음 초록 · 못 받음 빨강) → 계산 4줄 → 근거 몇 줄.
+/// 글은 줄이고 모양으로 말한다: 보증금 막대(돌려받음 초록 · 못 받음 빨강) → 계산 4줄 → 근거(지역·용도·기간·건수·출처).
+/// 화면엔 계산에 **쓴 것**만 적는다 — 넣지 않은 것(경매 비용·최우선변제 등)을 나열하지 않는다(2026-10-28 규혁).
 /// 글자·색은 판례·여정 리디자인과 같은 새 체계(`AppTypographyNext`·`AppColorsNext`).
 library;
 
@@ -24,8 +25,8 @@ import '../../repositories/analysis_repository.dart';
 import '../../utils/money_format.dart';
 import '../report/market_price_reanalyze.dart';
 
-/// 빠진 것 한 줄 — 1단계 계산에 넣지 않은 것 (화면 맨 아래 고지)
-const String kLossNotIncludedLine = '감정가 대신 시세로 계산 · 경매 비용·세금·최우선변제는 빠져 있어요';
+/// 용도를 확실히 모를 때 한 줄 — 후보 중 가장 낮은 매각가율로 계산했다는 것(보수적 기준)
+const String kLossConservativeLine = '보수적으로 가장 낮은 값을 썼어요';
 
 class LossSimulatorScreen extends StatefulWidget {
   const LossSimulatorScreen({super.key, required this.reportId});
@@ -280,11 +281,6 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
         ],
       ),
     ),
-    const SizedBox(height: 16),
-    AppText(
-      '최우선변제(보증금 일부를 먼저 받는 제도)는 아직 계산에 넣지 않았어요',
-      style: AppTypographyNext.caption,
-    ),
   ];
 }
 
@@ -507,7 +503,7 @@ class _Tile extends StatelessWidget {
   );
 }
 
-/// 근거 — 어디 값을 썼는지(지역·용도·기간·건수·출처) + 빠진 것 한 줄. 흐린 글씨, 맨 아래.
+/// 근거 — 어디 값을 썼는지(지역·용도·기간·건수·출처). 흐린 글씨, 맨 아래.
 class _Basis extends StatelessWidget {
   const _Basis(this.e);
 
@@ -526,9 +522,7 @@ class _Basis extends StatelessWidget {
         if (e.soldCount != null) '${_count(e.soldCount!)}건',
       ].join(' · '),
       if (e.source != null && e.source!.isNotEmpty) '출처 ${e.source}',
-      if (e.regionFallback) '이 지역 자료가 적어 전국 값을 썼어요',
-      if (e.useGuessed) '집 종류를 확실히 몰라 가장 낮은 값을 썼어요',
-      kLossNotIncludedLine,
+      if (e.useGuessed) kLossConservativeLine,
     ];
     return Column(
       key: const ValueKey('loss-basis'),

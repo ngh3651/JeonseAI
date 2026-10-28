@@ -579,7 +579,7 @@ MarketPriceAlternative {
   용도는 `Report.houseTypes`(분석 때 실거래가·공시가격 매칭 유형으로 정함) — 여럿이면 **가장 낮은 매각가율**. 시도 매각 건수 30건 미만이면 전국 값.
 - **응답 200** `LossEstimate`: `status`(ok | debt_exceeds | no_price | no_rate) · `deposit` · `basePrice` · `seniorDebt` · `ratePct` · `region` · `regionFallback` · `use` · `useGuessed` · `soldCount` · `period` · `source` · `expectedSale` · `expectedReturn` · `expectedLoss`.
   - `no_price`: 시세가 없어 계산하지 않는다(보증금을 기준가로 쓰지 않는다). `debt_exceeds`: 빚 ≥ 시세 — 매각가율을 보지 않는다. `no_rate`: 그 용도의 자료가 없다(지어내지 않는다).
-  - 경매 비용·세금·최우선변제는 아직 넣지 않았다(2단계). 앱이 그 사실을 화면에 적는다.
+  - 경매 비용·세금·최우선변제는 아직 넣지 않았다(2단계). 앱은 계산에 **쓴** 근거(지역·용도·기간·건수·출처)만 적는다.
 - **에러**: **404** 없는 리포트.
 
 ## 4. 화면 ↔ 엔드포인트 매핑

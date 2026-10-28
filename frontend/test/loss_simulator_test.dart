@@ -89,7 +89,9 @@ void main() {
     expect(find.koTextContaining('서울 · 연립다세대 매각가율'), findsOneWidget);
     expect(find.koTextContaining('4,808건'), findsOneWidget);
     expect(find.koTextContaining('대법원 법원경매정보'), findsOneWidget);
-    expect(find.koText(kLossNotIncludedLine), findsOneWidget);
+    // 넣지 않은 것을 나열하지 않는다 (2026-10-28 규혁)
+    expect(find.koTextContaining('최우선변제'), findsNothing);
+    expect(find.koTextContaining('빠져 있어요'), findsNothing);
   });
 
   testWidgets('슬라이더·보증보험·예시 배너가 없다', (t) async {
@@ -100,7 +102,7 @@ void main() {
     expect(find.koTextContaining('예시'), findsNothing);
   });
 
-  testWidgets('추정·전국 값이면 그 사실을 한 줄씩', (t) async {
+  testWidgets('전국 값이면 근거에 "전국" · 용도를 모르면 "보수적으로" 한 줄', (t) async {
     await _pump(
       t,
       const LossEstimate(
@@ -116,8 +118,8 @@ void main() {
         expectedLoss: 1,
       ),
     );
-    expect(find.koText('이 지역 자료가 적어 전국 값을 썼어요'), findsOneWidget);
-    expect(find.koText('집 종류를 확실히 몰라 가장 낮은 값을 썼어요'), findsOneWidget);
+    expect(find.koTextContaining('전국 · 오피스텔 매각가율'), findsOneWidget);
+    expect(find.koText(kLossConservativeLine), findsOneWidget);
   });
 
   testWidgets('빚이 집값보다 크면 계산 대신 두 칸과 한 문장', (t) async {
@@ -135,6 +137,7 @@ void main() {
     expect(find.koText('돌려받기 어려워요'), findsOneWidget);
     expect(find.koText('19억원'), findsOneWidget);
     expect(find.byKey(const ValueKey('loss-bar')), findsNothing);
+    expect(find.koTextContaining('최우선변제'), findsNothing);
   });
 
   testWidgets('시세가 없으면 계산하지 않는다 · 자료가 없으면 지어내지 않는다', (t) async {

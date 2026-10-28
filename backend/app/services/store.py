@@ -6,17 +6,13 @@
 - 리포트·대조 스냅샷은 `${DATA_DIR}/app.db`(기본 `backend/data/runtime/app.db`, git 제외)에
   **주인 기기 id·저장 시각과 함께** 저장한다 → 재시작해도 남는다(클라우드에서는 영구 볼륨 `/data`).
 - 모든 조회는 **호출한 기기의 것만** 본다. 다른 기기의 리포트는 "없는 것"과 같다(라우터가 404).
-- 예시 리포트(`dummy-example`)는 저장하지 않는다 — 첫 조회 때 규칙 엔진으로 만들어
-  **모든 기기에 보이고**, 지울 수 없다(라우터가 403).
+- 모든 기기에 붙던 예시 리포트(`dummy-example`)는 2026-10-29에 없앴다 — 목록은 **그 기기의 기록만**이다.
 - 판례 카드 캐시는 **메모리에만** 둔다(기기·리포트 단위). 재시작하면 첫 조회 때 다시 만든다 —
   판례 인덱스를 다시 만든 뒤 옛 카드가 영원히 남는 일을 막기 위해서다(decisions.md 2026-10-21).
 
 개인정보: 여기에 **남는** 리포트·스냅샷에는 실명이 없다. 분석 응답은 실명이지만(2026-10-22 — 화면엔 실명),
 `add`가 저장 직전에 `name_privacy.mask_report_for_storage`로 **가린 사본**을 만들어 그것만 쓴다.
 스냅샷은 이름 대신 해시만 든다(`compare.py`). `tests/test_pii_persistence.py`가 DB·로그·저장 JSON에 실명이 0건인지 확인한다.
-
-⚠ 예시 시드는 **첫 조회 때 만든다** (2026-08-14 D13). 예시가 규칙 엔진 산출물이라
-  `dummy_data → report_builder → store` 순환에 걸리지 않게, 모듈을 읽는 시점에는 만들지 않는다.
 """
 
 from __future__ import annotations
@@ -32,14 +28,12 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .. import dummy_data, settings
+from .. import settings
 from ..schemas.contract import CaseMatch, Report
 from . import name_privacy
 from .compare import Fingerprint, RegistrySnapshot
 
 _log = logging.getLogger("jeonseai")
-
-EXAMPLE_IDS = dummy_data.EXAMPLE_IDS  # {"dummy-example"} — 모든 기기가 보고, 삭제 금지(403)
 
 DB_FILENAME = "app.db"
 
@@ -144,10 +138,9 @@ def reset() -> None:
 
     테스트가 "서버 재시작"을 흉내 낼 때 쓴다(파일은 그대로 남는다).
     """
-    global _store, _examples
+    global _store
     with _store_lock:
         _store = None
-    _examples = None
     _cases_cache.clear()
 
 
@@ -173,24 +166,6 @@ def writable() -> bool:
         return False
 
 
-# ── 예시 리포트 (저장하지 않음, 모든 기기 공용) ─────────────────────────────────
-
-_examples: list[Report] | None = None
-
-
-def _example_reports() -> list[Report]:
-    global _examples
-    if _examples is None:
-        _examples = dummy_data.get_history()
-    return _examples
-
-
-def _example(report_id: str) -> Report | None:
-    if report_id not in EXAMPLE_IDS:
-        return None
-    return next((r for r in _example_reports() if r.id == report_id), None)
-
-
 # ── 리포트 ───────────────────────────────────────────────────────────────────
 
 
@@ -209,9 +184,9 @@ def _parse_reports(rows: list[tuple]) -> list[Report]:
 
 
 def list_reports(*, device_id: str) -> list[Report]:
-    """이 기기의 이력(최신순) + 맨 끝에 예시 리포트.
+    """이 기기의 이력(최신순). 기록이 없으면 빈 목록 — 앱이 빈 화면 안내를 띄운다.
 
-    ⚠ 기록 DB를 열 수 없어도(볼륨 권한·디스크 문제) **예시 리포트는 나간다** — 홈 화면이 에러로
+    ⚠ 기록 DB를 열 수 없어도(볼륨 권한·디스크 문제) 500 대신 **빈 목록**이 나간다 — 홈 화면이 에러로
       덮이지 않게(2026-10-22 리뷰). 원인은 로그와 헬스체크 `historyDb=false`로 보인다.
     """
     try:
@@ -220,16 +195,13 @@ def list_reports(*, device_id: str) -> list[Report]:
             (device_id,),
         )
     except Exception as e:  # noqa: BLE001
-        _log.error(f"[이력] ⚠ 기록 DB를 읽지 못해 예시 리포트만 보냅니다 ({type(e).__name__})")
+        _log.error(f"[이력] ⚠ 기록 DB를 읽지 못해 빈 목록을 보냅니다 ({type(e).__name__})")
         rows = []
-    return _fill_property_ids(_parse_reports(rows), device_id=device_id) + list(_example_reports())
+    return _fill_property_ids(_parse_reports(rows), device_id=device_id)
 
 
 def get(report_id: str, *, device_id: str) -> Report | None:
-    """이 기기의 리포트 또는 예시. 다른 기기의 리포트는 **None**(=없는 것과 같다)."""
-    example = _example(report_id)
-    if example is not None:
-        return example
+    """이 기기의 리포트. 다른 기기의 리포트는 **None**(=없는 것과 같다)."""
     rows = _db().execute(
         "SELECT report_json FROM reports WHERE device_id = ? AND id = ?",
         (device_id, report_id),
@@ -308,7 +280,7 @@ def previous_version(report: Report, *, device_id: str) -> Report | None:
 
 def _fill_property_ids(reports: list[Report], *, device_id: str) -> list[Report]:
     """고유번호 칸이 생기기 전(2026-10-27 전)에 저장된 리포트 → 대조 기준 스냅샷의 고유번호로 채운다."""
-    missing = [r for r in reports if r.propertyId is None and r.id not in EXAMPLE_IDS]
+    missing = [r for r in reports if r.propertyId is None]
     if not missing:
         return reports
     try:
@@ -360,9 +332,7 @@ def prune_versions(report: Report, *, device_id: str, keep: int = KEEP_VERSIONS_
 
 
 def remove(report_id: str, *, device_id: str) -> None:
-    """이 기기의 리포트와 그 대조 기준·판례 캐시를 지운다. 예시는 지우지 않는다."""
-    if report_id in EXAMPLE_IDS:
-        return
+    """이 기기의 리포트와 그 대조 기준·판례 캐시를 지운다."""
     db = _db()
     db.execute("DELETE FROM reports WHERE device_id = ? AND id = ?", (device_id, report_id))
     db.execute(
@@ -377,7 +347,7 @@ def remove(report_id: str, *, device_id: str) -> None:
 # 견줄 재료를 따로 남긴다. 실명은 담지 않는다(services/compare.py 참고).
 #
 # ⚠ 스냅샷이 없는 리포트 = 대조 기준으로 쓸 수 없는 리포트다. 이 기능 이전에 분석한
-#   이력과 예시 리포트가 여기 해당한다 — 앱은 `Report.comparable`로 미리 알고
+#   이력이 여기 해당한다 — 앱은 `Report.comparable`로 미리 알고
 #   "기준 없음" 화면을 사진 촬영 **전에** 보여준다.
 
 
@@ -407,13 +377,11 @@ def get_snapshot(report_id: str, *, device_id: str) -> RegistrySnapshot | None:
 # 판례 섹션은 하이브리드 검색 + 판례 수만큼의 Solar 호출이라 몇 초가 걸린다.
 # 리포트는 한 번 만들어지면 변하지 않으므로 결과를 그대로 재사용한다.
 # **메모리에만 둔다** — 재시작하면 첫 조회 때 다시 만든다(인덱스를 다시 만든 뒤 반영되게).
-# 예시 리포트는 모든 기기가 같은 카드를 보므로 공용 칸(`*`)에 둔다.
-_SHARED = "*"
 _cases_cache: dict[tuple[str, str], list[CaseMatch]] = {}
 
 
 def _cases_key(report_id: str, device_id: str) -> tuple[str, str]:
-    return (_SHARED if report_id in EXAMPLE_IDS else device_id, report_id)
+    return (device_id, report_id)
 
 
 def get_cases(report_id: str, *, device_id: str) -> list[CaseMatch] | None:
@@ -438,7 +406,7 @@ def move_owner(from_owner: str, to_owner: str) -> int:
     """`from_owner`의 리포트·대조 기준·판례 캐시를 `to_owner`로 옮긴다. 옮긴 리포트 수를 돌려준다.
 
     같은 리포트 id가 이미 `to_owner`에 있으면 옮겨 오는 쪽이 이긴다(`UPDATE OR REPLACE`).
-    예시 리포트는 저장돼 있지 않으므로 옮길 것이 없다. 여러 번 불러도 같다(두 번째는 0건).
+    여러 번 불러도 같다(두 번째는 0건).
     """
     if not from_owner or from_owner == to_owner:
         return 0

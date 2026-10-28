@@ -349,7 +349,12 @@ def _post_compare(client, images: list[bytes]):
 
 def test_기준이_없는_리포트는_사진_없이도_기준없음을_돌려준다(client):
     """찍게 해 놓고 마지막에 '못 한다'고 말하지 않는다 — 사진 요청 전에 답한다."""
-    report_id = next(iter(store.EXAMPLE_IDS))
+    from app import settings
+    from tests.test_clean_report import build_clean_report
+
+    report = build_clean_report()  # 스냅샷 없이 기록에만 넣는다 = 이 기능 이전의 옛 리포트
+    store.add(report, device_id=settings.LEGACY_DEVICE_ID)
+    report_id = report.id
 
     resp = client.post(f"/api/reports/{report_id}/compare")
 
@@ -750,7 +755,6 @@ def test_다른_집이나_기준_리포트는_대신하지_않는다():
 
     _drop_replaced(new, "rg-b", device_id=device)  # 다른 집
     _drop_replaced(new, "rg-a", device_id=device, keep=frozenset({"rg-a"}))  # 기준 리포트
-    _drop_replaced(new, next(iter(store.EXAMPLE_IDS)), device_id=device)  # 예시
     _drop_replaced(new, None, device_id=device)
 
     assert store.get("rg-b", device_id=device) is not None

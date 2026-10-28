@@ -470,10 +470,3 @@ def test_가림_상자를_만들다_터져도_리포트는_나가고_준비_안_
     assert resp.status_code == 200, resp.text
     assert resp.json()["privacyMasksReady"] is False
     assert resp.json()["privacyMasks"] == []
-
-
-def test_예시_리포트는_가림_상자_준비가_안_된_것으로_나간다(client):
-    """예시 리포트에는 사진이 없다 — 준비 안 됨(false)이 맞는 값이다(앱은 사진이 없으니 그릴 것도 없다)."""
-    resp = client.get("/api/reports/dummy-example")
-    assert resp.status_code == 200
-    assert resp.json()["privacyMasksReady"] is False

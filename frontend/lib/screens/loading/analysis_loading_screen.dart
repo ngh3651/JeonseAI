@@ -7,6 +7,7 @@
 /// 휴대폰 "동작 줄이기"가 켜져 있으면 움직임을 모두 멈추고 세이프는 한 장으로 고정한다.
 /// 완료되면 홈으로 리셋 후 리포트를 push (분석 직후 리포트 백=홈 — IA §7).
 /// 로딩 중 시스템 백은 취소 확인 다이얼로그. **분석 로직(저장소 호출·오류 분기)은 그대로다.**
+/// [중단] = 결과 버리기(2026-10-29): 보내던 요청을 끊고, 뒤늦게 답이 와도 저장·이동하지 않는다([AnalysisCancelToken]).
 library;
 
 import 'dart:async';
@@ -117,6 +118,9 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
   int? _errorStatus; // 상태코드별 복구 동선 분기 (400계열=사진 다시 / 402·429=재시도 없음)
   bool _needsAppUpdate = false; // 기기 정보(400)·앱 인증(401) — 재시도·사진 교체로 안 풀린다
 
+  /// 지금 돌고 있는 분석의 중단 표시 — [중단]을 누르거나 화면이 닫히면 켠다([_run]마다 새로 만든다)
+  AnalysisCancelToken? _cancel;
+
   /// 움직임 시계(초) — 세이프·종이·스캔 줄·물결·막대 빛이 이 값 하나를 보고 그린다(화면 전체를 다시 그리지 않는다)
   final ValueNotifier<double> _motion = ValueNotifier<double>(0);
   late final Ticker _ticker = createTicker(
@@ -174,14 +178,17 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
 
     final repo = context.read<AnalysisRepository>();
     final router = GoRouter.of(context); // go+push 전에 참조 확보 (context 무효화 대비)
+    final cancel = _cancel = AnalysisCancelToken();
 
     final AnalysisReport report;
     try {
       final results = await Future.wait([
-        repo.analyze(widget.request),
+        repo.analyzeCancellable(widget.request, cancel),
         Future.delayed(const Duration(milliseconds: 2600)),
       ]);
       report = results.first as AnalysisReport;
+    } on AnalysisCancelledException {
+      return; // [중단]으로 버린 결과 — 화면은 이미 닫혔다
     } on ApiException catch (e) {
       // 서버가 보낸 진짜 원인(요약본 거부·크레딧 소진 등)을 뭉개지 않고 그대로 보여준다
       // (gap-checker 2026-07-07 치명 지적 — user-scenario §4 S-06 분기 복원)
@@ -219,7 +226,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
 
     _timer?.cancel();
     _clock.stop();
-    if (!mounted || _navigated) return;
+    if (!mounted || _navigated || cancel.isCancelled) return;
     // 서버가 답했다 → 남은 단계를 체크하고 막대를 100%로 채워 보여 준 뒤 넘어간다(0.5초 안 — 진짜 완료라서 괜찮다)
     setState(() => _done = true);
     await Future<void>.delayed(const Duration(milliseconds: 450));
@@ -233,6 +240,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
 
   @override
   void dispose() {
+    _cancel?.cancel(); // 다 끝난 뒤라면 아무 일도 없다 — 도는 중에 닫히면 결과를 버린다
     _timer?.cancel();
     _clock.stop();
     _ticker.dispose();
@@ -261,6 +269,8 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
     );
     if ((ok ?? false) && mounted) {
       _timer?.cancel();
+      // 결과 버리기 (2026-10-29) — 보내던 요청을 끊고(서버가 남은 단계를 건너뛴다) 늦게 온 답은 저장하지 않는다
+      _cancel?.cancel();
       _navigated = true; // 완료 콜백이 뒤늦게 네비게이션하지 않도록
       context.pop(); // 검색 화면(S-04)으로 복귀 (사진·입력값 유지)
     }

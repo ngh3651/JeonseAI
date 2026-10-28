@@ -448,9 +448,9 @@ def test_주의_기준을_위험이라고_하면_고쳐_쓰게_한다(fake_llm):
 
 
 def _danger_report():
-    from app import dummy_data
+    from tests.test_clean_report import build_clean_report
 
-    r = dummy_data.get_history()[0].model_copy(deep=True)
+    r = build_clean_report().model_copy(deep=True)
     r.grade = "위험"
     r.headline = "보증금을 돌려받지 못할 수 있어요"
     r.seniorDebtAmount = 360_000_000
@@ -502,8 +502,13 @@ def test_리포트가_있어도_계약해도_되냐엔_판단하지_않는다(fa
 
 def test_POST_chat_reportId로_내_리포트를_찾는다(client, fake_llm):
     p = fake_llm(_a("리포트에서는 보증금이 시세의 48%예요."))
+    from app.services import store
+    from tests.test_clean_report import build_clean_report
+
     h = {"X-Device-Id": "dev-test-3"}
-    r = client.post("/api/chat", json={"messages": [_u("전세가율 얼마야?")], "reportId": "dummy-example"}, headers=h)
+    mine = build_clean_report()
+    store.add(mine, device_id=h["X-Device-Id"])
+    r = client.post("/api/chat", json={"messages": [_u("전세가율 얼마야?")], "reportId": mine.id}, headers=h)
     assert r.status_code == 200
     assert "이 사용자의 안전도 리포트" in p.calls[0]["system"]
     assert r.json()["mode"] == "normal"

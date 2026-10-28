@@ -22,6 +22,7 @@ import io
 import json
 import logging
 import mimetypes
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -148,7 +149,12 @@ def _save_raw_ocr(run_id: str | None, filename: str, index: int, raw: dict) -> N
         _log.info(f"[OCR] 원응답 저장(진단 저장 켜짐): out/runs/{path.parent.name}/{path.name}")
 
 
-def run_ocr(images: list[tuple[str, bytes]], *, run_id: str | None = None) -> OcrResult:
+def run_ocr(
+    images: list[tuple[str, bytes]],
+    *,
+    run_id: str | None = None,
+    stop: threading.Event | None = None,
+) -> OcrResult:
     """사진들 → 장별 OCR → OcrPage 목록. **예외를 밖으로 던지지 않는다.**
 
     한 장이 실패해도 나머지 장은 살린다 — 3장 중 1장만 실패하면 나머지 2장에는
@@ -158,6 +164,8 @@ def run_ocr(images: list[tuple[str, bytes]], *, run_id: str | None = None) -> Oc
     장별 호출은 **순차**로 한다. 실측 장당 1.6~3.1초이고 IE가 30초 이상 걸리므로,
     OCR을 더 병렬화해도 전체 시간이 줄지 않는다. 대신 동시 요청을 늘리면 429(요청 제한)
     위험만 커진다.
+
+    `stop`이 켜지면(앱이 분석을 중단 — 2026-10-29) **아직 안 부른 장**은 부르지 않는다.
     """
     result = OcrResult()
     if not images:
@@ -176,6 +184,9 @@ def run_ocr(images: list[tuple[str, bytes]], *, run_id: str | None = None) -> Oc
     extra_budget = [orientation.MAX_EXTRA_CALLS]  # 방향 찾기 추가 호출 상한(분석 1회 전체)
     result.upright_images = list(images)
     for i, (filename, data) in enumerate(images):
+        if stop is not None and stop.is_set():
+            _log.info(f"[OCR] 앱이 분석을 중단 — 남은 {total - i}장은 부르지 않음")
+            break
         t1 = time.perf_counter()
         try:
             raw = call_document_ocr(api_key, filename, data)

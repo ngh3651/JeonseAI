@@ -453,10 +453,10 @@ def test_curated_advice_is_fallback_when_ai_fails(retriever: HybridRetriever):
 
 def test_report_summary_has_no_address_or_alias():
     """맞춤 설명 재료에 주소·별칭이 들어가지 않는다(필요 없는 정보는 안 보낸다)."""
-    from app.dummy_data import build_example_report
+    from tests.test_clean_report import build_clean_report
     from app.services.precedent.service import _report_summary
 
-    report = build_example_report()
+    report = build_clean_report()
     summary = json.dumps(_report_summary(report, ["신탁등기"]), ensure_ascii=False)
     assert report.address not in summary
     assert report.alias not in summary
@@ -465,11 +465,11 @@ def test_report_summary_has_no_address_or_alias():
 
 def test_report_summary_carries_registry_facts_without_names():
     """등기 항목(종류·접수일·금액 표기·권리자 종류)이 재료로 간다 — 이름은 없다."""
-    from app.dummy_data import build_example_report
+    from tests.test_clean_report import build_clean_report
     from app.schemas.contract import RiskFact
     from app.services.precedent.service import _report_summary
 
-    report = build_example_report().model_copy(
+    report = build_clean_report().model_copy(
         update={"riskFacts": [RiskFact(kind="가압류", receiptDate="2024-03-04", amount=400_000_000, holder="개인")]}
     )
     summary = _report_summary(report, ["압류·가압류"])

@@ -148,6 +148,30 @@ List<AnalysisReport> latestPerProperty(List<AnalysisReport> reports) => [
   for (final p in groupByProperty(reports)) p.latest,
 ];
 
+/// 이 리포트가 속한 집의 열쇠 — 여정 화면이 [groupByProperty]로 고르는 열쇠와 같다 (2026-10-29).
+/// 리포트의 [계약 여정]이 **그 집** 여정을 열게 할 때 쓴다. 이 리포트가 [history]에 없으면 더해서 묶는다.
+String propertyKeyOfReport(
+  AnalysisReport report,
+  List<AnalysisReport> history,
+) {
+  final inHistory = history.any((r) => r.id == report.id);
+  final all = inHistory ? history : [report, ...history];
+  for (final p in groupByProperty(all)) {
+    if (p.reports.any((r) => r.id == report.id)) return p.key;
+  }
+  // 같은 집 리포트가 너무 많아 묶음에서 잘렸다 — 같은 집 묶음을 찾고, 없으면 이 리포트만의 열쇠
+  for (final p in groupByProperty(all)) {
+    if (p.reports.any((r) => sameProperty(r, report))) return p.key;
+  }
+  return propertyKeyFor(
+    propertyId: report.propertyId,
+    address: (report.propertyAddress ?? '').isNotEmpty
+        ? report.propertyAddress
+        : report.address,
+    reportId: report.id,
+  );
+}
+
 /// 이 리포트와 같은 집의 리포트들 (최신순, 최대 [kKeepReportVersions]건). 이 리포트가 목록에 없으면 이 리포트 하나를 더한다.
 List<AnalysisReport> versionsOf(
   AnalysisReport report,

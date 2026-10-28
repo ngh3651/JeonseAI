@@ -5,7 +5,7 @@
 
 1. 호출자 = `X-Device-Id` 헤더(형식 검사). 없으면 공용 `legacy-device`(옛 앱 호환),
    `REQUIRE_DEVICE_ID=1`이면 400.
-2. 기록은 기기별 — 다른 기기의 리포트는 404. 예시 리포트는 누구나 보되 못 지운다(403).
+2. 기록은 기기별 — 다른 기기의 리포트는 404. 모든 기기에 붙던 예시 리포트는 없다(2026-10-29).
 3. `APP_KEY`가 있으면 `/api/*`는 `X-App-Key`가 맞아야 한다(401). 헬스·문서는 열려 있다.
 4. 분석·대조는 기기×IP별 1시간 상한(429).
 """
@@ -114,11 +114,12 @@ def test_다른_기기의_기록은_목록에_안_보이고_열면_404다(client
     assert client.get(f"/api/reports/{rid}", headers=PHONE_A).status_code == 200
 
 
-def test_예시_리포트는_모든_기기에_보이고_지울_수_없다(client):
+def test_기록이_없으면_빈_목록이다_예시_리포트를_붙이지_않는다(client):
+    """2026-10-29 — 모든 기기 목록 끝에 붙던 예시 리포트('성산동 행복아파트')를 없앴다. 앱은 빈 화면 안내를 띄운다."""
     for headers in (PHONE_A, PHONE_B, {}):
-        assert "dummy-example" in _ids(client, headers)
-        assert client.get("/api/reports/dummy-example", headers=headers).status_code == 200
-        assert client.delete("/api/reports/dummy-example", headers=headers).status_code == 403
+        assert _ids(client, headers) == []
+        assert client.get("/api/reports/dummy-example", headers=headers).status_code == 404
+        assert client.delete("/api/reports/dummy-example", headers=headers).status_code == 404
 
 
 def test_내_기록은_내가_지울_수_있다(client, no_network):
@@ -292,13 +293,18 @@ def test_입력_검사에서_거절된_요청은_세지_않는다(client, no_net
     monkeypatch.setenv("RATE_LIMIT_ANALYZE_PER_HOUR", "1")
     no_network(registry_raw(), [raw_ocr_json(gap_gu_page(0))])
 
+    from app.services import store
+    from tests.test_clean_report import build_clean_report
+
+    old = build_clean_report()  # 대조 기준(스냅샷)이 없는 옛 리포트
+    store.add(old, device_id=PHONE_A["X-Device-Id"])
     empty = [("files", ("page_1.jpg", b"", "image/jpeg"))]
     for _ in range(3):
         assert client.post(
             "/api/analyze", files=empty, data={"deposit": "1"}, headers=PHONE_A
         ).status_code == 400
         assert client.post("/api/reports/없는-리포트/compare", headers=PHONE_A).status_code == 404
-        assert client.post("/api/reports/dummy-example/compare", headers=PHONE_A).json()[
+        assert client.post(f"/api/reports/{old.id}/compare", headers=PHONE_A).json()[
             "result"
         ] == "no_baseline"
     # 위에서 하나도 세지 않았으므로 진짜 분석 1회는 통과한다

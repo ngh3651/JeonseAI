@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 import unicodedata
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait as wait_futures
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -51,6 +54,23 @@ KST = timezone(timedelta(hours=9))
 _log = logging.getLogger("jeonseai")
 
 # 근거 카드 표시 순서: 심각한 것 먼저(결론 먼저 원칙), 같은 등급 안에서는 고정 순서
+#: 앱이 분석을 중단했는지(연결을 끊었는지) IE·OCR을 기다리는 동안 몇 초마다 볼지 (2026-10-29)
+CANCEL_POLL_SECONDS = 0.5
+
+
+class AnalysisCancelled(Exception):
+    """앱이 분석을 중단했다(연결을 끊음, 2026-10-29). 아직 시작 안 한 비싼 단계를 건너뛰었고 **아무것도 저장하지 않았다.**
+
+    이미 시작한 Upstage 호출(IE 한 번·그 장의 OCR)은 멈출 수 없다 — 그 크레딧은 쓰인다.
+    """
+
+
+def _raise_if_cancelled(cancelled: "Callable[[], bool] | None", where: str) -> None:
+    if cancelled is not None and cancelled():
+        _log.info(f"[분석 중단] 앱이 연결을 끊음 — {where}부터 건너뜀(저장 안 함)")
+        raise AnalysisCancelled(where)
+
+
 _CANONICAL_ORDER = ["jeonse_ratio", "senior_debt", "ownership", "insurance", "blacklist"]
 _SEVERITY_ORDER = {Grade.DANGER: 0, Grade.CAUTION: 1, Grade.GOOD: 2}
 
@@ -275,7 +295,9 @@ class OcrPath:
 
 
 def _ocr_then_second_opinion(
-    images: list[tuple[str, bytes]], run_id: str | None = None
+    images: list[tuple[str, bytes]],
+    run_id: str | None = None,
+    stop: threading.Event | None = None,
 ) -> OcrPath:
     """OCR → (성공하면) **두 번째 추출 경로**까지 한 스레드에서 이어 돌린다.
 
@@ -291,14 +313,19 @@ def _ocr_then_second_opinion(
 
     반환: [OcrPath] — 어떤 실패도 밖으로 던지지 않는다.
     이 경로가 통째로 없어도 리포트는 그대로 완성된다.
+
+    `stop`: 앱이 분석을 중단하면 켜진다(2026-10-29) — 아직 안 부른 장의 OCR과 구조화(Solar)를 건너뛴다.
     """
     t_ocr = time.perf_counter()
-    ocr_result = ocr.run_ocr(images, run_id=run_id)
+    ocr_result = ocr.run_ocr(images, run_id=run_id, stop=stop)
     ocr_elapsed = time.perf_counter() - t_ocr
     if not ocr_result.pages:
         return OcrPath(ocr=ocr_result, error="OCR 결과 없음", ocr_elapsed=ocr_elapsed)
 
     check = ocr_layout.check_document(ocr_result.pages)
+    if stop is not None and stop.is_set():  # 결과는 어차피 버린다 — 구조화(Solar) 크레딧을 아낀다
+        _log.info("[분석 중단] 앱이 연결을 끊음 — 두 번째 경로(구조화)를 부르지 않음")
+        return OcrPath(ocr=ocr_result, error="분석 중단", doc_check=check, ocr_elapsed=ocr_elapsed)
     provider = llm.structure_provider()
     if provider is None:
         return OcrPath(
@@ -403,8 +430,13 @@ def analyze(
     alias: str | None,
     device_id: str,
     capture: CaptureCheck | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> Report:
     """업로드 이미지 → (IE ∥ OCR→구조화) → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)
+
+    `cancelled`: 앱이 분석을 중단했는가(연결을 끊었나)를 묻는 함수(2026-10-29, 라우터가 준다). 단계 사이마다 물어
+    참이면 [AnalysisCancelled] — **아직 시작 안 한** IE·OCR·Solar 호출을 건너뛰고 아무것도 저장하지 않는다.
+    이미 보낸 호출(IE·그 장의 OCR)은 멈출 수 없다. 이 함수를 부르는 스레드(라우터 스레드)에서만 부른다.
 
     `device_id`: 이 분석을 요청한 기기(`dependencies.get_current_user`). 리포트·대조 기준이
     이 기기의 기록으로 저장된다 — 다른 기기에서는 보이지 않는다(2026-10-21).
@@ -453,11 +485,23 @@ def analyze(
     # 나중에 "어느 IE 응답이 어느 OCR 응답과 짝인지"를 파일만 보고 알 수 있다.
     # `SAVE_RAW_RESPONSES=1`이 아니면 아무것도 저장되지 않는다(`artifacts.save_enabled`).
     run_id = artifacts.new_run_id()
+    # 앱이 분석을 중단했으면(2026-10-29) 여기서 멈춘다 — IE·OCR을 한 번도 부르지 않는다(크레딧 0원)
+    _raise_if_cancelled(cancelled, "IE·OCR")
+    stop = threading.Event()  # 켜지면 OCR 쪽이 남은 장·구조화(Solar)를 건너뛴다
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="analyze") as pool:
         ie_future = pool.submit(_timed, extraction.extract_registry, images, run_id=run_id)
-        ocr_future = pool.submit(_timed, _ocr_then_second_opinion, images, run_id)
+        ocr_future = pool.submit(_timed, _ocr_then_second_opinion, images, run_id, stop)
+        if cancelled is not None:
+            # 기다리는 동안 앱이 끊었는지 본다. IE는 이미 보낸 한 번의 호출이라 멈출 수 없고 끝날 때까지 기다린다.
+            while not (ie_future.done() and ocr_future.done()):
+                wait_futures([ie_future, ocr_future], timeout=CANCEL_POLL_SECONDS)
+                if not stop.is_set() and cancelled():
+                    stop.set()
         extract, ie_error, ie_elapsed = ie_future.result()
         ocr_bundle, ocr_error, ocr_path_elapsed = ocr_future.result()
+    if stop.is_set():
+        _log.info("[분석 중단] 앱이 연결을 끊음 — IE·OCR 결과를 버림(판정·설명·저장 안 함)")
+        raise AnalysisCancelled("IE·OCR 뒤")
 
     total = time.perf_counter() - t0
     _log.info(
@@ -482,6 +526,7 @@ def analyze(
     # 판정 재료(IE)가 누운 글자를 잘못 읽은 채로 남지 않게. 실패하면 처음 읽은 결과를 그대로 쓴다.
     rotation_note: str | None = None
     if ocr_result.rotated:
+        _raise_if_cancelled(cancelled, "바로 세운 사진 다시 읽기(IE)")
         turned = [i + 1 for i, r in enumerate(ocr_result.rotations(len(images))) if r]
         _log.info(f"[방향] {turned}번째 사진을 바로 세움 → IE를 바로 선 사진으로 다시 읽음")
         try:
@@ -616,6 +661,7 @@ def analyze(
             f"{[p.index + 1 for p in (capture_after.pages if capture_after else [])] or '없음'} → '양호' 금지"
         )
 
+    _raise_if_cancelled(cancelled, "설명 생성(Solar)")
     report, explain = _build(
         extract,
         deposit=deposit,
@@ -666,6 +712,8 @@ def analyze(
     # 완성된 리포트를 손에 들고 뒷정리에서 죽는 것만큼 아까운 실패가 없다.
     # 2026-07-28 실기기 500이 정확히 이 모양이었다(리포트 완성 → 마지막 문장에서 사망).
     # 그래서 이 아래 전부를 감싼다 — 실패해도 사용자는 리포트를 받는다.
+    # 단, 설명을 쓰는 동안 앱이 끊었으면 **저장하지 않는다** — 받을 사람이 없는 리포트가 기록에 남지 않게.
+    _raise_if_cancelled(cancelled, "기록 저장")
     try:
         # 다음에 등기부를 다시 뗐을 때 견줄 **기준**을 남긴다 (S-11 대조).
         # 실패해도 이번 리포트는 그대로 나간다 — 대조를 못 하게 될 뿐이고,

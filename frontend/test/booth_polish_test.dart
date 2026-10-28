@@ -1,6 +1,6 @@
 /// 결선 부스 다듬기 (2026-10-23) — 리뷰 3개(디자인·지수·서연)에서 나온 "고장/가짜처럼 보이는 것".
 ///
-///   ① 리포트 공유 = 글자 요약을 공유 창으로 (이름은 기본으로 가림) — "곧 제공" 가짜 버튼이 아니다
+///   ① 리포트 PDF로 저장 (2026-10-29, 글자 요약 공유를 대신함 — 이름은 기본으로 가림, 사진은 넣지 않음)
 ///   ② 오래된 리포트의 [재분석] → [다시 떼서 대조]
 ///   ③ 근거 카드의 [시세 입력하기]는 사진이 이 폰에 있을 때만 (누를 수 없는 버튼을 두지 않는다)
 ///   ④ 앱 어디에도 "곧 제공되는 기능" 문구가 없다
@@ -8,6 +8,7 @@
 ///   ⑥ '다시 뗀 등기부를 올려 주세요' 시트에서 막히지 않게 — [아직 안 뗐어요 — 떼는 법 보기] → 발급 가이드
 library;
 
+import 'dart:convert' show latin1;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -24,13 +25,14 @@ import 'package:jeonse_ai/screens/my/app_version_line.dart';
 import 'package:jeonse_ai/screens/journey/journey_actions.dart';
 import 'package:jeonse_ai/screens/my/my_screen.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
-import 'package:jeonse_ai/screens/report/report_share.dart';
+import 'package:jeonse_ai/screens/report/report_pdf.dart';
 import 'package:jeonse_ai/services/kakao_login_gateway.dart';
 import 'package:jeonse_ai/services/session_credentials.dart';
 import 'package:jeonse_ai/services/session_storage.dart';
-import 'package:jeonse_ai/services/text_share.dart';
+import 'package:jeonse_ai/services/pdf_save.dart';
 import 'package:jeonse_ai/state/app_session.dart';
 import 'package:jeonse_ai/state/booth_mode.dart';
+import 'package:jeonse_ai/state/privacy_settings.dart';
 import 'package:jeonse_ai/state/registry_photo_store.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -108,28 +110,43 @@ void main() {
   setUp(() => RegistryPhotoStore.instance.clear());
   tearDown(() {
     RegistryPhotoStore.instance.clear();
-    TextShare.debugOverride(null);
+    PdfSave.debugOverride();
+    PrivacySettings.instance.resetForTest();
   });
 
-  group('① 리포트 요약 공유', () {
-    test('정해진 한 줄 — 별칭·주소·분석일(등기부 발급일)·등급 결정·근거 2~3개·규칙 기반', () {
-      final text = reportShareText(_shareReport());
-      expect(
-        text,
-        '[전세AI프] 샘플빌라 · 서울특별시 샘플구 샘플동 1-1 · 2026.10.22 분석(등기부 2026.07.09) · '
-        '위험: ${RiskGrade.danger.decisionLabel} · '
-        '근거: 나보다 먼저 돈 받아갈 빚이 있나요?, 집주인 홍○○ 소유권에 이상 신호가 있나요?, 보증보험에 가입할 수 있나요? · '
-        '규칙 기반 판정',
-      );
+  group('① 리포트 PDF로 저장 (2026-10-29 — 글자 요약 공유를 대신함)', () {
+    test('PDF 글자 — 사람 이름은 기본으로 가리고, 끄면 그대로', () {
+      final hidden = reportPdfData(_shareReport());
+      expect(hidden.texts.join('\n'), isNot(contains('홍길동')));
+      expect(hidden.texts.join('\n'), contains('홍○○'));
+      expect(hidden.namesHidden, isTrue);
+
+      final shown = reportPdfData(_shareReport(), hideNames: false);
+      expect(shown.texts.join('\n'), contains('홍길동'));
+      expect(shown.namesHidden, isFalse);
     });
 
-    test('사람 이름은 기본으로 가리고, 끄면 그대로 — 명단 미구축 카드는 근거에 넣지 않는다', () {
-      expect(reportShareText(_shareReport()), isNot(contains('홍길동')));
-      expect(
-        reportShareText(_shareReport(), hideNames: false),
-        contains('홍길동'),
-      );
-      expect(reportShareText(_shareReport()), isNot(contains('위험 명단')));
+    test("'사진 속 이름 가리기'가 켜져 있으면 스위치를 꺼도 가린다", () async {
+      SharedPreferences.setMockInitialValues({});
+      await PrivacySettings.instance.setHideNamesInPhotos(true);
+      final data = reportPdfData(_shareReport(), hideNames: false);
+      expect(data.texts.join('\n'), isNot(contains('홍길동')));
+      expect(data.namesHidden, isTrue);
+    });
+
+    test('근거는 위험 → 확인 필요 → 양호, 명단 미구축 카드는 빼고 면책 위 한 줄로', () {
+      final data = reportPdfData(_shareReport());
+      expect([for (final e in data.evidences) e.grade], [
+        RiskGrade.danger,
+        RiskGrade.caution,
+        RiskGrade.ok,
+      ]);
+      expect(data.texts.join('\n'), isNot(contains('위험 명단')));
+      expect(data.blacklistPending, isTrue);
+      expect(data.analyzedDate, '2026.10.22');
+      expect(data.registryDate, '2026.07.09');
+      expect(data.priceLine, '보증금 1억 2,000만원 · 시세를 못 구했어요');
+      expect(reportPdfFileName(data), '전세AI프_리포트_샘플빌라_20261022.pdf');
     });
 
     test('등기부 발급일을 못 읽었으면 지어내지 않는다', () {
@@ -149,59 +166,89 @@ void main() {
         gaugeProgress: 0.5,
         evidences: const [],
       );
-      expect(reportShareText(noDate), contains('2026.10.22 분석(등기부 발급일 확인 필요)'));
+      expect(reportPdfData(noDate).registryDate, isNull);
     });
 
-    testWidgets('공유 버튼 → 보낼 글자를 먼저 보여 주고(이름 가리기 켬) → 공유 창', (tester) async {
-      final sent = <String>[];
-      TextShare.debugOverride((text, {subject}) async => sent.add(text));
+    test('PDF 바이트가 만들어지고 한글 글꼴(Pretendard)이 들어간다', () async {
+      final fonts = await ReportPdfFonts.load();
+      final bytes = await buildReportPdf(
+        reportPdfData(_shareReport()),
+        fonts,
+        createdAt: DateTime(2026, 10, 29),
+        compress: false,
+      );
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+      final raw = latin1.decode(bytes, allowInvalid: true);
+      expect(raw, contains('Pretendard-Regular'));
+      expect(raw, contains('Pretendard-Bold'));
+      // 사진은 넣지 않는다 — 그림 객체가 없다
+      expect(raw, isNot(contains('/Subtype /Image')));
+      expect(raw, isNot(contains('/Subtype/Image')));
+    });
+
+    testWidgets('PDF 버튼 → 시트(이름 가리기 켬) → [PDF 만들기] → 인쇄 창으로 PDF가 나간다', (tester) async {
+      final saved = <(Uint8List, String)>[];
+      PdfSave.debugOverride(
+        print: (bytes, {required name}) async => saved.add((bytes, name)),
+      );
       await _pumpReport(tester, 'dummy-danger');
 
-      await tester.tap(find.byTooltip('리포트 요약 보내기'));
+      await tester.tap(find.byTooltip('PDF로 저장'));
       await tester.pumpAndSettle();
-      expect(find.koText('리포트 요약 보내기'), findsOneWidget);
+      expect(find.koText('PDF로 저장'), findsOneWidget);
+      expect(find.koText('이 리포트를 PDF 파일로 만들어요. 사진은 넣지 않아요.'), findsOneWidget);
       final Switch toggle = tester.widget(find.byType(Switch));
       expect(toggle.value, isTrue, reason: '이름 가리기는 기본으로 켠다');
-      expect(
-        find.byKey(const ValueKey('report-share-preview')),
-        findsOneWidget,
-      );
+      expect(find.koText('리포트 요약 보내기'), findsNothing);
 
-      await tester.tap(find.koText('공유 창 열기'));
+      await tester.runAsync(() async {
+        await tester.tap(find.koText('PDF 만들기'));
+        // 글꼴 읽기·PDF 만들기는 진짜 시간이 든다
+        for (var i = 0; i < 100 && saved.isEmpty; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      });
       await tester.pumpAndSettle();
-      expect(sent, hasLength(1));
-      expect(sent.single, startsWith('[전세AI프] 역삼동 오피스텔'));
-      expect(sent.single, endsWith('규칙 기반 판정'));
-      expect(find.koText('곧 제공되는 기능이에요'), findsNothing);
+      expect(saved, hasLength(1));
+      expect(String.fromCharCodes(saved.single.$1.take(5)), '%PDF-');
+      expect(saved.single.$2, startsWith('전세AI프_리포트_역삼동_오피스텔_'));
+      expect(saved.single.$2, endsWith('.pdf'));
+      expect(find.koText('PDF 만들기'), findsNothing, reason: '시트는 닫힌다');
+      expect(find.byType(SnackBar), findsNothing, reason: '저장했는지는 모르니 아무 말도 하지 않는다');
     });
 
-    testWidgets('공유 창을 못 열면 복사해 두고 그렇게 말한다', (tester) async {
-      TextShare.debugOverride(
-        (text, {subject}) async => throw Exception('공유 창 없음 흉내'),
-      );
-      // 테스트에는 진짜 클립보드가 없다(부르면 답이 오지 않는다) — 복사한 글자를 붙잡는다
-      String? copied;
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData')
-            copied = (call.arguments as Map)['text'] as String?;
-          return null;
+    testWidgets('인쇄 창을 못 열면 공유 창으로, 그것도 안 되면 한 줄로 알린다', (tester) async {
+      var shared = 0;
+      PdfSave.debugOverride(
+        print: (bytes, {required name}) async => throw Exception('인쇄 창 없음 흉내'),
+        share: (bytes, {required name}) async {
+          shared++;
+          throw Exception('공유 창 없음 흉내');
         },
       );
-      addTearDown(
-        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform,
-          null,
-        ),
-      );
       await _pumpReport(tester, 'dummy-danger');
-      await tester.tap(find.byTooltip('리포트 요약 보내기'));
+      await tester.tap(find.byTooltip('PDF로 저장'));
       await tester.pumpAndSettle();
-      await tester.tap(find.koText('공유 창 열기'));
+      await tester.runAsync(() async {
+        await tester.tap(find.koText('PDF 만들기'));
+        for (var i = 0; i < 100 && shared == 0; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      });
       await tester.pumpAndSettle();
-      expect(find.koTextContaining('복사해 뒀어요'), findsOneWidget);
-      expect(copied, startsWith('[전세AI프] 역삼동 오피스텔'));
+      expect(shared, 1);
+      expect(find.koTextContaining('열지 못했어요'), findsOneWidget);
+    });
+
+    testWidgets("'사진 속 이름 가리기'가 켜져 있으면 스위치가 켜진 채 잠긴다", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await PrivacySettings.instance.setHideNamesInPhotos(true);
+      await _pumpReport(tester, 'dummy-danger');
+      await tester.tap(find.byTooltip('PDF로 저장'));
+      await tester.pumpAndSettle();
+      final Switch toggle = tester.widget(find.byType(Switch));
+      expect(toggle.value, isTrue);
+      expect(toggle.onChanged, isNull);
     });
   });
 

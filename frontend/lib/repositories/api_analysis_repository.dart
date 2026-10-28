@@ -153,7 +153,7 @@ class ApiAnalysisRepository extends AnalysisRepository {
   }
 
   /// 기록 삭제 — 서버 기록과 **이 폰의 사진·원본 리포트**를 함께 지운다.
-  /// 서버에 이미 없으면(404) 폰 사본만 지우고 404는 그대로 화면에 알린다. 403(예시)은 아무것도 지우지 않는다.
+  /// 서버에 이미 없으면(404) 폰 사본만 지우고 404는 그대로 화면에 알린다. 그 밖의 거절(403 등)은 아무것도 지우지 않는다.
   @override
   Future<void> deleteReport(String id) async {
     try {

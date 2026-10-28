@@ -537,7 +537,7 @@ def test_헬스체크는_기록_DB에_쓸_수_있는지_알려준다(client, tmp
     assert body["historyDb"] is False and body["status"] == "ok"
 
 
-def test_기록_DB가_없어도_목록은_예시_리포트를_돌려준다(client, tmp_path, monkeypatch):
+def test_기록_DB가_없어도_목록은_500이_아니라_빈_목록이다(client, tmp_path, monkeypatch):
     from app.services import store
 
     blocked = tmp_path / "not-a-dir"
@@ -546,13 +546,14 @@ def test_기록_DB가_없어도_목록은_예시_리포트를_돌려준다(clien
     store.reset()
     resp = client.get("/api/reports")
     assert resp.status_code == 200, resp.text
-    assert [r["id"] for r in resp.json()] == ["dummy-example"]
+    assert resp.json() == []  # 예시 리포트는 2026-10-29에 없앴다 — 앱은 빈 화면 안내를 띄운다
 
 
 def test_깨진_기록_한_줄이_목록_전체를_깨뜨리지_않는다(client):
     from app.services import store
+    from tests.test_clean_report import build_clean_report
 
-    good = store.get("dummy-example", device_id="legacy-device").model_copy(update={"id": "good-1"})
+    good = build_clean_report().model_copy(update={"id": "good-1"})
     store.add(good, device_id="legacy-device")
     store._db().execute(
         "INSERT INTO reports (device_id, id, created_at, report_json) VALUES (?, ?, ?, ?)",
@@ -560,7 +561,7 @@ def test_깨진_기록_한_줄이_목록_전체를_깨뜨리지_않는다(client
     )
     resp = client.get("/api/reports")
     assert resp.status_code == 200
-    assert [r["id"] for r in resp.json()] == ["good-1", "dummy-example"]
+    assert [r["id"] for r in resp.json()] == ["good-1"]
     assert client.get("/api/reports/broken-1").status_code == 404
 
 

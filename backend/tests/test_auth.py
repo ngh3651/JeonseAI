@@ -135,7 +135,7 @@ def _analyze(client, headers: dict):
 def _ids(client, headers: dict) -> list[str]:
     resp = client.get("/api/reports", headers=headers)
     assert resp.status_code == 200, resp.text
-    return [r["id"] for r in resp.json() if r["id"] not in store.EXAMPLE_IDS]
+    return [r["id"] for r in resp.json()]
 
 
 def _owner(member_id: int = MEMBER_ID) -> str:
@@ -461,7 +461,7 @@ def test_탈퇴하면_그_계정의_기록_세션_패스가_0건이다(client, k
     assert client.delete("/api/me", headers=account).status_code == 204
 
     # 그 계정: 리포트·대조 기준·쪽지·패스·세션 0건
-    assert [r.id for r in store.list_reports(device_id=owner) if r.id not in store.EXAMPLE_IDS] == []
+    assert store.list_reports(device_id=owner) == []
     assert store.get_snapshot(rid, device_id=owner) is None
     assert analysis_cache._execute("SELECT COUNT(*) FROM analysis_cache WHERE device_id = ?", (owner,)) == [(0,)]
     assert payments.latest_pass(f"account:{owner}") is None

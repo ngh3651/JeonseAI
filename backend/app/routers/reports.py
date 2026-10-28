@@ -2,18 +2,18 @@
 
 - POST   /api/analyze                    분석 실행
 - POST   /api/reports/{id}/compare       다시 뗀 등기부 대조
-- GET    /api/reports                    이력 목록 (이 기기 것 + 예시)
+- GET    /api/reports                    이력 목록 (이 기기 것만)
 - GET    /api/reports/{id}               리포트 단건
-- DELETE /api/reports/{id}               이력 삭제 (예시는 403)
+- DELETE /api/reports/{id}               이력 삭제
 - GET    /api/reports/{id}/cases         판례 매칭
 - GET    /api/reports/{id}/questions     질문 생성
 
 **기기별 기록 (2026-10-21):** 모든 엔드포인트가 `get_current_user`(= `X-Device-Id` 기기 id)를
 받아 **그 기기의 기록만** 다룬다. 다른 기기의 리포트 id를 넣으면 404 — "있는데 못 본다"와
-"없다"를 구분해 주지 않는다. 예시 리포트(`dummy-example`)만 모든 기기에 보인다.
+"없다"를 구분해 주지 않는다. (모든 기기에 붙던 예시 리포트 `dummy-example`은 2026-10-29에 없앴다.)
 
 E-1c: analyze/이력 실배선(추출→규칙 엔진→저장) 완료.
-E-2: 질문은 data/questions.json 템플릿 실연동 완료. 판례만 아직 dummy_data(E-3에서 교체).
+E-2: 질문은 data/questions.json 템플릿 실연동 완료. E-3: 판례도 실연동(`precedent_service`).
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from .. import dummy_data, settings
+from .. import settings
 from ..dependencies import get_current_user, limit_analyze
 from ..schemas.contract import CaptureCheck, CaseMatch, CompareResult, LossEstimate, QuestionGroup, Report
 from ..services import analysis_cache, capture_check, compare, loss_estimate, patterns, questions, report_builder, store
@@ -151,7 +151,7 @@ def _drop_replaced(
     빠진 쪽을 보충한 분석은 새 분석이 아니라 **같은 서류를 마저 낸 것**이다. 덜 찍은 리포트가 남으면
     '등기부 변동 기록'이 두 줄이 되고, 다음 대조가 덜 찍은 서류를 기준으로 삼는다.
     """
-    if not replaces or replaces == new.id or replaces in store.EXAMPLE_IDS or replaces in keep:
+    if not replaces or replaces == new.id or replaces in keep:
         return
     try:
         old = store.get(replaces, device_id=device_id)
@@ -272,7 +272,7 @@ def compare_registry(
 
 @router.get("/reports", response_model=list[Report])
 def list_reports(device_id: str = Depends(get_current_user)) -> list[Report]:
-    """이 기기의 분석 이력(최신순) + 예시 리포트. 다른 기기의 기록은 섞이지 않는다."""
+    """이 기기의 분석 이력(최신순). 다른 기기의 기록은 섞이지 않는다. 없으면 빈 목록."""
     return store.list_reports(device_id=device_id)
 
 
@@ -289,9 +289,6 @@ def delete_report(
     report_id: str,
     device_id: str = Depends(get_current_user),  # 호출한 기기 (X-Device-Id, 없으면 공용 legacy-device)
 ) -> None:
-    # 예시 리포트는 조회만 허용, 삭제 대상 아님 (계약 §3.4)
-    if report_id in store.EXAMPLE_IDS:
-        raise HTTPException(status_code=403, detail="예시 리포트는 삭제할 수 없어요")
     if store.get(report_id, device_id=device_id) is None:
         raise HTTPException(status_code=404, detail="이 리포트를 찾을 수 없어요")
     store.remove(report_id, device_id=device_id)

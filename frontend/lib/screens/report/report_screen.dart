@@ -32,6 +32,7 @@ import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 import '../../state/case_prefetch.dart';
+import '../../state/journey_schedule_store.dart';
 import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import '../../state/report_focus.dart';
@@ -823,7 +824,13 @@ class _ReportScreenState extends State<ReportScreen> {
       (
         icon: Icons.fact_check_outlined,
         label: '계약 여정',
-        onTap: () => context.push('/checklist'),
+        // 이 리포트의 집 여정을 연다 — 마지막으로 골라 둔 다른 집이 열리지 않게 (2026-10-29)
+        onTap: () {
+          JourneyScheduleStore.instance.select(
+            propertyKeyOfReport(report, _history),
+          );
+          context.push('/checklist');
+        },
       ),
     ];
 

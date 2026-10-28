@@ -388,6 +388,16 @@ def test_저장된_실제_원응답으로_analyze가_200을_준다(client, no_ne
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+def _stored_clean_report() -> str:
+    """헤더 없는 요청(공용 `legacy-device`)의 기록에 깨끗한 견본 리포트 1건을 넣고 그 id를 돌려준다."""
+    from app.services import store
+    from tests.test_clean_report import build_clean_report
+
+    report = build_clean_report()
+    store.add(report, device_id=settings.LEGACY_DEVICE_ID)
+    return report.id
+
+
 def test_판례_매칭이_터져도_500이_아니라_빈_목록이_나온다(client, monkeypatch):
     """촬영 중 크레딧이 끊겨도 심사위원에게 보일 것은 에러 화면이 아니어야 한다.
 
@@ -399,7 +409,7 @@ def test_판례_매칭이_터져도_500이_아니라_빈_목록이_나온다(cli
     from app.routers import reports as reports_router
     from app.services import store
 
-    report_id = next(iter(store.EXAMPLE_IDS))
+    report_id = _stored_clean_report()
     # 앞선 테스트가 남긴 캐시를 비운다 — 캐시가 있으면 아래 예외 경로에 닿지도 못한다.
     store.clear_cases(report_id, device_id=settings.LEGACY_DEVICE_ID)
 
@@ -419,7 +429,7 @@ def test_실패한_판례_결과는_캐시되지_않는다(client, monkeypatch):
     from app.routers import reports as reports_router
     from app.services import store
 
-    report_id = next(iter(store.EXAMPLE_IDS))
+    report_id = _stored_clean_report()
     store.clear_cases(report_id, device_id=settings.LEGACY_DEVICE_ID)
 
     def boom():

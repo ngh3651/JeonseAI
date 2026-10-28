@@ -100,7 +100,7 @@ class _MyScreenState extends State<MyScreen> {
       }
       await _forgetJourney(report);
     } on ApiException catch (e) {
-      // 예시 리포트 403, 서버 연결 실패 등 — 서버가 준 한국어 메시지 그대로 표시
+      // 서버 연결 실패 등 — 서버가 준 한국어 메시지 그대로 표시
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()

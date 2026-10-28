@@ -49,10 +49,11 @@ if ((Devices).Count -eq 0) {
             adb pair $pairAddr $code | Out-Host
             adb connect $addr | Out-Host
         }
-        if ((Devices).Count -gt 0) { Set-Content -Path $memo -Value $addr -Encoding ascii }
+        if (@(Devices).Count -gt 0) { Set-Content -Path $memo -Value $addr -Encoding ascii }
     }
 }
-$dev = Devices
+# @( ) — 폰이 한 대면 PowerShell이 배열이 아니라 글자 한 줄을 돌려줘서 $dev[0]이 첫 글자("1")가 되던 버그 (2026-10-28)
+$dev = @(Devices)
 if ($dev.Count -eq 0) { Write-Host "  X 폰을 찾지 못했어요. USB를 꽂거나 무선 디버깅을 켜고 다시 실행해 주세요." -ForegroundColor Red; Read-Host "엔터를 누르면 닫혀요"; exit 1 }
 # 같은 폰이 두 줄(IP 주소 + 무선 이름)로 잡힐 때가 있다 → 첫 줄 하나만 쓴다
 $serial = Serial $dev[0]

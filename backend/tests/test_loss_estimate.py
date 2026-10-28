@@ -61,12 +61,15 @@ def test_돌려받을_돈은_보증금을_넘지_않는다():
     assert est.expectedReturn == 150_000_000 and est.expectedLoss == 0
 
 
-def test_빚이_집값_이상이면_매각가율을_보지_않는다():
-    """실기기: 시세 5.7억에 빚 19억 — 슬라이더를 아무리 움직여도 0원이었다."""
-    est = L.estimate(_report(marketPrice=572_600_000, seniorDebtAmount=1_900_000_000), _table([]))
+def test_빚이_집값_이상이면_전부_못_받는다():
+    """실기기: 시세 5.7억에 빚 19억. 자료가 있으면 같은 계산(0원), 없어도 답은 0원(debt_exceeds)."""
+    big = dict(marketPrice=572_600_000, seniorDebtAmount=1_900_000_000)
+    est = L.estimate(_report(**big), _table(SEOUL))
+    assert est.status == "ok" and est.expectedReturn == 0 and est.expectedLoss == 150_000_000
+    assert est.ratePct == 75.0
+    est = L.estimate(_report(**big), _table([]))
     assert est.status == "debt_exceeds"
-    assert est.expectedReturn == 0 and est.expectedLoss == 150_000_000
-    assert est.ratePct is None
+    assert est.expectedReturn == 0 and est.expectedLoss == 150_000_000 and est.ratePct is None
 
 
 def test_시세가_없으면_계산하지_않는다():

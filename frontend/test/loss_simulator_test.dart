@@ -122,7 +122,7 @@ void main() {
     expect(find.koText(kLossConservativeLine), findsOneWidget);
   });
 
-  testWidgets('빚이 집값보다 크면 계산 대신 두 칸과 한 문장', (t) async {
+  testWidgets('빚이 집값보다 커도 같은 화면 — 0원 · 못 받음 = 보증금 · 낙찰가 줄 없음', (t) async {
     await _pump(
       t,
       const LossEstimate(
@@ -134,9 +134,11 @@ void main() {
         expectedLoss: 150000000,
       ),
     );
-    expect(find.koText('돌려받기 어려워요'), findsOneWidget);
-    expect(find.koText('19억원'), findsOneWidget);
-    expect(find.byKey(const ValueKey('loss-bar')), findsNothing);
+    expect(find.byKey(const ValueKey('loss-hero')), findsOneWidget);
+    expect(find.koText('0원'), findsWidgets);
+    expect(find.koText('1억 5,000만원'), findsOneWidget);
+    expect(find.koText('− 19억원'), findsOneWidget);
+    expect(find.koText('경매 낙찰가'), findsNothing);
     expect(find.koTextContaining('최우선변제'), findsNothing);
   });
 

@@ -578,7 +578,7 @@ MarketPriceAlternative {
   예상 낙찰가 = 시세 × 매각가율(그 시도·용도, 최근 12개월 매각가 합 ÷ 감정가 합) · 돌려받을 돈 = min(보증금, max(0, 낙찰가 − 먼저 갚을 빚)).
   용도는 `Report.houseTypes`(분석 때 실거래가·공시가격 매칭 유형으로 정함) — 여럿이면 **가장 낮은 매각가율**. 시도 매각 건수 30건 미만이면 전국 값.
 - **응답 200** `LossEstimate`: `status`(ok | debt_exceeds | no_price | no_rate) · `deposit` · `basePrice` · `seniorDebt` · `ratePct` · `region` · `regionFallback` · `use` · `useGuessed` · `soldCount` · `period` · `source` · `expectedSale` · `expectedReturn` · `expectedLoss`.
-  - `no_price`: 시세가 없어 계산하지 않는다(보증금을 기준가로 쓰지 않는다). `debt_exceeds`: 빚 ≥ 시세 — 매각가율을 보지 않는다. `no_rate`: 그 용도의 자료가 없다(지어내지 않는다).
+  - `no_price`: 시세가 없어 계산하지 않는다(보증금을 기준가로 쓰지 않는다). `debt_exceeds`: 빚 ≥ 시세인데 매각가율 자료가 없을 때 — 돌려받을 돈 0원(자료가 있으면 그냥 `ok`로 계산해 0원이 나온다). 앱은 `ok`와 같은 모양으로 그린다. `no_rate`: 그 용도의 자료가 없다(지어내지 않는다).
   - 경매 비용·세금·최우선변제는 아직 넣지 않았다(2단계). 앱은 계산에 **쓴** 근거(지역·용도·기간·건수·출처)만 적는다.
 - **에러**: **404** 없는 리포트.
 

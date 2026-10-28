@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from .. import dummy_data, settings
@@ -299,16 +299,22 @@ def delete_report(
 
 
 @router.get("/reports/{report_id}/loss-estimate", response_model=LossEstimate)
-def report_loss_estimate(report_id: str, device_id: str = Depends(get_current_user)) -> LossEstimate:
+def report_loss_estimate(
+    report_id: str,
+    price: int | None = Query(default=None, ge=1, le=100_000_000_000_000),
+    device_id: str = Depends(get_current_user),
+) -> LossEstimate:
     """손실 시뮬레이터 (2026-10-28) — 이 집이 경매로 넘어가면 보증금이 얼마나 돌아오나. 규칙 계산, AI 없음.
 
     리포트에 저장하지 않고 **부를 때마다 계산한다** — 매각가율 자료(`data/auction_sale_rates.json`)를 새로 넣으면
     예전 리포트도 바로 새 숫자를 받는다. 판정과 무관하다.
+
+    `price`(원): 시뮬레이터 화면에서 사용자가 넣은 매매 시세. 이번 계산에만 쓰고 리포트는 바꾸지 않는다.
     """
     report = store.get(report_id, device_id=device_id)
     if report is None:
         raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
-    return loss_estimate.estimate(report)
+    return loss_estimate.estimate(report, price=price)
 
 
 @router.get("/reports/{report_id}/cases", response_model=list[CaseMatch])

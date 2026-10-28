@@ -1,4 +1,4 @@
-/// 손실 시뮬레이터 (2026-10-28 1단계) — 지역·용도 매각가율 · 슬라이더·보증보험 없음 · 빚>집값 · 시세 없음.
+/// 손실 시뮬레이터 (2026-10-28 1단계) — 지역·용도 매각가율 · 슬라이더·보증보험 없음 · 빚>집값 · 시세 없음 · 매매 시세 직접 입력.
 library;
 
 import 'package:flutter/material.dart';
@@ -32,8 +32,12 @@ final _report = AnalysisReport(
 );
 
 class _Repo extends AnalysisRepository {
-  _Repo(this.est);
+  _Repo(this.est, {this.priced});
   final LossEstimate? est;
+
+  /// 매매 시세를 넣었을 때 돌려줄 값 — 받은 시세를 기록한다
+  final LossEstimate Function(int price)? priced;
+  final List<int?> asked = [];
   @override
   Future<AnalysisReport> analyze(AnalysisRequest request) async => _report;
   @override
@@ -43,9 +47,14 @@ class _Repo extends AnalysisRepository {
   @override
   Future<void> deleteReport(String id) async {}
   @override
-  Future<CompareResult> compareRegistry(String id, List<String> p) => throw UnimplementedError();
+  Future<CompareResult> compareRegistry(String id, List<String> p) =>
+      throw UnimplementedError();
   @override
-  Future<LossEstimate?> getLossEstimate(String id) async => est;
+  Future<LossEstimate?> getLossEstimate(String id, {int? marketPrice}) async {
+    asked.add(marketPrice);
+    if (marketPrice != null && priced != null) return priced!(marketPrice);
+    return est;
+  }
 }
 
 const _ok = LossEstimate(
@@ -64,7 +73,13 @@ const _ok = LossEstimate(
   expectedLoss: 50000000,
 );
 
-Future<void> _pump(WidgetTester t, LossEstimate? est, {double scale = 1}) async {
+Future<_Repo> _pump(
+  WidgetTester t,
+  LossEstimate? est, {
+  double scale = 1,
+  LossEstimate Function(int price)? priced,
+}) async {
+  final repo = _Repo(est, priced: priced);
   t.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
   t.view.devicePixelRatio = 3;
   addTearDown(t.view.reset);
@@ -72,11 +87,15 @@ Future<void> _pump(WidgetTester t, LossEstimate? est, {double scale = 1}) async 
   addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
   await t.pumpWidget(
     ChangeNotifierProvider<AnalysisRepository>.value(
-      value: _Repo(est),
-      child: MaterialApp(theme: buildAppTheme(), home: LossSimulatorScreen(key: UniqueKey(), reportId: 'r1')),
+      value: repo,
+      child: MaterialApp(
+        theme: buildAppTheme(),
+        home: LossSimulatorScreen(key: UniqueKey(), reportId: 'r1'),
+      ),
     ),
   );
   await t.pumpAndSettle();
+  return repo;
 }
 
 void main() {
@@ -86,9 +105,20 @@ void main() {
     expect(find.byKey(const ValueKey('loss-bar')), findsOneWidget);
     expect(find.koText('75%'), findsOneWidget);
     expect(find.koText('− 2억원'), findsOneWidget);
-    expect(find.koTextContaining('서울 · 연립다세대 매각가율'), findsOneWidget);
-    expect(find.koTextContaining('4,808건'), findsOneWidget);
-    expect(find.koTextContaining('대법원 법원경매정보'), findsOneWidget);
+    expect(find.koText('매매 시세'), findsOneWidget);
+    expect(find.koText('4억원'), findsOneWidget);
+    // 근거 세 줄 — 기준 · 기간 · 출처
+    expect(find.koText('기준'), findsOneWidget);
+    expect(find.koText('서울 연립다세대 매각가율 · 4,808건'), findsOneWidget);
+    expect(find.koText('기간'), findsOneWidget);
+    expect(find.koText('2025.11~2026.10'), findsOneWidget);
+    expect(find.koText('출처'), findsOneWidget);
+    expect(find.koText('대법원 법원경매정보 매각통계'), findsOneWidget);
+    // 연필은 이름 옆 — 금액은 모든 줄이 같은 오른쪽 끝
+    expect(find.byKey(const ValueKey('loss-price-edit')), findsOneWidget);
+    final double priceRight = t.getRect(find.koText('4억원')).right;
+    final double debtRight = t.getRect(find.koText('− 2억원')).right;
+    expect((priceRight - debtRight).abs(), lessThan(1));
     // 넣지 않은 것을 나열하지 않는다 (2026-10-28 규혁)
     expect(find.koTextContaining('최우선변제'), findsNothing);
     expect(find.koTextContaining('빠져 있어요'), findsNothing);
@@ -102,7 +132,7 @@ void main() {
     expect(find.koTextContaining('예시'), findsNothing);
   });
 
-  testWidgets('전국 값이면 근거에 "전국" · 용도를 모르면 "보수적으로" 한 줄', (t) async {
+  testWidgets('전국 값이면 근거에 "전국" · 고른 이유는 적지 않는다', (t) async {
     await _pump(
       t,
       const LossEstimate(
@@ -118,8 +148,10 @@ void main() {
         expectedLoss: 1,
       ),
     );
-    expect(find.koTextContaining('전국 · 오피스텔 매각가율'), findsOneWidget);
-    expect(find.koText(kLossConservativeLine), findsOneWidget);
+    expect(find.koTextContaining('전국 오피스텔 매각가율'), findsOneWidget);
+    expect(find.koTextContaining('보수적'), findsNothing);
+    expect(find.koTextContaining('가장 낮은'), findsNothing);
+    expect(find.koTextContaining('못 찾'), findsNothing);
   });
 
   testWidgets('빚이 집값보다 커도 같은 화면 — 0원 · 못 받음 = 보증금 · 낙찰가 줄 없음', (t) async {
@@ -142,9 +174,71 @@ void main() {
     expect(find.koTextContaining('최우선변제'), findsNothing);
   });
 
-  testWidgets('시세가 없으면 계산하지 않는다 · 자료가 없으면 지어내지 않는다', (t) async {
-    await _pump(t, const LossEstimate(status: LossStatus.noPrice, deposit: 1));
-    expect(find.koText('집값을 몰라 계산할 수 없어요'), findsOneWidget);
+  testWidgets('시세가 없으면 같은 화면 — 회색 막대 · [입력하기] · 넣으면 바로 계산 (리포트는 그대로)', (
+    t,
+  ) async {
+    final repo = await _pump(
+      t,
+      const LossEstimate(
+        status: LossStatus.noPrice,
+        deposit: 150000000,
+        seniorDebt: 200000000,
+        ratePct: 75.0,
+        region: '서울',
+        use: '연립다세대',
+        soldCount: 4808,
+      ),
+      priced: (p) => LossEstimate(
+        status: LossStatus.ok,
+        deposit: 150000000,
+        basePrice: p,
+        seniorDebt: 200000000,
+        ratePct: 75.0,
+        region: '서울',
+        use: '연립다세대',
+        soldCount: 4808,
+        expectedSale: p * 3 ~/ 4,
+        expectedReturn: 100000000,
+        expectedLoss: 50000000,
+      ),
+    );
+    expect(find.koText(kLossNeedPrice), findsOneWidget);
+    expect(find.byKey(const ValueKey('loss-bar-idle')), findsOneWidget);
+    expect(find.byKey(const ValueKey('loss-bar')), findsNothing);
+    expect(find.koText('입력하기'), findsOneWidget);
+    expect(find.koText('75%'), findsOneWidget);
+    expect(find.koText('− 2억원'), findsOneWidget);
+    expect(find.koTextContaining('못 찾'), findsNothing);
+    expect(find.koTextContaining('직접 입력'), findsNothing);
+
+    await t.tap(find.koText('입력하기'));
+    await t.pumpAndSettle();
+    expect(find.koText('매매 시세'), findsWidgets);
+    await t.enterText(find.byKey(const ValueKey('loss-price-field')), '40000');
+    await t.pump();
+    expect(find.koText('= 4억원'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('loss-price-apply')));
+    await t.pumpAndSettle();
+
+    expect(repo.asked.last, 400000000);
+    expect(find.koText(kLossNeedPrice), findsNothing);
+    expect(find.byKey(const ValueKey('loss-bar')), findsOneWidget);
+    expect(find.koText('4억원'), findsOneWidget);
+    expect(find.koText('3억원'), findsOneWidget);
+
+    // 고치기 — 연필 줄을 누르면 지금 값이 들어 있다
+    await t.tap(find.byKey(const ValueKey('loss-price-row')));
+    await t.pumpAndSettle();
+    expect(find.text('40000'), findsOneWidget);
+    await t.enterText(find.byKey(const ValueKey('loss-price-field')), '30000');
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('loss-price-apply')));
+    await t.pumpAndSettle();
+    expect(repo.asked.last, 300000000);
+    expect(find.koText('3억원'), findsOneWidget);
+  });
+
+  testWidgets('자료가 없으면 지어내지 않는다', (t) async {
     await _pump(t, const LossEstimate(status: LossStatus.noRate, deposit: 1));
     expect(find.koText('이 지역 경매 통계를 준비 중이에요'), findsOneWidget);
     await _pump(t, null);
@@ -157,8 +251,15 @@ void main() {
   });
 
   test('서버 응답을 읽는다 — 모르는 상태는 자료 없음', () {
-    final e = LossEstimate.fromJson({'status': 'debt_exceeds', 'deposit': 5, 'seniorDebt': 9});
+    final e = LossEstimate.fromJson({
+      'status': 'debt_exceeds',
+      'deposit': 5,
+      'seniorDebt': 9,
+    });
     expect(e.status, LossStatus.debtExceeds);
-    expect(LossEstimate.fromJson({'status': '???', 'deposit': 1}).status, LossStatus.noRate);
+    expect(
+      LossEstimate.fromJson({'status': '???', 'deposit': 1}).status,
+      LossStatus.noRate,
+    );
   });
 }

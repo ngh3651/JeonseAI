@@ -48,7 +48,9 @@ abstract class AnalysisRepository extends ChangeNotifier {
   Future<CompareResult> compareRegistry(String reportId, List<String> imagePaths);
 
   /// 손실 예상 (계약 §3.22) — 서버가 지역·용도별 매각가율로 계산한다. 못 받으면 null (화면이 '불러올 수 없어요').
-  Future<LossEstimate?> getLossEstimate(String reportId) async => null;
+  ///
+  /// [marketPrice](원): 시뮬레이터에서 사용자가 넣은 매매 시세 — 이번 계산에만 쓴다(리포트는 그대로).
+  Future<LossEstimate?> getLossEstimate(String reportId, {int? marketPrice}) async => null;
 
   /// 빠진 쪽을 더 찍어 **다시** 대조한다 — 앞 대조로 생긴 리포트([replaces])를 새 결과가 대신한다 (2026-10-27).
   /// 기본은 그냥 대조(서버 구현만 [replaces]를 보낸다).

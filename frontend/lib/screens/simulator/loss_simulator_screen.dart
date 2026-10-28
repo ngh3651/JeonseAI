@@ -6,14 +6,17 @@
 /// 예전 화면에서 뺀 것과 이유:
 /// - 낙찰가율 슬라이더(근거 없는 70% 예시값) → 대법원 매각통계의 지역·용도별 값 하나
 /// - 보증보험 토글(가입하면 0원) → 시뮬레이터와 상관없다. 가입 가능성은 리포트 근거 카드가 말한다
-/// - 시세가 없을 때 보증금을 기준가로 쓰던 계산 → 계산하지 않고 [시세 입력하기]
+/// - 시세가 없을 때 보증금을 기준가로 쓰던 계산 → 계산하지 않고 같은 화면에서 [입력하기]
 ///
-/// 글은 줄이고 모양으로 말한다: 보증금 막대(돌려받음 초록 · 못 받음 빨강) → 계산 4줄 → 근거(지역·용도·기간·건수·출처).
-/// 화면엔 계산에 **쓴 것**만 적는다 — 넣지 않은 것(경매 비용·최우선변제 등)을 나열하지 않는다(2026-10-28 규혁).
+/// 화면은 하나다: 보증금 막대(돌려받음 초록 · 못 받음 빨강) → 계산 4줄 → 근거(기준 · 기간 · 출처).
+/// - 매매 시세는 **이 화면에서 바로** 넣고 고친다(연필). 넣은 값은 이 계산에만 쓴다 — 리포트는 그대로다.
+/// - 시세가 없으면 같은 모양에 "매매 시세를 넣으면 계산돼요" + 회색 막대 + 금액 자리에 [입력하기].
+/// - 화면엔 계산에 **쓴 것**만 적는다 — 넣지 않은 것·고른 이유를 설명하지 않는다(2026-10-28 규혁).
 /// 글자·색은 판례·여정 리디자인과 같은 새 체계(`AppTypographyNext`·`AppColorsNext`).
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../design_system/text/app_text.dart';
@@ -23,10 +26,12 @@ import '../../models/analysis_report.dart';
 import '../../models/loss_estimate.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../utils/money_format.dart';
-import '../report/market_price_reanalyze.dart';
 
-/// 용도를 확실히 모를 때 한 줄 — 후보 중 가장 낮은 매각가율로 계산했다는 것(보수적 기준)
-const String kLossConservativeLine = '보수적으로 가장 낮은 값을 썼어요';
+/// 시세가 없을 때 위 카드 한 줄
+const String kLossNeedPrice = '매매 시세를 넣으면 계산돼요';
+
+/// 회색 막대 (시세가 없을 때)
+const Color _kBarIdle = Color(0xFFE3E7E5);
 
 class LossSimulatorScreen extends StatefulWidget {
   const LossSimulatorScreen({super.key, required this.reportId});
@@ -40,6 +45,9 @@ class LossSimulatorScreen extends StatefulWidget {
 class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
   late Future<(AnalysisReport?, LossEstimate?)> _future;
 
+  /// 이 화면에서 사용자가 넣은 매매 시세(원) — 리포트에는 저장하지 않는다
+  int? _price;
+
   @override
   void initState() {
     super.initState();
@@ -48,16 +56,35 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
 
   void _load() {
     final repo = context.read<AnalysisRepository>();
+    final int? price = _price;
     _future = () async {
       final reportF = repo.getReport(widget.reportId);
       LossEstimate? est;
       try {
-        est = await repo.getLossEstimate(widget.reportId);
+        est = await repo.getLossEstimate(widget.reportId, marketPrice: price);
       } catch (_) {
         est = null;
       }
-      return (await reportF, est);
+      AnalysisReport? report;
+      try {
+        report = await reportF;
+      } catch (_) {
+        report = null;
+      }
+      return (report, est);
     }();
+  }
+
+  Future<void> _editPrice(int? current) async {
+    final int? won = await showDialog<int>(
+      context: context,
+      builder: (_) => _PriceDialog(initialWon: current),
+    );
+    if (won == null || !mounted) return;
+    setState(() {
+      _price = won;
+      _load();
+    });
   }
 
   @override
@@ -101,21 +128,10 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                 const SizedBox(height: 12),
               ],
               ...switch (est.status) {
-                // 빚이 집값보다 커도 같은 화면 — 0원 · 막대 전부 빨강 (2026-10-28 화면 하나로)
-                LossStatus.ok || LossStatus.debtExceeds => _ok(est),
-                LossStatus.noPrice => [
-                  _Message(
-                    icon: Icons.home_work_outlined,
-                    title: '집값을 몰라 계산할 수 없어요',
-                    actionLabel:
-                        report != null && canReanalyzeWithMarketPrice(report)
-                        ? '시세 입력하기'
-                        : null,
-                    onAction: report == null
-                        ? null
-                        : () => reanalyzeWithMarketPrice(context, report),
-                  ),
-                ],
+                // 빚이 집값보다 커도, 시세가 없어도 같은 화면 (2026-10-28 화면 하나로)
+                LossStatus.ok ||
+                LossStatus.debtExceeds ||
+                LossStatus.noPrice => _view(est),
                 LossStatus.noRate => [
                   const _Message(
                     icon: Icons.query_stats_outlined,
@@ -130,9 +146,8 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
     );
   }
 
-  // ── 계산함 ────────────────────────────────────────────────────────────────
-
-  List<Widget> _ok(LossEstimate e) {
+  List<Widget> _view(LossEstimate e) {
+    final bool priced = e.status != LossStatus.noPrice && e.basePrice != null;
     final int back = e.expectedReturn ?? 0;
     final int loss = e.expectedLoss ?? 0;
     return [
@@ -143,61 +158,89 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
           children: [
             AppText('경매로 넘어가면', style: AppTypographyNext.caption),
             const SizedBox(height: 2),
-            AppText.rich(
-              TextSpan(
+            if (priced)
+              AppText.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: formatWon(back),
+                      style: AppTypographyNext.numberLarge.copyWith(
+                        color: loss == 0
+                            ? AppColors.ok
+                            : AppColorsNext.textStrong,
+                      ),
+                    ),
+                    TextSpan(
+                      text: '  돌려받아요',
+                      style: AppTypographyNext.bodyStrong.copyWith(
+                        color: AppColorsNext.textStrong,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              AppText(
+                kLossNeedPrice,
+                key: const ValueKey('loss-need-price'),
+                style: AppTypographyNext.headline.copyWith(
+                  color: AppColorsNext.textStrong,
+                ),
+              ),
+            const SizedBox(height: 16),
+            if (priced)
+              _DepositBar(back: back, loss: loss)
+            else
+              ClipRRect(
+                key: const ValueKey('loss-bar-idle'),
+                borderRadius: BorderRadius.circular(8),
+                child: const SizedBox(
+                  height: 16,
+                  width: double.infinity,
+                  child: ColoredBox(color: _kBarIdle),
+                ),
+              ),
+            if (priced) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runSpacing: 4,
                 children: [
-                  TextSpan(
-                    text: formatWon(back),
-                    style: AppTypographyNext.numberLarge.copyWith(
-                      color: loss == 0
-                          ? AppColors.ok
-                          : AppColorsNext.textStrong,
-                    ),
+                  _Legend(
+                    color: AppColors.ok,
+                    label: '돌려받음',
+                    value: formatWon(back),
                   ),
-                  TextSpan(
-                    text: '  돌려받아요',
-                    style: AppTypographyNext.bodyStrong.copyWith(
-                      color: AppColorsNext.textStrong,
-                    ),
+                  _Legend(
+                    key: const ValueKey('loss-legend-loss'),
+                    color: AppColorsNext.dangerText,
+                    label: '못 받음',
+                    value: formatWon(loss),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            _DepositBar(back: back, loss: loss),
-            const SizedBox(height: 10),
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              runSpacing: 4,
-              children: [
-                _Legend(
-                  color: AppColors.ok,
-                  label: '돌려받음',
-                  value: formatWon(back),
-                ),
-                _Legend(
-                  key: const ValueKey('loss-legend-loss'),
-                  color: AppColorsNext.dangerText,
-                  label: '못 받음',
-                  value: formatWon(loss),
-                ),
-              ],
-            ),
+            ],
           ],
         ),
       ),
       const SizedBox(height: 12),
       _Card(
         key: const ValueKey('loss-steps'),
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+        padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
         child: Column(
           children: [
-            _Step(label: '집값', value: formatWon(e.basePrice ?? 0)),
+            _Step(
+              key: const ValueKey('loss-price-row'),
+              label: '매매 시세',
+              value: priced ? formatWon(e.basePrice!) : '입력하기',
+              action: !priced,
+              onTap: () => _editPrice(priced ? e.basePrice : null),
+            ),
             if (e.ratePct != null)
               _Step(
                 label: '경매 낙찰가',
                 tag: '${_pct(e.ratePct)}%',
-                value: formatWon(e.expectedSale ?? 0),
+                value: priced ? formatWon(e.expectedSale ?? 0) : '-',
               ),
             _Step(
               label: '먼저 갚을 빚',
@@ -206,18 +249,15 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
             ),
             _Step(
               label: '내 몫',
-              value: formatWon(back),
+              value: priced ? formatWon(back) : '-',
               strong: true,
-              danger: back == 0,
+              danger: priced && back == 0,
               last: true,
             ),
           ],
         ),
       ),
-      if (e.ratePct != null) ...[
-        const SizedBox(height: 16),
-        _Basis(e),
-      ],
+      if (e.ratePct != null) ...[const SizedBox(height: 16), _Basis(e)],
     ];
   }
 }
@@ -333,15 +373,20 @@ class _Legend extends StatelessWidget {
   );
 }
 
-/// 계산 한 줄 — 왼쪽 이름(+ 작은 꼬리표), 오른쪽 금액
+/// 계산 한 줄 — 왼쪽 이름(+ 작은 꼬리표 또는 연필), 오른쪽 금액.
+///
+/// 금액은 모든 줄이 **같은 오른쪽 끝**에 선다 — 연필은 이름 옆에 둬서 금액 정렬을 흐트리지 않는다.
 class _Step extends StatelessWidget {
   const _Step({
+    super.key,
     required this.label,
     required this.value,
     this.tag,
     this.danger = false,
     this.strong = false,
     this.last = false,
+    this.action = false,
+    this.onTap,
   });
 
   final String label;
@@ -351,20 +396,26 @@ class _Step extends StatelessWidget {
   final bool strong;
   final bool last;
 
+  /// 금액 자리가 [입력하기] 버튼 글씨
+  final bool action;
+
+  /// 있으면 줄 전체를 눌러 고친다(이름 옆 연필)
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
     final TextStyle valueStyle = AppTypographyNext.bodyStrong.copyWith(
-      color: danger
-          ? AppColorsNext.dangerText
-          : strong
+      color: action || (strong && !danger)
           ? AppColors.primary
+          : danger
+          ? AppColorsNext.dangerText
           : AppColorsNext.textStrong,
-      fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
+      fontWeight: strong || action ? FontWeight.w700 : FontWeight.w600,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
-    return Container(
+    final row = Container(
       constraints: const BoxConstraints(minHeight: 52),
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
       decoration: last
           ? null
           : const BoxDecoration(
@@ -382,6 +433,15 @@ class _Step extends StatelessWidget {
                     color: AppColorsNext.textBody,
                   ),
           ),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.edit_outlined,
+              key: ValueKey('loss-price-edit'),
+              size: 18,
+              color: AppColorsNext.textMuted,
+            ),
+          ],
           if (tag != null) ...[
             const SizedBox(width: 6),
             Container(
@@ -401,15 +461,28 @@ class _Step extends StatelessWidget {
           ],
           const SizedBox(width: 12),
           Expanded(
-            child: AppText(value, textAlign: TextAlign.right, style: valueStyle),
+            child: AppText(
+              value,
+              textAlign: TextAlign.right,
+              style: valueStyle,
+            ),
           ),
         ],
+      ),
+    );
+    if (onTap == null) return row;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: row,
       ),
     );
   }
 }
 
-/// 근거 — 어디 값을 썼는지(지역·용도·기간·건수·출처). 흐린 글씨, 맨 아래.
+/// 근거 — 기준 · 기간 · 출처 세 줄. 왼쪽 이름 칸을 맞춰 줄바꿈해도 가지런하다.
 class _Basis extends StatelessWidget {
   const _Basis(this.e);
 
@@ -420,25 +493,118 @@ class _Basis extends StatelessWidget {
     final where = [
       if (e.region != null) e.region!,
       if (e.use != null) e.use!,
-    ].join(' · ');
-    final lines = <String>[
-      [
-        '$where 매각가율',
-        if (e.period != null && e.period!.isNotEmpty) e.period!,
-        if (e.soldCount != null) '${_count(e.soldCount!)}건',
-      ].join(' · '),
-      if (e.source != null && e.source!.isNotEmpty) '출처 ${e.source}',
-      if (e.useGuessed) kLossConservativeLine,
+    ].join(' ');
+    final rows = <(String, String)>[
+      (
+        '기준',
+        [
+          '$where 매각가율',
+          if (e.soldCount != null) '${_count(e.soldCount!)}건',
+        ].join(' · '),
+      ),
+      if (e.period != null && e.period!.isNotEmpty) ('기간', e.period!),
+      if (e.source != null && e.source!.isNotEmpty) ('출처', e.source!),
     ];
-    return Column(
+    final TextStyle label = AppTypographyNext.caption.copyWith(
+      fontWeight: FontWeight.w600,
+      color: AppColorsNext.textMuted,
+    );
+    return Padding(
       key: const ValueKey('loss-basis'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final l in lines)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: AppText(l, style: AppTypographyNext.caption),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (k, v) in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 40, child: AppText(k, style: label)),
+                  Expanded(child: AppText(v, style: AppTypographyNext.caption)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 매매 시세 입력 — 리포트의 [시세 입력하기] 창과 같은 모양(만원 단위 · 숫자만).
+/// 다른 점: 다시 분석하지 않고 **이 화면 계산만** 바꾼다.
+class _PriceDialog extends StatefulWidget {
+  const _PriceDialog({this.initialWon});
+
+  final int? initialWon;
+
+  @override
+  State<_PriceDialog> createState() => _PriceDialogState();
+}
+
+class _PriceDialogState extends State<_PriceDialog> {
+  late final TextEditingController _ctrl = TextEditingController(
+    text: widget.initialWon == null || widget.initialWon! < 10000
+        ? ''
+        : '${widget.initialWon! ~/ 10000}',
+  );
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  /// 만원 단위 입력 → 원. 비었거나 0이면 null.
+  int? get _won {
+    final digits = _ctrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return null;
+    final int manwon = int.parse(digits);
+    return manwon > 0 ? manwon * 10000 : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int? won = _won;
+    return AlertDialog(
+      title: const AppText('매매 시세'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppText('이 집을 사고팔 때의 값(매매 시세)이에요.', style: AppTypographyNext.caption),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('loss-price-field'),
+            controller: _ctrl,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(8),
+            ],
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(suffixText: '만원'),
           ),
+          const SizedBox(height: 6),
+          AppText(
+            won == null ? ' ' : '= ${formatWon(won)}',
+            key: const ValueKey('loss-price-preview'),
+            style: AppTypographyNext.caption.copyWith(color: AppColors.primary),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const AppText('취소'),
+        ),
+        TextButton(
+          key: const ValueKey('loss-price-apply'),
+          onPressed: won == null ? null : () => Navigator.of(context).pop(won),
+          child: const AppText('계산하기'),
+        ),
       ],
     );
   }

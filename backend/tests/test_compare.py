@@ -614,3 +614,144 @@ def test_다시_분석하면_전_리포트와_견준_결과가_실린다():
     assert stored is not None and stored.changeFromPrevious is not None
     # 첫 분석엔 견줄 전 리포트가 없다
     assert _attach_change(first, device_id=device).changeFromPrevious is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑦ 빠진 쪽 · 한 건에 한 줄 · 덜 찍은 리포트 대신하기 (2026-10-27 실기기)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _missing(snapshot: compare.RegistrySnapshot, pages: tuple[int, ...]) -> compare.RegistrySnapshot:
+    from dataclasses import replace
+
+    return replace(snapshot, missing_pages=pages)
+
+
+def test_이번_서류에_빠진_쪽이_있으면_숫자_없이_대조하지_못했다고_말한다():
+    """5쪽 중 3쪽만 올렸더니 빠진 쪽 항목이 '없어짐', 말소 줄이 빠진 옛 항목이 '새로 생김'으로 잡혔다."""
+    base = _snapshot(_extract(seizures=[{"receipt_date": "2024-03-04", "rank_number": "9"}]))
+    current = _missing(
+        _snapshot(
+            _extract(auction_commencements=[{"receipt_date": "2022-07-27", "rank_number": "5"}]),
+            report_id="current",
+        ),
+        (1, 3),
+    )
+
+    result = compare.compare(base, current)
+
+    assert result.result == "partial"
+    assert result.headline == "빠진 쪽이 있어서 대조하지 못했어요"
+    assert "1·3쪽" in (result.subline or "")
+    assert not [r for r in result.rows if r.kind in ("added", "removed", "changed")], "빠진 쪽이 있으면 숫자를 내지 않는다"
+    assert all(r.kind == "unknown" for r in result.rows)
+    # '지금 할 일' 카드가 다시 찍기를 맡는다 — 줄마다 같은 버튼을 달지 않는다
+    assert all(r.action is None for r in result.rows)
+
+
+def test_기준_서류에_빠진_쪽이_있어도_대조하지_않는다():
+    base = _missing(_snapshot(_extract()), (2,))
+    current = _snapshot(_extract(mortgages=[{"max_claim_amount": 1, "receipt_date": "2026-08-01"}]), report_id="cur")
+
+    result = compare.compare(base, current)
+
+    assert result.result == "partial"
+    assert "기준이 된 등기부에 2쪽" in (result.subline or "")
+    assert not [r for r in result.rows if r.kind == "added"]
+
+
+def test_옛_스냅샷은_빠진_쪽_없이_읽힌다():
+    snap = _snapshot(_extract())
+    raw = json.loads(store.snapshot_to_json(snap))
+    raw.pop("missing_pages")
+    assert store.snapshot_from_json(json.dumps(raw)).missing_pages == ()
+    assert store.snapshot_from_json(store.snapshot_to_json(_missing(snap, (1, 5)))).missing_pages == (1, 5)
+
+
+def test_스냅샷이_리포트의_빠진_쪽을_담는다():
+    report = _report("r").model_copy(update={"missingPages": [1, 3]})
+    snap = compare.build_snapshot(_extract(), report=report, page_count=3, manual_market_price=None)
+    assert snap.missing_pages == (1, 3)
+
+
+def test_바뀐_줄은_한_건에_한_줄씩_항목을_싣는다():
+    base = _snapshot(
+        _extract(
+            seizures=[{"receipt_date": "2024-03-04", "rank_number": "9"}],
+            provisional_seizures=[
+                {"receipt_date": "2024-01-11", "rank_number": "7"},
+                {"receipt_date": "2024-02-02", "rank_number": "8"},
+            ],
+        )
+    )
+    current = _snapshot(
+        _extract(
+            mortgages=[
+                {"max_claim_amount": 120_000_000, "receipt_date": "2026-08-01"},
+                {"max_claim_amount": 0, "receipt_date": "2021-04-22"},
+            ]
+        ),
+        report_id="current",
+    )
+
+    result = compare.compare(base, current)
+
+    added = _row(result, "added")
+    removed = _row(result, "removed")
+    assert added is not None and removed is not None
+    assert [(i.label, i.receiptDate, i.amountText) for i in added.items] == [
+        ("근저당권", "2026-08-01", "채권최고액 1억 2,000만원"),
+        ("근저당권", "2021-04-22", "금액 확인 필요"),  # 0원이라고 쓰지 않는다
+    ]
+    # 같은 종류가 여러 건이면 줄을 따로 — 가압류 2건은 두 줄 (묶음 안 등기 종류 순서)
+    assert [(i.label, i.receiptDate) for i in removed.items] == [
+        ("압류", "2024-03-04"),
+        ("가압류", "2024-01-11"),
+        ("가압류", "2024-02-02"),
+    ]
+    assert all(i.amountText is None for i in removed.items), "압류·가압류에는 금액 줄이 없다"
+
+
+def test_빠진_쪽_보충은_덜_찍은_리포트를_대신한다():
+    from app.routers.reports import _attach_change, _drop_replaced
+
+    device = "dev-replace"
+    full = _report("rp-full").model_copy(update={"analyzedAt": "2026-10-27T10:00:00+09:00"})
+    partial = _report("rp-part").model_copy(
+        update={"analyzedAt": "2026-10-27T11:00:00+09:00", "missingPages": [1, 3]}
+    )
+    again = _report("rp-again").model_copy(update={"analyzedAt": "2026-10-27T12:00:00+09:00"})
+    ex = _extract(seizures=[{"receipt_date": "2024-03-04", "rank_number": "9"}])
+    for r in (full, partial, again):
+        store.add(r, device_id=device)
+        store.put_snapshot(
+            r.id, compare.build_snapshot(ex, report=r, page_count=5, manual_market_price=None), device_id=device
+        )
+
+    _drop_replaced(again, "rp-part", device_id=device)
+    updated = _attach_change(again, device_id=device)
+
+    assert store.get("rp-part", device_id=device) is None, "덜 찍은 리포트가 남으면 기록이 두 줄이 된다"
+    assert store.get_snapshot("rp-part", device_id=device) is None
+    assert updated.changeFromPrevious is not None
+    assert updated.changeFromPrevious.baseline.reportId == "rp-full", "덜 찍은 리포트가 아니라 그 전 리포트와 견준다"
+    assert not [r for r in updated.changeFromPrevious.rows if r.kind in ("added", "removed")]
+
+
+def test_다른_집이나_기준_리포트는_대신하지_않는다():
+    from app.routers.reports import _drop_replaced
+
+    device = "dev-replace-guard"
+    mine = _report("rg-a")
+    other = _report("rg-b").model_copy(update={"address": "서울 종로구 청운동 1-1", "propertyId": "1111222233334"})
+    new = _report("rg-new").model_copy(update={"propertyId": "9999888877776"})
+    for r in (mine, other):
+        store.add(r, device_id=device)
+
+    _drop_replaced(new, "rg-b", device_id=device)  # 다른 집
+    _drop_replaced(new, "rg-a", device_id=device, keep=frozenset({"rg-a"}))  # 기준 리포트
+    _drop_replaced(new, next(iter(store.EXAMPLE_IDS)), device_id=device)  # 예시
+    _drop_replaced(new, None, device_id=device)
+
+    assert store.get("rg-b", device_id=device) is not None
+    assert store.get("rg-a", device_id=device) is not None

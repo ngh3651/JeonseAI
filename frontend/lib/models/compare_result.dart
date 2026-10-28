@@ -120,6 +120,26 @@ class CompareDoc {
   );
 }
 
+/// 새로 생기거나 없어진 등기 항목 **1건** — 화면이 한 건에 한 줄로 그린다 (2026-10-27 변동 내용 시안).
+class CompareItem {
+  const CompareItem({required this.label, this.receiptDate, this.amountText});
+
+  /// 종류 이름 — 압류 · 가압류 · 경매개시결정 · 근저당권 …
+  final String label;
+
+  /// 접수일. 못 읽었으면 null
+  final DateTime? receiptDate;
+
+  /// 금액 한 줄(서버 문구) — "채권최고액 1억 2,000만원" · "금액 확인 필요". 금액이 없는 종류는 null
+  final String? amountText;
+
+  factory CompareItem.fromJson(Map<String, dynamic> json) => CompareItem(
+    label: json['label'] as String? ?? '',
+    receiptDate: DateTime.tryParse(json['receiptDate'] as String? ?? ''),
+    amountText: json['amountText'] as String?,
+  );
+}
+
 class CompareRow {
   const CompareRow({
     required this.kind,
@@ -134,7 +154,11 @@ class CompareRow {
     this.action,
     this.actionLabel,
     this.group,
+    this.items = const [],
   });
+
+  /// added·removed 줄의 항목 — 한 건에 한 줄. 옛 서버면 빈 목록(그땐 [detail]로 그린다)
+  final List<CompareItem> items;
 
   /// 어느 칸의 줄인가 — owner(갑구 소유자) · seizure(갑구 압류·가압류) · debt(을구 빚) · grade(안전도). 옛 서버면 null
   final String? group;
@@ -181,6 +205,10 @@ class CompareRow {
     action: CompareAction.fromWire(json['action'] as String?),
     actionLabel: json['actionLabel'] as String?,
     group: json['group'] as String?,
+    items: [
+      for (final i in (json['items'] as List? ?? const []))
+        CompareItem.fromJson((i as Map).cast<String, dynamic>()),
+    ],
   );
 }
 

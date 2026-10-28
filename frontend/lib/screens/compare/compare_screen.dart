@@ -131,7 +131,8 @@ class _CompareScreenState extends State<CompareScreen> {
     super.dispose();
   }
 
-  Future<void> _run() async {
+  /// [replaces]: 앞 대조로 생긴(빠진 쪽이 있던) 리포트 — 이번 결과가 그것을 대신한다 (2026-10-27)
+  Future<void> _run({String? replaces}) async {
     setState(() {
       _running = true;
       _errorMessage = null;
@@ -145,7 +146,13 @@ class _CompareScreenState extends State<CompareScreen> {
 
     final repo = context.read<AnalysisRepository>();
     try {
-      final result = await repo.compareRegistry(widget.reportId, _imagePaths);
+      final result = replaces == null
+          ? await repo.compareRegistry(widget.reportId, _imagePaths)
+          : await repo.recompareRegistry(
+              widget.reportId,
+              _imagePaths,
+              replaces: replaces,
+            );
       _stepTimer?.cancel();
       if (!mounted) return;
       setState(() {
@@ -255,11 +262,13 @@ class _CompareScreenState extends State<CompareScreen> {
       pickMany: widget.pickMany,
     );
     if (added.isEmpty || !mounted) return;
+    // 앞 대조로 생긴 리포트(빠진 쪽이 있던 것)는 이번 결과가 대신한다 — 기록이 두 줄로 남지 않게 (2026-10-27)
+    final String? previous = _result?.newReportId;
     setState(() {
       _imagePaths = [..._imagePaths, ...added].take(kCompareMaxPhotos).toList();
       _result = null;
     });
-    await _run();
+    await _run(replaces: previous);
   }
 
   void _startStepChoreography() {

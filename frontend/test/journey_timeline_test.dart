@@ -15,9 +15,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
+import 'package:jeonse_ai/design_system/tokens/app_colors.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/compare_result.dart';
 import 'package:jeonse_ai/models/content_models.dart';
+import 'package:jeonse_ai/models/property_reports.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/repositories/content_repository.dart';
@@ -208,13 +210,20 @@ CompareResult _compareResult({required bool newDebt}) => CompareResult(
   newReportId: 'r-new',
   rows: [
     if (newDebt)
-      const CompareRow(
+      CompareRow(
         kind: CompareRowKind.added,
         tone: CompareTone.danger,
         marker: '+',
         title: '새로 생긴 빚이 있어요',
         detail: '근저당권 1건 · 채권최고액 1억 2,000만원\n2026년 10월 20일 접수',
         group: 'debt',
+        items: [
+          CompareItem(
+            label: '근저당권',
+            receiptDate: DateTime(2026, 10, 20),
+            amountText: '채권최고액 1억 2,000만원',
+          ),
+        ],
       )
     else
       const CompareRow(
@@ -240,6 +249,65 @@ CompareResult _compareResult({required bool newDebt}) => CompareResult(
     ),
   ],
 );
+
+/// 실기기 화면 그대로 — 새로 생김 2건(경매개시결정 · 0원 근저당), 없어짐 4건(압류 · 가압류 2 · 경매개시결정)
+CompareResult _mixedResult() => CompareResult(
+  outcome: CompareOutcome.changed,
+  headline: '달라진 점이 3가지 있어요',
+  baseline: const CompareDoc(reportId: 'r-jeongja', viewedAt: '2026.08.14'),
+  current: const CompareDoc(reportId: 'r-new', viewedAt: '2026.10.27'),
+  totalCount: 4,
+  comparedCount: 4,
+  newReportId: 'r-new',
+  rows: [
+    CompareRow(
+      kind: CompareRowKind.added,
+      tone: CompareTone.danger,
+      marker: '+',
+      title: '새로 생긴 압류·가압류가 있어요',
+      group: 'seizure',
+      items: [CompareItem(label: '경매개시결정', receiptDate: DateTime(2022, 7, 27))],
+    ),
+    CompareRow(
+      kind: CompareRowKind.removed,
+      tone: CompareTone.neutral,
+      marker: '−',
+      title: '없어진 압류·가압류가 있어요',
+      group: 'seizure',
+      items: [
+        CompareItem(label: '압류', receiptDate: DateTime(2024, 3, 4)),
+        CompareItem(label: '가압류', receiptDate: DateTime(2024, 1, 11)),
+        CompareItem(label: '가압류', receiptDate: DateTime(2024, 2, 2)),
+        CompareItem(label: '경매개시결정', receiptDate: DateTime(2024, 3, 22)),
+      ],
+    ),
+    CompareRow(
+      kind: CompareRowKind.added,
+      tone: CompareTone.danger,
+      marker: '+',
+      title: '새로 생긴 빚이 있어요',
+      group: 'debt',
+      items: [
+        CompareItem(
+          label: '근저당권',
+          receiptDate: DateTime(2021, 4, 22),
+          amountText: '금액 확인 필요',
+        ),
+      ],
+    ),
+    const CompareRow(
+      kind: CompareRowKind.same,
+      tone: CompareTone.neutral,
+      marker: '=',
+      title: '집주인 · 그대로예요',
+      group: 'owner',
+    ),
+  ],
+);
+
+/// 대조 결과 시트 안에서만 찾는다 — 시트 뒤 '등기부 변동 기록'에도 같은 상자가 그려진다
+Finder _inSheet(Finder f) =>
+    find.descendant(of: find.byType(CompareProgressSheet), matching: f);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -501,7 +569,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(plus);
       await tester.pumpAndSettle();
-      expect(find.koText('계약 일정을 알려주세요'), findsOneWidget);
+      expect(find.byKey(const ValueKey('schedule-sheet-title')), findsOneWidget);
+      expect(find.koText('계약 일정'), findsWidgets);
     });
 
     testWidgets('홈 종 시트에서 왔으면 그날 단계가 골라진 채 열린다', (tester) async {
@@ -559,7 +628,7 @@ void main() {
       expect(log.reportId, 'r-new');
     });
 
-    testWidgets('새 빚이 생기면 "새로 생긴 게 1건 있어요" + 빨간 상자 + [최근 분석 리포트 보기]는 새 리포트로', (
+    testWidgets('새 빚이 생기면 "달라진 게 1건 있어요" + 새로 생김 상자(한 건 한 줄) + [최근 분석 리포트 보기]는 새 리포트로', (
       tester,
     ) async {
       await _pumpJourney(
@@ -573,18 +642,75 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.koText('1장으로 비교하기'));
       await tester.pumpAndSettle();
-      expect(find.koText('새로 생긴 게 1건 있어요'), findsOneWidget);
-      expect(find.koText('새로 1건'), findsOneWidget);
-      expect(find.koText('새 빚은 내 보증금보다 먼저 갚게 될 수 있어요'), findsOneWidget);
-      expect(
-        JourneyProgressStore.instance.logFor(_jeongjaKey).single.changedCount,
-        1,
-      );
+      expect(find.koText('달라진 게 1건 있어요'), findsOneWidget);
+      expect(find.koText('새로 1'), findsOneWidget);
+      expect(_inSheet(find.koText('새로 생겼어요 1건')), findsOneWidget);
+      expect(_inSheet(find.koText('근저당권')), findsOneWidget);
+      expect(_inSheet(find.koText('2026.10.20 접수')), findsOneWidget);
+      expect(_inSheet(find.koText('채권최고액 1억 2,000만원')), findsOneWidget);
+      // 설명 문장·"— 변동"·"바뀜 N건"은 없다 (2026-10-27 시안)
+      expect(find.koText('새 빚은 내 보증금보다 먼저 갚게 될 수 있어요'), findsNothing);
+      expect(find.koTextContaining('— 변동'), findsNothing);
+      expect(find.koTextContaining('바뀜'), findsNothing);
+      final log = JourneyProgressStore.instance.logFor(_jeongjaKey).single;
+      expect(log.changedCount, 1);
+      expect(log.items.single.label, '근저당권');
       await tester.tap(
         find.byKey(const ValueKey('compare-result-open-report')),
       );
       await tester.pumpAndSettle();
       expect(find.text('리포트 r-new'), findsOneWidget);
+    });
+
+    testWidgets('새로 생김·없어짐을 나눠 센다 — 가압류 2건은 두 줄, 0원은 "금액 확인 필요", 없어진 건 빨강이 아니다', (
+      tester,
+    ) async {
+      await _pumpJourney(
+        tester,
+        compareWith: _mixedResult(),
+        gallery: ['/tmp/a.jpg'],
+      );
+      await tester.tap(find.byKey(const ValueKey('journey-compare-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('갤러리에서 고르기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('1장으로 비교하기'));
+      await tester.pumpAndSettle();
+      expect(find.koText('달라진 게 6건 있어요'), findsOneWidget);
+      expect(_inSheet(find.koText('새로 생겼어요 2건')), findsOneWidget);
+      expect(_inSheet(find.koText('없어졌어요 4건')), findsOneWidget);
+      expect(_inSheet(find.koText('가압류')), findsNWidgets(2));
+      expect(_inSheet(find.koText('금액 확인 필요')), findsOneWidget);
+      expect(find.koTextContaining('0원'), findsNothing);
+      // 없어짐 상자는 초록 바탕
+      final removedBox = tester.widget<Container>(
+        find.descendant(
+          of: _inSheet(find.byKey(const ValueKey('change-box-removed'))),
+          matching: find.byType(Container),
+        ).first,
+      );
+      expect((removedBox.decoration as BoxDecoration).color, AppColors.okSoft);
+      expect(JourneyProgressStore.instance.logFor(_jeongjaKey).single.changedCount, 6);
+    });
+
+    testWidgets('글자 130%에서도 상자 안 이름과 접수일이 겹치지 않는다', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pumpJourney(
+        tester,
+        compareWith: _mixedResult(),
+        gallery: ['/tmp/a.jpg'],
+      );
+      await tester.tap(find.byKey(const ValueKey('journey-compare-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('갤러리에서 고르기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.koText('1장으로 비교하기'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final name = tester.getRect(_inSheet(find.koText('경매개시결정')).first);
+      final date = tester.getRect(_inSheet(find.koText('2022.7.27 접수')));
+      expect(name.overlaps(date), isFalse);
     });
 
     testWidgets('기준 없는 리포트는 사진을 받기 전에 대조 화면(기준 없음)으로', (tester) async {
@@ -625,32 +751,113 @@ void main() {
         _jeongjaKey,
         CompareLogEntry(
           at: _day(-1),
-          changedCount: 1,
+          changedCount: 2,
           stageIndex: 2,
           stageTitle: '계약서 쓰는 날',
           reportId: 'r-jeongja',
-          lines: const [
-            CompareLogLine(
-              title: '을구 · 새로 생긴 빚이 있어요',
-              detail: '근저당권 1건 · 채권최고액 1억',
+          items: [
+            CompareLogItem(
+              kind: CompareLogItemKind.added,
+              label: '근저당권',
+              receiptDate: DateTime(2021, 4, 22),
+              note: '금액 확인 필요',
+            ),
+            CompareLogItem(
+              kind: CompareLogItemKind.removed,
+              label: '압류',
+              receiptDate: DateTime(2024, 3, 4),
             ),
           ],
         ),
       );
       await _pumpJourney(tester);
-      // 리포트 카드 꼬리말이 '변동 1건'으로
-      expect(find.koTextContaining('변동 1건'), findsWidgets);
+      // 리포트 카드 꼬리말이 '변동 2건'으로
+      expect(find.koTextContaining('변동 2건'), findsWidgets);
       await tester.scrollUntilVisible(
         find.koText('계약서 쓰는 날 대조'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.koText('을구 · 새로 생긴 빚이 있어요 — 변동'), findsOneWidget);
+      expect(find.koText('새로 생겼어요 1건'), findsOneWidget);
+      expect(find.koText('없어졌어요 1건'), findsOneWidget);
+      expect(find.koText('2021.4.22 접수'), findsOneWidget);
+      expect(find.koTextContaining('— 변동'), findsNothing);
       expect(
         find.byKey(const ValueKey('journey-log-open-report')),
         findsOneWidget,
       );
       expect(find.koText('2건'), findsOneWidget);
+    });
+
+    testWidgets('없어진 것만 있는 대조는 초록 ✓ · "없어짐 N건"(초록) · 펼칠 수 있다', (tester) async {
+      await JourneyProgressStore.instance.addCompare(
+        _jeongjaKey,
+        CompareLogEntry(
+          at: _day(-1),
+          changedCount: 1,
+          stageTitle: '잔금 보내는 날',
+          reportId: 'r-jeongja',
+          items: [
+            CompareLogItem(
+              kind: CompareLogItemKind.removed,
+              label: '가압류',
+              receiptDate: DateTime(2024, 1, 11),
+            ),
+          ],
+        ),
+      );
+      await _pumpJourney(tester);
+      await tester.scrollUntilVisible(
+        find.koText('잔금 보내는 날 대조'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.koText('없어짐 1건'), findsOneWidget);
+      expect(find.koText('변동 1건'), findsNothing);
+      expect(find.koText('없어졌어요 1건'), findsOneWidget);
+      expect(find.byKey(const ValueKey('change-box-added')), findsNothing);
+    });
+
+    test('보충본이 대신한 리포트의 기록은 새 리포트의 견준 결과로 다시 그린다 — 한 줄로', () async {
+      final store = JourneyProgressStore.instance;
+      await store.addCompare(
+        _jeongjaKey,
+        CompareLogEntry(
+          at: _day(-1),
+          changedCount: 3,
+          stageTitle: '잔금 보내는 날',
+          reportId: 'r-part',
+          items: const [
+            CompareLogItem(kind: CompareLogItemKind.added, label: '경매개시결정'),
+          ],
+        ),
+      );
+      await store.replaceReportId('r-part', 'r-full');
+      final base = _report(id: 'r-base', alias: '정자동 빌라', address: _jeongja.address, analyzedDaysAgo: 2);
+      final full = AnalysisReport(
+        id: 'r-full',
+        alias: base.alias,
+        address: base.address,
+        analyzedAt: DateTime.now(),
+        grade: base.grade,
+        headline: base.headline,
+        nextAction: base.nextAction,
+        topRiskSummary: base.topRiskSummary,
+        deposit: base.deposit,
+        marketPrice: null,
+        seniorDebtAmount: 0,
+        gaugeProgress: 0.5,
+        evidences: const [],
+        changeFromPrevious: _compareResult(newDebt: false),
+      );
+      final log = journeyChangeLog(
+        PropertyReports(key: _jeongjaKey, reports: [full, base]),
+        store.logFor(_jeongjaKey),
+      );
+      expect(log, hasLength(1), reason: '보충본이 따로 "다시 분석" 줄을 만들지 않는다');
+      expect(log.single.reportId, 'r-full');
+      expect(log.single.stageTitle, '잔금 보내는 날');
+      expect(log.single.changedCount, 0, reason: '덜 찍은 서류의 틀린 3건이 아니라 보충본의 결과');
     });
   });
 

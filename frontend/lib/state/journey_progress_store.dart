@@ -29,6 +29,52 @@ class CompareLogLine {
   );
 }
 
+/// 변동 항목의 갈래 — 새로 생김 · 없어짐 · 내용이 달라짐(집주인)
+enum CompareLogItemKind { added, removed, changed }
+
+/// 대조로 바뀐 **한 건** (2026-10-27 변동 내용 시안 — 한 건에 한 줄).
+@immutable
+class CompareLogItem {
+  const CompareLogItem({
+    required this.kind,
+    required this.label,
+    this.receiptDate,
+    this.note,
+  });
+
+  final CompareLogItemKind kind;
+
+  /// 종류 이름 (압류 · 근저당권 …) — 집주인 줄이면 서버 제목("집주인이 달라요")
+  final String label;
+
+  /// 접수일 — 못 읽었으면 null
+  final DateTime? receiptDate;
+
+  /// 이름 아래 흐린 한 줄 — 금액("채권최고액 …" · "금액 확인 필요") 또는 집주인 줄의 "기준 김○○ → 이번 이○○"
+  final String? note;
+
+  Map<String, dynamic> toJson() => {
+    'kind': kind.name,
+    'label': label,
+    if (receiptDate != null)
+      'receiptDate':
+          '${receiptDate!.year.toString().padLeft(4, '0')}-'
+          '${receiptDate!.month.toString().padLeft(2, '0')}-'
+          '${receiptDate!.day.toString().padLeft(2, '0')}',
+    if (note != null) 'note': note,
+  };
+
+  factory CompareLogItem.fromJson(Map<String, dynamic> json) => CompareLogItem(
+    kind: CompareLogItemKind.values.firstWhere(
+      (k) => k.name == json['kind'],
+      orElse: () => CompareLogItemKind.added,
+    ),
+    label: json['label'] as String? ?? '',
+    receiptDate: DateTime.tryParse(json['receiptDate'] as String? ?? ''),
+    note: json['note'] as String?,
+  );
+}
+
 /// 대조 기록 한 건.
 @immutable
 class CompareLogEntry {
@@ -40,9 +86,25 @@ class CompareLogEntry {
     this.reportId,
     this.viewedAt,
     this.lines = const [],
+    this.items = const [],
     this.reanalysis = false,
     this.compared = true,
+    this.fromReport = false,
   });
+
+  /// 이 기록의 결과를 **리포트의 '전 리포트와 견준 결과'**로 다시 그린다 — 리포트가 보충본으로 바뀐 기록 (2026-10-27)
+  final bool fromReport;
+
+  /// 바뀐 건들 — 한 건에 한 줄 (2026-10-27). 옛 기록이면 비어 있고 [lines]로 그린다.
+  final List<CompareLogItem> items;
+
+  int get addedCount =>
+      items.where((i) => i.kind != CompareLogItemKind.removed).length;
+  int get removedCount =>
+      items.where((i) => i.kind == CompareLogItemKind.removed).length;
+
+  /// 없어진 것만 있다 — 위험이 줄어든 대조. 빨강으로 칠하지 않는다.
+  bool get onlyRemoved => items.isNotEmpty && addedCount == 0;
 
   /// 여정의 [대조하기]가 아니라 **다시 분석**(홈 등)으로 생긴 줄 — 제목 "다시 분석" (2026-10-27).
   /// 이 폰에 저장하지 않는다 — 서버 리포트(`changeFromPrevious`)에서 그때그때 만든다.
@@ -81,6 +143,8 @@ class CompareLogEntry {
     'reportId': reportId,
     'viewedAt': viewedAt,
     'lines': [for (final l in lines) l.toJson()],
+    'items': [for (final i in items) i.toJson()],
+    if (fromReport) 'fromReport': true,
   };
 
   factory CompareLogEntry.fromJson(Map<String, dynamic> json) =>
@@ -95,6 +159,11 @@ class CompareLogEntry {
           for (final l in (json['lines'] as List?) ?? const [])
             CompareLogLine.fromJson((l as Map).cast<String, dynamic>()),
         ],
+        items: [
+          for (final i in (json['items'] as List?) ?? const [])
+            CompareLogItem.fromJson((i as Map).cast<String, dynamic>()),
+        ],
+        fromReport: json['fromReport'] as bool? ?? false,
       );
 }
 
@@ -182,6 +251,35 @@ class JourneyProgressStore extends ChangeNotifier {
     (_logs[propertyKey] ??= []).insert(0, entry);
     final stage = entry.stageIndex;
     if (stage != null) (_manual[propertyKey] ??= {})[stage] = true;
+    notifyListeners();
+    await _persist();
+  }
+
+  /// [oldReportId] 리포트를 [newReportId]가 **대신했다** (빠진 쪽 보충·흐린 장 다시 찍기, 2026-10-27).
+  /// 그 리포트를 가리키던 대조 기록을 새 리포트로 옮기고, 결과는 새 리포트의 '전 리포트와 견준 결과'로 다시 그리게 표시한다
+  /// ([CompareLogEntry.fromReport]) — 덜 찍은 서류로 낸 틀린 숫자가 남지 않고, 기록이 두 줄이 되지 않게.
+  Future<void> replaceReportId(String oldReportId, String newReportId) async {
+    var touched = false;
+    for (final list in _logs.values) {
+      for (int i = 0; i < list.length; i++) {
+        final e = list[i];
+        if (e.reportId != oldReportId) continue;
+        list[i] = CompareLogEntry(
+          at: e.at,
+          changedCount: e.changedCount,
+          stageIndex: e.stageIndex,
+          stageTitle: e.stageTitle,
+          reportId: newReportId,
+          viewedAt: e.viewedAt,
+          lines: e.lines,
+          items: e.items,
+          compared: e.compared,
+          fromReport: true,
+        );
+        touched = true;
+      }
+    }
+    if (!touched) return;
     notifyListeners();
     await _persist();
   }

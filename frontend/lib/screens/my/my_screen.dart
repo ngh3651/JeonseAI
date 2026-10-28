@@ -20,8 +20,11 @@ import '../../models/analysis_report.dart';
 import '../../models/property_reports.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
+import '../../services/journey_reminder_service.dart';
 import '../../state/app_session.dart';
 import '../../state/booth_mode.dart';
+import '../../state/journey_progress_store.dart';
+import '../../state/journey_schedule_store.dart';
 import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
@@ -95,6 +98,7 @@ class _MyScreenState extends State<MyScreen> {
       for (final v in versions) {
         await repo.deleteReport(v.id);
       }
+      await _forgetJourney(report);
     } on ApiException catch (e) {
       // 예시 리포트 403, 서버 연결 실패 등 — 서버가 준 한국어 메시지 그대로 표시
       if (mounted) {
@@ -112,6 +116,32 @@ class _MyScreenState extends State<MyScreen> {
       }
     }
     if (mounted) setState(_reload);
+  }
+
+  /// 집을 지우면 그 집의 **계약 일정·여정 기록·알림**도 지운다 (2026-10-27).
+  ///
+  /// 지우지 않으면 같은 집을 다시 분석했을 때 예전 일정(잔금 10/25 …)과 대조 기록이 저절로 채워져 보여
+  /// "미리 넣어 둔 값"처럼 읽혔다(실기기 시험). 일정·기록은 이 폰에만 있으므로 여기서 지운다.
+  Future<void> _forgetJourney(AnalysisReport report) async {
+    final all = _allHistory.any((r) => r.id == report.id)
+        ? _allHistory
+        : [report, ..._allHistory];
+    String? key;
+    for (final p in groupByProperty(all)) {
+      if (p.reports.any((r) => r.id == report.id)) key = p.key;
+    }
+    if (key == null) return;
+    try {
+      await JourneyScheduleStore.instance.save(key, const JourneySchedule());
+      await JourneyReminderService.instance.sync(
+        propertyKey: key,
+        alias: report.alias,
+        schedule: const JourneySchedule(),
+      );
+      await JourneyProgressStore.instance.forget(key);
+    } catch (e) {
+      debugPrint('[여정] 지운 집의 일정·기록을 정리하지 못했어요 (${e.runtimeType})');
+    }
   }
 
   /// 마지막으로 그린 로그인 상태 — 로그인·로그아웃·탈퇴로 바뀌면 이력을 다시 읽는다

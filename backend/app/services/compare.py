@@ -31,7 +31,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from ..schemas.contract import CompareDoc, CompareResult, CompareRow, Report
+from ..schemas.contract import CompareDoc, CompareItem, CompareResult, CompareRow, Report
 from ..schemas.internal import Grade, RegistryExtract
 from .formatting import format_won, mask_name
 
@@ -148,6 +148,9 @@ class RegistrySnapshot:
     entries: dict[str, tuple[Fingerprint, ...]] = field(default_factory=dict)
     missing_fields: tuple[str, ...] = ()
     page_count: int = 0
+    #: 꼬리말 쪽 번호(N/M)로 본 **빠진 쪽** (2026-10-27). 하나라도 있으면 대조하지 않는다 —
+    #: 빠진 쪽의 항목은 '없어졌다'로, 빠진 쪽의 말소 줄 때문에 살아 있는 것처럼 보인 항목은 '새로 생겼다'로 잘못 잡힌다.
+    missing_pages: tuple[int, ...] = ()
 
 
 def _name_key(name: str | None, salt: bytes | None = None) -> str:
@@ -251,6 +254,7 @@ def build_snapshot(
         },
         missing_fields=tuple(extract.missing_fields),
         page_count=page_count,
+        missing_pages=tuple(report.missingPages or ()),
     )
 
 
@@ -366,6 +370,29 @@ def _detail(items: list[Fingerprint]) -> str:
     return "\n".join(lines)
 
 
+def _items(items: list[Fingerprint]) -> list[CompareItem]:
+    """한 건에 한 줄 — 종류 · 접수일 · (금액이 붙는 종류면) 금액 한 줄.
+
+    금액을 못 읽었거나 0원이면 "금액 확인 필요"라고 쓴다. **0원이라고 쓰지 않는다** — 0원은 '빚이 없다'로 읽힌다.
+    """
+    out: list[CompareItem] = []
+    for f in items:
+        amount_label = _AMOUNT_LABELS.get(f.field)
+        amount_text: str | None = None
+        if amount_label is not None:
+            if f.amount_unknown or not f.amount or f.amount <= 0:
+                amount_text = "금액 확인 필요"
+            else:
+                amount_text = f"{amount_label} {format_won(f.amount)}"
+        out.append(CompareItem(label=f.label, receiptDate=f.receipt_date, amountText=amount_text))
+    return out
+
+
+def _pages_label(pages: tuple[int, ...]) -> str:
+    """(1, 3) → "1·3쪽"."""
+    return "·".join(str(n) for n in pages) + "쪽"
+
+
 def _group_rows(
     base: RegistrySnapshot, cur: RegistrySnapshot
 ) -> tuple[list[CompareRow], int, set[str]]:
@@ -377,6 +404,27 @@ def _group_rows(
     for group in GROUPS:
         missing_here = [f for f in group.fields if f in cur.missing_fields]
         missing_base = [f for f in group.fields if f in base.missing_fields]
+        # 빠진 쪽이 있으면 **어느 칸이든** 견주지 않는다 (2026-10-27 실기기 — 5쪽 중 3쪽만 올렸더니
+        # 빠진 쪽의 항목이 '없어짐'으로, 말소 줄이 빠진 옛 항목이 '새로 생김'으로 잡혔다).
+        if cur.missing_pages or base.missing_pages:
+            unknown.add(group.id)
+            rows.append(
+                CompareRow(
+                    group=group.id,
+                    kind="unknown",
+                    tone="caution",
+                    marker="?",
+                    title=group.title_unknown,
+                    subtitle=(
+                        f"이번에 올린 등기부에 {_pages_label(cur.missing_pages)}이 빠져 있어요. "
+                        "빠진 쪽에 내용이 있을 수 있어요"
+                        if cur.missing_pages
+                        else f"기준이 된 등기부에 {_pages_label(base.missing_pages)}이 빠져 있어 견줄 수 없어요"
+                    ),
+                    # 다시 찍기 버튼은 화면 맨 위 '지금 할 일' 카드에 하나만 — 줄마다 같은 버튼을 겹쳐 달지 않는다
+                )
+            )
+            continue
         if missing_here or missing_base:
             unknown.add(group.id)
             if missing_here:
@@ -415,6 +463,7 @@ def _group_rows(
                     title=group.title_added,
                     subtitle=group.subtitle,
                     detail=_detail(added),
+                    items=_items(added),
                     receiptDate=min(
                         (f.receipt_date for f in added if f.receipt_date), default=None
                     ),
@@ -431,6 +480,7 @@ def _group_rows(
                     # 없어진 것도 '안전해졌다'로 말하지 않는다 — 말소 여부는 등기부를 봐야 안다.
                     subtitle="기준 서류에 있던 항목이 이번 서류에는 없어요",
                     detail=_detail(removed),
+                    items=_items(removed),
                 )
             )
         if not added and not removed:
@@ -451,6 +501,22 @@ def _group_rows(
 
 def _owner_row(base: RegistrySnapshot, cur: RegistrySnapshot) -> tuple[CompareRow, bool]:
     """집주인 행 → (행, 대조했는가)."""
+    if cur.missing_pages or base.missing_pages:
+        # 빠진 쪽에 소유권 이전이 있을 수 있다 — 보이는 쪽만으로 '그대로'라고 하지 않는다 (2026-10-27)
+        return (
+            CompareRow(
+                kind="unknown",
+                tone="caution",
+                marker="?",
+                title="집주인 · 대조하지 못했어요",
+                subtitle=(
+                    f"이번에 올린 등기부에 {_pages_label(cur.missing_pages)}이 빠져 있어요"
+                    if cur.missing_pages
+                    else f"기준이 된 등기부에 {_pages_label(base.missing_pages)}이 빠져 있어요"
+                ),
+            ),
+            False,
+        )
     if "current_owners" in cur.missing_fields or not cur.owner_keys:
         return (
             CompareRow(
@@ -655,7 +721,16 @@ def compare(base: RegistrySnapshot, cur: RegistrySnapshot) -> CompareResult:
     changed_count = sum(1 for r in rows if r.kind in ("added", "removed", "changed", "grade"))
     days = _days_between(base, cur)
 
-    if unknown_count or identity_unclear:
+    if cur.missing_pages or base.missing_pages:
+        # 숫자를 내보내지 않는다 — 빠진 쪽 때문에 생긴 '새로 생김·없어짐'은 틀린 숫자다 (2026-10-27)
+        result = "partial"
+        headline = "빠진 쪽이 있어서 대조하지 못했어요"
+        subline = (
+            f"{_pages_label(cur.missing_pages)}까지 올리면 달라진 점을 모두 맞춰 볼 수 있어요"
+            if cur.missing_pages
+            else f"기준이 된 등기부에 {_pages_label(base.missing_pages)}이 빠져 있어요 · 등기부 전체로 다시 분석해 주세요"
+        )
+    elif unknown_count or identity_unclear:
         result = "partial"
         headline = "일부는 대조하지 못했어요"
         subline = f"{total}가지 중 {compared}가지만 맞춰봤어요"

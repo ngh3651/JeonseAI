@@ -361,6 +361,16 @@ class CompareDoc(BaseModel):
     propertyId: Optional[str] = None  # 부동산고유번호 숫자만 — 폰의 계약 일정을 찾는 집 열쇠 (Report.propertyId와 같다)
 
 
+class CompareItem(BaseModel):
+    """새로 생기거나 없어진 등기 항목 **1건** — 화면이 한 건에 한 줄로 그린다 (2026-10-27 변동 내용 시안)."""
+
+    label: str  # 종류 이름: 압류 · 가압류 · 경매개시결정 · 근저당권 …
+    receiptDate: Optional[str] = None  # 접수일 'YYYY-MM-DD'. 못 읽었으면 None (지어내지 않는다)
+    # 금액 한 줄 — 금액이 붙는 종류(근저당권·전세권·임차권등기)에만. "채권최고액 1억 2,000만원" ·
+    # 못 읽었거나 0원이면 "금액 확인 필요" (0원으로 쓰지 않는다). 금액이 없는 종류는 None.
+    amountText: Optional[str] = None
+
+
 class CompareRow(BaseModel):
     """대조 결과 한 줄 — 화면의 카드 1장."""
 
@@ -382,6 +392,8 @@ class CompareRow(BaseModel):
     actionLabel: Optional[str] = None
     # 어느 칸의 줄인가 — owner(갑구 소유자) · seizure(갑구 압류·가압류) · debt(을구 빚) · grade(안전도). 없으면 null
     group: Optional[str] = None
+    # added·removed 줄의 항목들 — 한 건에 한 줄 (2026-10-27). 그 밖의 줄은 빈 목록
+    items: list[CompareItem] = Field(default_factory=list)
 
 
 class CompareResult(BaseModel):

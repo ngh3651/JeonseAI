@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
+import 'package:jeonse_ai/design_system/tokens/app_colors.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/compare_result.dart';
 import 'package:jeonse_ai/models/content_models.dart';
@@ -225,21 +226,26 @@ void main() {
     });
   });
 
-  group('일정 시트의 약속 = 실제 동작', () {
-    testWidgets('잔금 칸·이사 칸 아래 문구가 알림 시각과 같다', (tester) async {
+  group('일정 시트 (2026-10-27 시안)', () {
+    Future<List<JourneySchedule?>> pumpSheet(
+      WidgetTester tester,
+      JourneySchedule initial, {
+      double textScale = 1.0,
+    }) async {
       tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);
-
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final saved = <JourneySchedule?>[];
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),
           home: Scaffold(
             body: Builder(
               builder: (context) => FilledButton(
-                onPressed: () => showJourneyScheduleSheet(
-                  context,
-                  initial: const JourneySchedule(),
+                onPressed: () async => saved.add(
+                  await showJourneyScheduleSheet(context, initial: initial),
                 ),
                 child: const Text('열기'),
               ),
@@ -249,21 +255,98 @@ void main() {
       );
       await tester.tap(find.text('열기'));
       await tester.pumpAndSettle();
+      return saved;
+    }
 
-      expect(find.koText(kBalanceReminderPromise), findsOneWidget);
-      expect(find.koText(kMoveInReminderPromise), findsOneWidget);
-      // 옛 문구("하루 전에 … 알려드려요")는 알림이 없을 때의 약속이었다
-      expect(find.koText('하루 전에 등기부를 다시 떼라고 알려드려요'), findsNothing);
-      // 약속한 시각이 계산 로직과 같다
+    Color? saveBg(WidgetTester tester) {
+      final b = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('schedule-sheet-save')),
+      );
+      return b.style?.backgroundColor?.resolve(
+        b.onPressed == null ? {WidgetState.disabled} : <WidgetState>{},
+      );
+    }
+
+    testWidgets('처음 — 제목 "계약 일정", 칸 이름 4개, "날짜 선택", 저장은 회색 · 뺀 문구는 없다', (tester) async {
+      await pumpSheet(tester, const JourneySchedule());
+      expect(find.koText('계약 일정'), findsOneWidget);
+      for (final name in ['가계약금', '계약서', '잔금', '이사']) {
+        expect(find.koText(name), findsOneWidget, reason: name);
+      }
+      expect(find.koText('날짜 선택'), findsNWidgets(4));
+      expect(saveBg(tester), const Color(0xFFECEFED));
+      for (final gone in [
+        '아직 안 정해진 날은 비워 두셔도 돼요',
+        '잔금 하루 전과 당일 오전 8시에 등기부를 다시 떼라고 알림을 보내 드려요',
+        '이사 날과 입주 다음 날 오전 8시에도 알려 드려요',
+        '이 날짜는 이 휴대폰에만 저장돼요',
+        '이 날짜가 가장 중요해요',
+        '아직 안 정했어요',
+        '잔금 보내는 날',
+        '계약서 쓰는 날',
+        '이사 오는 날',
+      ]) {
+        expect(find.koTextContaining(gone), findsNothing, reason: gone);
+      }
+    });
+
+    testWidgets('일부 넣음 — 날짜가 초록 글씨, ×로 지우면 그 칸만 "날짜 선택"', (tester) async {
+      final saved = await pumpSheet(
+        tester,
+        _withBalance(3).copyWith(JourneyDateKey.contract, _day(-1)),
+      );
+      expect(find.koText('날짜 선택'), findsNWidgets(2));
+      expect(saveBg(tester), AppColors.primary);
+      await tester.tap(find.byKey(const ValueKey('schedule-clear-contract')));
+      await tester.pumpAndSettle();
+      expect(find.koText('날짜 선택'), findsNWidgets(3));
+      expect(find.byKey(const ValueKey('schedule-clear-balance')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('schedule-sheet-save')));
+      await tester.pumpAndSettle();
+      expect(saved.single!.dates.keys, [JourneyDateKey.balance]);
+    });
+
+    testWidgets('4개 다 넣어도 · 글자 130%에서도 깨지지 않고 날짜는 한 줄', (tester) async {
+      var all = const JourneySchedule();
+      for (final (i, k) in JourneyDateKey.editable.indexed) {
+        all = all.copyWith(k, _day(i * 3 - 2));
+      }
+      await pumpSheet(tester, all, textScale: 1.3);
+      expect(tester.takeException(), isNull);
+      for (final k in JourneyDateKey.editable) {
+        final text = tester.widget<Text>(
+          find.descendant(
+            of: find.byKey(ValueKey('schedule-date-${k.name}')),
+            matching: find.byType(Text),
+          ),
+        );
+        expect(text.maxLines, 1, reason: k.name);
+      }
+    });
+
+    testWidgets('시트 안 글자는 15 / 17 / 18 / 24만 쓴다', (tester) async {
+      await pumpSheet(tester, _withBalance(3));
+      final sizes = <double>{
+        for (final t in tester.widgetList<Text>(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Text),
+          ),
+        ))
+          if (t.style?.fontSize != null) t.style!.fontSize!,
+      };
+      expect(sizes.difference({15, 17, 18, 24}), isEmpty, reason: '$sizes');
+    });
+
+    test('알림 시각은 그대로 — 모든 일정 오전 8시', () {
       final plan = planJourneyReminders(
         propertyKey: 'k',
         alias: '',
         schedule: _withBalance(10).copyWith(JourneyDateKey.moveIn, _day(11)),
         now: DateTime.now(),
       );
+      expect(plan, isNotEmpty);
       expect(plan.map((r) => r.fireAt.hour).toSet(), {8});
-      expect(kBalanceReminderPromise, contains('하루 전과 당일 오전 8시'));
-      expect(kMoveInReminderPromise, contains('입주 다음 날 오전 8시'));
     });
   });
 

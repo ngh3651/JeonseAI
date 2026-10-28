@@ -25,12 +25,17 @@ class AnalysisRequest {
     required this.deposit,
     this.marketPrice,
     this.alias,
+    this.replacesReportId,
   });
 
   final List<String> imagePaths;
   final int deposit;
   final int? marketPrice;
   final String? alias;
+
+  /// 이 분석이 **대신하는** 리포트 — 빠진 쪽을 보충하거나 흐린 장을 바꿔 다시 낸 경우 (2026-10-27).
+  /// 서버가 같은 집이면 그 리포트를 지우고, 기록이 두 줄로 남지 않는다.
+  final String? replacesReportId;
 }
 
 /// 근거 카드 한 항목 (S-07 근거 카드 목록의 원소).

@@ -101,8 +101,8 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                 const SizedBox(height: 12),
               ],
               ...switch (est.status) {
-                LossStatus.ok => _ok(est),
-                LossStatus.debtExceeds => _debtExceeds(est),
+                // 빚이 집값보다 커도 같은 화면 — 0원 · 막대 전부 빨강 (2026-10-28 화면 하나로)
+                LossStatus.ok || LossStatus.debtExceeds => _ok(est),
                 LossStatus.noPrice => [
                   _Message(
                     icon: Icons.home_work_outlined,
@@ -193,95 +193,33 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
         child: Column(
           children: [
             _Step(label: '집값', value: formatWon(e.basePrice ?? 0)),
-            _Step(
-              label: '경매 낙찰가',
-              tag: '${_pct(e.ratePct)}%',
-              value: formatWon(e.expectedSale ?? 0),
-            ),
+            if (e.ratePct != null)
+              _Step(
+                label: '경매 낙찰가',
+                tag: '${_pct(e.ratePct)}%',
+                value: formatWon(e.expectedSale ?? 0),
+              ),
             _Step(
               label: '먼저 갚을 빚',
               value: '− ${formatWon(e.seniorDebt)}',
               danger: true,
             ),
-            _Step(label: '내 몫', value: formatWon(back), strong: true, last: true),
+            _Step(
+              label: '내 몫',
+              value: formatWon(back),
+              strong: true,
+              danger: back == 0,
+              last: true,
+            ),
           ],
         ),
       ),
-      const SizedBox(height: 16),
-      _Basis(e),
+      if (e.ratePct != null) ...[
+        const SizedBox(height: 16),
+        _Basis(e),
+      ],
     ];
   }
-
-  // ── 빚 ≥ 집값 ────────────────────────────────────────────────────────────
-
-  List<Widget> _debtExceeds(LossEstimate e) => [
-    _Card(
-      key: const ValueKey('loss-debt-exceeds'),
-      color: AppColors.dangerSoft,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: AppColorsNext.dangerText,
-                  shape: BoxShape.circle,
-                ),
-                child: AppText(
-                  '!',
-                  textScaler: TextScaler.noScaling,
-                  style: AppTypographyNext.bodyStrong.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: AppText(
-                  '돌려받기 어려워요',
-                  style: AppTypographyNext.title.copyWith(
-                    color: AppColorsNext.dangerText,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _Tile(label: '집값', value: formatWon(e.basePrice ?? 0)),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _Tile(
-                    label: '먼저 갚을 빚',
-                    value: formatWon(e.seniorDebt),
-                    danger: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          AppText(
-            '빚이 집값보다 커서, 경매로 팔려도 내 차례가 오기 어려워요',
-            style: AppTypographyNext.caption.copyWith(
-              color: AppColorsNext.textBody,
-            ),
-          ),
-        ],
-      ),
-    ),
-  ];
 }
 
 String _pct(double? v) {
@@ -305,12 +243,10 @@ class _Card extends StatelessWidget {
   const _Card({
     super.key,
     required this.child,
-    this.color = AppColors.surface,
     this.padding = const EdgeInsets.all(20),
   });
 
   final Widget child;
-  final Color color;
   final EdgeInsetsGeometry padding;
 
   @override
@@ -318,7 +254,7 @@ class _Card extends StatelessWidget {
     width: double.infinity,
     padding: padding,
     decoration: BoxDecoration(
-      color: color,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(20),
     ),
     child: child,
@@ -471,36 +407,6 @@ class _Step extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Tile extends StatelessWidget {
-  const _Tile({required this.label, required this.value, this.danger = false});
-
-  final String label;
-  final String value;
-  final bool danger;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppText(label, style: AppTypographyNext.caption),
-        const SizedBox(height: 2),
-        AppText(
-          value,
-          style: AppTypographyNext.title.copyWith(
-            color: danger ? AppColorsNext.dangerText : AppColorsNext.textStrong,
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 /// 근거 — 어디 값을 썼는지(지역·용도·기간·건수·출처). 흐린 글씨, 맨 아래.

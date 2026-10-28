@@ -263,14 +263,14 @@ def estimate(report: Report, table: RateTable | None = None) -> LossEstimate:
 
     if base is None:
         return LossEstimate(status="no_price", **common)
-    if debt >= base:
-        # 어떤 값에 팔려도 시세를 넘지 않는 한 빚을 다 갚지 못한다 — 매각가율을 볼 필요가 없다
-        return LossEstimate(status="debt_exceeds", expectedReturn=0, expectedLoss=deposit, **common)
-
     region = sido_of(report.propertyAddress) or sido_of(report.address)
     uses = _uses_for(report)
     found = [(use, hit) for use in uses if (hit := table.lookup(region, use)) is not None]
     if not found:
+        if debt >= base:
+            # 매각가율 자료가 없어도 빚 ≥ 시세면 답이 정해진다 — 어떤 값에 팔려도 내 차례가 오지 않는다.
+            # 화면은 ok와 같은 모양(0원 · 막대 전부 빨강)으로 그리고, 낙찰가 줄만 뺀다 (2026-10-28 화면 하나로)
+            return LossEstimate(status="debt_exceeds", expectedReturn=0, expectedLoss=deposit, **common)
         return LossEstimate(status="no_rate", **common)
     # 용도를 모르면 가장 낮은 매각가율 — 같으면 앞 순서(아파트 → 연립다세대 → 오피스텔 …)
     use, (rate, sold, used_region, fallback) = min(found, key=lambda x: x[1][0])

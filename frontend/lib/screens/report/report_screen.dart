@@ -25,6 +25,7 @@ import '../../design_system/components/term_tooltip_sheet.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
 import '../../models/property_reports.dart';
 import '../../models/registry_mark_kind.dart';
@@ -205,12 +206,8 @@ class _ReportScreenState extends State<ReportScreen> {
                 ..._captureNotice(context, report),
                 // [D15 · 2026-08-14] 결론 헤더와 진입 카드 사이에 있던 아웃라인 버튼
                 // '중개사 질문 모아 보기'를 뺐다. 자세한 사유는 아래 주석 참고.
-                _originPhotoEntry(context, report),
-                const AppText('근거 살펴보기', style: AppTypography.title),
-                const SizedBox(height: AppSpacing.xs),
-                AppText('카드를 탭하면 쉬운 설명과 출처가 열려요', style: AppTypography.caption),
-                const SizedBox(height: AppSpacing.md),
-                ..._evidenceCards(context, report),
+                // 1장 '등기부에서 찾은 것' (2026-10-28 리포트 2안) — 사진 + 근거를 한 카드로
+                _registryChapter(context, report),
                 // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
                 ?_priceGapCard(report),
                 const SizedBox(height: AppSpacing.xl),
@@ -286,7 +283,8 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
           ),
         );
-        if (result != null && result.newPaths.isNotEmpty) updated = result.newPaths;
+        if (result != null && result.newPaths.isNotEmpty)
+          updated = result.newPaths;
       }
     } else if (gallery) {
       // 고른 사진을 알약 순서대로 끼운다 — 잘 안 읽힌 장은 바꾸고, 빠진 쪽은 더한다
@@ -373,7 +371,87 @@ class _ReportScreenState extends State<ReportScreen> {
   ///
   /// 미리보기 스트립도 같은 원칙이다 — 표시가 없거나 사진을 못 읽으면 스트립만
   /// 사라지고 하단 행은 그대로 남는다.
-  Widget _originPhotoEntry(BuildContext context, AnalysisReport report) {
+  /// 리포트 1장 — 「1 / 5 · ✦ AI 분석」 + "등기부에서 찾은 것" + [사진 띠 · 내가 올린 사진에서 보기 · 근거 목록] 한 카드.
+  ///
+  /// 예전엔 사진 진입 카드와 '근거 살펴보기' 카드 묶음이 따로였다 — 같은 등기부 이야기라 한 장으로 합쳤다.
+  /// 근거 한 줄을 누르면 예전 근거 카드와 **똑같이** 펼쳐진다(숫자 상자 → 쉬운 설명 → 출처 → 행동 버튼).
+  Widget _registryChapter(BuildContext context, AnalysisReport report) {
+    return Padding(
+      key: const ValueKey('report-chapter-registry'),
+      padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              AppText(
+                '1 / 5',
+                style: AppTypographyNext.caption.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppColorsNext.textMuted,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.auto_awesome,
+                      size: 14,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    AppText(
+                      'AI 분석',
+                      style: AppTypographyNext.caption.copyWith(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          AppText(
+            '등기부에서 찾은 것',
+            style: AppTypographyNext.headline.copyWith(
+              color: AppColorsNext.textStrong,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _originPhotoEntry(
+            context,
+            report,
+            footer: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: _evidenceCards(context, report),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _originPhotoEntry(
+    BuildContext context,
+    AnalysisReport report, {
+    Widget? footer,
+  }) {
     final paths = RegistryPhotoStore.instance.pathsFor(report.id);
     final hasPhotos = paths.isNotEmpty;
 
@@ -384,36 +462,35 @@ class _ReportScreenState extends State<ReportScreen> {
     ];
     final preview = previewMarkOf(marks);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
-      child: RegistryEntryCard(
-        subtitle: hasPhotos
-            ? _withNamesHiddenNote(_registryViewedLine(report))
-            : '${RegistryPhotoStore.retentionNotice} 다시 보려면 새로 분석해 주세요.',
-        onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
-        preview: preview == null
-            ? null
-            : RegistryPreviewSource(
-                path: paths[preview.page],
-                mark: preview,
-                // 뱃지는 **따져볼 곳만** 센다. 집주인 이름·주소는 위험이 아니라
-                // 대조할 곳이라, 전체 개수를 적으면 사실과 다른 말이 된다.
-                examineCount: MarkLegend.examineCount(
-                  marks.map((m) => m.markKind),
-                ),
-                totalCount: marks.length,
-                // '사진 속 이름 가리기'가 켜지면 스트립에 함께 비치는 이름 칸도 덮는다.
-                pageMarks: [
-                  for (final m in marks)
-                    if (m.page == preview.page) m,
-                ],
-                // 서버가 찾은 나머지 실명·주민번호 자리(채무자 줄 등 — §9.8)까지 덮는다.
-                privacyBoxes: report.privacyBoxesOn(preview.page),
-                namesUnlocated: report.namesUnlocatedOn(preview.page),
-                // 가로·거꾸로 찍은 장은 서버가 바로 세운 각도만큼 돌려 그린다 (§9.12)
-                quarterTurns: report.quarterTurnsOf(preview.page),
+    return RegistryEntryCard(
+      footer: footer,
+      showMascot: footer == null,
+      subtitle: hasPhotos
+          ? _withNamesHiddenNote(_registryViewedLine(report))
+          : '${RegistryPhotoStore.retentionNotice} 다시 보려면 새로 분석해 주세요.',
+      onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
+      preview: preview == null
+          ? null
+          : RegistryPreviewSource(
+              path: paths[preview.page],
+              mark: preview,
+              // 뱃지는 **따져볼 곳만** 센다. 집주인 이름·주소는 위험이 아니라
+              // 대조할 곳이라, 전체 개수를 적으면 사실과 다른 말이 된다.
+              examineCount: MarkLegend.examineCount(
+                marks.map((m) => m.markKind),
               ),
-      ),
+              totalCount: marks.length,
+              // '사진 속 이름 가리기'가 켜지면 스트립에 함께 비치는 이름 칸도 덮는다.
+              pageMarks: [
+                for (final m in marks)
+                  if (m.page == preview.page) m,
+              ],
+              // 서버가 찾은 나머지 실명·주민번호 자리(채무자 줄 등 — §9.8)까지 덮는다.
+              privacyBoxes: report.privacyBoxesOn(preview.page),
+              namesUnlocated: report.namesUnlocatedOn(preview.page),
+              // 가로·거꾸로 찍은 장은 서버가 바로 세운 각도만큼 돌려 그린다 (§9.12)
+              quarterTurns: report.quarterTurnsOf(preview.page),
+            ),
     );
   }
 
@@ -682,13 +759,14 @@ class _ReportScreenState extends State<ReportScreen> {
     final int expandedIndex = _mostSevereIndex(visible);
     return [
       for (int i = 0; i < visible.length; i++) ...[
+        if (i > 0)
+          const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
         _evidenceCard(
           context,
           report,
           visible[i],
           initiallyExpanded: i == expandedIndex,
         ),
-        const SizedBox(height: AppSpacing.md),
       ],
     ];
   }
@@ -725,6 +803,7 @@ class _ReportScreenState extends State<ReportScreen> {
       sourceText: evidence.sourceText,
       explanationSource: evidence.explanationSource,
       initiallyExpanded: initiallyExpanded,
+      inline: true,
       action: _evidenceAction(context, report, evidence),
     );
   }

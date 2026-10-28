@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
@@ -73,6 +74,7 @@ def evaluate(
     market_price: int | None = None,
     blacklist_entries: list[dict] | None = None,
     supplementary: object | None = None,  # 추가 서류 확인(소액임차인 등) 대비 자리 — 팀 미결, 미사용
+    blacklist_override: EvidenceVerdict | None = None,
 ) -> RuleVerdict:
     """추출 결과와 입력값으로 근거 카드 5종을 판정하고 종합 등급을 결합한다."""
     if blacklist_entries is None:
@@ -86,7 +88,13 @@ def evaluate(
     ev_senior, senior_total = _judge_senior_debt(extract, deposit, market_price)
     ev_ownership = _judge_ownership(extract)
     ev_insurance = _judge_insurance(extract, supplementary)
-    ev_blacklist = _judge_blacklist(extract, blacklist_entries)
+    # 다시 판정(보증금·시세 고치기, 2026-10-29)은 이름을 가린 등기부로 한다 — 실명이 있어야 하는 명단 대조는
+    # 분석 때 실명으로 낸 **결과**를 그대로 쓴다(보증금·시세와 무관한 판정이다).
+    ev_blacklist = (
+        copy.deepcopy(blacklist_override)
+        if blacklist_override is not None
+        else _judge_blacklist(extract, blacklist_entries)
+    )
 
     evidences = [ev_jeonse, ev_senior, ev_ownership, ev_insurance, ev_blacklist]
 

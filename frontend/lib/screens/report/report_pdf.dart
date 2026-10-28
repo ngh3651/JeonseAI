@@ -75,7 +75,13 @@ class ReportPdfEvidence {
   final String explanation;
 
   /// 모든 글자 (테스트가 이름이 남았는지 본다).
-  Iterable<String> get texts => [title, subtitle, ?status, ?detail, explanation];
+  Iterable<String> get texts => [
+    title,
+    subtitle,
+    ?status,
+    ?detail,
+    explanation,
+  ];
 }
 
 /// PDF 한 건의 글자 — [reportPdfData]가 만든다. 사람 이름은 이미 가려져 있다(가리기를 켰다면).
@@ -131,13 +137,15 @@ int _severity(RiskGrade g) => switch (g) {
 /// 리포트 → PDF 글자. [hideNames]가 false여도 앱의 '사진 속 이름 가리기'가 켜져 있으면 가린다.
 ReportPdfData reportPdfData(AnalysisReport report, {bool hideNames = true}) {
   final bool hide = hideNames || PrivacySettings.instance.hideNamesInPhotos;
-  String m(String s) => hide ? maskNamesInText(s.trim(), report.personNames) : s.trim();
+  String m(String s) =>
+      hide ? maskNamesInText(s.trim(), report.personNames) : s.trim();
   String? mOpt(String? s) {
     final t = s?.trim();
     return (t == null || t.isEmpty) ? null : m(t);
   }
 
-  bool pending(EvidenceItem e) => e.id == 'blacklist' && e.statusLabel == kBlacklistPendingLabel;
+  bool pending(EvidenceItem e) =>
+      e.id == 'blacklist' && e.statusLabel == kBlacklistPendingLabel;
 
   // 위험 → 확인 필요 → 양호 (같은 등급은 서버 순서 그대로) — 화면 근거 목록과 같은 순서
   final visible = [
@@ -183,7 +191,9 @@ ReportPdfData reportPdfData(AnalysisReport report, {bool hideNames = true}) {
 
 /// 저장할 파일 이름 — `전세AI프_리포트_샘플빌라_20261022.pdf`. 파일 이름에 못 쓰는 글자는 뺀다.
 String reportPdfFileName(ReportPdfData data) {
-  final safe = data.alias.replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '_').replaceAll(RegExp('_+'), '_');
+  final safe = data.alias
+      .replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '_')
+      .replaceAll(RegExp('_+'), '_');
   final trimmed = safe.length > 30 ? safe.substring(0, 30) : safe;
   final date = data.analyzedDate.replaceAll('.', '');
   return '전세AI프_리포트_${trimmed}_$date.pdf';
@@ -203,9 +213,14 @@ class ReportPdfFonts {
   /// 앱 묶음(assets)에서 한 번만 읽는다.
   static Future<ReportPdfFonts> load() async {
     if (_cached case final ReportPdfFonts f) return f;
-    final regular = await rootBundle.load('assets/fonts/pdf/Pretendard-Regular.ttf');
+    final regular = await rootBundle.load(
+      'assets/fonts/pdf/Pretendard-Regular.ttf',
+    );
     final bold = await rootBundle.load('assets/fonts/pdf/Pretendard-Bold.ttf');
-    return _cached = ReportPdfFonts(regular: pw.Font.ttf(regular), bold: pw.Font.ttf(bold));
+    return _cached = ReportPdfFonts(
+      regular: pw.Font.ttf(regular),
+      bold: pw.Font.ttf(bold),
+    );
   }
 }
 
@@ -252,17 +267,30 @@ pw.Widget _rich(String raw, pw.TextStyle base, pw.Font bold) {
   );
 }
 
-pw.Widget _gradeChip(RiskGrade g, pw.Font bold, {double size = 9}) => pw.Container(
-  padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-  decoration: pw.BoxDecoration(color: _pdf(AppColors.gradeSoftColor(g)), borderRadius: pw.BorderRadius.circular(8)),
-  child: pw.Text(
-    g.label,
-    style: pw.TextStyle(font: bold, fontSize: size, color: _pdf(AppColors.gradeColor(g))),
-  ),
-);
+pw.Widget _gradeChip(RiskGrade g, pw.Font bold, {double size = 9}) =>
+    pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: pw.BoxDecoration(
+        color: _pdf(AppColors.gradeSoftColor(g)),
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.Text(
+        g.label,
+        style: pw.TextStyle(
+          font: bold,
+          fontSize: size,
+          color: _pdf(AppColors.gradeColor(g)),
+        ),
+      ),
+    );
 
 pw.Widget _evidenceCard(ReportPdfEvidence e, ReportPdfFonts f) {
-  final body = pw.TextStyle(font: f.regular, fontSize: 9.5, color: _textBody, lineSpacing: 2);
+  final body = pw.TextStyle(
+    font: f.regular,
+    fontSize: 9.5,
+    color: _textBody,
+    lineSpacing: 2,
+  );
   // 카드 한 장은 쪽 사이에서 쪼개지 않는다 — 넘치면 통째로 다음 쪽(Column은 원래 쪼개진다)
   return pw.Inseparable(
     child: pw.Container(
@@ -270,7 +298,10 @@ pw.Widget _evidenceCard(ReportPdfEvidence e, ReportPdfFonts f) {
       padding: const pw.EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: pw.BoxDecoration(
         border: pw.Border(
-          left: pw.BorderSide(color: _pdf(AppColors.gradeColor(e.grade)), width: 3),
+          left: pw.BorderSide(
+            color: _pdf(AppColors.gradeColor(e.grade)),
+            width: 3,
+          ),
           top: pw.BorderSide(color: _line, width: 0.6),
           right: pw.BorderSide(color: _line, width: 0.6),
           bottom: pw.BorderSide(color: _line, width: 0.6),
@@ -287,7 +318,11 @@ pw.Widget _evidenceCard(ReportPdfEvidence e, ReportPdfFonts f) {
               pw.Expanded(
                 child: pw.Text(
                   e.title,
-                  style: pw.TextStyle(font: f.bold, fontSize: 11, color: _textStrong),
+                  style: pw.TextStyle(
+                    font: f.bold,
+                    fontSize: 11,
+                    color: _textStrong,
+                  ),
                 ),
               ),
             ],
@@ -296,25 +331,48 @@ pw.Widget _evidenceCard(ReportPdfEvidence e, ReportPdfFonts f) {
             pw.SizedBox(height: 2),
             pw.Text(
               e.subtitle,
-              style: pw.TextStyle(font: f.regular, fontSize: 8.5, color: _textMuted),
+              style: pw.TextStyle(
+                font: f.regular,
+                fontSize: 8.5,
+                color: _textMuted,
+              ),
             ),
           ],
           if (e.status case final String s) ...[
             pw.SizedBox(height: 5),
             pw.Text(
               s,
-              style: pw.TextStyle(font: f.bold, fontSize: 9, color: _pdf(AppColors.gradeColor(e.grade))),
+              style: pw.TextStyle(
+                font: f.bold,
+                fontSize: 9,
+                color: _pdf(AppColors.gradeColor(e.grade)),
+              ),
             ),
           ],
           if (e.detail case final String d) ...[
             pw.SizedBox(height: 6),
             pw.Container(
               padding: const pw.EdgeInsets.all(8),
-              decoration: pw.BoxDecoration(color: _background, borderRadius: pw.BorderRadius.circular(6)),
-              child: _rich(d, pw.TextStyle(font: f.bold, fontSize: 9.5, color: _textStrong, lineSpacing: 2), f.bold),
+              decoration: pw.BoxDecoration(
+                color: _background,
+                borderRadius: pw.BorderRadius.circular(6),
+              ),
+              child: _rich(
+                d,
+                pw.TextStyle(
+                  font: f.bold,
+                  fontSize: 9.5,
+                  color: _textStrong,
+                  lineSpacing: 2,
+                ),
+                f.bold,
+              ),
             ),
           ],
-          if (e.explanation.isNotEmpty) ...[pw.SizedBox(height: 6), _rich(e.explanation, body, f.bold)],
+          if (e.explanation.isNotEmpty) ...[
+            pw.SizedBox(height: 6),
+            _rich(e.explanation, body, f.bold),
+          ],
         ],
       ),
     ),
@@ -365,8 +423,14 @@ Future<Uint8List> buildReportPdf(
       footer: (ctx) => pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(data.namesHidden ? '규칙 기반 판정 · 사람 이름은 가렸어요' : '규칙 기반 판정', style: muted.copyWith(fontSize: 8)),
-          pw.Text('${ctx.pageNumber} / ${ctx.pagesCount}', style: muted.copyWith(fontSize: 8)),
+          pw.Text(
+            data.namesHidden ? '규칙 기반 판정 · 사람 이름은 가렸어요' : '규칙 기반 판정',
+            style: muted.copyWith(fontSize: 8),
+          ),
+          pw.Text(
+            '${ctx.pageNumber} / ${ctx.pagesCount}',
+            style: muted.copyWith(fontSize: 8),
+          ),
         ],
       ),
       build: (ctx) => [
@@ -379,7 +443,11 @@ Future<Uint8List> buildReportPdf(
           pw.SizedBox(height: 3),
           pw.Text(
             data.address,
-            style: pw.TextStyle(font: f.regular, fontSize: 10, color: _textBody),
+            style: pw.TextStyle(
+              font: f.regular,
+              fontSize: 10,
+              color: _textBody,
+            ),
           ),
         ],
         pw.SizedBox(height: 3),
@@ -394,7 +462,10 @@ Future<Uint8List> buildReportPdf(
         pw.Inseparable(
           child: pw.Container(
             padding: const pw.EdgeInsets.all(14),
-            decoration: pw.BoxDecoration(color: gradeSoft, borderRadius: pw.BorderRadius.circular(10)),
+            decoration: pw.BoxDecoration(
+              color: gradeSoft,
+              borderRadius: pw.BorderRadius.circular(10),
+            ),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
@@ -402,29 +473,49 @@ Future<Uint8List> buildReportPdf(
                   children: [
                     pw.Text(
                       '종합 등급',
-                      style: pw.TextStyle(font: f.regular, fontSize: 10, color: _textBody),
+                      style: pw.TextStyle(
+                        font: f.regular,
+                        fontSize: 10,
+                        color: _textBody,
+                      ),
                     ),
                     pw.SizedBox(width: 8),
                     pw.Text(
                       data.grade.label,
-                      style: pw.TextStyle(font: f.bold, fontSize: 20, color: gradeColor),
+                      style: pw.TextStyle(
+                        font: f.bold,
+                        fontSize: 20,
+                        color: gradeColor,
+                      ),
                     ),
                   ],
                 ),
                 pw.SizedBox(height: 6),
                 pw.Text(
                   data.headline,
-                  style: pw.TextStyle(font: f.bold, fontSize: 13, color: _textStrong),
+                  style: pw.TextStyle(
+                    font: f.bold,
+                    fontSize: 13,
+                    color: _textStrong,
+                  ),
                 ),
                 pw.SizedBox(height: 3),
                 pw.Text(
                   data.grade.decisionLabel,
-                  style: pw.TextStyle(font: f.bold, fontSize: 10, color: gradeColor),
+                  style: pw.TextStyle(
+                    font: f.bold,
+                    fontSize: 10,
+                    color: gradeColor,
+                  ),
                 ),
                 pw.SizedBox(height: 8),
                 pw.Text(
                   data.priceLine,
-                  style: pw.TextStyle(font: f.bold, fontSize: 10, color: _textBody),
+                  style: pw.TextStyle(
+                    font: f.bold,
+                    fontSize: 10,
+                    color: _textBody,
+                  ),
                 ),
               ],
             ),
@@ -441,7 +532,9 @@ Future<Uint8List> buildReportPdf(
         pw.Text(
           [
             for (final g in RiskGrade.values)
-              if (data.evidences.where((e) => e.grade == g).length case final int n when n > 0) '${g.label} $n',
+              if (data.evidences.where((e) => e.grade == g).length
+                  case final int n when n > 0)
+                '${g.label} $n',
           ].join(' · '),
           style: muted,
         ),
@@ -456,20 +549,33 @@ Future<Uint8List> buildReportPdf(
         pw.Inseparable(
           child: pw.Container(
             padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(color: _primarySoft, borderRadius: pw.BorderRadius.circular(8)),
+            decoration: pw.BoxDecoration(
+              color: _primarySoft,
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 if (data.blacklistPending) ...[
                   pw.Text(
                     kBlacklistPendingNotice,
-                    style: pw.TextStyle(font: f.regular, fontSize: 8.5, color: _textBody, lineSpacing: 1.5),
+                    style: pw.TextStyle(
+                      font: f.regular,
+                      fontSize: 8.5,
+                      color: _textBody,
+                      lineSpacing: 1.5,
+                    ),
                   ),
                   pw.SizedBox(height: 5),
                 ],
                 pw.Text(
                   kReportDisclaimer,
-                  style: pw.TextStyle(font: f.regular, fontSize: 8.5, color: _textMuted, lineSpacing: 1.5),
+                  style: pw.TextStyle(
+                    font: f.regular,
+                    fontSize: 8.5,
+                    color: _textMuted,
+                    lineSpacing: 1.5,
+                  ),
                 ),
               ],
             ),
@@ -516,7 +622,8 @@ class _ReportPdfSheetState extends State<_ReportPdfSheet> {
       if (!mounted) return;
       navigator.pop();
       final outcome = await PdfSave.save(bytes, name: reportPdfFileName(data));
-      if (outcome == PdfSaveOutcome.failed) problem = 'PDF 저장 화면을 열지 못했어요. 잠시 후 다시 눌러 주세요';
+      if (outcome == PdfSaveOutcome.failed)
+        problem = 'PDF 저장 화면을 열지 못했어요. 잠시 후 다시 눌러 주세요';
     } catch (e) {
       debugPrint('[PDF] 만들지 못했어요 (${e.runtimeType})');
       problem = 'PDF를 만들지 못했어요. 잠시 후 다시 눌러 주세요';
@@ -546,16 +653,27 @@ class _ReportPdfSheetState extends State<_ReportPdfSheet> {
           children: [
             const AppText('PDF로 저장', style: AppTypography.title),
             const SizedBox(height: AppSpacing.xs),
-            AppText('이 리포트를 PDF 파일로 만들어요. 사진은 넣지 않아요.', style: AppTypography.caption),
+            AppText(
+              '이 리포트를 PDF 파일로 만들어요. 사진은 넣지 않아요.',
+              style: AppTypography.caption,
+            ),
             const SizedBox(height: AppSpacing.xs),
-            AppText("다음 화면 맨 위에서 'PDF로 저장'을 고르고 저장 버튼을 눌러 주세요.", style: AppTypography.caption),
+            AppText(
+              "다음 화면 맨 위에서 'PDF로 저장'을 고르고 저장 버튼을 눌러 주세요.",
+              style: AppTypography.caption,
+            ),
             const SizedBox(height: AppSpacing.sm),
             SwitchListTile(
               key: const ValueKey('report-pdf-hide-names'),
               contentPadding: EdgeInsets.zero,
               value: forced || _hideNames,
-              onChanged: (_making || forced) ? null : (v) => setState(() => _hideNames = v),
-              title: const AppText('사람 이름 가리기', style: AppTypography.bodyStrong),
+              onChanged: (_making || forced)
+                  ? null
+                  : (v) => setState(() => _hideNames = v),
+              title: const AppText(
+                '사람 이름 가리기',
+                style: AppTypography.bodyStrong,
+              ),
               subtitle: AppText(
                 forced ? "'사진 속 이름 가리기'가 켜져 있어 항상 가려요" : 'PDF에는 홍○○처럼 적혀요',
                 style: AppTypography.caption,

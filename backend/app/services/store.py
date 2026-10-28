@@ -53,6 +53,13 @@ CREATE TABLE IF NOT EXISTS snapshots (
     snapshot_json TEXT NOT NULL,
     PRIMARY KEY (device_id, report_id)
 );
+CREATE TABLE IF NOT EXISTS rejudge_kits (
+    device_id  TEXT NOT NULL,
+    report_id  TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    kit_json   TEXT NOT NULL,
+    PRIMARY KEY (device_id, report_id)
+);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -219,6 +226,18 @@ def add(report: Report, *, device_id: str) -> None:
     )
 
 
+def update(report: Report, *, device_id: str) -> None:
+    """이미 있는 리포트의 본문만 바꾼다 — **만든 시각은 그대로**(2026-10-29, 보증금·시세·별칭 고치기).
+
+    `add`는 만든 시각을 지금으로 바꿔, 지난 리포트를 고치면 그것이 '가장 최근'이 되어 버린다. 가린 사본만 남기는 것은 같다.
+    """
+    stored = name_privacy.mask_report_for_storage(report)
+    _db().execute(
+        "UPDATE reports SET report_json = ? WHERE device_id = ? AND id = ?",
+        (stored.model_dump_json(), device_id, report.id),
+    )
+
+
 #: 같은 집(주소가 같은 리포트)에 남기는 최대 개수 — 앱의 '이전 리포트'·폰 원본 보관(최근 5건)과 같다.
 KEEP_VERSIONS_PER_PROPERTY = 5
 
@@ -338,6 +357,9 @@ def remove(report_id: str, *, device_id: str) -> None:
     db.execute(
         "DELETE FROM snapshots WHERE device_id = ? AND report_id = ?", (device_id, report_id)
     )
+    db.execute(
+        "DELETE FROM rejudge_kits WHERE device_id = ? AND report_id = ?", (device_id, report_id)
+    )
     _cases_cache.pop((device_id, report_id), None)
 
 
@@ -370,6 +392,33 @@ def get_snapshot(report_id: str, *, device_id: str) -> RegistrySnapshot | None:
         return snapshot_from_json(rows[0][0])
     except Exception as e:  # noqa: BLE001 — 읽지 못하는 기준 = 기준 없음(대조 화면이 그렇게 안내한다)
         _log.error(f"[대조] ⚠ 저장된 기준 스냅샷을 읽지 못함 — 기준 없음으로 처리 ({type(e).__name__})")
+        return None
+
+
+# ── 다시 판정 재료 (2026-10-29 QA — 보증금·시세를 고치면 사진을 다시 읽지 않고 판정만 다시) ─────────
+# 분석 때 IE가 읽은 등기부 내용(**사람 이름을 가린 사본**)과, 이름이 있어야만 할 수 있는 판정(악성임대인 명단 대조)의
+# 결과를 남긴다. 보증금·시세가 바뀌어도 등기부 내용은 그대로라 IE·OCR을 다시 부를 필요가 없다(크레딧 0원).
+# ⚠ 실명은 남기지 않는다(CLAUDE.md §2-5) — 명단 대조는 실명으로 분석 때 이미 끝났고 그 **결과**만 다시 쓴다.
+
+
+def put_rejudge_kit(report_id: str, kit: dict, *, device_id: str) -> None:
+    _db().execute(
+        "INSERT OR REPLACE INTO rejudge_kits (device_id, report_id, created_at, kit_json) VALUES (?, ?, ?, ?)",
+        (device_id, report_id, _now_iso(), json.dumps(kit, ensure_ascii=False)),
+    )
+
+
+def get_rejudge_kit(report_id: str, *, device_id: str) -> dict | None:
+    rows = _db().execute(
+        "SELECT kit_json FROM rejudge_kits WHERE device_id = ? AND report_id = ?", (device_id, report_id)
+    )
+    if not rows:
+        return None
+    try:
+        kit = json.loads(rows[0][0])
+        return kit if isinstance(kit, dict) else None
+    except ValueError:
+        _log.error("[다시판정] ⚠ 저장된 재료를 읽지 못함 — 사진으로 다시 분석해야 해요")
         return None
 
 
@@ -418,6 +467,9 @@ def move_owner(from_owner: str, to_owner: str) -> int:
     db.execute(
         "UPDATE OR REPLACE snapshots SET device_id = ? WHERE device_id = ?", (to_owner, from_owner)
     )
+    db.execute(
+        "UPDATE OR REPLACE rejudge_kits SET device_id = ? WHERE device_id = ?", (to_owner, from_owner)
+    )
     for key in [k for k in _cases_cache if k[0] == from_owner]:
         _cases_cache[(to_owner, key[1])] = _cases_cache.pop(key)
     return int(moved)
@@ -431,6 +483,7 @@ def delete_owner(owner: str) -> int:
     deleted = db.execute("SELECT COUNT(*) FROM reports WHERE device_id = ?", (owner,))[0][0]
     db.execute("DELETE FROM reports WHERE device_id = ?", (owner,))
     db.execute("DELETE FROM snapshots WHERE device_id = ?", (owner,))
+    db.execute("DELETE FROM rejudge_kits WHERE device_id = ?", (owner,))
     for key in [k for k in _cases_cache if k[0] == owner]:
         _cases_cache.pop(key, None)
     return int(deleted)

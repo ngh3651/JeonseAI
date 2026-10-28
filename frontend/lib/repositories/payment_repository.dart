@@ -35,8 +35,9 @@ class ApiPaymentRepository implements PaymentRepository {
   static const Duration _confirmTimeout = Duration(seconds: 45);
 
   @override
-  Future<Pricing> pricing() async =>
-      Pricing.fromJson(await _api.getJson('/api/pricing') as Map<String, dynamic>);
+  Future<Pricing> pricing() async => Pricing.fromJson(
+    await _api.getJson('/api/pricing') as Map<String, dynamic>,
+  );
 
   @override
   Future<GuardianPass> confirm({

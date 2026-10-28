@@ -158,7 +158,9 @@ Map<String, String> buildApiHeaders({
 /// 이 요청에 실었던 세션 토큰(없으면 null) — 세션 401을 받았을 때 **그 토큰일 때만** 지우려고 꺼낸다.
 String? _sentSessionToken(Map<String, String> headers) {
   final auth = headers['Authorization'];
-  return (auth != null && auth.startsWith('Bearer ')) ? auth.substring(7) : null;
+  return (auth != null && auth.startsWith('Bearer '))
+      ? auth.substring(7)
+      : null;
 }
 
 class ApiClient {
@@ -241,12 +243,38 @@ class ApiClient {
     return jsonDecode(utf8.decode(res.bodyBytes));
   }
 
+  /// JSON PATCH → 디코딩된 JSON. (리포트 입력값 고치기 — 계약 §3.23, 2026-10-29)
+  ///
+  /// [timeout]: 보증금·시세를 고치면 서버가 설명 문장을 AI로 다시 쓰므로 기본 15초보다 길게 준다.
+  Future<dynamic> patchJson(
+    String path,
+    Map<String, dynamic> body, {
+    Duration? timeout,
+  }) async {
+    final headers = {
+      ...await commonHeaders(),
+      'Content-Type': 'application/json',
+    };
+    final http.Response res;
+    try {
+      res = await _client
+          .patch(_uri(path), headers: headers, body: jsonEncode(body))
+          .timeout(timeout ?? _timeout);
+    } catch (_) {
+      throw const ApiException('서버에 연결하지 못했어요. 네트워크를 확인해 주세요');
+    }
+    _ensureOk(res, headers);
+    return jsonDecode(utf8.decode(res.bodyBytes));
+  }
+
   /// DELETE → 204 기대.
   Future<void> delete(String path) async {
     final headers = await commonHeaders();
     final http.Response res;
     try {
-      res = await _client.delete(_uri(path), headers: headers).timeout(_timeout);
+      res = await _client
+          .delete(_uri(path), headers: headers)
+          .timeout(_timeout);
     } catch (_) {
       throw const ApiException('서버에 연결하지 못했어요. 네트워크를 확인해 주세요');
     }

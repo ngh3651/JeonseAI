@@ -256,11 +256,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
     super.initState();
     _paths = RegistryPhotoStore.instance.pathsFor(widget.reportId);
     _dataFuture = _load(context.read<AnalysisRepository>());
-    _draw = AnimationController(
-      vsync: this,
-      duration: kDrawDuration,
-      value: 1,
-    );
+    _draw = AnimationController(vsync: this, duration: kDrawDuration, value: 1);
     _scroll.addListener(_publishMetrics);
   }
 
@@ -278,8 +274,14 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
 
   Future<_ViewerData> _load(AnalysisRepository repo) async {
     final report = await repo.getReport(widget.reportId);
-    final rawSizes = await Future.wait([for (final p in _paths) _intrinsicSize(p)]);
-    final data = _ViewerData.arranged(report: report, paths: _paths, rawSizes: rawSizes);
+    final rawSizes = await Future.wait([
+      for (final p in _paths) _intrinsicSize(p),
+    ]);
+    final data = _ViewerData.arranged(
+      report: report,
+      paths: _paths,
+      rawSizes: rawSizes,
+    );
     // 진입 시 선택은 **가장 무거운 표시**다(목록의 첫 표시가 아니라).
     //
     // 목록은 등기부 읽는 순서라 첫 표시가 `address`(주소)이고, 그 다음이 `area`(면적)다.
@@ -480,7 +482,8 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
           );
         }
         final data = snapshot.data?.withCurrentPrivacy();
-        if (data?.report == null || data!.paths.isEmpty) return _emptyScaffold();
+        if (data?.report == null || data!.paths.isEmpty)
+          return _emptyScaffold();
 
         final report = data.report!;
         final marks = data.marks;
@@ -583,8 +586,11 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
                     ],
                     // '사진 속 이름 가리기'가 덮을 이 쪽의 실명·주민번호 자리 (서버 §9.8)
                     // 서버의 쪽 번호는 업로드 순서라 이 쪽의 업로드 인덱스로 묻는다(§9.12)
-                    privacyBoxes: data.report?.privacyBoxesOn(data.uploadOf[i]) ?? const [],
-                    namesUnlocated: data.report?.namesUnlocatedOn(data.uploadOf[i]) ?? true,
+                    privacyBoxes:
+                        data.report?.privacyBoxesOn(data.uploadOf[i]) ??
+                        const [],
+                    namesUnlocated:
+                        data.report?.namesUnlocatedOn(data.uploadOf[i]) ?? true,
                     selected: _selected,
                     draw: _draw,
                     // 사진 위 표시를 직접 누르면 카드와 같은 대접을 한다 —
@@ -725,7 +731,6 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
       ),
     ),
   );
-
 }
 
 /// 뷰어 앱바 — 흰 바탕에 아래 실선 1dp.
@@ -782,7 +787,8 @@ class _ViewerData {
            for (final h in report.highlights)
              // 사진 장수보다 큰 page 인덱스는 버린다 — 엉뚱한 사진에 그리지 않기 위함.
              // 서버 page는 **업로드 순서** → 화면 쪽 번호(1쪽부터 정렬한 순서)로 바꿔 둔다(§9.12).
-             if (h.page >= 0 && h.page < uploadOf.length) h.withPage(uploadOf.indexOf(h.page)),
+             if (h.page >= 0 && h.page < uploadOf.length)
+               h.withPage(uploadOf.indexOf(h.page)),
        ];
 
   /// 화면 순서로 늘어놓은 데이터 (2026-10-26 — 1쪽부터 정렬 · 글자가 바로 서게).
@@ -795,7 +801,9 @@ class _ViewerData {
     required List<String> paths,
     required List<Size> rawSizes,
   }) {
-    final order = report?.pageDisplayOrder(paths.length) ?? [for (var i = 0; i < paths.length; i++) i];
+    final order =
+        report?.pageDisplayOrder(paths.length) ??
+        [for (var i = 0; i < paths.length; i++) i];
     final turns = [for (final u in order) report?.quarterTurnsOf(u) ?? 0];
     return _ViewerData(
       report: report,
@@ -803,7 +811,9 @@ class _ViewerData {
       rawSizes: [for (final u in order) rawSizes[u]],
       sizes: [
         for (var d = 0; d < order.length; d++)
-          turns[d].isOdd ? Size(rawSizes[order[d]].height, rawSizes[order[d]].width) : rawSizes[order[d]],
+          turns[d].isOdd
+              ? Size(rawSizes[order[d]].height, rawSizes[order[d]].width)
+              : rawSizes[order[d]],
       ],
       turns: turns,
       uploadOf: order,
@@ -1027,7 +1037,8 @@ class _RegistryPageState extends State<_RegistryPage> {
                   if (widget.namesUnlocated)
                     ListenableBuilder(
                       listenable: PrivacySettings.instance,
-                      builder: (_, _) => PrivacySettings.instance.hideNamesInPhotos
+                      builder: (_, _) =>
+                          PrivacySettings.instance.hideNamesInPhotos
                           ? const WholePageCoverLabel()
                           : const SizedBox.shrink(),
                     ),
@@ -1072,7 +1083,6 @@ class _RegistryPageState extends State<_RegistryPage> {
       ),
     ),
   );
-
 }
 
 /// 쪽 전체를 덮었을 때 그 위에 얹는 한 줄 — 이름 자리를 몰라 통째로 가렸다는 것과 푸는 법.
@@ -1213,7 +1223,10 @@ class HighlightPainter extends CustomPainter {
         paintNameRedaction(canvas, highlightRect(b, size));
       }
       if (coverWholePage) {
-        canvas.drawRect(Offset.zero & size, Paint()..color = AppColors.markRedaction);
+        canvas.drawRect(
+          Offset.zero & size,
+          Paint()..color = AppColors.markRedaction,
+        );
       }
     }
     // 뱃지는 형광펜을 전부 그린 뒤에 — 아니면 뒤 항목의 형광펜이 뱃지를 덮는다.
@@ -1286,7 +1299,8 @@ class HighlightPainter extends CustomPainter {
       center.translate(0, 1 / s),
       r,
       Paint()
-        ..color = const Color(0x47101814) // rgba(16,24,20,.28)
+        ..color =
+            const Color(0x47101814) // rgba(16,24,20,.28)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2 / s),
     );
     canvas.drawCircle(center, r, Paint()..color = color);
@@ -1367,7 +1381,8 @@ class RegistryPositionRail extends StatelessWidget {
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTapDown: (d) => _seek(d.localPosition.dx, width),
-                  onHorizontalDragStart: (d) => _seek(d.localPosition.dx, width),
+                  onHorizontalDragStart: (d) =>
+                      _seek(d.localPosition.dx, width),
                   onHorizontalDragUpdate: (d) =>
                       _seek(d.localPosition.dx, width),
                   child: SizedBox(
@@ -1495,11 +1510,7 @@ class _RailPainter extends CustomPainter {
       final double x = (layout.fractionOf(y) * size.width)
           .clamp(r, maxX)
           .toDouble();
-      canvas.drawCircle(
-        Offset(x, cy),
-        r,
-        Paint()..color = AppColors.surface,
-      );
+      canvas.drawCircle(Offset(x, cy), r, Paint()..color = AppColors.surface);
       canvas.drawCircle(
         Offset(x, cy),
         r - kRailDotBorder,

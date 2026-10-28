@@ -249,6 +249,29 @@ void main() {
       expect(history[1].highlights.single.title, '집주인 이름 · 홍길동');
     });
 
+    test('입력값 고치기(서버는 가린 사본) — 폰 원본의 실명 표시는 그대로, 사진도 그대로, 숫자만 새것', () async {
+      await RegistryPhotoStore.instance.keep('r1', [photo], reportJson: jsonEncode(reportJson()));
+      final repo = repoWith((_) async {
+        final fixed = Map<String, dynamic>.of(storedCopy(alias: '고친 집'));
+        fixed['deposit'] = 250000000;
+        return _json(fixed);
+      });
+      final report = await repo.updateInputs(
+        'r1',
+        const ReportInputs(alias: '고친 집', deposit: 250000000, marketPrice: null),
+      );
+      expect(calls.single.method, 'PATCH');
+      expect(calls.single.url.path, '/api/reports/r1');
+      expect(jsonDecode(calls.single.body), {'alias': '고친 집', 'deposit': 250000000, 'marketPrice': null});
+      expect(report.deposit, 250000000);
+      expect(report.alias, '고친 집');
+      expect(report.highlights.single.title, '집주인 이름 · 홍길동'); // 실명 그대로(계약자 대조용)
+      final saved = await RegistryPhotoStore.instance.originalReport('r1');
+      expect(saved!['deposit'], 250000000);
+      expect(RegistryPhotoStore.instance.hasPhotos('r1'), isTrue);
+      expect(File('${temp.path}/registry_photos/r1/page_1.jpg').existsSync(), isTrue);
+    });
+
     test('기록을 지우면 이 폰의 사진·원본 리포트도 지운다', () async {
       await RegistryPhotoStore.instance.keep('r1', [photo], reportJson: jsonEncode(reportJson()));
       final repo = repoWith((_) async => http.Response('', 204));

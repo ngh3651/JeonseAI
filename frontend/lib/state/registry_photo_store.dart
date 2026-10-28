@@ -128,7 +128,8 @@ class RegistryPhotoStore {
       if (raw == null) return;
       final root = await _root();
       var restored = 0;
-      for (final entry in (jsonDecode(raw) as List).cast<Map<String, dynamic>>()) {
+      for (final entry
+          in (jsonDecode(raw) as List).cast<Map<String, dynamic>>()) {
         final id = entry['id'] as String;
         final names = (entry['photos'] as List).cast<String>();
         _order.add(id);
@@ -137,9 +138,7 @@ class RegistryPhotoStore {
         ]);
         if (hasPhotos(id)) restored++;
       }
-      debugPrint(
-        '[사진보관] 복원 — 기록 ${_order.length}건 중 사진이 실제로 있는 것 $restored건',
-      );
+      debugPrint('[사진보관] 복원 — 기록 ${_order.length}건 중 사진이 실제로 있는 것 $restored건');
     } catch (e) {
       // SharedPreferences 플러그인이 없는 환경(위젯 테스트 등) 포함
       debugPrint('[사진보관] 복원 실패 — 이번 세션은 메모리 전용 (${e.runtimeType})');
@@ -207,6 +206,21 @@ class RegistryPhotoStore {
     }
   }
 
+  /// 이 폰에 남긴 **원본 리포트만** 바꿔 쓴다(사진은 그대로) — 입력값 고치기(2026-10-29).
+  /// 원본이 없으면(보관 안 함·지워짐) 아무것도 하지 않는다. [keep]을 다시 부르면 안 된다 — 폴더를 지운 뒤 복사해서
+  /// 보관된 사진을 잃는다.
+  Future<void> updateOriginalReport(String reportId, String reportJson) async {
+    if (!keepOriginalsOnPhone) return;
+    try {
+      final root = await _root();
+      final file = File('${root.path}/$reportId/$_reportFile');
+      if (!file.existsSync()) return;
+      await file.writeAsString(reportJson);
+    } catch (e) {
+      debugPrint('[사진보관] 원본 리포트 고쳐 쓰기 실패 (${e.runtimeType})');
+    }
+  }
+
   /// 기록을 지울 때 — 이 리포트의 사진·원본 리포트를 **이 폰에서도** 지운다. 실패해도 넘어간다.
   Future<void> forget(String reportId) async {
     _byReportId.remove(reportId);
@@ -255,7 +269,9 @@ class RegistryPhotoStore {
         final dir = Directory('${root.path}/$id');
         if (dir.existsSync()) await dir.delete(recursive: true);
       }
-      debugPrint('[사진보관] 오래된 ${dropped.length}건 삭제 (최근 $keepRecentReports건만 유지)');
+      debugPrint(
+        '[사진보관] 오래된 ${dropped.length}건 삭제 (최근 $keepRecentReports건만 유지)',
+      );
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -264,12 +280,13 @@ class RegistryPhotoStore {
         for (final id in _order)
           {
             'id': id,
-            'photos': [for (final p in _byReportId[id] ?? const []) _basename(p)],
+            'photos': [
+              for (final p in _byReportId[id] ?? const []) _basename(p),
+            ],
           },
       ]),
     );
   }
 
-  static String _basename(String path) =>
-      path.split(RegExp(r'[\\/]')).last;
+  static String _basename(String path) => path.split(RegExp(r'[\\/]')).last;
 }

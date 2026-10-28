@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
+import 'package:jeonse_ai/screens/report/report_inputs_sheet.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -82,7 +83,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('report-edit-button')));
     await tester.pumpAndSettle();
     // 지금 값이 채워져 있다 — 시세는 자동으로 찾은 값이라 칸은 비어 있고, 비우면 그 값을 쓴다고 말한다
-    expect(find.koText('12000'), findsOneWidget);
+    expect(find.koText('12,000'), findsOneWidget);
+    expect(find.byKey(const ValueKey('inputs-deposit-won')), findsOneWidget);
     expect(find.koTextContaining('자동으로 찾은 값'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey('inputs-deposit-field')),
@@ -100,7 +102,8 @@ void main() {
     expect(repo.sent!.marketPrice, isNull); // 자동 시세 그대로
     expect(repo.sent!.alias, '고친 집');
     expect(find.koText('고친 집'), findsWidgets); // 앱바 제목이 바로 바뀐다
-    expect(find.koText('새 값으로 다시 판정했어요'), findsOneWidget);
+    // 등급이 바뀌면 글로 말한다(양호 → 위험)
+    expect(find.koTextContaining('등급이 바뀌었어요: 양호 → 위험'), findsOneWidget);
   });
 
   testWidgets('별칭만 바꾸면 "저장" — 다시 판정하지 않는다', (tester) async {
@@ -119,6 +122,34 @@ void main() {
     expect(find.koText('이름을 바꿨어요'), findsOneWidget);
   });
 
+  testWidgets('저장에 실패하면 시트가 남아 넣은 값을 지킨다', (tester) async {
+    tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+    final repo = _FailingRepo(AnalysisReport.fromJson(_json()));
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AnalysisRepository>.value(
+        value: repo,
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: const ReportScreen(reportId: 'r-edit'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('report-edit-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('inputs-deposit-field')),
+      '28000',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('inputs-save-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('inputs-error')), findsOneWidget);
+    expect(find.koText('28,000'), findsOneWidget); // 넣은 값 그대로
+  });
+
   testWidgets('고칠 재료도 사진도 없는 옛 리포트는 숫자 칸을 잠근다', (tester) async {
     await _open(tester, _json(rejudgeReady: false));
     await tester.tap(find.byKey(const ValueKey('report-edit-button')));
@@ -128,5 +159,22 @@ void main() {
     );
     expect(deposit.enabled, isFalse);
     expect(find.koTextContaining('이름만 바꿀 수 있어요'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ReportInputsSheet),
+        matching: find.byIcon(Icons.lock_outline),
+      ),
+      findsNWidgets(2),
+    );
   });
+}
+
+class _FailingRepo extends _Repo {
+  _FailingRepo(super.current);
+
+  @override
+  Future<AnalysisReport> updateInputs(
+    String reportId,
+    ReportInputs inputs,
+  ) async => throw Exception('network');
 }

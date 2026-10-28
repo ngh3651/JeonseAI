@@ -203,7 +203,7 @@ class _ReportScreenState extends State<ReportScreen> {
               IconButton(
                 key: const ValueKey('report-edit-button'),
                 icon: const Icon(Icons.edit_outlined),
-                tooltip: '입력값 고치기',
+                tooltip: '보증금·시세·별칭 고치기',
                 onPressed: () => _editInputs(context, report),
               ),
               // 이 리포트를 PDF로 저장 — 폰 안에서 만들고 이름은 기본으로 가린다(report_pdf.dart)

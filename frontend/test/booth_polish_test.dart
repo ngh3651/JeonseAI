@@ -344,7 +344,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.koText('시세 입력하기'));
     await tester.pumpAndSettle();
-    expect(find.koText('입력값 고치기'), findsWidgets);
+    expect(find.koText('보증금·시세·별칭 고치기'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey('inputs-price-field')),
       '30000',

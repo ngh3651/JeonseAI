@@ -96,8 +96,8 @@ class AnalysisLoadingScreen extends StatefulWidget {
 
 class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
     with SingleTickerProviderStateMixin {
-  /// 꿀팁이 바뀌는 간격
-  static const _tipEvery = Duration(seconds: 7);
+  /// 꿀팁이 바뀌는 간격 — 팁 5개 × 6초 = 30초(예상 시간)에 한 바퀴
+  static const _tipEvery = Duration(seconds: 6);
 
   final Stopwatch _clock = Stopwatch();
   int _ticks = 0; // 250ms 시계가 몇 번 울렸나

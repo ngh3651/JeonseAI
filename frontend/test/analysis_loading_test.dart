@@ -275,9 +275,9 @@ void main() {
         };
         await tester.pump(_s(1));
         final first = snap();
-        // 팁 4개를 모두 거친다 (7초마다)
+        // 팁을 모두 거친다 (6초마다)
         for (var i = 0; i < kLoadingTips.length; i++) {
-          await tester.pump(_s(7));
+          await tester.pump(_s(6));
           await tester.pump(_s(0.5)); // 바뀌는 중간도 본다
           final now = snap();
           for (final k in first.keys) {

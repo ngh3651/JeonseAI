@@ -32,6 +32,7 @@ from . import (
     highlight,
     lawd_code,
     llm,
+    loss_estimate,
     name_privacy,
     ocr,
     ocr_layout,
@@ -612,6 +613,14 @@ def analyze(
         report.checkedNotes = [*report.checkedNotes, rotation_note]
     # 같은 집 묶기의 첫 기준 (2026-10-27) — 표시·판정에 쓰지 않는다. 주소는 읽을 때마다 글자가 조금씩 달라진다.
     report.propertyId = store.property_id(extract.unique_number)
+    # 용도 후보 (2026-10-28) — 손실 예상이 어느 매각가율을 쓸지 고르는 데만 쓴다. 판정과 무관하다.
+    try:
+        report.houseTypes = loss_estimate.house_types_from(
+            list(price_info.candidates) if price_info else [],
+            (doc_check.header_address if doc_check is not None else None) or extract.address,
+        )
+    except Exception:  # noqa: BLE001 — 용도를 못 정해도 리포트는 나간다(손실 예상이 세 용도 중 낮은 값을 쓴다)
+        _log.error("[손실예상] ⚠ 용도 후보를 정하지 못했습니다", exc_info=True)
     if doc_check is not None:
         # 두 번째 기준(쪽 머리 주소) · 빠진 쪽 · 장마다 쪽 번호 — 표시·묶기 전용
         report.propertyAddress = doc_check.header_address

@@ -183,6 +183,9 @@ class Report(BaseModel):
     # 같은 집 바로 전 리포트와 견준 결과 (2026-10-27) — 홈에서 다시 분석해도 여정 '등기부 변동 기록'에 한 줄이 생긴다.
     # 사진·AI 호출 없이 두 대조 기준 스냅샷만 맞춰 본다(compare.compare). 전 리포트가 없거나 견줄 수 없으면 None.
     changeFromPrevious: Optional["CompareResult"] = None
+    # 이 집의 주택 유형 후보 (2026-10-28) — '아파트' · '연립다세대' · '오피스텔' · '단독주택' · '다가구주택'.
+    # 손실 예상이 어느 용도의 매각가율을 쓸지 고르는 데만 쓴다(판정·화면 무관). 여럿이면 어느 쪽인지 모르는 것이다.
+    houseTypes: list[str] = Field(default_factory=list)
     # [판례 설명 재료 — 2026-10-24] 살아 있는 위험 항목의 종류·접수일·금액·권리자 종류. 판정·화면에 쓰지 않는다.
     riskFacts: list[RiskFact] = Field(default_factory=list)
     # 이 분석을 **다음 등기부와 견줄 기준(baseline)으로 쓸 수 있는가** (2026-08-14 S-11).
@@ -359,6 +362,32 @@ class CompareDoc(BaseModel):
     grade: Optional[str] = None  # "위험" | "확인 필요" | "양호"
     pageCount: Optional[int] = None  # 이번에 올린 사진 장수
     propertyId: Optional[str] = None  # 부동산고유번호 숫자만 — 폰의 계약 일정을 찾는 집 열쇠 (Report.propertyId와 같다)
+
+
+class LossEstimate(BaseModel):
+    """손실 예상 (2026-10-28) — 이 집이 경매로 넘어가면 보증금이 얼마나 돌아오나. **규칙 계산, AI 없음.**
+
+    매각가율 = 그 지역·용도에서 최근 경매로 팔린 값 ÷ 법원 감정가 (`data/auction_sale_rates.json`, 출처·기간 동봉).
+    판정 등급에는 쓰지 않는다(참고 정보). 경매 비용·세금·최우선변제는 아직 넣지 않았다 — 화면이 그 사실을 말한다.
+    """
+
+    # ok(계산함) | debt_exceeds(먼저 갚을 빚 ≥ 집값 — 매각가율과 상관없이 돌려받기 어렵다)
+    # | no_price(시세 없음 — 계산하지 않는다) | no_rate(그 용도의 매각가율 자료가 아직 없다)
+    status: str
+    deposit: int
+    basePrice: Optional[int] = None  # 기준가 = 판정에 쓴 시세 (감정가 대신)
+    seniorDebt: int = 0  # 먼저 갚을 빚 (채권최고액 합계 — 실제 빚보다 클 수 있다)
+    ratePct: Optional[float] = None  # 매각가율 (%, 소수 1자리)
+    region: Optional[str] = None  # 매각가율을 가져온 지역 — '서울' · '전국'
+    regionFallback: bool = False  # 그 지역 표본이 적거나 없어 전국 값을 썼다
+    use: Optional[str] = None  # 매각가율을 가져온 용도 — '연립다세대' 등
+    useGuessed: bool = False  # 용도를 확실히 몰라 후보 중 가장 낮은 값을 골랐다
+    soldCount: Optional[int] = None  # 그 매각가율의 매각 건수
+    period: Optional[str] = None  # 집계 기간 '2025.11~2026.10'
+    source: Optional[str] = None  # 출처 이름
+    expectedSale: Optional[int] = None  # 예상 낙찰가 = 기준가 × 매각가율
+    expectedReturn: Optional[int] = None  # 내가 돌려받을 돈
+    expectedLoss: Optional[int] = None  # 못 돌려받는 돈
 
 
 class CompareItem(BaseModel):

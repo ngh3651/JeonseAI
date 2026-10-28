@@ -1,31 +1,31 @@
-/// S-09 손실 시뮬레이터 (IA.md §6) — 시연의 "기억에 남을 컷".
+/// S-09 손실 시뮬레이터 — 2026-10-28 다시 짰다 (손실 시뮬레이터 1단계).
 ///
-/// 슬라이더("집이 경매로 넘어가 이 가격에 팔린다면?")를 움직이면
-/// 예상 손실액이 실시간으로 바뀌고, [보증보험 가입 시] 토글로 0원 대비를 보여준다.
+/// "이 집이 경매로 넘어가면 보증금이 얼마나 돌아오나"를 **이 집의 지역·용도 매각가율**로 보여 준다.
+/// 숫자는 전부 서버가 규칙으로 계산한다(`GET /api/reports/{id}/loss-estimate`) — 앱은 그리기만 한다.
 ///
-/// ⚠ 아래 계산은 전부 **예시(자리표시)**다. 낙찰가율 기본값·계산식은
-/// Phase E-4에서 출처(법원경매정보 통계 등) 확보 후 확정한다 (docs/plan.md E-4).
-/// 2026-07-04 C-2 리뷰 반영: 기준가 고지, 보증보험 미확인 경고(보수적 편향),
-/// 하단 다음 행동 CTA, 예시 배너 대비 강화.
+/// 예전 화면에서 뺀 것과 이유:
+/// - 낙찰가율 슬라이더(근거 없는 70% 예시값) → 대법원 매각통계의 지역·용도별 값 하나
+/// - 보증보험 토글(가입하면 0원) → 시뮬레이터와 상관없다. 가입 가능성은 리포트 근거 카드가 말한다
+/// - 시세가 없을 때 보증금을 기준가로 쓰던 계산 → 계산하지 않고 [시세 입력하기]
+///
+/// 글은 줄이고 모양으로 말한다: 보증금 막대(돌려받음 초록 · 못 받음 빨강) → 계산 4줄 → 근거 몇 줄.
+/// 글자·색은 판례·여정 리디자인과 같은 새 체계(`AppTypographyNext`·`AppColorsNext`).
 library;
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../design_system/components/app_button.dart';
-import '../../design_system/components/term_tooltip_sheet.dart';
+import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
-import '../../design_system/tokens/app_spacing.dart';
-import '../../design_system/tokens/app_typography.dart';
+import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
-import '../../models/risk_grade.dart';
+import '../../models/loss_estimate.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../utils/money_format.dart';
-import '../../design_system/text/app_text.dart';
 import '../report/market_price_reanalyze.dart';
+
+/// 빠진 것 한 줄 — 1단계 계산에 넣지 않은 것 (화면 맨 아래 고지)
+const String kLossNotIncludedLine = '감정가 대신 시세로 계산 · 경매 비용·세금·최우선변제는 빠져 있어요';
 
 class LossSimulatorScreen extends StatefulWidget {
   const LossSimulatorScreen({super.key, required this.reportId});
@@ -37,340 +37,564 @@ class LossSimulatorScreen extends StatefulWidget {
 }
 
 class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
-  /// 낙찰가율 슬라이더 값 (0.4~1.0). 초기값 0.7은 UI 배치용 —
-  /// 실제 기본값은 E-4에서 통계 출처와 함께 확정.
-  double _ratio = 0.7;
-
-  /// 보증보험 가입 가정 토글
-  bool _insured = false;
-
-  late final Future<AnalysisReport?> _reportFuture;
+  late Future<(AnalysisReport?, LossEstimate?)> _future;
 
   @override
   void initState() {
     super.initState();
-    _reportFuture = context.read<AnalysisRepository>().getReport(
-      widget.reportId,
-    );
+    _load();
+  }
+
+  void _load() {
+    final repo = context.read<AnalysisRepository>();
+    _future = () async {
+      final reportF = repo.getReport(widget.reportId);
+      LossEstimate? est;
+      try {
+        est = await repo.getLossEstimate(widget.reportId);
+      } catch (_) {
+        est = null;
+      }
+      return (await reportF, est);
+    }();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const AppText('손실 시뮬레이터')),
-      body: FutureBuilder<AnalysisReport?>(
-        future: _reportFuture,
-        builder: (context, snapshot) {
-          final AnalysisReport? report = snapshot.data;
-          if (snapshot.connectionState == ConnectionState.waiting) {
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: AppText('손실 시뮬레이터', style: AppTypographyNext.title),
+        centerTitle: true,
+        backgroundColor: AppColors.background,
+      ),
+      body: FutureBuilder<(AnalysisReport?, LossEstimate?)>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (report == null) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const AppText('리포트를 불러올 수 없어요', style: AppTypography.body),
-                  const SizedBox(height: AppSpacing.lg),
-                  AppCompactButton(
-                    label: '홈으로',
-                    onPressed: () => context.go('/home'),
-                  ),
-                ],
-              ),
+          final (report, est) = snap.data ?? (null, null);
+          if (est == null) {
+            return ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              children: [
+                _Message(
+                  icon: Icons.cloud_off_outlined,
+                  title: '불러올 수 없어요',
+                  actionLabel: '다시 시도',
+                  onAction: () => setState(_load),
+                ),
+              ],
             );
           }
-          return _body(report);
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+            children: [
+              if (report != null) ...[
+                AppText(
+                  report.alias,
+                  textAlign: TextAlign.center,
+                  style: AppTypographyNext.caption,
+                ),
+                const SizedBox(height: 12),
+              ],
+              ...switch (est.status) {
+                LossStatus.ok => _ok(est),
+                LossStatus.debtExceeds => _debtExceeds(est),
+                LossStatus.noPrice => [
+                  _Message(
+                    icon: Icons.home_work_outlined,
+                    title: '집값을 몰라 계산할 수 없어요',
+                    actionLabel:
+                        report != null && canReanalyzeWithMarketPrice(report)
+                        ? '시세 입력하기'
+                        : null,
+                    onAction: report == null
+                        ? null
+                        : () => reanalyzeWithMarketPrice(context, report),
+                  ),
+                ],
+                LossStatus.noRate => [
+                  const _Message(
+                    icon: Icons.query_stats_outlined,
+                    title: '이 지역 경매 통계를 준비 중이에요',
+                  ),
+                ],
+              },
+            ],
+          );
         },
       ),
     );
   }
 
-  Widget _body(AnalysisReport report) {
-    // ── 예시 계산 (E-4에서 출처 기반 계산식으로 교체) ──────────────
-    // 기준가: 입력 시세, 없으면 보증금을 예시 기준가로 사용 (화면에 고지)
-    final bool noMarketPrice = report.marketPrice == null;
-    final int base = report.marketPrice ?? report.deposit;
-    final int salePrice = (base * _ratio).round(); // 예상 낙찰가
-    final int leftover = math.max(0, salePrice - report.seniorDebtAmount);
-    final int recovered = math.min(report.deposit, leftover); // 돌려받는 금액
-    final int loss = _insured ? 0 : report.deposit - recovered; // 예상 손실
+  // ── 계산함 ────────────────────────────────────────────────────────────────
 
-    // 보증보험 카드가 '양호'가 아니면 가입 가능 여부 미확인 (보수적 편향 연동)
-    final bool insuranceUnverified = report.evidences.any(
-      (e) => e.id == 'insurance' && e.grade != RiskGrade.ok,
-    );
-
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      children: [
-        _exampleBanner(),
-        const SizedBox(height: AppSpacing.xl),
-        AppText(
-          '${report.alias} · 보증금 ${formatWon(report.deposit)}',
-          style: AppTypography.caption,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: AppSpacing.xxl),
-
-        // ── 슬라이더: 쉬운 말 라벨 + '낙찰가율' 툴팁 부제 ──
-        const AppText(
-          '집이 경매로 넘어가 이 가격에 팔린다면?',
-          style: AppTypography.title,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+  List<Widget> _ok(LossEstimate e) {
+    final int back = e.expectedReturn ?? 0;
+    final int loss = e.expectedLoss ?? 0;
+    return [
+      _Card(
+        key: const ValueKey('loss-hero'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TermText(
-              term: '낙찰가율',
-              description:
-                  '경매에서 집이 팔리는 가격이 원래 가치의 몇 %인지를 뜻해요. '
-                  '예를 들어 낙찰가율 70%면, 2억짜리 집이 경매에서 1억 4천만원에 팔린다는 뜻이에요.',
-              style: AppTypography.caption,
-              onAskChatbot: () => context.push('/chatbot'),
+            AppText('경매로 넘어가면', style: AppTypographyNext.caption),
+            const SizedBox(height: 2),
+            AppText.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: formatWon(back),
+                    style: AppTypographyNext.numberLarge.copyWith(
+                      color: loss == 0
+                          ? AppColors.ok
+                          : AppColorsNext.textStrong,
+                    ),
+                  ),
+                  TextSpan(
+                    text: '  돌려받아요',
+                    style: AppTypographyNext.bodyStrong.copyWith(
+                      color: AppColorsNext.textStrong,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(width: AppSpacing.xs),
-            AppText('기준 (예시)', style: AppTypography.caption),
+            const SizedBox(height: 16),
+            _DepositBar(back: back, loss: loss),
+            const SizedBox(height: 10),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 4,
+              children: [
+                _Legend(
+                  color: AppColors.ok,
+                  label: '돌려받음',
+                  value: formatWon(back),
+                ),
+                _Legend(
+                  key: const ValueKey('loss-legend-loss'),
+                  color: AppColorsNext.dangerText,
+                  label: '못 받음',
+                  value: formatWon(loss),
+                ),
+              ],
+            ),
           ],
         ),
-        AppText(
-          '${(_ratio * 100).round()}%',
-          style: AppTypography.numberLarge.copyWith(color: AppColors.primary),
-          textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 12),
+      _Card(
+        key: const ValueKey('loss-steps'),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+        child: Column(
+          children: [
+            _Step(label: '집값', value: formatWon(e.basePrice ?? 0)),
+            _Step(
+              label: '경매 낙찰가',
+              tag: '${_pct(e.ratePct)}%',
+              value: formatWon(e.expectedSale ?? 0),
+            ),
+            _Step(
+              label: '먼저 갚을 빚',
+              value: '− ${formatWon(e.seniorDebt)}',
+              danger: true,
+            ),
+            _Step(label: '내 몫', value: formatWon(back), strong: true, last: true),
+          ],
         ),
-        Slider(
-          value: _ratio,
-          min: 0.4,
-          max: 1.0,
-          divisions: 12,
-          label: '${(_ratio * 100).round()}%',
-          onChanged: (v) => setState(() => _ratio = v),
-        ),
-        const SizedBox(height: AppSpacing.xl),
+      ),
+      const SizedBox(height: 16),
+      _Basis(e),
+    ];
+  }
 
-        // ── 결론 크게: 예상 손실액 + 예상 반환금 병기 (C2) ──
-        _lossCard(loss, recovered),
-        const SizedBox(height: AppSpacing.lg),
+  // ── 빚 ≥ 집값 ────────────────────────────────────────────────────────────
 
-        // ── 시세 미입력 고지 (기준가 무고지 방지 — 리뷰 공통 반영) ──
-        if (noMarketPrice) _noMarketPriceNotice(report),
-
-        // ── 계산 내역 (기준가 명시) ──
-        _detailRow(
-          // 2026-08-03: 시세는 사용자 입력일 수도, 자동 조회일 수도 있다 —
-          // "입력 시세"·"미입력"이라고 못 박으면 자동 조회가 붙은 뒤 거짓이 된다.
-          noMarketPrice ? '기준가 (시세를 못 구해 보증금 기준)' : '기준가 (시세)',
-          formatWon(base),
-        ),
-        _detailRow('예상 낙찰가 (${(_ratio * 100).round()}%)', formatWon(salePrice)),
-        _detailRow(
-          '먼저 갚아야 할 빚 (선순위 채권)',
-          '- ${formatWon(report.seniorDebtAmount)}',
-        ),
-        _detailRow('예상 반환금', formatWon(recovered)), // C2: 문구 간결화
-        const Divider(height: AppSpacing.xxxl),
-
-        // ── 보증보험 대비 토글 ──
-        SwitchListTile(
-          value: _insured,
-          onChanged: (v) => setState(() => _insured = v),
-          // C3: 시뮬레이션임이 드러나는 제목 (feedback4 목업)
-          title: const AppText('보증보험 적용 시 시뮬레이션', style: AppTypography.bodyStrong),
-          subtitle: AppText(
-            '가입 가능 여부를 확인하면 보험 적용 결과를 볼 수 있어요',
-            style: AppTypography.caption,
-          ),
-          contentPadding: EdgeInsets.zero,
-        ),
-        if (_insured)
-          insuranceUnverified
-              // 가입 가능 미확인 매물: 0원을 안심 신호로 오독하지 않게 경고 우선 (보수적 편향)
-              ? Container(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  decoration: BoxDecoration(
-                    color: AppColors.cautionSoft,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AppText(
-                        '잠깐 — 이 매물은 보증보험 가입 가능 여부가 아직 확인되지 않았어요. '
-                        '가입이 안 될 수도 있으니, 가입 요건부터 먼저 확인하세요.',
-                        // D8: 연한 앰버 바탕 위 글자는 진한 색 — 앰버는 아이콘·테두리에만
-                        style: AppTypography.body.copyWith(
-                          color: AppColors.textBody,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      // C3: 무엇을 확인하는 버튼인지 명확화 (feedback4 목업)
-                      AppSecondaryButton(
-                        label: '보증보험 가입 가능 여부 확인하기',
-                        icon: Icons.verified_user_outlined,
-                        onPressed: () => context.pop(),
-                      ),
-                    ],
-                  ),
-                )
-              : Container(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  decoration: BoxDecoration(
-                    color: AppColors.okSoft,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                  child: AppText(
-                    '보증보험에 가입되어 있으면 보증기관이 보증금을 대신 돌려줘요. '
-                    '예상 손실 0원 (예시)',
-                    style: AppTypography.body.copyWith(color: AppColors.ok),
+  List<Widget> _debtExceeds(LossEstimate e) => [
+    _Card(
+      key: const ValueKey('loss-debt-exceeds'),
+      color: AppColors.dangerSoft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: AppColorsNext.dangerText,
+                  shape: BoxShape.circle,
+                ),
+                child: AppText(
+                  '!',
+                  textScaler: TextScaler.noScaling,
+                  style: AppTypographyNext.bodyStrong.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
                   ),
                 ),
-        const SizedBox(height: AppSpacing.xxl),
-
-        // ── 다음 행동 CTA — 불안만 남기고 끝나지 않게 (지수 리뷰 반영) ──
-        AppPrimaryButton(
-          // 2026-08-14 D5: 리포트에서 '지금 해야 할 일' 박스를 뺐다. 돌아가도 그런
-          // 제목이 없으므로, 실제로 보이는 것(근거 카드)을 가리키게 라벨을 바꾼다.
-          label: '리포트로 돌아가 근거 다시 보기',
-          onPressed: () => context.pop(),
-        ),
-        const SizedBox(height: AppSpacing.xxxl),
-      ],
-    );
-  }
-
-  /// "예시" 상시 배너 — 출처 확보 전 수치임을 명시 (출처 없는 수치 금지 원칙)
-  Widget _exampleBanner() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface, // 배경과 구분되게 카드화 (design-reviewer 반영)
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.line),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.info_outline,
-            size: AppSize.iconSm,
-            color: AppColors.textMuted,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: AppText(
+                  '돌려받기 어려워요',
+                  style: AppTypographyNext.title.copyWith(
+                    color: AppColorsNext.dangerText,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: AppText(
-              '아래 수치는 예시예요. 실제 계산 기준(낙찰가율 통계·계산식)은 '
-              '공식 출처 확보 후 반영돼요.',
-              style: AppTypography.caption,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _noMarketPriceNotice(AnalysisReport report) {
-    // [시세 입력하기] = 시세를 넣고 같은 사진·같은 보증금으로 새로 분석(2026-10-23 — 예전엔 "곧 제공" 안내뿐).
-    // 사진이 이 폰에 없으면 버튼을 그리지 않는다 — 누를 수 없는 버튼을 두지 않는다.
-    final bool canReanalyze = canReanalyzeWithMarketPrice(report);
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.cautionSoft,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AppText(
-            canReanalyze
-                ? '시세가 입력되지 않아 보증금을 기준으로 계산한 예시예요. '
-                    '시세를 입력하면 더 정확해져요.'
-                : '시세가 입력되지 않아 보증금을 기준으로 계산한 예시예요. '
-                    '시세를 넣어 새로 분석하면 더 정확해져요.',
-            // 연앰버 바탕 위 앰버 글자는 대비가 모자라다(D8) — 글자는 본문색
-            style: AppTypography.body.copyWith(color: AppColors.textBody),
-          ),
-          if (canReanalyze) ...[
-            const SizedBox(height: AppSpacing.md),
-            // F3/F8: 라인 대신 톤(연초록 filled) 버튼 — 대표 적용례
-            AppTonalButton(
-              label: '시세 입력하기',
-              onPressed: () => reanalyzeWithMarketPrice(context, report),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _lossCard(int loss, int recovered) {
-    final bool safe = loss == 0;
-    final Color color = safe ? AppColors.ok : AppColors.danger;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.xxl),
-      decoration: BoxDecoration(
-        color: safe ? AppColors.okSoft : AppColors.dangerSoft,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Column(
-        children: [
-          AppText(
-            '예상 손실액 (예시)',
-            style: AppTypography.label.copyWith(color: color),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          // G7: 결정적 결과 수치 볼드 강조
-          AppText(
-            formatWon(loss),
-            style: AppTypography.conclusion.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          // C2: 손실액 옆에 예상 반환금도 함께 강조 — 하단 계산식만 보지 않게
-          const SizedBox(height: AppSpacing.md),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.sm,
-            ),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
+          const SizedBox(height: 16),
+          IntrinsicHeight(
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                AppText('예상 반환금', style: AppTypography.caption),
-                const SizedBox(width: AppSpacing.sm),
-                AppText(
-                  formatWon(recovered),
-                  style: AppTypography.bodyStrong.copyWith(
-                    fontWeight: FontWeight.w700,
+                Expanded(
+                  child: _Tile(label: '집값', value: formatWon(e.basePrice ?? 0)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Tile(
+                    label: '먼저 갚을 빚',
+                    value: formatWon(e.seniorDebt),
+                    danger: true,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 14),
+          AppText(
+            '빚이 집값보다 커서, 경매로 팔려도 내 차례가 오기 어려워요',
+            style: AppTypographyNext.caption.copyWith(
+              color: AppColorsNext.textBody,
+            ),
+          ),
         ],
       ),
-    );
-  }
+    ),
+    const SizedBox(height: 16),
+    AppText(
+      '최우선변제(보증금 일부를 먼저 받는 제도)는 아직 계산에 넣지 않았어요',
+      style: AppTypographyNext.caption,
+    ),
+  ];
+}
 
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+String _pct(double? v) {
+  if (v == null) return '-';
+  return v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+}
+
+String _count(int n) {
+  final s = n.toString();
+  final b = StringBuffer();
+  for (int i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+    b.write(s[i]);
+  }
+  return b.toString();
+}
+
+// ── 부품 ───────────────────────────────────────────────────────────────────
+
+class _Card extends StatelessWidget {
+  const _Card({
+    super.key,
+    required this.child,
+    this.color = AppColors.surface,
+    this.padding = const EdgeInsets.all(20),
+  });
+
+  final Widget child;
+  final Color color;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: padding,
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: child,
+  );
+}
+
+/// 보증금 막대 — 돌려받음(초록) · 못 받음(빨강). 글 대신 모양으로 비율을 보여 준다.
+class _DepositBar extends StatelessWidget {
+  const _DepositBar({required this.back, required this.loss});
+
+  final int back;
+  final int loss;
+
+  @override
+  Widget build(BuildContext context) {
+    final int total = back + loss;
+    final int backFlex = total == 0 ? 0 : (back * 1000 / total).round();
+    final int lossFlex = total == 0 ? 1 : 1000 - backFlex;
+    return ClipRRect(
+      key: const ValueKey('loss-bar'),
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        height: 16,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (backFlex > 0)
+              Expanded(
+                flex: backFlex,
+                child: const ColoredBox(color: AppColors.ok),
+              ),
+            if (backFlex > 0 && lossFlex > 0) const SizedBox(width: 2),
+            if (lossFlex > 0)
+              Expanded(
+                flex: lossFlex,
+                child: const ColoredBox(color: AppColorsNext.dangerText),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Legend extends StatelessWidget {
+  const _Legend({
+    super.key,
+    required this.color,
+    required this.label,
+    required this.value,
+  });
+
+  final Color color;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: 6),
+      AppText('$label ', style: AppTypographyNext.caption),
+      AppText(
+        value,
+        style: AppTypographyNext.caption.copyWith(
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    ],
+  );
+}
+
+/// 계산 한 줄 — 왼쪽 이름(+ 작은 꼬리표), 오른쪽 금액
+class _Step extends StatelessWidget {
+  const _Step({
+    required this.label,
+    required this.value,
+    this.tag,
+    this.danger = false,
+    this.strong = false,
+    this.last = false,
+  });
+
+  final String label;
+  final String value;
+  final String? tag;
+  final bool danger;
+  final bool strong;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextStyle valueStyle = AppTypographyNext.bodyStrong.copyWith(
+      color: danger
+          ? AppColorsNext.dangerText
+          : strong
+          ? AppColors.primary
+          : AppColorsNext.textStrong,
+      fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Container(
+      constraints: const BoxConstraints(minHeight: 52),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: last
+          ? null
+          : const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColorsNext.divider)),
+            ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(child: AppText(label, style: AppTypography.body)),
-          AppText(value, style: AppTypography.bodyStrong),
+          AppText(
+            label,
+            style: strong
+                ? AppTypographyNext.bodyStrong.copyWith(
+                    color: AppColorsNext.textStrong,
+                  )
+                : AppTypographyNext.body.copyWith(
+                    color: AppColorsNext.textBody,
+                  ),
+          ),
+          if (tag != null) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.primarySoft,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: AppText(
+                tag!,
+                style: AppTypographyNext.caption.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: AppText(value, textAlign: TextAlign.right, style: valueStyle),
+          ),
         ],
       ),
     );
   }
+}
+
+class _Tile extends StatelessWidget {
+  const _Tile({required this.label, required this.value, this.danger = false});
+
+  final String label;
+  final String value;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppText(label, style: AppTypographyNext.caption),
+        const SizedBox(height: 2),
+        AppText(
+          value,
+          style: AppTypographyNext.title.copyWith(
+            color: danger ? AppColorsNext.dangerText : AppColorsNext.textStrong,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// 근거 — 어디 값을 썼는지(지역·용도·기간·건수·출처) + 빠진 것 한 줄. 흐린 글씨, 맨 아래.
+class _Basis extends StatelessWidget {
+  const _Basis(this.e);
+
+  final LossEstimate e;
+
+  @override
+  Widget build(BuildContext context) {
+    final where = [
+      if (e.region != null) e.region!,
+      if (e.use != null) e.use!,
+    ].join(' · ');
+    final lines = <String>[
+      [
+        '$where 매각가율',
+        if (e.period != null && e.period!.isNotEmpty) e.period!,
+        if (e.soldCount != null) '${_count(e.soldCount!)}건',
+      ].join(' · '),
+      if (e.source != null && e.source!.isNotEmpty) '출처 ${e.source}',
+      if (e.regionFallback) '이 지역 자료가 적어 전국 값을 썼어요',
+      if (e.useGuessed) '집 종류를 확실히 몰라 가장 낮은 값을 썼어요',
+      kLossNotIncludedLine,
+    ];
+    return Column(
+      key: const ValueKey('loss-basis'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final l in lines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: AppText(l, style: AppTypographyNext.caption),
+          ),
+      ],
+    );
+  }
+}
+
+class _Message extends StatelessWidget {
+  const _Message({
+    required this.icon,
+    required this.title,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 40),
+    child: _Card(
+      child: Column(
+        children: [
+          Icon(icon, size: 40, color: AppColorsNext.textMuted),
+          const SizedBox(height: 12),
+          AppText(
+            title,
+            key: const ValueKey('loss-message'),
+            textAlign: TextAlign.center,
+            style: AppTypographyNext.bodyStrong.copyWith(
+              color: AppColorsNext.textStrong,
+            ),
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: FilledButton(
+                onPressed: onAction,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: AppText(
+                  actionLabel!,
+                  style: AppTypographyNext.button.copyWith(color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
 }

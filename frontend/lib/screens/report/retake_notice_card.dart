@@ -53,6 +53,8 @@ String retakeReason(List<String> issues) {
     ('blurry', '흐림'),
     ('low_contrast', '흐릿함'),
     ('low_resolution', '너무 작음'),
+    // 빚 금액(채권최고액) 칸을 끝내 못 읽은 장 (2026-10-29) — 그 쪽을 다시 찍으면 금액이 채워진다
+    ('amount_unread', '금액 못 읽음'),
     // OCR이 맨 아래 쪽 번호(N/M)를 못 찾은 장 — 아래가 잘렸을 때 생긴다
     ('cut_off', '아래가 잘림'),
   ];

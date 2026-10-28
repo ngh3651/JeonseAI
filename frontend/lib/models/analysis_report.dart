@@ -263,7 +263,7 @@ class CapturePageIssue {
   /// 업로드한 사진 순서 (0부터) — 화면에는 index+1쪽
   final int index;
 
-  /// `blurry`·`too_dark`·`too_bright`·`low_contrast`·`no_text`·`low_resolution`·`cut_off`
+  /// `blurry`·`too_dark`·`too_bright`·`low_contrast`·`no_text`·`low_resolution`·`amount_unread`·`cut_off`
   final List<String> issues;
 
   /// true = 서버가 분석하지 않고 거절한 장 (다시 찍어야 분석된다)
@@ -281,6 +281,7 @@ class CapturePageIssue {
       ('blurry', '흐림'),
       ('low_contrast', '흐릿함'),
       ('low_resolution', '너무 작음'),
+      ('amount_unread', '금액 못 읽음'),
       ('cut_off', '잘림'),
     ];
     for (final (key, label) in order) {

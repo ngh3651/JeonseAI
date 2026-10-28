@@ -90,7 +90,7 @@ class CapturePageIssue(BaseModel):
     """문제가 있는 사진 한 장. 문제가 없는 장은 목록에 넣지 않는다."""
 
     index: int  # 업로드한 사진 순서 (0부터) — 화면에는 index+1쪽으로
-    # blurry · too_dark · too_bright · low_contrast · no_text · low_resolution · cut_off
+    # blurry · too_dark · too_bright · low_contrast · no_text · low_resolution · amount_unread(빚 금액 못 읽음) · cut_off
     issues: list[str] = Field(default_factory=list)
     severe: bool = False  # true = 분석하지 않고 거절한 장(크레딧 0원)
     tip: str = ""  # 왜 문제인지 + 어떻게 다시 찍는지 (쉬운 말 두 문장)

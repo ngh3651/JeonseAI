@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from ..schemas.contract import CaptureCheck, Evidence, Highlight, MarketPriceAlternative, Report
 from ..schemas.internal import Grade, PriceProvenance, RegistryExtract, RuleVerdict
 from . import (
+    amount_recovery,
     artifacts,
     cancellation,
     capture_check,
@@ -586,6 +587,15 @@ def analyze(
     if cancel_result.skipped_reason:
         _log.info(f"[판정] 말소 제외를 적용하지 않았습니다 — {cancel_result.skipped_reason}")
 
+    # ── 못 읽은 빚 금액 다시 읽기 (2026-10-29 QA) ────────────────────────────
+    # IE가 금액만 비운 살아 있는 빚을 **같은 사진의 같은 항목 줄(OCR)**에서 다시 읽는다. 말소 제외처럼
+    # 규칙은 그대로이고 규칙에 들어가는 사실(빈 금액)만 채운다. 그래도 못 읽으면 아래에서 그 쪽을 다시 찍게 한다.
+    try:
+        recovery = amount_recovery.recover_missing_amounts(extract, ocr_result.pages, check=doc_check)
+    except Exception:  # noqa: BLE001 — 금액 다시 읽기가 분석을 깨뜨리면 안 된다(빈 금액 그대로 '확인 필요')
+        _log.error("[금액] ⚠ 빈 금액 다시 읽기 실패 — IE 결과 그대로 판정합니다", exc_info=True)
+        recovery = amount_recovery.RecoveryResult()
+
     # 두 경로 대조 — **표시와 고지에만** 쓴다. 아래 `rule_engine`에는 `extract`(IE)만 간다.
     try:
         check = cross_check.compare(
@@ -661,6 +671,13 @@ def analyze(
             f"{[p.index + 1 for p in (capture_after.pages if capture_after else [])] or '없음'} → '양호' 금지"
         )
 
+    # 그래도 못 읽은 빚 → 그 쪽을 '다시 찍기' 대상으로(2순위). 게이트 계산 **뒤에** 더한다 — 금액 하나 못 읽은 것으로
+    # 다른 카드(소유권 등)까지 '확인 필요'로 올리지 않는다. 빚 카드는 금액 미상으로 이미 '확인 필요'다.
+    if recovery.still_unknown and recovery.unread_pages:
+        capture_after = capture_check.add_unread_amount_pages(
+            capture_after, recovery.unread_pages, len(images)
+        )
+
     _raise_if_cancelled(cancelled, "설명 생성(Solar)")
     report, explain = _build(
         extract,
@@ -684,6 +701,8 @@ def analyze(
         report.pageRotations = ocr_result.rotations(len(images))
     if rotation_note:
         report.checkedNotes = [*report.checkedNotes, rotation_note]
+    if recovery.notes:
+        report.checkedNotes = [*report.checkedNotes, *recovery.notes]
     # 같은 집 묶기의 첫 기준 (2026-10-27) — 표시·판정에 쓰지 않는다. 주소는 읽을 때마다 글자가 조금씩 달라진다.
     report.propertyId = store.property_id(extract.unique_number)
     # 용도 후보 (2026-10-28) — 손실 예상이 어느 매각가율을 쓸지 고르는 데만 쓴다. 판정과 무관하다.

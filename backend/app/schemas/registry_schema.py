@@ -226,7 +226,7 @@ REGISTRY_JSON_SCHEMA: dict[str, Any] = {
                 },
                 "max_claim_amount": {
                     "type": "number",
-                    "description": "채권최고액(원 단위 숫자). 예: 360,000,000 → 360000000",
+                    "description": "채권최고액(원 단위 숫자). 예: 360,000,000 → 360000000. 한글로 적혀 있으면 숫자로 바꾸세요: 금일억이천만원정 → 120000000",
                 },
                 "debtor": {"type": "string", "description": "채무자"},
                 "mortgagee": {

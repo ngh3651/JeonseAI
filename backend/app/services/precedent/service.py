@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ...schemas.contract import Report
 from ...schemas.internal import Grade, RuleVerdict
-from .. import terms, thresholds as T
+from .. import patterns as _patterns, terms, thresholds as T
 from ..formatting import format_won
 from . import emphasis as emphasis_picker, explainer
 from .models import OUTCOME_TEXT, OUTCOME_UNKNOWN, PrecedentSection, RetrievedPrecedent
@@ -64,76 +64,10 @@ FALLBACK_NO_RISK = (
 )
 
 
-def tags_from_verdict(verdict: RuleVerdict) -> list[str]:
-    """판정 → 위험 태그 파생 (결정적 — patterns.derive_from_report의 세분화판).
-
-    보수적 선택 메모:
-    - 전세가율: **실측 비율이 주의 기준(thresholds.JEONSE_RATIO_CAUTION_PCT)을 넘은 경우만**
-      태그. 시세 미입력이나 문서 불완전(floor_caution)으로 '확인 필요'가 된 카드에
-      깡통전세 판례를 붙이면 과잉 매칭이다. 임계값은 판정과 동일한 단일 출처
-      (thresholds.py)를 읽기만 한다 — 판정을 바꾸는 게 아니라 설명 노출 여부만 결정.
-    - 보증보험: 구조적 '확인 필요'(모든 리포트 공통)는 제외, 결격 신호(위험)일 때만 태그.
-    """
-    tags: list[str] = []
-    for ev in verdict.evidences:
-        if ev.id == "jeonse_ratio" and ev.grade != Grade.GOOD:
-            pct = ev.facts.get("jeonse_ratio_pct")
-            if pct is not None and pct > T.JEONSE_RATIO_CAUTION_PCT:
-                tags.append("전세가율")
-        elif ev.id == "senior_debt" and ev.grade != Grade.GOOD:
-            # 실제 유효 채권이 1건이라도 있을 때만 (문서 불완전 floor로 '확인 필요'가 된
-            # 채권 0건 카드에 경매·배당 판례를 붙이지 않는다)
-            debt_count = (
-                ev.facts.get("mortgage_count", 0)
-                + ev.facts.get("jeonse_right_count", 0)
-                + ev.facts.get("unknown_amount_count", 0)
-            )
-            if debt_count > 0:
-                tags.append("선순위 채권")
-            if ev.facts.get("lease_registration_count", 0) > 0:
-                tags.append("임차권등기")
-        elif ev.id == "ownership" and ev.grade != Grade.GOOD:
-            signals = ev.facts.get("signals", {})
-            if signals.get("신탁등기", 0) > 0:
-                tags.append("신탁등기")
-            if any(signals.get(k, 0) > 0 for k in ("압류", "가압류", "가처분")):
-                tags.append("압류·가압류")
-            if signals.get("경매개시결정", 0) > 0:
-                tags.append("경매")
-        elif ev.id == "insurance" and ev.grade == Grade.DANGER:
-            tags.append("보증보험")
-    return list(dict.fromkeys(tags))  # 순서 보존 dedup
-
-
-def tags_from_report(report: Report) -> list[str]:
-    """저장된 Report만 있을 때의 태그 파생 (facts 없음 — detailText 키워드로 세분화).
-
-    한계: detailText 문구 의존이라 verdict 경로보다 거칠다. E-3에서 리포트에
-    위험 태그를 저장하는 additive 확장을 권장 (docs/precedent-rag.md §확장 지점).
-    """
-    tags: list[str] = []
-    for ev in report.evidences:
-        if ev.grade == "양호":
-            continue
-        detail = ev.detailText or ""
-        if ev.id == "jeonse_ratio":
-            # 실측 비율이 표시된 경우만 (시세 미입력 카드에는 % 계산값이 없다)
-            if "%" in detail:
-                tags.append("전세가율")
-        elif ev.id == "senior_debt":
-            tags.append("선순위 채권")
-            if "임차권등기" in detail:
-                tags.append("임차권등기")
-        elif ev.id == "ownership":
-            if "신탁" in detail:
-                tags.append("신탁등기")
-            if any(k in detail for k in ("압류", "가압류", "가처분")):
-                tags.append("압류·가압류")
-            if "경매" in detail:
-                tags.append("경매")
-        elif ev.id == "insurance" and ev.grade == "위험":
-            tags.append("보증보험")
-    return list(dict.fromkeys(tags))
+# 태그 파생은 `patterns.py`로 옮겼다(2026-10-29) — 리포트 조립이 판례 검색 모듈을 불러오지 않고도
+# 태그를 리포트에 저장하게. 이 이름은 기존 호출부·테스트를 위해 그대로 남긴다.
+tags_from_verdict = _patterns.tags_from_verdict
+tags_from_report = _patterns.tags_from_report
 
 
 def _korean_date(raw: str) -> str:

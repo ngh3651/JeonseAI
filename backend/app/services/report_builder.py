@@ -45,6 +45,7 @@ from . import (
     terms,
 )
 from .formatting import format_won, short_address
+from .patterns import tags_from_verdict as issue_tags_from_verdict
 
 KST = timezone(timedelta(hours=9))
 _log = logging.getLogger("jeonseai")
@@ -240,6 +241,7 @@ def _build(
         checkedNotes=checked_notes or [],  # [표시 전용] 무엇을 찾아봤는지 요약
         registryViewedAt=registry_viewed_at,  # [표시 전용] 등기부 열람일시 (없으면 None)
         riskFacts=registry_facts.build(extract),  # [판례 설명 재료] 판정·화면에 쓰지 않음, 이름 없음
+        riskTags=issue_tags_from_verdict(verdict),  # [판례·질문 재료] 이 집에 실제로 걸린 문제 — 판정에 쓰지 않음
     )
     return report, explanation_result
 
@@ -372,6 +374,25 @@ def _layout_text_for(
         f" — 좌표는 여전히 Document OCR에서 옵니다"
     )
     return text
+
+
+def _incomplete_reason(
+    missing_pages: list[int], misread_indexes: list[int], page_numbers: list, unnumbered: bool
+) -> str:
+    """사진 묶음이 불완전한 이유 한 줄 — 앱의 '다시 올리기' 카드와 같은 말로(쪽 번호 = 꼬리말 번호, 없으면 올린 순서)."""
+    def page_of(i: int) -> int:
+        n = page_numbers[i] if 0 <= i < len(page_numbers) else None
+        return n if isinstance(n, int) else i + 1
+
+    parts: list[str] = []
+    if missing_pages:
+        parts.append(f"{'·'.join(str(n) for n in sorted(missing_pages))}쪽이 빠졌어요")
+    misread = sorted({page_of(i) for i in misread_indexes})
+    if misread:
+        parts.append(f"{'·'.join(str(n) for n in misread)}쪽이 잘 안 읽혔어요")
+    if not parts and unnumbered:
+        parts.append("쪽 번호가 안 보이는 사진이 있어 빠진 쪽이 없는지 확인하지 못했어요")
+    return " · ".join(parts) or "등기부 쪽이 빠졌거나 잘 안 읽혔을 수 있어요"
 
 
 def analyze(
@@ -584,6 +605,12 @@ def analyze(
         bool(missing_pages) or unnumbered or bool(capture_after and capture_after.pages)
     )
     if extract.pages_incomplete:
+        extract.pages_incomplete_reason = _incomplete_reason(
+            missing_pages,
+            [p.index for p in (capture_after.pages if capture_after else [])],
+            list(doc_check.page_numbers) if doc_check is not None else [],
+            unnumbered,
+        )
         _log.info(
             f"[판정] 사진 묶음 불완전 — 빠진 쪽 {missing_pages or '없음'} · 잘 안 읽힌 장 "
             f"{[p.index + 1 for p in (capture_after.pages if capture_after else [])] or '없음'} → '양호' 금지"

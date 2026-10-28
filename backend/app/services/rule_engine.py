@@ -93,12 +93,17 @@ def evaluate(
     # 문서 신뢰도 게이트: 불완전하면 어떤 항목도 '양호'가 될 수 없다 (단일 강제 지점)
     doc_flags = _doc_flags(extract)
     if extract.doc_incomplete:
+        reason = incomplete_reason(extract)
         for ev in evidences:
             if ev.grade is Grade.GOOD:
                 ev.grade = floor_caution(ev.grade)
                 ev.status_label = ev.status_label or "확인 필요"
-                note = "등기부 쪽이 빠졌거나 읽지 못했을 수 있어요 — 원본으로 다시 확인해 주세요"
+                note = f"{reason} — 그래서 결과를 확정하지 않았어요"
                 ev.detail_text = f"{ev.detail_text} · {note}" if ev.detail_text else note
+                # 이 카드가 '확인 필요'인 **진짜 이유**(2026-10-29 QA). 이 집 수치 때문이 아니라 사진 때문이다 —
+                # 설명(AI·준비된 문구)·홈 요약 줄·판례 태그가 이 표시를 보고 "수치가 높다"고 말하지 않는다.
+                # 등급 계산은 위 두 줄에서 이미 끝났다 — 이 값은 등급을 움직이지 않는다.
+                ev.facts["capped_reason"] = reason
 
     # 종합 등급: worst-of. 단 insurance의 '확인 필요'는 계산에서 제외(위험이면 반영).
     # 화면에는 insurance를 항상 표시한다 — 계산 제외일 뿐 숨기지 않는다. (decisions.md 2026-07-06)
@@ -494,6 +499,19 @@ def _judge_blacklist(extract: RegistryExtract, entries: list[dict]) -> EvidenceV
 
 
 # ── 종합 파생 ────────────────────────────────────────────────────────────────
+
+
+def incomplete_reason(extract: RegistryExtract) -> str:
+    """문서가 불완전한 이유 한 줄 — 사진 점검이 준 이유가 먼저, 없으면 추출이 비운 칸으로."""
+    if extract.pages_incomplete_reason:
+        return extract.pages_incomplete_reason
+    if extract.address is None:
+        return "등기부에서 주소를 읽지 못했어요"
+    if not extract.current_owners:
+        return "등기부에서 집주인 이름을 읽지 못했어요"
+    if extract.missing_fields:
+        return "등기부 일부 항목을 읽지 못했어요"
+    return "등기부 쪽이 빠졌거나 잘 안 읽혔을 수 있어요"
 
 
 def _doc_flags(extract: RegistryExtract) -> list[str]:

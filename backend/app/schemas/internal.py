@@ -165,6 +165,9 @@ class RegistryExtract(BaseModel):
     # **잘 안 읽혔을 수 있는 장**(흐림·잘림·빛 번짐 …)이 있다. IE가 돌려준 값이 아니라 분석 조립(report_builder)이
     # 사진 점검 결과로 켠다. 켜지면 아래 [doc_incomplete] 게이트가 '양호'를 막는다(보수적 편향 §2-3).
     pages_incomplete: bool = False
+    # 왜 불완전한가 한 줄 (2026-10-29 QA) — "1·5쪽이 빠졌어요" · "2쪽이 잘 안 읽혔어요".
+    # 게이트가 '확인 필요'로 올린 카드가 **그 이유**를 말하게 하는 설명 재료다. 판정에 쓰지 않는다.
+    pages_incomplete_reason: Optional[str] = None
 
     LIST_KEYS: ClassVar[tuple[str, ...]] = _LIST_KEYS
 

@@ -13,7 +13,8 @@ import 'market_price_source.dart';
 import 'registry_mark_kind.dart';
 import 'risk_grade.dart';
 
-export 'market_price_source.dart' show MarketPriceAlternative, MarketPriceSource;
+export 'market_price_source.dart'
+    show MarketPriceAlternative, MarketPriceSource;
 
 /// 분석 요청 — S-04 매물 검색이 수집한 입력값 (더미↔실제 공통 계약 원형).
 ///
@@ -244,10 +245,8 @@ class PrivacyMask {
   bool get coversWholePage =>
       box.x <= 0 && box.y <= 0 && box.w >= 1 && box.h >= 1;
 
-  factory PrivacyMask.fromJson(Map<String, dynamic> json) => PrivacyMask(
-    page: json['page'] as int,
-    box: HighlightBox.fromJson(json),
-  );
+  factory PrivacyMask.fromJson(Map<String, dynamic> json) =>
+      PrivacyMask(page: json['page'] as int, box: HighlightBox.fromJson(json));
 }
 
 /// 촬영 검사에서 문제가 있었던 사진 한 장 (api-contract.md §9.9 — 2026-10-22, P1-1).
@@ -510,12 +509,16 @@ class AnalysisReport {
   /// 다시 거쳐 만든다 — 열려 있는 화면이 스위치 리스너에서 부른다(화면마다 따로 가리지 않는다).
   AnalysisReport withCurrentPrivacy() {
     final source = sourceJson;
-    if (source == null || PrivacySettings.instance.hideNamesInPhotos == namesHidden) return this;
+    if (source == null ||
+        PrivacySettings.instance.hideNamesInPhotos == namesHidden)
+      return this;
     return _otherVariant[this] ??= AnalysisReport.fromJson(source);
   }
 
   /// 반대쪽 스위치 값으로 만든 모델을 한 번만 만들어 둔다(다시 그릴 때마다 JSON을 새로 읽지 않게).
-  static final Expando<AnalysisReport> _otherVariant = Expando('namesHiddenVariant');
+  static final Expando<AnalysisReport> _otherVariant = Expando(
+    'namesHiddenVariant',
+  );
 
   /// 이 쪽에서 가릴 상자들 (쪽 전체 상자는 빼고 — 그건 [namesUnlocatedOn]이 따로 말한다).
   List<HighlightBox> privacyBoxesOn(int page) => [
@@ -643,31 +646,52 @@ class AnalysisReport {
     namesHidden: namesHidden,
   );
 
-  /// 위험/확인 필요 등급인 근거의 패턴 라벨 — 판례 매칭·질문 생성기 입력.
-  /// evidence id를 사람이 읽는 위험 패턴 이름으로 매핑한다.
+  /// 이 집에 **실제로 걸린 문제** 태그 — 판례 화면 '이 매물에서 눈에 띈 위험'(2026-10-29 QA).
+  ///
+  /// 서버가 규칙 엔진 건수로 만든 `riskTags`를 그대로 쓴다. 예전에는 카드 문장 속 글자로 골라서,
+  /// 빠진 쪽 때문에 '확인 필요'가 된 소유권 카드의 "신탁·압류·경매는 **없었어요**"를 보고 그 셋을 위험으로 그렸고,
+  /// 모든 리포트의 보증보험(구조적 '확인 필요')을 빨간 경고로 그렸다.
+  /// `riskTags`가 없는 옛 기록은 카드 상세의 **건수**('가압류 1건')로만 다시 고른다 — 서버 `patterns.tags_from_report`와 같은 규칙.
   List<String> get riskLabels {
-    const idToLabel = {
-      'senior_debt': '선순위 채권',
-      'jeonse_ratio': '전세가율',
-      'insurance': '보증보험',
-    };
+    final tags = sourceJson?['riskTags'];
+    if (tags is List)
+      return [
+        for (final t in tags)
+          if (t is String) t,
+      ];
+    int count(String detail, String label) {
+      final m = RegExp(
+        '${RegExp.escape(label)}\\s*(\\d+)\\s*건',
+      ).firstMatch(detail);
+      return m == null ? 0 : int.parse(m.group(1)!);
+    }
+
     final labels = <String>[];
     for (final e in evidences) {
       if (e.grade == RiskGrade.ok) continue;
-      if (e.id == 'ownership') {
-        // 소유권 카드는 신탁·압류·경매가 한 칸에 모인다 — 상세 문장으로 실제로 무엇인지 가른다
-        // (2026-10-24: 가압류만 있는 집이 '소유권을 맡긴 집(신탁)'으로 보이던 것을 고침).
-        final d = e.detailText ?? '';
-        final found = <String>[
-          if (d.contains('신탁')) '신탁등기',
-          if (d.contains('압류') || d.contains('가처분')) '압류·가압류',
-          if (d.contains('경매')) '경매',
-        ];
-        labels.addAll(found.isEmpty ? const ['신탁등기'] : found);
-      } else if (idToLabel.containsKey(e.id)) {
-        labels.add(idToLabel[e.id]!);
+      final d = e.detailText ?? '';
+      switch (e.id) {
+        case 'jeonse_ratio':
+          // 비율 때문에 주의·위험이 된 카드만 상태 칸이 비어 있다(시세 없음·단독·다가구·사진 때문은 상태 칸이 있다)
+          if (e.statusLabel == null && d.contains('%')) labels.add('전세가율');
+        case 'senior_debt':
+          final m = RegExp(r'빚\s*[\d,억만천원\s]*·\s*(\d+)\s*건').firstMatch(d);
+          final mortgages = m == null ? 0 : int.parse(m.group(1)!);
+          if (mortgages > 0 ||
+              count(d, '전세권') > 0 ||
+              count(d, '금액을 못 읽은 것') > 0) {
+            labels.add('선순위 채권');
+          }
+          if (count(d, '임차권등기') > 0) labels.add('임차권등기');
+        case 'ownership':
+          if (count(d, '신탁등기') > 0) labels.add('신탁등기');
+          if (['압류', '가압류', '가처분'].any((k) => count(d, k) > 0))
+            labels.add('압류·가압류');
+          if (count(d, '경매개시결정') > 0) labels.add('경매');
+        case 'insurance':
+          if (e.grade == RiskGrade.danger) labels.add('보증보험');
       }
     }
-    return labels;
+    return labels.toSet().toList();
   }
 }

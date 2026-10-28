@@ -80,8 +80,12 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
 
     market_missing = verdict.market_price is None
     cautions = []
+    capped = False
     for e in verdict.evidences:
         if e.grade is not Grade.CAUTION:
+            continue
+        if e.facts.get("capped_reason"):  # 이 집 수치가 아니라 사진 때문에 확정 못 한 카드 — '높음'이 아니다
+            capped = True
             continue
         if e.id == "insurance":  # 등기부만으론 확인 불가(구조적) — 매물 고유 위험 아님
             continue
@@ -93,11 +97,21 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
     if cautions:
         summary = " · ".join(_risk_label(e, verdict) for e in cautions[:2])
         return f"{summary} · 시세 입력 필요" if market_missing else summary
+    if capped:
+        # 남은 '확인 필요'가 전부 사진 때문 — 다시 찍으면 확정된다는 사실을 앞세운다(수치는 중립으로)
+        if market_missing:
+            return "사진 다시 확인 필요 · 시세를 못 구했어요"
+        return f"사진 다시 확인 필요 · {_neutral_numbers(verdict)}"
     if market_missing:
         # E3(2026-07-09): 다른 카드 요약과 톤 통일 — 상태 토큰(시세 미입력)을 앞세운다.
         # 2026-08-03: 자동 조회 실패도 이 자리에 온다 — 사용자가 안 넣은 것처럼 말하지 않는다.
         return "시세를 못 구했어요 · 직접 넣으면 결과가 더 정확해져요"
     # 전부 양호 + 시세 있음 — 매물 고유 수치로 홈에서 줄 세워 비교 가능하게
+    return _neutral_numbers(verdict)
+
+
+def _neutral_numbers(verdict: RuleVerdict) -> str:
+    """'전세가율 N% · 먼저 갚을 빚 N건' — 높다·낮다 없이 수치만 (시세가 있을 때만 부른다)."""
     senior = next((e for e in verdict.evidences if e.id == "senior_debt"), None)
     debt_count = 0
     if senior is not None:
@@ -129,9 +143,44 @@ def price_call(verdict: RuleVerdict) -> str:
     return "시세"
 
 
+#: 게이트가 올린 카드의 마무리 — 무엇을 하면 확정되는지 (2026-10-29 QA)
+_CAPPED_TAIL = "빠진 쪽을 더 올리거나 그 장을 다시 찍으면 결과가 확정돼요."
+
+#: 소유권 신호 이름 → 쉬운 말 (2026-10-29 QA — 경매만 있는 집을 '압류가 걸려 있어요'라고 하던 것을 고침)
+_SIGNAL_PLAIN = {
+    "신탁등기": "신탁등기(집 소유권을 신탁회사에 맡긴 표시)",
+    "압류": "압류(빚 때문에 나라·기관이 집을 묶어 둔 표시)",
+    "가압류": "가압류(빚을 받으려는 사람이 집을 미리 묶어 둔 표시)",
+    "가처분": "가처분(집을 팔거나 넘기지 못하게 법원이 막아 둔 표시)",
+    "경매개시결정": "경매개시결정(이 집이 이미 경매에 넘어가기 시작했다는 표시)",
+}
+
+
+def _capped_explanation(ev: EvidenceVerdict, verdict: RuleVerdict, reason: str) -> str:
+    """사진 때문에 '확인 필요'로 올린 카드 — 이 집 수치는 그대로 말하되 '높다'고 하지 않고, 이유를 말한다."""
+    f = ev.facts
+    head = ""
+    if ev.id == "jeonse_ratio" and f.get("jeonse_ratio_pct") is not None:
+        head = f"보증금은 {price_call(verdict)}의 {f['jeonse_ratio_pct']}%예요. "
+    elif ev.id == "senior_debt":
+        total = f.get("senior_debt_total") or 0
+        head = (
+            f"지금 보이는 쪽에서 찾은 빚은 {format_won(total)}이에요. "
+            if total
+            else "지금 보이는 쪽에서는 먼저 갚아야 할 빚을 찾지 못했어요. "
+        )
+    elif ev.id == "ownership":
+        head = "지금 보이는 쪽에서는 신탁·압류·가압류·경매 같은 표시를 찾지 못했어요. "
+    elif ev.id == "blacklist":
+        head = "공개 명단에서 같은 이름은 찾지 못했어요. "
+    return f"{head}다만 {reason} — 그 쪽에 다른 내용이 있을 수 있어 결과를 확정하지 않았어요. {_CAPPED_TAIL}"
+
+
 def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
     """근거 카드 펼침 1단의 쉬운 설명 — 판정 결과별 결정적 템플릿."""
     f = ev.facts
+    if f.get("capped_reason"):
+        return _capped_explanation(ev, verdict, f["capped_reason"])
     if ev.id == "jeonse_ratio":
         if f.get("jeonse_ratio_pct") is None:
             return (
@@ -198,10 +247,13 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
                     "신탁등기가 설정되어 있어요. 집주인 마음대로 전세 계약을 "
                     "맺지 못할 수 있어서, 신탁회사의 동의가 있었는지 꼭 확인해야 해요."
                 )
-            return (
-                "이 집엔 압류·가압류(집을 팔거나 세놓지 못하게 묶인 표시)가 걸려 있어요. "
-                "집주인이 재산 분쟁 중일 수 있고, 경매로 넘어갈 위험 신호라 계약 전 전문가 확인이 필요해요."
-            )
+            found = [k for k in ("경매개시결정", "압류", "가압류", "가처분") if signals.get(k)]
+            listed = " · ".join(_SIGNAL_PLAIN[k] for k in found) or "소유권을 묶는 표시"
+            if "경매개시결정" in found:
+                tail = "집이 경매로 팔리면 나보다 먼저 받을 사람이 먼저 돈을 가져가요. 계약 전에 꼭 전문가와 확인하세요."
+            else:
+                tail = "집주인이 빚 문제로 다투는 중일 수 있고, 경매로 이어질 수 있어 계약 전 전문가 확인이 필요해요."
+            return f"이 집엔 {listed}가 걸려 있어요. {tail}"
         if ev.grade is Grade.CAUTION:
             return "갑구(소유권) 정보를 온전히 확인하지 못했어요. 등기부등본 원본으로 다시 확인해 주세요."
         return (
@@ -210,8 +262,10 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
         )
     if ev.id == "insurance":
         if ev.grade is Grade.DANGER:
+            kinds = [str(x).split(" ")[0] for x in (f.get("disqualify_signals") or [])]
+            what = "·".join(dict.fromkeys(kinds)) or "등기부의 몇 가지 표시"
             return (
-                "경매·압류 등으로 보증보험 가입이 거절될 수 있는 신호가 있어요. "
+                f"{what} 때문에 보증보험 가입이 거절될 수 있어요. "
                 "가입이 안 되는 집은 보증금을 지킬 안전장치가 사라져요."
             )
         return (

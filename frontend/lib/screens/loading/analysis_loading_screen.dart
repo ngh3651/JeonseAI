@@ -1,17 +1,18 @@
 /// S-06 분석 로딩 — IA.md §6.
 ///
-/// 2026-10-23 다시 짬: **예상 시간 막대(%·남은 초)** + **"알고 계셨나요?" 꿀팁**(게임 로딩처럼 몇 초마다 바뀜).
-/// 막대·단계 문장은 서버 진행과 이어지지 않은 **예상 시간 기준**이다 — 그래서 끝나기 전엔 98%를 넘지 않고,
-/// 서버가 답을 줘야 100%가 된다. 예상보다 길면 남은 초 대신 "조금 더 걸리고 있어요"라고 말한다(가짜 완료 없음 — D1).
+/// 2026-10-28 다시 그림(시안 '분석로딩_시안.png' ①~④): 종이 더미 위로 스캔 줄이 훑고, 세이프가 돋보기로 들여다본다.
+/// 단계(읽기·갑구·을구·판례·마무리)·쪽수·%·남은 초는 서버 진행과 이어지지 않은 **예상 시간 기준**이다
+/// (서버는 결과를 한 번에 준다) — 그래서 끝나기 전엔 99%에서 멈추고, 서버가 답해야 100%가 된다(가짜 완료 없음 — D1).
+/// 모든 요소는 **고정 위치** — 꿀팁 글이 2줄이든 3줄이든 막대·세이프가 움직이지 않는다.
+/// 휴대폰 "동작 줄이기"가 켜져 있으면 움직임을 모두 멈추고 세이프는 한 장으로 고정한다.
 /// 완료되면 홈으로 리셋 후 리포트를 push (분석 직후 리포트 백=홈 — IA §7).
-/// 로딩 중 시스템 백은 취소 확인 다이얼로그. 실단계(E-1)에서는 여기서
-/// 업로드→Information Extract→규칙 엔진을 호출한다.
+/// 로딩 중 시스템 백은 취소 확인 다이얼로그. **분석 로직(저장소 호출·오류 분기)은 그대로다.**
 library;
 
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -25,21 +26,13 @@ import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
 import '../search/capture_issue_panel.dart' show CaptureRejection;
 import '../../design_system/text/app_text.dart';
+import 'loading_parts.dart';
 import 'loading_tips.dart';
 
-/// 분석·대조가 보통 걸리는 시간(초) — 실측(NOW.md 2절: 21~31초). 배포 서버에서 다시 재면 **이 숫자 하나만** 고친다
-/// (로딩 막대의 %·남은 초와 아래 문장이 함께 바뀐다).
-const int kAnalysisExpectedSeconds = 30;
+export 'loading_parts.dart' show kAnalysisExpectedSeconds;
 
 /// 분석·대조가 보통 걸리는 시간 — 화면에 쓰는 말.
 const String kAnalysisTypicalWait = '보통 $kAnalysisExpectedSeconds초쯤 걸려요';
-
-/// 예상 시간 기준 진행률(0~0.98). 예상 시간까지 90%, 그 뒤로는 98%에 천천히 다가간다 — 100%는 서버가 답했을 때만.
-double estimatedProgress(Duration elapsed) {
-  final t = elapsed.inMilliseconds / (kAnalysisExpectedSeconds * 1000);
-  if (t <= 1) return 0.9 * t;
-  return 0.9 + 0.08 * (1 - math.exp(-(t - 1) * 2));
-}
 
 /// 로딩 화면의 한 줄 — 흐린 점(지난 줄) 또는 작은 스피너(지금 줄). **체크(완료) 표시는 쓰지 않는다**(D1).
 class LoadingStepLine extends StatelessWidget {
@@ -101,21 +94,22 @@ class AnalysisLoadingScreen extends StatefulWidget {
   State<AnalysisLoadingScreen> createState() => _AnalysisLoadingScreenState();
 }
 
-class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
-  // 단계 문장 — **예상 시간 비율**에 맞춰 바뀐다(서버 진행과 연결 안 됨 → 진행형으로만). 지수 리뷰: 쉬운 말.
-  static const _stages = [
-    (until: 0.1, text: '사진을 보내고 있어요'),
-    (until: 0.5, text: 'AI가 등기부등본을 읽고 있어요'), // B3: 정식 명칭
-    (until: 0.8, text: '위험한 부분을 하나씩 확인하고 있어요'),
-    (until: double.infinity, text: '쉬운 말로 정리하고 있어요'),
-  ];
-
+class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
+    with SingleTickerProviderStateMixin {
   /// 꿀팁이 바뀌는 간격
-  static const _tipEvery = Duration(seconds: 6);
+  static const _tipEvery = Duration(seconds: 7);
 
   final Stopwatch _clock = Stopwatch();
-  bool _done = false; // 서버가 답했다 → 100%
-  int _tipStart = 0; // 매번 다른 꿀팁부터
+  int _ticks = 0; // 250ms 시계가 몇 번 울렸나
+
+  /// 분석을 시작하고 지난 시간 — 진짜 시계([_clock])와 250ms 시계 횟수 중 큰 값.
+  /// (위젯 테스트는 시간을 가짜로 빨리 돌리는데 Stopwatch는 따라가지 않는다 — 횟수로 재면 테스트에서도 맞다)
+  Duration get _elapsed {
+    final byTicks = Duration(milliseconds: _ticks * 250);
+    return _clock.elapsed > byTicks ? _clock.elapsed : byTicks;
+  }
+
+  bool _done = false; // 서버가 답했다 → 남은 단계 체크 + 100%
   Timer? _timer;
   bool _navigated = false;
   bool _failed = false; // 서버 연결·분석 실패 (user-scenario §4 S-06 네트워크 오류)
@@ -123,24 +117,58 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   int? _errorStatus; // 상태코드별 복구 동선 분기 (400계열=사진 다시 / 402·429=재시도 없음)
   bool _needsAppUpdate = false; // 기기 정보(400)·앱 인증(401) — 재시도·사진 교체로 안 풀린다
 
+  /// 움직임 시계(초) — 세이프·종이·스캔 줄·물결·막대 빛이 이 값 하나를 보고 그린다(화면 전체를 다시 그리지 않는다)
+  final ValueNotifier<double> _motion = ValueNotifier<double>(0);
+  late final Ticker _ticker = createTicker(
+    (d) => _motion.value = d.inMicroseconds / 1e6,
+  );
+  bool _reduceMotion = false;
+  bool _precached = false;
+
   @override
   void initState() {
     super.initState();
     _run();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 휴대폰 "동작 줄이기" — 켜져 있으면 움직임 시계를 세운다
+    _reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    _syncTicker();
+    if (!_precached) {
+      _precached = true;
+      // 세이프 4장을 미리 불러 둔다 — 그림을 바꿀 때 깜빡이지 않게
+      for (final f in kInspectFrames) {
+        precacheImage(AssetImage(f), context);
+      }
+    }
+  }
+
+  void _syncTicker() {
+    final shouldRun = !_reduceMotion && !_failed;
+    if (shouldRun && !_ticker.isActive) {
+      _ticker.start();
+    } else if (!shouldRun && _ticker.isActive) {
+      _ticker.stop();
+    }
+  }
+
   Future<void> _run() async {
     setState(() {
       _failed = false;
       _done = false;
-      _tipStart = math.Random().nextInt(kLoadingTips.length);
     });
+    _syncTicker();
     _clock
       ..reset()
       ..start();
     _timer?.cancel();
-    // 막대·남은 초·꿀팁을 다시 그리는 시계 (서버 진행과는 무관 — 예상 시간 기준)
+    _ticks = 0;
+    // 단계·쪽수·%·남은 초·꿀팁을 다시 그리는 시계 (서버 진행과는 무관 — 예상 시간 기준)
     _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      _ticks++;
       if (mounted) setState(() {});
     });
 
@@ -173,6 +201,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
         _errorStatus = e.statusCode;
         _needsAppUpdate = e.needsAppUpdate;
       });
+      _syncTicker();
       return;
     } catch (_) {
       // 그 외(네트워크 단절 등) — 더미로 폴백하지 않고 실패를 그대로 보여준다
@@ -184,15 +213,16 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
         _errorStatus = null;
         _needsAppUpdate = false;
       });
+      _syncTicker();
       return;
     }
 
     _timer?.cancel();
     _clock.stop();
     if (!mounted || _navigated) return;
-    // 서버가 답했다 → 막대를 100%로 채워 보여 주고 넘어간다(진짜 완료라서 괜찮다)
+    // 서버가 답했다 → 남은 단계를 체크하고 막대를 100%로 채워 보여 준 뒤 넘어간다(0.5초 안 — 진짜 완료라서 괜찮다)
     setState(() => _done = true);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await Future<void>.delayed(const Duration(milliseconds: 450));
     if (!mounted || _navigated) return;
     _navigated = true;
     // 분석 직후 리포트에서 뒤로가기 = 홈 (검색 폼·로딩으로 되돌아가지 않음 — IA §7).
@@ -205,6 +235,8 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
   void dispose() {
     _timer?.cancel();
     _clock.stop();
+    _ticker.dispose();
+    _motion.dispose();
     super.dispose();
   }
 
@@ -246,8 +278,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
         !needsAppUpdate && (status == 400 || status == 413 || status == 415);
     // 크레딧 소진·호출 한도는 재시도 버튼을 주지 않는다 (무한 재시도 루프 방지)
     final isQuotaProblem = status == 402 || status == 429;
-    final message =
-        _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
+    final message = _errorMessage ?? '연결이 불안정해요. 서버 연결을 확인하고 다시 시도해 주세요';
 
     return SafeArea(
       child: _Scrollable(
@@ -292,69 +323,109 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
     );
   }
 
-  /// 로딩 중 화면 — 세이프 · 단계 문장 · 예상 시간 막대(% · 남은 초) · 꿀팁 카드
+  /// 로딩 중 화면 — 그림(종이·스캔·세이프) · 단계 제목 · 단계 표시 · 진행 막대 · 리포트 꿀팁.
+  /// 시안 360×800 기준 **고정 위치**(위에서 96 · 420 · 464 · 552 · 628). 글자 배율이 커지면 글 줄 높이만 함께 커지고,
+  /// 화면보다 길면 스크롤된다.
   Widget _loadingBody() {
-    final elapsed = _clock.elapsed;
-    final progress = _done ? 1.0 : estimatedProgress(elapsed);
-    final fraction = elapsed.inMilliseconds / (kAnalysisExpectedSeconds * 1000);
-    final stage = _stages.firstWhere((s) => fraction < s.until).text;
-    final secondsLeft = (kAnalysisExpectedSeconds - elapsed.inMilliseconds / 1000).ceil();
-    final String timeText;
-    if (_done) {
-      timeText = '다 됐어요';
-    } else if (secondsLeft >= 1) {
-      timeText = '약 $secondsLeft초 남았어요';
-    } else {
-      timeText = '조금 더 걸리고 있어요'; // '거의 다 됐어요'는 사실이 아닐 수 있다(가짜 완료 없음)
-    }
+    final elapsed = _elapsed;
+    final stage = _done ? LoadingStage.finish : loadingStageAt(elapsed);
+    final progress = _done ? 1.0 : loadingProgress(elapsed);
+    final timeText = _done ? '다 됐어요' : loadingTimeText(elapsed);
+    final total = widget.request.imagePaths.isEmpty
+        ? 1
+        : widget.request.imagePaths.length;
+    final page = _done ? total : loadingPageAt(elapsed, total);
     final tipIndex =
-        (_tipStart + elapsed.inMilliseconds ~/ _tipEvery.inMilliseconds) % kLoadingTips.length;
+        (elapsed.inMilliseconds ~/ _tipEvery.inMilliseconds) %
+        kLoadingTips.length;
+    final scale = MediaQuery.textScalerOf(context).scale(100) / 100;
 
-    return _Scrollable(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Center(child: MascotSafe(size: 96, state: MascotState.loading)),
-          const SizedBox(height: AppSpacing.xl),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: AppText(
-              _done ? '리포트를 열고 있어요' : stage,
-              key: ValueKey(_done ? 'done' : stage),
-              style: AppTypography.title,
-              textAlign: TextAlign.center,
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 96),
+        Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: LoadingArt(
+              stage: stage,
+              page: page,
+              totalPages: total,
+              motion: _motion,
+              reduceMotion: _reduceMotion,
             ),
           ),
-          const SizedBox(height: AppSpacing.xl),
-          // 예상 시간 막대 — 퍼센트와 남은 초로 '언제 끝나는지' 가늠하게 한다
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: AppSpacing.sm,
-              backgroundColor: AppColors.line,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              Expanded(
+        ),
+        const SizedBox(height: 24),
+        // 단계 제목 — 한 줄 고정 (좁으면 글자만 살짝 줄인다)
+        SizedBox(
+          height: 28 * scale,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: FittedBox(
+                key: ValueKey(stage),
+                fit: BoxFit.scaleDown,
                 child: AppText(
-                  timeText,
-                  style: AppTypography.caption,
+                  stage.title,
+                  key: const ValueKey('loading-title'),
+                  maxLines: 1,
+                  softWrap: false,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.title.copyWith(
+                    fontSize: 19,
+                    height: 1.4,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textStrong,
+                  ),
                 ),
               ),
-              AppText(
-                '${(progress * 100).floor()}%',
-                style: AppTypography.bodyStrong.copyWith(color: AppColors.primary),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: AppSpacing.xxxl),
-          _TipCard(tip: kLoadingTips[tipIndex], index: tipIndex),
-        ],
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: LoadingSteps(
+            stage: stage,
+            motion: _motion,
+            reduceMotion: _reduceMotion,
+            labelHeight: 21 * scale,
+          ),
+        ),
+        const SizedBox(height: 31),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: LoadingBar(
+            progress: progress,
+            timeText: timeText,
+            motion: _motion,
+            reduceMotion: _reduceMotion,
+            rowHeight: 24 * scale,
+          ),
+        ),
+        const SizedBox(height: 32),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: LoadingTipCard(index: tipIndex, scale: scale),
+        ),
+        const SizedBox(height: 32),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: box.maxHeight),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: content,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -369,60 +440,14 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen> {
       },
       child: _failed
           ? Scaffold(body: _failedBody())
-          : Scaffold(body: SafeArea(child: _loadingBody())),
-    );
-  }
-}
-
-/// "알고 계셨나요?" 꿀팁 카드 — 문장이 바뀔 때 부드럽게 겹쳐 바뀐다.
-class _TipCard extends StatelessWidget {
-  const _TipCard({required this.tip, required this.index});
-
-  final String tip;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.cardPadH,
-        vertical: AppSpacing.cardPadV,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.lightbulb_outline, size: AppSize.iconSm, color: AppColors.primary),
-              const SizedBox(width: AppSpacing.xs),
-              AppText(
-                '알고 계셨나요?',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 400),
-            child: AppText(
-              tip,
-              key: ValueKey(index),
-              style: AppTypography.body.copyWith(color: AppColors.textBody),
+          // 상단 앱바·하단 탭 없음 · 바탕 #F5F5F5 — 위에서 96은 상태 표시줄을 포함한 자리라 SafeArea를 쓰지 않는다
+          : Scaffold(
+              backgroundColor: AppColors.background,
+              body: _loadingBody(),
             ),
-          ),
-        ],
-      ),
     );
   }
 }
-
 
 /// 글자 배율 2.0·작은 폰에서도 넘치지 않게 — 넘칠 때만 스크롤, 아니면 가운데 정렬 그대로 (디자인 리뷰 2026-10-24).
 class _Scrollable extends StatelessWidget {
@@ -437,7 +462,9 @@ class _Scrollable extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.xxxl),
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            minHeight: (box.maxHeight - AppSpacing.xxxl * 2).clamp(0.0, double.infinity).toDouble(),
+            minHeight: (box.maxHeight - AppSpacing.xxxl * 2)
+                .clamp(0.0, double.infinity)
+                .toDouble(),
           ),
           child: child,
         ),

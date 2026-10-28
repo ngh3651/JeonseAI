@@ -23,7 +23,11 @@ class LoadingPreviewScreen extends StatelessWidget {
     return ChangeNotifierProvider<AnalysisRepository>(
       create: (_) => _NeverEndingRepository(),
       child: const AnalysisLoadingScreen(
-        request: AnalysisRequest(imagePaths: [], deposit: 0),
+        // 쪽수 알약이 시안처럼 '1 / 5쪽'부터 넘어가게 — 사진은 읽지 않고 장수만 센다
+        request: AnalysisRequest(
+          imagePaths: ['1', '2', '3', '4', '5'],
+          deposit: 0,
+        ),
       ),
     );
   }
@@ -48,6 +52,5 @@ class _NeverEndingRepository extends AnalysisRepository {
   Future<CompareResult> compareRegistry(
     String reportId,
     List<String> imagePaths,
-  ) =>
-      Completer<CompareResult>().future;
+  ) => Completer<CompareResult>().future;
 }

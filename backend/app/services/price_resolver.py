@@ -70,6 +70,9 @@ class PriceCandidate:
     as_of: str  # 기준일 또는 조회 기간
     sample_count: int | None = None  # 실거래가일 때 표본 수
     detail: str = ""  # 매칭 방법 등 부가 설명
+    # 이 후보가 가리키는 주택 유형 ('apt' | 'row_house' | 'officetel') — 손실 예상의 용도 고르기 전용 (2026-10-28).
+    # 실거래가는 매칭된 거래의 유형, 공시가격은 공동주택(아파트·연립다세대), 기준시가는 오피스텔. 판정에 쓰지 않는다.
+    house_types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

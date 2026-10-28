@@ -68,6 +68,7 @@ def _actual_trade_candidate(
                     as_of=f"{result.period_from}~{result.period_to}",
                     sample_count=result.sample_count,
                     detail=f"{lawd_cd} · {result.months_used}개월",
+                    house_types=result.house_types,
                 ),
                 notes,
             )
@@ -104,6 +105,8 @@ def _official_candidates(
                 as_of=r.as_of,
                 sample_count=None,
                 detail=detail,
+                # 기준시가는 오피스텔만, 공동주택 공시가격은 아파트·연립다세대(어느 쪽인지는 모른다)
+                house_types=("officetel",) if r.source_key == R.SOURCE_TAX_BASE else ("apt", "row_house"),
             )
         )
     return out, notes

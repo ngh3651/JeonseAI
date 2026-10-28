@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/analysis_report.dart';
 import '../models/compare_result.dart';
+import '../models/loss_estimate.dart';
 import '../models/risk_grade.dart';
 import '../state/privacy_settings.dart';
 import '../utils/money_format.dart';
@@ -45,6 +46,9 @@ abstract class AnalysisRepository extends ChangeNotifier {
   /// 사진을 받기 전에 "기준 없음"으로 답하기 때문이다 — 찍게 해 놓고 마지막에 못
   /// 한다고 말하지 않기 위한 흐름이다(S-11).
   Future<CompareResult> compareRegistry(String reportId, List<String> imagePaths);
+
+  /// 손실 예상 (계약 §3.22) — 서버가 지역·용도별 매각가율로 계산한다. 못 받으면 null (화면이 '불러올 수 없어요').
+  Future<LossEstimate?> getLossEstimate(String reportId) async => null;
 
   /// 빠진 쪽을 더 찍어 **다시** 대조한다 — 앞 대조로 생긴 리포트([replaces])를 새 결과가 대신한다 (2026-10-27).
   /// 기본은 그냥 대조(서버 구현만 [replaces]를 보낸다).

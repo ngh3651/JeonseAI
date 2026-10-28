@@ -184,6 +184,8 @@ class MarketPriceResult:
     low_won: int  # 표본 최저가 (화면 표시용 범위)
     high_won: int  # 표본 최고가
     months_used: int  # 실제로 사용한 조회 개월 수 (6 또는 12)
+    # 매칭된 거래의 유형들 ('apt' | 'row_house' | 'officetel') — 손실 예상의 용도 고르기 전용 (2026-10-28)
+    house_types: tuple[str, ...] = ()
 
 
 # ── 키·요청 ──────────────────────────────────────────────────────────────────
@@ -484,6 +486,7 @@ def aggregate(
         low_won=prices[0],
         high_won=prices[-1],
         months_used=months_used,
+        house_types=tuple(sorted({t.house_type for t in trades})),
     )
 
 

@@ -13,6 +13,7 @@ import 'package:http_parser/http_parser.dart';
 
 import '../models/analysis_report.dart';
 import '../models/compare_result.dart';
+import '../models/loss_estimate.dart';
 import '../services/api_client.dart';
 import '../services/registry_upload_service.dart';
 import '../state/journey_progress_store.dart';
@@ -166,6 +167,17 @@ class ApiAnalysisRepository extends AnalysisRepository {
     }
     await RegistryPhotoStore.instance.forget(id);
     notifyListeners();
+  }
+
+  /// 손실 예상 — 부를 때마다 서버가 계산한다(매각가율 자료를 새로 넣으면 예전 리포트도 새 숫자). 없는 리포트면 null.
+  @override
+  Future<LossEstimate?> getLossEstimate(String reportId) async {
+    final json = await _api.getJson(
+      '/api/reports/$reportId/loss-estimate',
+      onNotFound: () => null,
+    );
+    if (json == null) return null;
+    return LossEstimate.fromJson(json as Map<String, dynamic>);
   }
 
   /// 등기부 대조 (계약 §3.10). 사진이 없으면 **사진 없이** 부른다 —

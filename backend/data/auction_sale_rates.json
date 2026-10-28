@@ -1,0 +1,9 @@
+{
+  "_설명": "손실 시뮬레이터의 매각가율 근거. 대법원 법원경매정보 '매각통계'에서 사람이 옮겨 적는다(2026-10-28). 지어낸 숫자 금지 — 화면에 그대로 나간다. 편집법은 data/README.md 4절.",
+  "source": "대법원 법원경매정보 매각통계",
+  "sourceUrl": "https://www.courtauction.go.kr",
+  "period": "",
+  "collectedAt": "",
+  "collectedBy": "",
+  "rows": []
+}

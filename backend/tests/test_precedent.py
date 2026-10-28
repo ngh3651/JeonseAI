@@ -252,7 +252,12 @@ def test_tags_skip_doc_incomplete_floor_cautions():
     """문서 불완전 floor로 '확인 필요'가 된 카드(비율 정상·채권 0건)에는 태그를 달지 않는다."""
     verdict = make_verdict(
         [
-            EvidenceVerdict(id="jeonse_ratio", grade=Grade.CAUTION, facts={"jeonse_ratio_pct": 60}),
+            # 엔진의 문서 불완전 게이트는 올린 카드에 capped_reason을 단다(2026-10-29) — 실제 출력 모양 그대로
+            EvidenceVerdict(
+                id="jeonse_ratio",
+                grade=Grade.CAUTION,
+                facts={"jeonse_ratio_pct": 60, "capped_reason": "1쪽이 빠졌어요"},
+            ),
             EvidenceVerdict(
                 id="senior_debt",
                 grade=Grade.CAUTION,

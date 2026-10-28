@@ -248,13 +248,15 @@ def _call_solar(messages: list[dict], api_key: str) -> str:
     ).text
 
 
-def _field_reason(kind: str, text: str, allowed: set[float]) -> str | None:
+def _field_reason(
+    kind: str, text: str, allowed: set[float], grade: str | None = None
+) -> str | None:
     """이 필드를 쓸 수 있나 — 쓸 수 있으면 None, 아니면 **사유 문자열**.
 
     2026-08-05: 불리언(`_field_ok`) → 사유 문자열로 바꿨다. 폴백이 조용하면 무엇이
     걸렸는지 다음에도 모르기 때문이다(감사 §B-5의 세 건이 전부 '통과한 위반'이었다).
     """
-    return text_guard.check(text, max_len=_MAX_LEN[kind], allowed=allowed)
+    return text_guard.check(text, max_len=_MAX_LEN[kind], allowed=allowed, grade=grade)
 
 
 
@@ -375,7 +377,8 @@ def _generate_with_llm(
     #: 보낸 것과 검사 기준이 어긋나면 정상 문장이 폴백된다.
     allowed = text_guard.collect_allowed(material)
 
-    head_reason = _field_reason("headline", payload.headline, allowed)
+    # 맨 윗줄은 종합 등급, 카드는 그 카드 등급과 **같은 방향**이어야 한다(2026-10-29 — 위험인데 안심시키기 금지)
+    head_reason = _field_reason("headline", payload.headline, allowed, verdict.grade.value)
     if head_reason is None:
         texts["headline"] = payload.headline.strip()
         applied += 1
@@ -384,6 +387,7 @@ def _generate_with_llm(
         reasons.append(f"headline={head_reason}")
 
     by_id = {e.id: e.easy_explanation for e in payload.evidences}
+    grade_of = {e.id: e.grade.value for e in verdict.evidences}
     # [D26 · 2026-08-14] 카드마다 "이 문장을 누가 썼는가"를 여기서 기록한다.
     # 이 루프가 **필드 단위 폴백이 실제로 갈리는 유일한 지점**이라, 다른 곳에서 추측하지
     # 않고 갈리는 자리에서 바로 남긴다.
@@ -395,7 +399,7 @@ def _generate_with_llm(
             reasons.append(f"{eid}=응답 누락")
             evidence_sources[eid] = FALLBACK_SOURCE_LABEL
             continue
-        reason = _field_reason("easy_explanation", candidate, allowed)
+        reason = _field_reason("easy_explanation", candidate, allowed, grade_of.get(eid))
         if reason is None:
             texts["evidences"][eid]["easy_explanation"] = candidate.strip()
             applied += 1

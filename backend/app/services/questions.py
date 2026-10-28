@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from ..schemas.contract import QuestionGroup, QuestionItem, Report
 from . import price_resolver
 from .formatting import format_won, round_half_up
-from .patterns import ID_TO_LABEL, LABEL_TO_ID, derive_from_report
+from .patterns import LABEL_TO_ID, question_patterns, tags_from_report, tags_from_verdict
 
 _log = logging.getLogger("jeonseai")
 _QUESTIONS_PATH = Path(__file__).resolve().parents[2] / "data" / "questions.json"
@@ -209,6 +209,7 @@ def _render(text: str, values: dict[str, str]) -> str | None:
 class _EvidenceView:
     id: str
     grade: str
+    status_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -226,7 +227,10 @@ class _VerdictView:
 def _view_of(verdict) -> _VerdictView:
     prov = getattr(verdict, "price_provenance", None)
     return _VerdictView(
-        evidences=[_EvidenceView(id=e.id, grade=e.grade.value) for e in verdict.evidences],
+        evidences=[
+            _EvidenceView(id=e.id, grade=e.grade.value, status_label=e.status_label)
+            for e in verdict.evidences
+        ],
         deposit=verdict.deposit,
         seniorDebtAmount=verdict.senior_debt_amount,
         marketPrice=verdict.market_price,
@@ -250,9 +254,8 @@ def questions_for_verdict(verdict) -> dict[str, list[str]]:
         return {ALWAYS_KEY: [i.question for i in _EMERGENCY_BASE_GROUP.items]}
 
     view = _view_of(verdict)
-    patterns = [
-        ID_TO_LABEL[e.id] for e in view.evidences if e.grade != "양호" and e.id in ID_TO_LABEL
-    ]
+    # 화면 질문(`build_question_groups`)과 **같은 기준** — 이 집에 실제로 걸린 문제(2026-10-29)
+    patterns = question_patterns(tags_from_verdict(verdict), view.evidences, view.marketPrice)
     values = _render_values(view)
 
     out: dict[str, list[str]] = {}
@@ -276,7 +279,9 @@ def build_question_groups(report: Report) -> list[QuestionGroup]:
         _log.info("[질문] 템플릿 선택: 그룹 1개 · 질문 2건 (비상용, LLM 미사용)")
         return [_EMERGENCY_BASE_GROUP]
 
-    patterns = derive_from_report(report)
+    # 카드 등급이 아니라 **이 집에 실제로 걸린 문제**로 고른다(2026-10-29 QA) — 압류만 있는 집에
+    # '신탁원부를 보여 주세요'가, 보증보험 구조적 '확인 필요'만으로 '가입 거절된 적 있나요'가 나가던 것을 고침
+    patterns = question_patterns(tags_from_report(report), report.evidences, report.marketPrice)
     values = _render_values(report)
 
     groups: list[QuestionGroup] = []

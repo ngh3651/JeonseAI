@@ -59,6 +59,57 @@ _GRADE_LABEL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+# ── ⑷ 등급과 반대 방향 (2026-10-29 QA) ─────────────────────────────────────
+#
+# 등급은 규칙 엔진이 정하고 AI는 문장만 쓴다. 그런데 문장이 등급과 **반대 방향**으로 말해도
+# 지금까지는 통과했다 — 위험 리포트에 "이 집은 대체로 괜찮은 편이에요"(직접 넣어 확인).
+# 뱃지는 빨간데 문장이 안심시키면, 사용자는 문장을 믿는다. 그래서 **방향만** 본다:
+# 문장 전체를 고정하지 않고(AI 문장은 그대로 쓴다), 반대 방향 말이 섞인 칸만 버린다.
+#
+# ⚠ 일반어 '위험'·'안전'은 여기서 다루지 않는다(위 ⑵·⑶). 여기는 **안심시키는 말투**와
+#   **겁주는 말투**만 본다. 비교는 공백을 지운 문자열에 대고 한다.
+
+#: 위험 카드·위험 리포트에서 쓰면 안 되는 말 — 안심시키는 말투
+_REASSURE_STRONG: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("안심-괜찮", re.compile(r"괜찮(?!은지|을지|은가|을까|은건지|은게맞)")),
+    ("안심-무난", re.compile(r"무난")),
+    ("안심-계약해도", re.compile(r"(계약|진행|입주)(해도|하셔도|하더라도)(될|돼|되|좋|괜찮|무방)")),
+    ("안심-걱정없음", re.compile(r"(크게)?(걱정|신경)(하실|할|쓰실|쓸)?(필요|정도|수준)?[는은]?(없|아니|않아도|안써도|쓰지않아도)")),
+)
+#: 위험 카드·위험 리포트에서만 막는 말 — 확인 필요 카드에서는 정상으로 쓰일 수 있다
+#: ('보이지 않았어요'는 빠진 쪽 때문에 확정 못 한 카드의 정직한 문장이다)
+_REASSURE_DANGER_ONLY: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("안심-낮은편", re.compile(r"(낮은|적은|작은)(편|수준)")),
+    ("안심-흔한일", re.compile(r"(흔한|흔히있는|일반적인|평범한)(일|수준|범위|편)")),
+    ("안심-없었음", re.compile(r"(위험|문제|이상)(신호|요소)?[는은가이]?(보이지않|발견되지않|찾지못했|없었)")),
+)
+#: 양호 카드에서 쓰면 안 되는 말 — 겁주는 말투
+_ALARM: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("겁-위험큼", re.compile(r"위험(이|성이|도가|할가능성이)?(커|크|높|심각)")),
+    ("겁-피하라", re.compile(r"(피하(세요|시는게|는게|시길)|계약(하지|은|을)?(마세요|마시|하지마))")),
+)
+
+
+def polarity_hit(text: str, grade: str | None) -> str | None:
+    """문장이 등급과 반대 방향이면 그 이름, 아니면 None.
+
+    `grade`: '위험' · '확인 필요' · '양호' (Grade.value). None이면 검사하지 않는다.
+    """
+    if not grade:
+        return None
+    squeezed = _squeeze(text)
+    if grade in ("위험", "확인 필요"):
+        rules = _REASSURE_STRONG + (_REASSURE_DANGER_ONLY if grade == "위험" else ())
+    elif grade == "양호":
+        rules = _ALARM
+    else:
+        return None
+    for name, pattern in rules:
+        if pattern.search(squeezed):
+            return name
+    return None
+
+
 def _squeeze(text: str) -> str:
     """공백을 전부 지운다 — 띄어쓰기 변형을 패턴에 적지 않기 위해서."""
     return re.sub(r"\s+", "", text or "")
@@ -335,11 +386,16 @@ def check_chat_reply(
     return None
 
 
-def check(text: str, *, max_len: int, allowed: set[float]) -> str | None:
+def check(
+    text: str, *, max_len: int, allowed: set[float], grade: str | None = None
+) -> str | None:
     """이 문자열을 화면에 써도 되나. **통과면 None, 아니면 사유 문자열.**
 
     사유를 문자열로 돌려주는 이유: 폴백이 조용하면 무엇이 걸렸는지 다음에도 모른다
     (2026-07-28 교훈). 호출부가 이 값을 그대로 로그에 남긴다.
+
+    `grade`(2026-10-29): 이 문장이 설명하는 등급(카드면 카드 등급, 맨 윗줄이면 종합 등급).
+    주면 등급과 반대 방향 말투(위험인데 안심 · 양호인데 겁주기)도 막는다.
     """
     if not text or not text.strip():
         return "빈 문자열"
@@ -351,6 +407,9 @@ def check(text: str, *, max_len: int, allowed: set[float]) -> str | None:
     hit = grade_word_hit(text)
     if hit:
         return f"등급 단어({hit})"
+    hit = polarity_hit(text, grade)
+    if hit:
+        return f"등급과 반대 방향({hit})"
     bad = unsupported_numbers(text, allowed)
     if bad:
         return f"재료에 없는 수치({', '.join(bad[:3])})"

@@ -19,6 +19,7 @@ import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
 import '../../models/registry_mark_kind.dart';
 import '../../state/privacy_settings.dart';
@@ -128,9 +129,7 @@ RegistryHighlight? previewMarkOf(List<RegistryHighlight> marks) {
   if (marks.isEmpty) return null;
   final risky = marks.where((m) => m.markKind.isRisk).toList();
   final pool = risky.isNotEmpty ? risky : marks;
-  return pool.reduce(
-    (a, b) => b.markKind.weight > a.markKind.weight ? b : a,
-  );
+  return pool.reduce((a, b) => b.markKind.weight > a.markKind.weight ? b : a);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -188,6 +187,8 @@ class RegistryEntryCard extends StatelessWidget {
     required this.onTap,
     this.preview,
     this.title = '내가 올린 사진에서 보기',
+    this.footer,
+    this.showMascot = true,
   });
 
   final String title;
@@ -206,6 +207,13 @@ class RegistryEntryCard extends StatelessWidget {
 
   /// null이면 스트립 없이 하단 행만 (사진이 없거나 표시가 하나도 없을 때).
   final RegistryPreviewSource? preview;
+
+  /// 카드 안, 제목 줄 아래에 붙는 내용 — 리포트 1장에서 **근거 목록**이 여기 들어간다 (2026-10-28).
+  /// 누르면 사진으로 가는 곳은 사진 띠 + 제목 줄뿐이다(목록은 제 탭을 따로 받는다).
+  final Widget? footer;
+
+  /// 제목 줄 왼쪽 마스코트 — 리포트 1장에서는 뺀다(잠긴 상태의 자물쇠는 그대로 그린다).
+  final bool showMascot;
 
   @override
   Widget build(BuildContext context) {
@@ -226,59 +234,75 @@ class RegistryEntryCard extends StatelessWidget {
             ),
           ],
         ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppRadius.viewerEntryCard),
-          child: ClipRRect(
-            // 스트립이 카드 모서리를 넘지 않게 — 사진이 각진 채 튀어나오면 싸구려로 보인다
-            borderRadius: BorderRadius.circular(
-              AppRadius.viewerEntryCard - 1.5,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (preview != null) _PreviewStrip(source: preview!),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
-                  child: Row(
-                    children: [
-                      _mascot(enabled),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AppText(
-                              title,
-                              style: AppTypography.bodyStrong.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: enabled
-                                    ? AppColors.textStrong
-                                    : AppColors.textMuted,
+        child: ClipRRect(
+          // 스트립이 카드 모서리를 넘지 않게 — 사진이 각진 채 튀어나오면 싸구려로 보인다
+          borderRadius: BorderRadius.circular(AppRadius.viewerEntryCard - 1.5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                onTap: onTap,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (preview != null) _PreviewStrip(source: preview!),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+                      child: Row(
+                        children: [
+                          if (showMascot || !enabled) ...[
+                            _mascot(enabled),
+                            const SizedBox(width: 10),
+                          ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                AppText(
+                                  title,
+                                  style: AppTypography.bodyStrong.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: enabled
+                                        ? AppColors.textStrong
+                                        : AppColors.textMuted,
+                                  ),
+                                ),
+                                if (subtitle != null) ...[
+                                  const SizedBox(height: 2),
+                                  AppText(
+                                    subtitle!,
+                                    style: AppTypography.caption,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (enabled)
+                            const Padding(
+                              padding: EdgeInsets.only(left: AppSpacing.sm),
+                              child: Icon(
+                                Icons.chevron_right,
+                                size: AppSize.iconMd,
+                                color: AppColors.primary,
                               ),
                             ),
-                            if (subtitle != null) ...[
-                              const SizedBox(height: 2),
-                              AppText(subtitle!, style: AppTypography.caption),
-                            ],
-                          ],
-                        ),
+                        ],
                       ),
-                      if (enabled)
-                        const Padding(
-                          padding: EdgeInsets.only(left: AppSpacing.sm),
-                          child: Icon(
-                            Icons.chevron_right,
-                            size: AppSize.iconMd,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+              ),
+              if (footer != null) ...[
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: AppColorsNext.divider,
+                ),
+                footer!,
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -350,7 +374,9 @@ class _PreviewStripState extends State<_PreviewStrip> {
       builder: (context, snapshot) {
         final raw = snapshot.data;
         // 90·270°로 돌려 그리면 바로 선 사진의 가로세로는 파일과 반대다
-        final pageSize = raw != null && widget.source.quarterTurns.isOdd ? Size(raw.height, raw.width) : raw;
+        final pageSize = raw != null && widget.source.quarterTurns.isOdd
+            ? Size(raw.height, raw.width)
+            : raw;
         // 크기를 못 읽었으면 스트립을 통째로 생략한다 — 배율을 모르는 채로 그리면
         // 엉뚱한 자리를 확대해 보여 주게 되고, 그건 없는 것만 못하다.
         if (pageSize == null || pageSize.width <= 0) {
@@ -413,9 +439,7 @@ class _PreviewStripState extends State<_PreviewStrip> {
       //   그 위에 사진을 덮어 그려서 선이 사라진다(2026-07-27 실기기에서 확인).
       position: DecorationPosition.foreground,
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.viewerEntryDivider),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.viewerEntryDivider)),
       ),
       child: ClipRect(
         child: Stack(
@@ -462,7 +486,9 @@ class _PreviewStripState extends State<_PreviewStrip> {
                   color: AppColors.markRedaction,
                   child: Center(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                      ),
                       child: AppText(
                         kWholePageCoverLabel,
                         textAlign: TextAlign.center,

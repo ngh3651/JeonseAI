@@ -441,3 +441,24 @@ def test_실패한_판례_결과는_캐시되지_않는다(client, monkeypatch):
     assert store.get_cases(report_id, device_id=settings.LEGACY_DEVICE_ID) is None, (
         "실패 결과가 캐시에 남았다 — 복구가 막힌다"
     )
+
+
+def test_IE가_비운_빚_금액을_사진_글자로_채워_끝까지_관통한다(client, no_network):
+    """2026-10-29 QA — '못 읽은 빚'이 리포트에 남지 않는다(같은 사진 같은 순위 항목의 금액)."""
+    pages = [gap_gu_page(0), eul_gu_page(with_cancel_row=False)]
+    pages[1] = OcrPage(
+        name="page_2.jpg", index=1, words=pages[1].words, lines=pages[1].lines,
+        width=PAGE_W, height=PAGE_H,
+    )
+    raw = registry_raw()
+    raw["mortgages"][0]["max_claim_amount"] = None  # IE가 금액 칸만 비웠다
+    no_network(raw, [raw_ocr_json(p) for p in pages])
+
+    resp = post_analyze(client, [blank_image(PAGE_W, PAGE_H) for _ in pages])
+
+    assert resp.status_code == 200, resp.text
+    report = resp.json()
+    assert report["seniorDebtAmount"] == 36_000_000
+    senior = next(e for e in report["evidences"] if e["id"] == "senior_debt")
+    assert "금액을 못 읽은" not in (senior["detailText"] or "")
+    assert any("사진 글자로 다시 읽었어요" in n for n in report["checkedNotes"])

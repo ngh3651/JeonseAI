@@ -124,6 +124,11 @@ _TEXT: dict[str, tuple[str, str, str]] = {
         "글자가 너무 작게 찍혔어요",
         "등기부 한 쪽이 화면에 꽉 차게 가까이 찍어 주세요.",
     ),
+    "amount_unread": (
+        "{page} 빚 금액을 못 읽었어요",
+        "빚 금액(채권최고액) 칸의 글자를 읽지 못했어요",
+        "그 쪽이 화면에 꽉 차게, 글자가 또렷하게 나오도록 다시 찍어 주세요.",
+    ),
     "cut_off": (
         "{page} 아래쪽이 잘렸을 수 있어요",
         "맨 아래 쪽 번호(예: 1/5)가 보이지 않아요",
@@ -132,7 +137,9 @@ _TEXT: dict[str, tuple[str, str, str]] = {
 }
 
 #: 한 장에 문제가 여럿이면 이 순서로 하나를 대표로 말한다(가장 먼저 고칠 것).
-_PRIORITY = ("no_text", "too_dark", "too_bright", "blurry", "low_contrast", "low_resolution", "cut_off")
+_PRIORITY = (
+    "no_text", "too_dark", "too_bright", "blurry", "low_contrast", "low_resolution", "amount_unread", "cut_off",
+)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -401,4 +408,25 @@ def add_ocr_findings(check: CaptureCheck | None, ocr_pages: list, image_count: i
             "[촬영검사] OCR 뒤: "
             + ", ".join(f"{p.index + 1}쪽 {'/'.join(p.issues)}" for p in pages)
         )
+    return CaptureCheck(ok=not pages, pages=pages)
+
+
+def add_unread_amount_pages(
+    check: CaptureCheck | None, upload_indexes: list[int], image_count: int
+) -> CaptureCheck:
+    """빚 금액을 끝내 못 읽은 쪽 → '다시 찍기' 대상(`amount_unread`)으로 더한다 (2026-10-29 QA).
+
+    촬영 검사가 꺼져 있어도(check=None) 만든다 — 이 안내는 사진 품질 검사가 아니라 **판정 재료가 빈** 경우라서.
+    """
+    by_index = {p.index: p.model_copy(deep=True) for p in (check.pages if check else [])}
+    for i in upload_indexes:
+        if not 0 <= i < image_count:
+            continue
+        entry = by_index.setdefault(i, CapturePageIssue(index=i))
+        if "amount_unread" not in entry.issues:
+            entry.issues.append("amount_unread")
+        entry.tip = tip_for(entry.issues)
+    pages = sorted(by_index.values(), key=lambda p: p.index)
+    if pages:
+        _log.info("[촬영검사] 빚 금액 못 읽음: " + ", ".join(f"{i + 1}번째 사진" for i in upload_indexes))
     return CaptureCheck(ok=not pages, pages=pages)

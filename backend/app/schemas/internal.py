@@ -45,14 +45,60 @@ def floor_caution(grade: Grade) -> Grade:
 # ── 금액 파싱 ────────────────────────────────────────────────────────────────
 
 _PLAIN_RE = re.compile(r"^\d[\d,]*$")
-_UNIT_RE = re.compile(r"(\d[\d,]*)(억|만)")
+
+
+_KO_DIGIT = {"영": 0, "공": 0, "일": 1, "이": 2, "삼": 3, "사": 4, "오": 5, "육": 6, "칠": 7, "팔": 8, "구": 9}
+_SMALL_UNIT = {"십": 10, "백": 100, "천": 1_000}
+_BIG_UNIT = {"만": 10_000, "억": 100_000_000, "조": 1_000_000_000_000}
+_DOTTED_RE = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
+
+
+def _parse_unit_amount(s: str) -> int | None:
+    """'1억 2,000만' · '1억2천만' · '일억이천만' · '삼억' → 원. 모르는 글자가 하나라도 있으면 None.
+
+    2026-10-29 QA: 한글 수사(옛 등기부의 '금일억이천만원정')를 읽는다 — 못 읽은 빚을 남기지 않는 1순위.
+    """
+    total = 0  # 만·억·조로 끝난 덩어리의 합
+    section = 0  # 아직 만·억·조를 만나지 않은 부분(천·백·십 단위까지)
+    num: int | None = None  # 지금 읽는 숫자(아라비아 숫자 덩어리 또는 한글 숫자 한 자)
+    seen = False
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch.isdigit():
+            j = i
+            while j < len(s) and (s[j].isdigit() or s[j] == ","):
+                j += 1
+            num = int(s[i:j].replace(",", ""))
+            seen = True
+            i = j
+            continue
+        if ch in _KO_DIGIT:
+            num = _KO_DIGIT[ch]
+            seen = True
+        elif ch in _SMALL_UNIT:
+            section += (1 if num is None else num) * _SMALL_UNIT[ch]
+            num = None
+            seen = True
+        elif ch in _BIG_UNIT:
+            chunk = section + (num or 0)
+            total += (chunk if chunk else 1) * _BIG_UNIT[ch]
+            section, num = 0, None
+            seen = True
+        else:
+            return None  # 해석 불가 글자 → 실패. 0 치환 금지.
+        i += 1
+    if not seen:
+        return None
+    return total + section + (num or 0)
 
 
 def parse_amount(value: object) -> int | None:
     """금액 값을 원 단위 정수로 해석한다. **실패하면 None** (0 치환 금지).
 
-    허용 예: 120000000 / "120,000,000" / "금120,000,000원" / "1억 2,000만원"
-    실패 예: "일억이천만원"(한글 수사), 빈 문자열, 음수 → None
+    허용 예: 120000000 / "120,000,000" / "금120,000,000원" / "1억 2,000만원" / "1억2천만원"
+             / "일억이천만원"(한글 수사 — 2026-10-29) / "120.000.000"(점으로 끊은 꼴)
+    실패 예: "판독불가", 빈 문자열, 음수 → None
     """
     if isinstance(value, bool):
         return None
@@ -64,32 +110,15 @@ def parse_amount(value: object) -> int | None:
         return None
 
     s = value.strip().replace(" ", "")
-    for token in ("원정", "원", "금", "￦", "₩"):
+    for token in ("원정", "원", "정", "금", "￦", "₩"):
         s = s.replace(token, "")
     if not s:
         return None
     if _PLAIN_RE.match(s):
         return int(s.replace(",", ""))
-
-    total = 0
-    matched = False
-
-    def _consume(m: re.Match) -> str:
-        nonlocal total, matched
-        matched = True
-        n = int(m.group(1).replace(",", ""))
-        total += n * (100_000_000 if m.group(2) == "억" else 10_000)
-        return ""
-
-    rest = _UNIT_RE.sub(_consume, s).replace(",", "")
-    if not matched:
-        return None
-    if rest:
-        if rest.isdigit():
-            total += int(rest)
-        else:
-            return None  # 해석 불가 잔여(한글 수사 등) → 실패. 0 치환 금지.
-    return total
+    if _DOTTED_RE.match(s):
+        return int(s.replace(".", ""))
+    return _parse_unit_amount(s)
 
 
 # ── 추출 정형화 모델 ─────────────────────────────────────────────────────────

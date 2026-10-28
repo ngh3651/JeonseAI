@@ -875,7 +875,7 @@ IE ↔ OCR이 어긋나도 **판정은 바뀌지 않고 표시만 보류**된다
 | 필드 | 설명 |
 |---|---|
 | `index` | 업로드한 사진 순서(0부터). 화면에는 `index+1`쪽 |
-| `issues` | `blurry`(흐림) · `too_dark`(어두움) · `too_bright`(빛 번짐·반사) · `low_contrast`(글자가 흐릿) · `no_text`(글자 없음) · `low_resolution`(너무 작음) · `cut_off`(맨 아래 쪽 번호가 안 보임 — OCR 뒤) |
+| `issues` | `blurry`(흐림) · `too_dark`(어두움) · `too_bright`(빛 번짐·반사) · `low_contrast`(글자가 흐릿) · `no_text`(글자 없음) · `low_resolution`(너무 작음) · `amount_unread`(빚 금액 칸을 끝내 못 읽음 — 분석 뒤, 그 쪽 다시 찍기, 2026-10-29) · `cut_off`(맨 아래 쪽 번호가 안 보임 — OCR 뒤) |
 | `severe` | `true` = 분석하지 않고 거절한 장 |
 | `tip` | 이유 + 다시 찍는 법, 쉬운 말 두 문장 (예: `글자 테두리가 번져 있어요. 휴대폰을 종이와 나란히 들고 …`) |
 

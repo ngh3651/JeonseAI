@@ -46,7 +46,7 @@ import 'registry_entry_card.dart';
 import 'registry_findings.dart';
 import '../common/ask_selection.dart';
 import 'report_history_sheet.dart';
-import 'report_share.dart';
+import 'report_pdf.dart';
 import '../../design_system/text/app_text.dart';
 
 /// 악성임대인 명단이 **아직 우리에게 없을 때** 서버가 붙이는 상태 라벨.
@@ -180,11 +180,12 @@ class _ReportScreenState extends State<ReportScreen> {
                   versions: versions,
                 ),
               ),
-              // 글자 요약을 안드로이드 공유 창으로 — 이름은 기본으로 가린다(report_share.dart)
+              // 이 리포트를 PDF로 저장 — 폰 안에서 만들고 이름은 기본으로 가린다(report_pdf.dart)
               IconButton(
-                icon: const Icon(Icons.ios_share),
-                tooltip: '리포트 요약 보내기',
-                onPressed: () => showReportShareSheet(context, report),
+                key: const ValueKey('report-pdf-button'),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                tooltip: 'PDF로 저장',
+                onPressed: () => showReportPdfSheet(context, report),
               ),
             ],
           ),

@@ -1,9 +1,982 @@
 {
-  "_설명": "손실 시뮬레이터의 매각가율 근거. 대법원 법원경매정보 '매각통계'에서 사람이 옮겨 적는다(2026-10-28). 지어낸 숫자 금지 — 화면에 그대로 나간다. 편집법은 data/README.md 4절.",
-  "source": "대법원 법원경매정보 매각통계",
-  "sourceUrl": "https://www.courtauction.go.kr",
-  "period": "",
-  "collectedAt": "",
-  "collectedBy": "",
-  "rows": []
+ "_설명": "손실 시뮬레이터의 매각가율 근거. 대법원 법원경매정보 '용도별 매각통계'(소재지 기준)를 시·도별로 받아 그대로 옮겼다. 강원·전북은 옛 이름 코드와 특별자치도 코드를 합쳤고, 전국은 시·도 합. 편집법은 data/README.md 4절.",
+ "source": "대법원 법원경매정보 매각통계",
+ "sourceUrl": "https://www.courtauction.go.kr",
+ "period": "2025.11~2026.10",
+ "collectedAt": "2026-10-28",
+ "collectedBy": "courtauction.go.kr PGJ164 용도별 매각통계 (소재지, 2025-11~2026-10)",
+ "rows": [
+  {
+   "region": "전국",
+   "use": "아파트",
+   "auctions": 39479,
+   "sold": 13122,
+   "appraisalSum": 4750265435151,
+   "saleSum": 4031950014299,
+   "ratePct": 84.9
+  },
+  {
+   "region": "전국",
+   "use": "연립다세대",
+   "auctions": 63368,
+   "sold": 14603,
+   "appraisalSum": 3388086322545,
+   "saleSum": 2238199385744,
+   "ratePct": 66.1
+  },
+  {
+   "region": "전국",
+   "use": "오피스텔",
+   "auctions": 25437,
+   "sold": 6280,
+   "appraisalSum": 1311707508230,
+   "saleSum": 841513269216,
+   "ratePct": 64.2
+  },
+  {
+   "region": "전국",
+   "use": "단독주택",
+   "auctions": 4815,
+   "sold": 977,
+   "appraisalSum": 495954712092,
+   "saleSum": 272730003561,
+   "ratePct": 55.0
+  },
+  {
+   "region": "전국",
+   "use": "다가구주택",
+   "auctions": 1793,
+   "sold": 466,
+   "appraisalSum": 616473049072,
+   "saleSum": 387763740408,
+   "ratePct": 62.9
+  },
+  {
+   "region": "전국",
+   "use": "단독·다가구",
+   "auctions": 15701,
+   "sold": 3273,
+   "appraisalSum": 2509877986332,
+   "saleSum": 1495061679916,
+   "ratePct": 59.6
+  },
+  {
+   "region": "서울",
+   "use": "아파트",
+   "auctions": 2335,
+   "sold": 851,
+   "appraisalSum": 821636766233,
+   "saleSum": 791408197009,
+   "ratePct": 96.3
+  },
+  {
+   "region": "서울",
+   "use": "연립다세대",
+   "auctions": 19686,
+   "sold": 4615,
+   "appraisalSum": 1467783316650,
+   "saleSum": 1106270383419,
+   "ratePct": 75.4
+  },
+  {
+   "region": "서울",
+   "use": "오피스텔",
+   "auctions": 6264,
+   "sold": 1405,
+   "appraisalSum": 381336217480,
+   "saleSum": 275465066308,
+   "ratePct": 72.2
+  },
+  {
+   "region": "서울",
+   "use": "단독주택",
+   "auctions": 273,
+   "sold": 69,
+   "appraisalSum": 125583903370,
+   "saleSum": 86648681650,
+   "ratePct": 69.0
+  },
+  {
+   "region": "서울",
+   "use": "다가구주택",
+   "auctions": 281,
+   "sold": 60,
+   "appraisalSum": 116699823804,
+   "saleSum": 82806408159,
+   "ratePct": 71.0
+  },
+  {
+   "region": "서울",
+   "use": "단독·다가구",
+   "auctions": 1214,
+   "sold": 276,
+   "appraisalSum": 561191008094,
+   "saleSum": 397782125445,
+   "ratePct": 70.9
+  },
+  {
+   "region": "부산",
+   "use": "아파트",
+   "auctions": 3395,
+   "sold": 1161,
+   "appraisalSum": 441099200000,
+   "saleSum": 358377307818,
+   "ratePct": 81.2
+  },
+  {
+   "region": "부산",
+   "use": "연립다세대",
+   "auctions": 4035,
+   "sold": 979,
+   "appraisalSum": 144680561150,
+   "saleSum": 78757906631,
+   "ratePct": 54.4
+  },
+  {
+   "region": "부산",
+   "use": "오피스텔",
+   "auctions": 5240,
+   "sold": 1164,
+   "appraisalSum": 201009300000,
+   "saleSum": 112997390952,
+   "ratePct": 56.2
+  },
+  {
+   "region": "부산",
+   "use": "단독주택",
+   "auctions": 249,
+   "sold": 40,
+   "appraisalSum": 13770539450,
+   "saleSum": 6343551190,
+   "ratePct": 46.1
+  },
+  {
+   "region": "부산",
+   "use": "다가구주택",
+   "auctions": 90,
+   "sold": 21,
+   "appraisalSum": 12438234180,
+   "saleSum": 8009865412,
+   "ratePct": 64.4
+  },
+  {
+   "region": "부산",
+   "use": "단독·다가구",
+   "auctions": 735,
+   "sold": 121,
+   "appraisalSum": 58122137886,
+   "saleSum": 30160783797,
+   "ratePct": 51.9
+  },
+  {
+   "region": "대구",
+   "use": "아파트",
+   "auctions": 2430,
+   "sold": 904,
+   "appraisalSum": 273832000000,
+   "saleSum": 220557208673,
+   "ratePct": 80.5
+  },
+  {
+   "region": "대구",
+   "use": "연립다세대",
+   "auctions": 389,
+   "sold": 84,
+   "appraisalSum": 17375697110,
+   "saleSum": 10255135546,
+   "ratePct": 59.0
+  },
+  {
+   "region": "대구",
+   "use": "오피스텔",
+   "auctions": 251,
+   "sold": 43,
+   "appraisalSum": 10172743780,
+   "saleSum": 6321584933,
+   "ratePct": 62.1
+  },
+  {
+   "region": "대구",
+   "use": "단독주택",
+   "auctions": 152,
+   "sold": 27,
+   "appraisalSum": 9744588307,
+   "saleSum": 4516314701,
+   "ratePct": 46.3
+  },
+  {
+   "region": "대구",
+   "use": "다가구주택",
+   "auctions": 135,
+   "sold": 40,
+   "appraisalSum": 46030934744,
+   "saleSum": 23686685681,
+   "ratePct": 51.5
+  },
+  {
+   "region": "대구",
+   "use": "단독·다가구",
+   "auctions": 933,
+   "sold": 189,
+   "appraisalSum": 141750084371,
+   "saleSum": 72134617578,
+   "ratePct": 50.9
+  },
+  {
+   "region": "인천",
+   "use": "아파트",
+   "auctions": 3759,
+   "sold": 1224,
+   "appraisalSum": 428340600000,
+   "saleSum": 335666047626,
+   "ratePct": 78.4
+  },
+  {
+   "region": "인천",
+   "use": "연립다세대",
+   "auctions": 8981,
+   "sold": 2164,
+   "appraisalSum": 319388614580,
+   "saleSum": 192019853426,
+   "ratePct": 60.1
+  },
+  {
+   "region": "인천",
+   "use": "오피스텔",
+   "auctions": 6845,
+   "sold": 2233,
+   "appraisalSum": 450555600000,
+   "saleSum": 283459398912,
+   "ratePct": 62.9
+  },
+  {
+   "region": "인천",
+   "use": "단독주택",
+   "auctions": 168,
+   "sold": 27,
+   "appraisalSum": 14486050040,
+   "saleSum": 7238318340,
+   "ratePct": 50.0
+  },
+  {
+   "region": "인천",
+   "use": "다가구주택",
+   "auctions": 61,
+   "sold": 11,
+   "appraisalSum": 15192466480,
+   "saleSum": 7920686688,
+   "ratePct": 52.1
+  },
+  {
+   "region": "인천",
+   "use": "단독·다가구",
+   "auctions": 366,
+   "sold": 63,
+   "appraisalSum": 48772073097,
+   "saleSum": 24020844637,
+   "ratePct": 49.3
+  },
+  {
+   "region": "광주",
+   "use": "아파트",
+   "auctions": 1620,
+   "sold": 535,
+   "appraisalSum": 150678200000,
+   "saleSum": 119189338637,
+   "ratePct": 79.1
+  },
+  {
+   "region": "광주",
+   "use": "연립다세대",
+   "auctions": 228,
+   "sold": 25,
+   "appraisalSum": 6864583320,
+   "saleSum": 4047453479,
+   "ratePct": 59.0
+  },
+  {
+   "region": "광주",
+   "use": "오피스텔",
+   "auctions": 538,
+   "sold": 63,
+   "appraisalSum": 10173200000,
+   "saleSum": 5764378038,
+   "ratePct": 56.7
+  },
+  {
+   "region": "광주",
+   "use": "단독주택",
+   "auctions": 172,
+   "sold": 28,
+   "appraisalSum": 10655771946,
+   "saleSum": 6071359529,
+   "ratePct": 57.0
+  },
+  {
+   "region": "광주",
+   "use": "다가구주택",
+   "auctions": 22,
+   "sold": 2,
+   "appraisalSum": 1652516500,
+   "saleSum": 1046578990,
+   "ratePct": 63.3
+  },
+  {
+   "region": "광주",
+   "use": "단독·다가구",
+   "auctions": 337,
+   "sold": 56,
+   "appraisalSum": 30320297255,
+   "saleSum": 17756380894,
+   "ratePct": 58.6
+  },
+  {
+   "region": "대전",
+   "use": "아파트",
+   "auctions": 1049,
+   "sold": 363,
+   "appraisalSum": 122579200000,
+   "saleSum": 99983693180,
+   "ratePct": 81.6
+  },
+  {
+   "region": "대전",
+   "use": "연립다세대",
+   "auctions": 443,
+   "sold": 104,
+   "appraisalSum": 17566142460,
+   "saleSum": 11280952074,
+   "ratePct": 64.2
+  },
+  {
+   "region": "대전",
+   "use": "오피스텔",
+   "auctions": 185,
+   "sold": 37,
+   "appraisalSum": 9036000000,
+   "saleSum": 4699724810,
+   "ratePct": 52.0
+  },
+  {
+   "region": "대전",
+   "use": "단독주택",
+   "auctions": 80,
+   "sold": 22,
+   "appraisalSum": 9453340890,
+   "saleSum": 5631789244,
+   "ratePct": 59.6
+  },
+  {
+   "region": "대전",
+   "use": "다가구주택",
+   "auctions": 326,
+   "sold": 125,
+   "appraisalSum": 212392710610,
+   "saleSum": 148383031118,
+   "ratePct": 69.9
+  },
+  {
+   "region": "대전",
+   "use": "단독·다가구",
+   "auctions": 785,
+   "sold": 265,
+   "appraisalSum": 386267806259,
+   "saleSum": 265521232364,
+   "ratePct": 68.7
+  },
+  {
+   "region": "울산",
+   "use": "아파트",
+   "auctions": 909,
+   "sold": 304,
+   "appraisalSum": 68609600000,
+   "saleSum": 58479121242,
+   "ratePct": 85.2
+  },
+  {
+   "region": "울산",
+   "use": "연립다세대",
+   "auctions": 256,
+   "sold": 57,
+   "appraisalSum": 8165426040,
+   "saleSum": 5203328363,
+   "ratePct": 63.7
+  },
+  {
+   "region": "울산",
+   "use": "오피스텔",
+   "auctions": 384,
+   "sold": 132,
+   "appraisalSum": 21201872900,
+   "saleSum": 13150580262,
+   "ratePct": 62.0
+  },
+  {
+   "region": "울산",
+   "use": "단독주택",
+   "auctions": 72,
+   "sold": 11,
+   "appraisalSum": 5917807760,
+   "saleSum": 2998582519,
+   "ratePct": 50.7
+  },
+  {
+   "region": "울산",
+   "use": "다가구주택",
+   "auctions": 9,
+   "sold": 3,
+   "appraisalSum": 2866111640,
+   "saleSum": 1593759800,
+   "ratePct": 55.6
+  },
+  {
+   "region": "울산",
+   "use": "단독·다가구",
+   "auctions": 366,
+   "sold": 71,
+   "appraisalSum": 39548166697,
+   "saleSum": 21581641672,
+   "ratePct": 54.6
+  },
+  {
+   "region": "세종",
+   "use": "아파트",
+   "auctions": 423,
+   "sold": 146,
+   "appraisalSum": 60046000000,
+   "saleSum": 51675465083,
+   "ratePct": 86.1
+  },
+  {
+   "region": "세종",
+   "use": "연립다세대",
+   "auctions": 67,
+   "sold": 12,
+   "appraisalSum": 12280815100,
+   "saleSum": 5871231000,
+   "ratePct": 47.8
+  },
+  {
+   "region": "세종",
+   "use": "오피스텔",
+   "auctions": 104,
+   "sold": 18,
+   "appraisalSum": 1832300000,
+   "saleSum": 1678059000,
+   "ratePct": 91.6
+  },
+  {
+   "region": "세종",
+   "use": "단독주택",
+   "auctions": 26,
+   "sold": 6,
+   "appraisalSum": 7369317060,
+   "saleSum": 3518093300,
+   "ratePct": 47.7
+  },
+  {
+   "region": "세종",
+   "use": "다가구주택",
+   "auctions": 15,
+   "sold": 2,
+   "appraisalSum": 2502843600,
+   "saleSum": 1101010000,
+   "ratePct": 44.0
+  },
+  {
+   "region": "세종",
+   "use": "단독·다가구",
+   "auctions": 87,
+   "sold": 17,
+   "appraisalSum": 16795433040,
+   "saleSum": 8416680650,
+   "ratePct": 50.1
+  },
+  {
+   "region": "경기",
+   "use": "아파트",
+   "auctions": 9084,
+   "sold": 3433,
+   "appraisalSum": 1607722994800,
+   "saleSum": 1393358263163,
+   "ratePct": 86.7
+  },
+  {
+   "region": "경기",
+   "use": "연립다세대",
+   "auctions": 23711,
+   "sold": 5329,
+   "appraisalSum": 1151826524880,
+   "saleSum": 693656161623,
+   "ratePct": 60.2
+  },
+  {
+   "region": "경기",
+   "use": "오피스텔",
+   "auctions": 3763,
+   "sold": 821,
+   "appraisalSum": 170323695030,
+   "saleSum": 109109090383,
+   "ratePct": 64.1
+  },
+  {
+   "region": "경기",
+   "use": "단독주택",
+   "auctions": 665,
+   "sold": 121,
+   "appraisalSum": 94423655867,
+   "saleSum": 49205957804,
+   "ratePct": 52.1
+  },
+  {
+   "region": "경기",
+   "use": "다가구주택",
+   "auctions": 254,
+   "sold": 61,
+   "appraisalSum": 84679790023,
+   "saleSum": 49545135555,
+   "ratePct": 58.5
+  },
+  {
+   "region": "경기",
+   "use": "단독·다가구",
+   "auctions": 2507,
+   "sold": 482,
+   "appraisalSum": 468899602712,
+   "saleSum": 271217113112,
+   "ratePct": 57.8
+  },
+  {
+   "region": "강원",
+   "use": "아파트",
+   "auctions": 715,
+   "sold": 267,
+   "appraisalSum": 54985886000,
+   "saleSum": 43190762380,
+   "ratePct": 78.5
+  },
+  {
+   "region": "강원",
+   "use": "연립다세대",
+   "auctions": 504,
+   "sold": 117,
+   "appraisalSum": 20743478660,
+   "saleSum": 10908025199,
+   "ratePct": 52.6
+  },
+  {
+   "region": "강원",
+   "use": "오피스텔",
+   "auctions": 70,
+   "sold": 19,
+   "appraisalSum": 2361300000,
+   "saleSum": 1163232277,
+   "ratePct": 49.3
+  },
+  {
+   "region": "강원",
+   "use": "단독주택",
+   "auctions": 353,
+   "sold": 70,
+   "appraisalSum": 23800683584,
+   "saleSum": 10359519639,
+   "ratePct": 43.5
+  },
+  {
+   "region": "강원",
+   "use": "다가구주택",
+   "auctions": 40,
+   "sold": 12,
+   "appraisalSum": 14041823190,
+   "saleSum": 6692461500,
+   "ratePct": 47.7
+  },
+  {
+   "region": "강원",
+   "use": "단독·다가구",
+   "auctions": 786,
+   "sold": 165,
+   "appraisalSum": 72622973294,
+   "saleSum": 34830083344,
+   "ratePct": 48.0
+  },
+  {
+   "region": "충북",
+   "use": "아파트",
+   "auctions": 1356,
+   "sold": 370,
+   "appraisalSum": 68588419000,
+   "saleSum": 53956348384,
+   "ratePct": 78.7
+  },
+  {
+   "region": "충북",
+   "use": "연립다세대",
+   "auctions": 523,
+   "sold": 116,
+   "appraisalSum": 16860109780,
+   "saleSum": 8535174284,
+   "ratePct": 50.6
+  },
+  {
+   "region": "충북",
+   "use": "오피스텔",
+   "auctions": 66,
+   "sold": 15,
+   "appraisalSum": 1580600000,
+   "saleSum": 570059000,
+   "ratePct": 36.1
+  },
+  {
+   "region": "충북",
+   "use": "단독주택",
+   "auctions": 170,
+   "sold": 39,
+   "appraisalSum": 13397441180,
+   "saleSum": 8081727508,
+   "ratePct": 60.3
+  },
+  {
+   "region": "충북",
+   "use": "다가구주택",
+   "auctions": 24,
+   "sold": 7,
+   "appraisalSum": 6862421970,
+   "saleSum": 4624888988,
+   "ratePct": 67.4
+  },
+  {
+   "region": "충북",
+   "use": "단독·다가구",
+   "auctions": 696,
+   "sold": 134,
+   "appraisalSum": 53936293790,
+   "saleSum": 33552008591,
+   "ratePct": 62.2
+  },
+  {
+   "region": "충남",
+   "use": "아파트",
+   "auctions": 2095,
+   "sold": 598,
+   "appraisalSum": 118168745000,
+   "saleSum": 92411893482,
+   "ratePct": 78.2
+  },
+  {
+   "region": "충남",
+   "use": "연립다세대",
+   "auctions": 750,
+   "sold": 169,
+   "appraisalSum": 23987381310,
+   "saleSum": 13235248221,
+   "ratePct": 55.2
+  },
+  {
+   "region": "충남",
+   "use": "오피스텔",
+   "auctions": 198,
+   "sold": 36,
+   "appraisalSum": 5973470000,
+   "saleSum": 3344916182,
+   "ratePct": 56.0
+  },
+  {
+   "region": "충남",
+   "use": "단독주택",
+   "auctions": 225,
+   "sold": 47,
+   "appraisalSum": 9579695978,
+   "saleSum": 4869922308,
+   "ratePct": 50.8
+  },
+  {
+   "region": "충남",
+   "use": "다가구주택",
+   "auctions": 44,
+   "sold": 9,
+   "appraisalSum": 8889396840,
+   "saleSum": 4929588999,
+   "ratePct": 55.5
+  },
+  {
+   "region": "충남",
+   "use": "단독·다가구",
+   "auctions": 662,
+   "sold": 140,
+   "appraisalSum": 62969262238,
+   "saleSum": 34517340019,
+   "ratePct": 54.8
+  },
+  {
+   "region": "전북",
+   "use": "아파트",
+   "auctions": 1325,
+   "sold": 425,
+   "appraisalSum": 88546765618,
+   "saleSum": 71391667589,
+   "ratePct": 80.6
+  },
+  {
+   "region": "전북",
+   "use": "연립다세대",
+   "auctions": 520,
+   "sold": 104,
+   "appraisalSum": 18747496150,
+   "saleSum": 10391013585,
+   "ratePct": 55.4
+  },
+  {
+   "region": "전북",
+   "use": "오피스텔",
+   "auctions": 23,
+   "sold": 6,
+   "appraisalSum": 910000000,
+   "saleSum": 563920501,
+   "ratePct": 62.0
+  },
+  {
+   "region": "전북",
+   "use": "단독주택",
+   "auctions": 154,
+   "sold": 40,
+   "appraisalSum": 7482876240,
+   "saleSum": 5121829643,
+   "ratePct": 68.4
+  },
+  {
+   "region": "전북",
+   "use": "다가구주택",
+   "auctions": 83,
+   "sold": 15,
+   "appraisalSum": 10167818950,
+   "saleSum": 5378168990,
+   "ratePct": 52.9
+  },
+  {
+   "region": "전북",
+   "use": "단독·다가구",
+   "auctions": 515,
+   "sold": 121,
+   "appraisalSum": 39217862370,
+   "saleSum": 23130216449,
+   "ratePct": 59.0
+  },
+  {
+   "region": "전남",
+   "use": "아파트",
+   "auctions": 2294,
+   "sold": 614,
+   "appraisalSum": 94380733000,
+   "saleSum": 71726643749,
+   "ratePct": 76.0
+  },
+  {
+   "region": "전남",
+   "use": "연립다세대",
+   "auctions": 511,
+   "sold": 88,
+   "appraisalSum": 19563452560,
+   "saleSum": 11025528916,
+   "ratePct": 56.4
+  },
+  {
+   "region": "전남",
+   "use": "오피스텔",
+   "auctions": 326,
+   "sold": 61,
+   "appraisalSum": 8564900000,
+   "saleSum": 3441038481,
+   "ratePct": 40.2
+  },
+  {
+   "region": "전남",
+   "use": "단독주택",
+   "auctions": 488,
+   "sold": 95,
+   "appraisalSum": 16465631680,
+   "saleSum": 8546713377,
+   "ratePct": 51.9
+  },
+  {
+   "region": "전남",
+   "use": "다가구주택",
+   "auctions": 16,
+   "sold": 1,
+   "appraisalSum": 10718000,
+   "saleSum": 2500000,
+   "ratePct": 23.3
+  },
+  {
+   "region": "전남",
+   "use": "단독·다가구",
+   "auctions": 1045,
+   "sold": 200,
+   "appraisalSum": 39359612003,
+   "saleSum": 21170203717,
+   "ratePct": 53.8
+  },
+  {
+   "region": "경북",
+   "use": "아파트",
+   "auctions": 2371,
+   "sold": 635,
+   "appraisalSum": 102851900000,
+   "saleSum": 78725153566,
+   "ratePct": 76.5
+  },
+  {
+   "region": "경북",
+   "use": "연립다세대",
+   "auctions": 784,
+   "sold": 198,
+   "appraisalSum": 30948381550,
+   "saleSum": 17029585963,
+   "ratePct": 55.0
+  },
+  {
+   "region": "경북",
+   "use": "오피스텔",
+   "auctions": 180,
+   "sold": 30,
+   "appraisalSum": 3512200000,
+   "saleSum": 2184135674,
+   "ratePct": 62.2
+  },
+  {
+   "region": "경북",
+   "use": "단독주택",
+   "auctions": 448,
+   "sold": 99,
+   "appraisalSum": 32448642592,
+   "saleSum": 15978100349,
+   "ratePct": 49.2
+  },
+  {
+   "region": "경북",
+   "use": "다가구주택",
+   "auctions": 225,
+   "sold": 55,
+   "appraisalSum": 48102691130,
+   "saleSum": 24909012540,
+   "ratePct": 51.8
+  },
+  {
+   "region": "경북",
+   "use": "단독·다가구",
+   "auctions": 1520,
+   "sold": 356,
+   "appraisalSum": 183484862360,
+   "saleSum": 91583761257,
+   "ratePct": 49.9
+  },
+  {
+   "region": "경남",
+   "use": "아파트",
+   "auctions": 4144,
+   "sold": 1231,
+   "appraisalSum": 225547925500,
+   "saleSum": 173476844531,
+   "ratePct": 76.9
+  },
+  {
+   "region": "경남",
+   "use": "연립다세대",
+   "auctions": 1157,
+   "sold": 236,
+   "appraisalSum": 41216059245,
+   "saleSum": 18967173882,
+   "ratePct": 46.0
+  },
+  {
+   "region": "경남",
+   "use": "오피스텔",
+   "auctions": 586,
+   "sold": 106,
+   "appraisalSum": 15595109040,
+   "saleSum": 7539298328,
+   "ratePct": 48.3
+  },
+  {
+   "region": "경남",
+   "use": "단독주택",
+   "auctions": 731,
+   "sold": 142,
+   "appraisalSum": 38298547255,
+   "saleSum": 16560516510,
+   "ratePct": 43.2
+  },
+  {
+   "region": "경남",
+   "use": "다가구주택",
+   "auctions": 150,
+   "sold": 39,
+   "appraisalSum": 30630961051,
+   "saleSum": 15206456988,
+   "ratePct": 49.6
+  },
+  {
+   "region": "경남",
+   "use": "단독·다가구",
+   "auctions": 2360,
+   "sold": 429,
+   "appraisalSum": 179311758515,
+   "saleSum": 83201483168,
+   "ratePct": 46.4
+  },
+  {
+   "region": "제주",
+   "use": "아파트",
+   "auctions": 175,
+   "sold": 61,
+   "appraisalSum": 22650500000,
+   "saleSum": 18376058187,
+   "ratePct": 81.1
+  },
+  {
+   "region": "제주",
+   "use": "연립다세대",
+   "auctions": 823,
+   "sold": 206,
+   "appraisalSum": 70088282000,
+   "saleSum": 40745230133,
+   "ratePct": 58.1
+  },
+  {
+   "region": "제주",
+   "use": "오피스텔",
+   "auctions": 414,
+   "sold": 91,
+   "appraisalSum": 17569000000,
+   "saleSum": 10061395175,
+   "ratePct": 57.3
+  },
+  {
+   "region": "제주",
+   "use": "단독주택",
+   "auctions": 389,
+   "sold": 94,
+   "appraisalSum": 63076218893,
+   "saleSum": 31039025950,
+   "ratePct": 49.2
+  },
+  {
+   "region": "제주",
+   "use": "다가구주택",
+   "auctions": 18,
+   "sold": 3,
+   "appraisalSum": 3311786360,
+   "saleSum": 1927501000,
+   "ratePct": 58.2
+  },
+  {
+   "region": "제주",
+   "use": "단독·다가구",
+   "auctions": 787,
+   "sold": 188,
+   "appraisalSum": 127308752351,
+   "saleSum": 64485163222,
+   "ratePct": 50.7
+  }
+ ]
 }

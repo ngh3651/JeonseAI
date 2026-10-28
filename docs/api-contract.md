@@ -572,14 +572,15 @@ MarketPriceAlternative {
 
 - **스위치**: `CHATBOT_LLM=off`면 AI를 건너뛴다(용어 풀이 + 안내 문장).
 
-### 3.22 `GET /api/reports/{id}/loss-estimate` — 손실 예상 (2026-10-28 추가)
+### 3.22 `GET /api/reports/{id}/loss-estimate[?price=원]` — 손실 예상 (2026-10-28 추가)
 - **목적**: 손실 시뮬레이터 — 이 집이 경매로 넘어가면 보증금이 얼마나 돌아오나. **규칙 계산, AI 없음.** 판정 등급과 무관하다.
 - **처리**: 저장하지 않고 **부를 때마다 계산**한다 — 매각가율 자료(`backend/data/auction_sale_rates.json`)를 새로 넣으면 예전 리포트도 바로 새 숫자.
   예상 낙찰가 = 시세 × 매각가율(그 시도·용도, 최근 12개월 매각가 합 ÷ 감정가 합) · 돌려받을 돈 = min(보증금, max(0, 낙찰가 − 먼저 갚을 빚)).
-  용도는 `Report.houseTypes`(분석 때 실거래가·공시가격 매칭 유형으로 정함) — 여럿이면 **가장 낮은 매각가율**. 시도 매각 건수 30건 미만이면 전국 값.
+  용도는 `Report.houseTypes`(분석 때 실거래가·공시가격 매칭 유형으로 정함) — 여럿이면 **가장 낮은 매각가율**, 통건물은 단독·다가구 소계. 시도 매각 건수 30건 미만이거나 주소의 시·도를 못 알아보면 전국 값(데이터 파일의 `전국` 줄만 — 시·도를 더해 만들지 않는다).
+  `price`(선택, 원, 1 이상): 시뮬레이터에서 사용자가 넣은 매매 시세 — 이번 계산에만 쓰고 **리포트는 바꾸지 않는다**. 0 이하 → 422.
 - **응답 200** `LossEstimate`: `status`(ok | debt_exceeds | no_price | no_rate) · `deposit` · `basePrice` · `seniorDebt` · `ratePct` · `region` · `regionFallback` · `use` · `useGuessed` · `soldCount` · `period` · `source` · `expectedSale` · `expectedReturn` · `expectedLoss`.
-  - `no_price`: 시세가 없어 계산하지 않는다(보증금을 기준가로 쓰지 않는다). `debt_exceeds`: 빚 ≥ 시세인데 매각가율 자료가 없을 때 — 돌려받을 돈 0원(자료가 있으면 그냥 `ok`로 계산해 0원이 나온다). 앱은 `ok`와 같은 모양으로 그린다. `no_rate`: 그 용도의 자료가 없다(지어내지 않는다).
-  - 경매 비용·세금·최우선변제는 아직 넣지 않았다(2단계). 앱은 계산에 **쓴** 근거(지역·용도·기간·건수·출처)만 적는다.
+  - `no_price`: 시세가 없어 계산하지 않는다(보증금을 기준가로 쓰지 않는다). 쓸 매각가율(`ratePct`·`region`·`use`·`soldCount`)은 채워 보낸다 — 화면이 낙찰가 꼬리표를 먼저 보여 준다. `debt_exceeds`: 빚 ≥ 시세인데 매각가율 자료가 없을 때 — 돌려받을 돈 0원(자료가 있으면 그냥 `ok`로 계산해 0원이 나온다). 앱은 `ok`와 같은 모양으로 그린다. `no_rate`: 그 용도의 자료가 없다(지어내지 않는다).
+  - 경매 비용·세금·최우선변제는 아직 넣지 않았다(2단계). 앱은 계산에 **쓴** 근거(기준 · 기간 · 출처)만 적는다.
 - **에러**: **404** 없는 리포트.
 
 ## 4. 화면 ↔ 엔드포인트 매핑
@@ -593,7 +594,7 @@ MarketPriceAlternative {
 | S-05 발급 가이드 | (없음 — 정적 화면) | — |
 | S-07 안전도 리포트 (근거 카드·툴팁 포함) | `GET /api/reports/{id}` | 비회원 허용 |
 | S-08 판례 매칭 | `GET /api/reports/{id}/cases` | 비회원 허용 |
-| S-09 손실 시뮬레이터 | `GET /api/reports/{id}` (계산은 앱 로컬) | 비회원 허용 |
+| S-09 손실 시뮬레이터 | `GET /api/reports/{id}`, `GET /api/reports/{id}/loss-estimate[?price=]` | 비회원 허용 |
 | S-10 질문 생성기 | `GET /api/reports/{id}/questions` | 비회원 허용 |
 | S-11 계약 여정 (매물 타임라인) | `GET /api/journey-stages`, `GET /api/reports` | 비회원 허용 |
 | S-11 등기부 대조 (로딩·결과 4갈래) | `POST /api/reports/{id}/compare` | **인증 필요** |

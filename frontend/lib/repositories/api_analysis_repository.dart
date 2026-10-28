@@ -171,9 +171,15 @@ class ApiAnalysisRepository extends AnalysisRepository {
 
   /// 손실 예상 — 부를 때마다 서버가 계산한다(매각가율 자료를 새로 넣으면 예전 리포트도 새 숫자). 없는 리포트면 null.
   @override
-  Future<LossEstimate?> getLossEstimate(String reportId) async {
+  Future<LossEstimate?> getLossEstimate(
+    String reportId, {
+    int? marketPrice,
+  }) async {
+    final String query = marketPrice != null && marketPrice > 0
+        ? '?price=$marketPrice'
+        : '';
     final json = await _api.getJson(
-      '/api/reports/$reportId/loss-estimate',
+      '/api/reports/$reportId/loss-estimate$query',
       onNotFound: () => null,
     );
     if (json == null) return null;

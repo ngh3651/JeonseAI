@@ -4,6 +4,8 @@
 /// Phase D~: ApiAnalysisRepository (서버 호출) 로 구현만 교체한다.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/analysis_report.dart';
@@ -30,6 +32,20 @@ abstract class AnalysisRepository extends ChangeNotifier {
 
   /// 등기부 이미지 + 입력값(보증금 등)으로 분석을 실행하고 이력에 추가한다.
   Future<AnalysisReport> analyze(AnalysisRequest request);
+
+  /// [analyze]를 **중단할 수 있게** 부른다 (2026-10-29 — 로딩 화면의 [중단]).
+  ///
+  /// [cancel]이 불리면 진행 중인 요청을 끊고, 뒤늦게 응답이 와도 **저장·이력 갱신·대신하기(replaces)를 하지 않고**
+  /// [AnalysisCancelledException]을 던진다. 기본 구현(더미·테스트 저장소)은 끊을 요청이 없어 [analyze]를 그대로 부르고,
+  /// 끝난 뒤 중단됐으면 결과를 버린다(화면은 이미 닫혔다).
+  Future<AnalysisReport> analyzeCancellable(
+    AnalysisRequest request,
+    AnalysisCancelToken cancel,
+  ) async {
+    final report = await analyze(request);
+    if (cancel.isCancelled) throw const AnalysisCancelledException();
+    return report;
+  }
 
   /// 최근 분석 이력 (최신순).
   Future<List<AnalysisReport>> getHistory();
@@ -59,6 +75,29 @@ abstract class AnalysisRepository extends ChangeNotifier {
     List<String> imagePaths, {
     required String replaces,
   }) => compareRegistry(reportId, imagePaths);
+}
+
+/// 분석 중단 표시 (2026-10-29) — 로딩 화면이 하나 만들어 [AnalysisRepository.analyzeCancellable]에 넘기고,
+/// [중단]을 누르면 [cancel]을 부른다. 한 번 중단하면 되돌릴 수 없다(다시 하려면 새 표시로 처음부터).
+class AnalysisCancelToken {
+  final Completer<void> _cancelled = Completer<void>();
+
+  bool get isCancelled => _cancelled.isCompleted;
+
+  /// 중단되는 순간 끝나는 Future — 요청을 끊는 신호(`http` 패키지의 `abortTrigger`)로 쓴다.
+  Future<void> get whenCancelled => _cancelled.future;
+
+  void cancel() {
+    if (!_cancelled.isCompleted) _cancelled.complete();
+  }
+}
+
+/// 사용자가 분석을 중단했다 — 결과를 버렸다(저장·이력 갱신 없음). 화면은 아무것도 띄우지 않는다.
+class AnalysisCancelledException implements Exception {
+  const AnalysisCancelledException();
+
+  @override
+  String toString() => 'AnalysisCancelledException';
 }
 
 /// 더미 구현 — 위험 vs 확인 필요 2세트 (plan.md C-2: 시나리오 B 대비 컷의 원형).

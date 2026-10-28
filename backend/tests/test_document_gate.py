@@ -47,7 +47,7 @@ def test_analyze_rejects_non_registry_without_saving(monkeypatch, tmp_path):
     monkeypatch.setattr(
         report_builder,
         "_ocr_then_second_opinion",
-        lambda images, run_id=None: report_builder.OcrPath(ocr=ocr.OcrResult(pages=[_page("Enter", "Shift")])),
+        lambda images, run_id=None, stop=None: report_builder.OcrPath(ocr=ocr.OcrResult(pages=[_page("Enter", "Shift")])),
     )
     before = len(store.list_reports(device_id="dev-gate"))
     with pytest.raises(extraction.ExtractionError) as e:

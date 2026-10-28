@@ -255,16 +255,25 @@ class ApiClient {
   }
 
   /// multipart POST → 디코딩된 JSON. (분석 요청용 — 계약 §3.1)
+  ///
+  /// [abortTrigger]가 끝나면(분석 중 [중단] — 2026-10-29) 보내던 요청을 **끊는다** → 서버가 알아채고 남은 단계를
+  /// 건너뛴다(계약 §3.1). 끊긴 요청은 연결 실패와 같은 [ApiException]으로 올라온다 — 저장소가 중단으로 바꿔 읽는다.
   Future<dynamic> postMultipart(
     String path, {
     required List<http.MultipartFile> files,
     required Map<String, String> fields,
+    Future<void>? abortTrigger,
   }) async {
     final headers = await commonHeaders(); // 로그인했으면 Authorization도 여기서 실린다
-    final request = http.MultipartRequest('POST', _uri(path))
-      ..headers.addAll(headers)
-      ..files.addAll(files)
-      ..fields.addAll(fields);
+    final request =
+        http.AbortableMultipartRequest(
+            'POST',
+            _uri(path),
+            abortTrigger: abortTrigger,
+          )
+          ..headers.addAll(headers)
+          ..files.addAll(files)
+          ..fields.addAll(fields);
 
     final http.Response res;
     try {

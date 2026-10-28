@@ -29,13 +29,35 @@ class ApiAnalysisRepository extends AnalysisRepository {
   final RegistryUploadService _uploader;
 
   @override
-  Future<AnalysisReport> analyze(AnalysisRequest request) async {
+  Future<AnalysisReport> analyze(AnalysisRequest request) =>
+      _analyze(request, null);
+
+  /// 중단할 수 있는 분석 (2026-10-29 — 로딩 화면 [중단] = 결과 버리기, 크레딧 아끼는 쪽).
+  /// [cancel]이 불리면 보내던 요청을 끊는다(서버가 남은 IE·OCR·Solar를 건너뛴다). 뒤늦게 응답이 와도
+  /// 폰 원본 보관·대신한 리포트 정리·이력 갱신 알림을 **하지 않고** [AnalysisCancelledException]을 던진다.
+  @override
+  Future<AnalysisReport> analyzeCancellable(
+    AnalysisRequest request,
+    AnalysisCancelToken cancel,
+  ) => _analyze(request, cancel);
+
+  Future<AnalysisReport> _analyze(
+    AnalysisRequest request,
+    AnalysisCancelToken? cancel,
+  ) async {
+    void stopIfCancelled() {
+      if (cancel != null && cancel.isCancelled) {
+        throw const AnalysisCancelledException();
+      }
+    }
+
     // 검증 자산 재사용: 어떤 형식(HEIC 등)이 와도 JPEG로 변환해 전송 (decisions.md 2026-07-01)
     final files = <http.MultipartFile>[];
     // 하이라이트 좌표는 **서버로 보낸 이 JPEG의 픽셀 기준**이다. 뷰어가 갤러리 원본이 아니라
     // 이 파일을 그대로 띄워야 좌표가 맞는다 → 경로를 세션 저장소에 남긴다.
     final sentJpegPaths = <String>[];
     for (int i = 0; i < request.imagePaths.length; i++) {
+      stopIfCancelled(); // 사진을 바꾸는 동안 중단했으면 보내지도 않는다
       final jpeg = await _uploader.convertToJpeg(
         request.imagePaths[i],
         tag: 'p$i', // 같은 밀리초에 두 장이 변환돼 덮어써지는 것을 막는다
@@ -54,19 +76,29 @@ class ApiAnalysisRepository extends AnalysisRepository {
       );
     }
 
-    final json = await _api.postMultipart(
-      '/api/analyze',
-      files: files,
-      fields: {
-        'deposit': '${request.deposit}',
-        if (request.marketPrice != null)
-          'marketPrice': '${request.marketPrice}',
-        if (request.alias != null && request.alias!.trim().isNotEmpty)
-          'alias': request.alias!.trim(),
-        if (request.replacesReportId != null)
-          'replaces': request.replacesReportId!,
-      },
-    );
+    stopIfCancelled();
+    final dynamic json;
+    try {
+      json = await _api.postMultipart(
+        '/api/analyze',
+        files: files,
+        fields: {
+          'deposit': '${request.deposit}',
+          if (request.marketPrice != null)
+            'marketPrice': '${request.marketPrice}',
+          if (request.alias != null && request.alias!.trim().isNotEmpty)
+            'alias': request.alias!.trim(),
+          if (request.replacesReportId != null)
+            'replaces': request.replacesReportId!,
+        },
+        abortTrigger: cancel?.whenCancelled,
+      );
+    } on ApiException {
+      stopIfCancelled(); // 끊은 요청의 '연결 실패'는 실패가 아니라 중단이다
+      rethrow;
+    }
+    // 뒤늦게 온 응답 — 중단했으면 버린다(폰에 남기지 않고, 대신한 리포트도 건드리지 않고, 홈도 그대로)
+    stopIfCancelled();
     final body = json as Map<String, dynamic>;
     // 같은 사진 캐시 적중이면 서버는 **기록에 남긴 가린 사본**(`홍○○`)을 준다(api-contract §9.10·§9.11).
     // 이 폰에 그 리포트의 원본(실명)이 있으면 원본을 쓴다 — 서버가 바꿨을 수 있는 것은 별칭뿐이라 별칭만 새 것으로.

@@ -12,6 +12,9 @@
 받아 **그 기기의 기록만** 다룬다. 다른 기기의 리포트 id를 넣으면 404 — "있는데 못 본다"와
 "없다"를 구분해 주지 않는다. (모든 기기에 붙던 예시 리포트 `dummy-example`은 2026-10-29에 없앴다.)
 
+**분석 중 [중단] (2026-10-29):** 앱이 연결을 끊으면 `/analyze`는 아직 시작 안 한 IE·OCR·Solar 호출을 건너뛰고
+기록·같은 사진 캐시에 남기지 않으며, `replaces`로 옛 리포트를 지우지도 않는다(`_client_gone`).
+
 E-1c: analyze/이력 실배선(추출→규칙 엔진→저장) 완료.
 E-2: 질문은 data/questions.json 템플릿 실연동 완료. E-3: 판례도 실연동(`precedent_service`).
 """
@@ -21,6 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import anyio
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
@@ -37,6 +41,45 @@ router = APIRouter(prefix="/api", tags=["reports"])
 _log = logging.getLogger("jeonseai")
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 파일당 10MB (기존 /api/upload와 동일 상한)
+
+#: 앱이 분석을 중단해 연결을 끊었을 때의 상태 코드(nginx 관례 'Client Closed Request') — 받을 사람은 이미 없다.
+CLIENT_CLOSED_STATUS = 499
+
+
+#: 끊김 메시지를 기다려 보는 시간(초). 끊겼으면 메시지가 바로 와 있고, 안 끊겼으면 이만큼만 기다리고 넘어간다.
+DISCONNECT_PEEK_SECONDS = 0.02
+
+
+async def _peek_disconnect(request: Request) -> bool:
+    """받은 메시지가 '끊김'인가. 본문은 이미 다 읽었으므로 여기 올 수 있는 메시지는 끊김뿐이다.
+
+    ⚠ `request.is_disconnected()`를 쓰지 않는 이유: 그 함수는 '미리 취소한 범위'에서 한 번만 받아 보는데,
+      `@app.middleware("http")`(BaseHTTPMiddleware)가 받기를 작업 묶음으로 감싸 그 안에서는 메시지가 절대 안 온다
+      — 실제 uvicorn에서 앱을 끊어 봐도 늘 False였다(2026-10-29 실험). 그래서 아주 짧게 기다려 본다.
+    """
+    if getattr(request.state, "client_gone", False):
+        return True
+    with anyio.move_on_after(DISCONNECT_PEEK_SECONDS):
+        message = await request.receive()
+        if message.get("type") == "http.disconnect":
+            request.state.client_gone = True
+            return True
+    return False
+
+
+def _client_gone(request: Request) -> bool:
+    """앱이 연결을 끊었나 — 분석 중 [중단] (2026-10-29). 확인하지 못하면 '안 끊김'으로 본다(분석은 그대로 간다).
+
+    분석 핸들러는 동기(def)라 스레드풀에서 돈다 → 이벤트 루프에 [_peek_disconnect]를 맡겨 묻는다.
+    """
+    try:
+        return bool(anyio.from_thread.run(_peek_disconnect, request))
+    except Exception:  # noqa: BLE001 — 루프 밖(직접 호출한 테스트 등)이면 묻지 못한다
+        return False
+
+
+def _cancelled_response() -> JSONResponse:
+    return JSONResponse(status_code=CLIENT_CLOSED_STATUS, content={"detail": "분석을 중단했어요"})
 
 
 def _read_images(files: list[UploadFile], *, empty_detail: str) -> list[tuple[str, bytes]]:
@@ -121,6 +164,7 @@ def analyze(
     if rejected is not None:
         return rejected
 
+    gone = lambda: _client_gone(request)  # noqa: E731 — 분석 단계 사이마다 묻는다
     try:
         report = report_builder.analyze(
             images,
@@ -129,9 +173,17 @@ def analyze(
             alias=alias,
             device_id=device_id,
             capture=capture,
+            cancelled=gone,
         )
+    except report_builder.AnalysisCancelled:
+        return _cancelled_response()  # 아무것도 저장하지 않았다 · replaces도 그대로
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
+    if gone():
+        # 저장 직후에 끊겼다 — 받을 사람이 없는 리포트를 기록에서 거둔다(대조 기준도 함께). 옛 리포트는 지우지 않는다.
+        store.remove(report.id, device_id=device_id)
+        _log.info(f"[분석 중단] 앱이 연결을 끊음 — 방금 저장한 리포트 {report.id}를 거뒀습니다")
+        return _cancelled_response()
     # 빠진 쪽 보충이면 덜 찍은 리포트를 이 리포트로 **대신한다** — 기록이 두 줄로 남지 않게, 그리고
     # 바로 전 리포트가 덜 찍은 것이 되어 틀린 변동이 잡히지 않게 (2026-10-27). 견주기 **전에** 지운다.
     _drop_replaced(report, replaces, device_id=device_id)

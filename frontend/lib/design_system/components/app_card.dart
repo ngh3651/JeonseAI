@@ -11,7 +11,6 @@ import '../../models/risk_grade.dart';
 import '../tokens/app_colors.dart';
 import '../tokens/app_spacing.dart';
 import '../tokens/app_typography.dart';
-import '../tokens/app_typography_next.dart';
 import 'risk_badge.dart';
 import 'source_label.dart';
 import '../../design_system/text/app_text.dart';
@@ -64,7 +63,6 @@ class EvidenceCard extends StatefulWidget {
     this.explanationSource,
     this.action,
     this.initiallyExpanded = false,
-    this.inline = false,
   });
 
   /// 쉬운 질문형 제목 (예: "나보다 먼저 돈 받아갈 빚이 있나요?")
@@ -104,10 +102,6 @@ class EvidenceCard extends StatefulWidget {
 
   final bool initiallyExpanded;
 
-  /// 카드 테두리 없이 **한 줄**로 — 리포트 1장 '등기부에서 찾은 것' 안 목록 (2026-10-28).
-  /// 접힘: 제목 · 상태 뱃지 · 펼침 아이콘 한 줄. 펼침: 전문용어 부제 → 아래는 카드와 똑같다.
-  final bool inline;
-
   @override
   State<EvidenceCard> createState() => _EvidenceCardState();
 }
@@ -117,7 +111,6 @@ class _EvidenceCardState extends State<EvidenceCard> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.inline) return _inlineRow();
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Semantics(
@@ -161,120 +154,59 @@ class _EvidenceCardState extends State<EvidenceCard> {
                   firstChild: const SizedBox(width: double.infinity),
                   secondChild: Padding(
                     padding: const EdgeInsets.only(top: AppSpacing.lg),
-                    child: _details(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── [D24 · 2026-08-14] 회색 요약 박스를 설명문 **위로** ──────
+                        //
+                        // 예전에는 설명문(4줄) → 회색 박스 순서였다. 카드를 펼치면
+                        // 문장부터 읽어야 이 집의 숫자가 나와서, "그래서 얼마인데?"에
+                        // 닿기까지 네 줄이 걸렸다. 숫자가 결론이고 설명문은 그 결론을
+                        // 풀어 주는 말이므로 순서를 뒤집는다 —
+                        // "결론 먼저 크게 → 근거는 펼쳐 보기"(IA.md §0)와 같은 방향이다.
+                        //
+                        // ⚠ 박스 스타일·패딩·타이포는 **그대로**다. 순서만 바꿨다.
+                        // ⚠ `explanationSpan`(용어 툴팁이 심긴 리치 텍스트)은 그대로
+                        //   `easyExplanation` 자리에 그려진다 — report_screen이 붙이는
+                        //   indexOf 배선은 이 위젯의 순서와 무관하다(스팬은 이미 조립된
+                        //   상태로 넘어온다). 툴팁은 그대로 산다.
+                        if (widget.detailText != null) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                            ),
+                            child: AppText(
+                              widget.detailText!,
+                              style: AppTypography.bodyStrong,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                        ],
+                        if (widget.explanationSpan != null)
+                          AppText.rich(widget.explanationSpan!)
+                        else
+                          AppText(
+                            widget.easyExplanation,
+                            style: AppTypography.body,
+                          ),
+                        const SizedBox(height: AppSpacing.md),
+                        VerdictSourceLabel(
+                          verdictSource: widget.sourceText,
+                          explanationSource: widget.explanationSource,
+                        ),
+                        if (widget.action != null) ...[
+                          const SizedBox(height: AppSpacing.md),
+                          widget.action!,
+                        ],
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 펼침 내용 — 숫자 상자 → 쉬운 설명 → 출처 → 행동 버튼 (카드 · 한 줄 모양 공통)
-  Widget _details() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── [D24 · 2026-08-14] 회색 요약 박스를 설명문 **위로** ──────
-        //
-        // 예전에는 설명문(4줄) → 회색 박스 순서였다. 카드를 펼치면
-        // 문장부터 읽어야 이 집의 숫자가 나와서, "그래서 얼마인데?"에
-        // 닿기까지 네 줄이 걸렸다. 숫자가 결론이고 설명문은 그 결론을
-        // 풀어 주는 말이므로 순서를 뒤집는다 —
-        // "결론 먼저 크게 → 근거는 펼쳐 보기"(IA.md §0)와 같은 방향이다.
-        //
-        // ⚠ 박스 스타일·패딩·타이포는 **그대로**다. 순서만 바꿨다.
-        // ⚠ `explanationSpan`(용어 툴팁이 심긴 리치 텍스트)은 그대로
-        //   `easyExplanation` 자리에 그려진다 — report_screen이 붙이는
-        //   indexOf 배선은 이 위젯의 순서와 무관하다(스팬은 이미 조립된
-        //   상태로 넘어온다). 툴팁은 그대로 산다.
-        if (widget.detailText != null) ...[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            child: AppText(widget.detailText!, style: AppTypography.bodyStrong),
-          ),
-          const SizedBox(height: AppSpacing.md),
-        ],
-        if (widget.explanationSpan != null)
-          AppText.rich(widget.explanationSpan!)
-        else
-          AppText(widget.easyExplanation, style: AppTypography.body),
-        const SizedBox(height: AppSpacing.md),
-        VerdictSourceLabel(
-          verdictSource: widget.sourceText,
-          explanationSource: widget.explanationSource,
-        ),
-        if (widget.action != null) ...[
-          const SizedBox(height: AppSpacing.md),
-          widget.action!,
-        ],
-      ],
-    );
-  }
-
-  Widget _inlineRow() {
-    return Semantics(
-      button: true,
-      expanded: _expanded,
-      label: '근거: ${widget.title}',
-      child: InkWell(
-        onTap: () => setState(() => _expanded = !_expanded),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: AppText(
-                      widget.title,
-                      style: AppTypographyNext.bodyStrong.copyWith(
-                        color: AppColorsNext.textStrong,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  RiskBadge(
-                    grade: widget.grade,
-                    labelOverride: widget.statusLabel,
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    color: AppColors.textMuted,
-                  ),
-                ],
-              ),
-              AnimatedCrossFade(
-                duration: const Duration(milliseconds: 180),
-                crossFadeState: _expanded
-                    ? CrossFadeState.showSecond
-                    : CrossFadeState.showFirst,
-                firstChild: const SizedBox(width: double.infinity),
-                secondChild: Padding(
-                  padding: const EdgeInsets.only(top: AppSpacing.sm),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AppText(
-                        widget.termSubtitle,
-                        style: AppTypography.caption,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      _details(),
-                    ],
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),

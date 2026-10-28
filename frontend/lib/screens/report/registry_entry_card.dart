@@ -187,8 +187,6 @@ class RegistryEntryCard extends StatelessWidget {
     required this.onTap,
     this.preview,
     this.title = '내가 올린 사진에서 보기',
-    this.footer,
-    this.showMascot = true,
   });
 
   final String title;
@@ -207,13 +205,6 @@ class RegistryEntryCard extends StatelessWidget {
 
   /// null이면 스트립 없이 하단 행만 (사진이 없거나 표시가 하나도 없을 때).
   final RegistryPreviewSource? preview;
-
-  /// 카드 안, 제목 줄 아래에 붙는 내용 — 리포트 1장에서 **근거 목록**이 여기 들어간다 (2026-10-28).
-  /// 누르면 사진으로 가는 곳은 사진 띠 + 제목 줄뿐이다(목록은 제 탭을 따로 받는다).
-  final Widget? footer;
-
-  /// 제목 줄 왼쪽 마스코트 — 리포트 1장에서는 뺀다(잠긴 상태의 자물쇠는 그대로 그린다).
-  final bool showMascot;
 
   @override
   Widget build(BuildContext context) {
@@ -234,86 +225,76 @@ class RegistryEntryCard extends StatelessWidget {
             ),
           ],
         ),
-        child: ClipRRect(
-          // 스트립이 카드 모서리를 넘지 않게 — 사진이 각진 채 튀어나오면 싸구려로 보인다
-          borderRadius: BorderRadius.circular(AppRadius.viewerEntryCard - 1.5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              InkWell(
-                onTap: onTap,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (preview != null) _PreviewStrip(source: preview!),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
-                      child: Row(
-                        children: [
-                          if (showMascot || !enabled) ...[
-                            _mascot(enabled),
-                            const SizedBox(width: 10),
-                          ],
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                AppText(
-                                  title,
-                                  style: AppTypography.bodyStrong.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: enabled
-                                        ? AppColors.textStrong
-                                        : AppColors.textMuted,
-                                  ),
-                                ),
-                                if (subtitle != null) ...[
-                                  const SizedBox(height: 2),
-                                  AppText(
-                                    subtitle!,
-                                    style: AppTypography.caption,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          if (enabled)
-                            const Padding(
-                              padding: EdgeInsets.only(left: AppSpacing.sm),
-                              child: Icon(
-                                Icons.chevron_right,
-                                size: AppSize.iconMd,
-                                color: AppColors.primary,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.viewerEntryCard),
+          child: ClipRRect(
+            // 스트립이 카드 모서리를 넘지 않게 — 사진이 각진 채 튀어나오면 싸구려로 보인다
+            borderRadius: BorderRadius.circular(
+              AppRadius.viewerEntryCard - 1.5,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (preview != null) _PreviewStrip(source: preview!),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+                  child: Row(
+                    children: [
+                      _mascot(enabled),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AppText(
+                              title,
+                              // 근거 줄 제목과 같은 크기·굵기 (2026-10-28 1장 다듬기)
+                              style: AppTypographyNext.bodyStrong.copyWith(
+                                color: enabled
+                                    ? AppColorsNext.textStrong
+                                    : AppColorsNext.textMuted,
                               ),
                             ),
-                        ],
+                            if (subtitle != null) ...[
+                              const SizedBox(height: 2),
+                              AppText(subtitle!, style: AppTypography.caption),
+                            ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      if (enabled)
+                        const Padding(
+                          padding: EdgeInsets.only(left: AppSpacing.sm),
+                          child: Icon(
+                            Icons.chevron_right,
+                            size: AppSize.iconMd,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              if (footer != null) ...[
-                const Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: AppColorsNext.divider,
-                ),
-                footer!,
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _mascot(bool enabled) => SizedBox(
-    width: 38,
-    height: 38,
+  /// 흰 마스코트가 흰 카드에 묻혀 안 보여서 연초록 동그라미 위에 앉힌다 (2026-10-28 규혁)
+  Widget _mascot(bool enabled) => Container(
+    width: 44,
+    height: 44,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: enabled ? AppColors.primarySoft : AppColors.background,
+      shape: BoxShape.circle,
+    ),
     child: enabled
-        ? const MascotSafe(size: 38, state: kEntryMascotState)
+        ? const MascotSafe(size: 36, state: kEntryMascotState)
         : const Icon(
             Icons.lock_outline,
             size: AppSize.iconLg,

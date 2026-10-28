@@ -1,18 +1,21 @@
-/// 리포트 1장 '등기부에서 찾은 것' (2026-10-28 리포트 2안).
+/// 리포트 1장 '등기부에서 찾은 것' (2026-10-28 리포트 2안 → 1장 다듬기).
 ///
 /// 못 박는 것:
-///   ① 머리: 「1 / 5」 · 「AI 분석」 칩 · 제목 "등기부에서 찾은 것" — 예전 '근거 살펴보기' 제목·안내 줄은 없다
-///   ② 사진 진입("내가 올린 사진에서 보기")과 근거 목록이 **한 카드** 안에 있고, 진입이 근거보다 위
-///   ③ 근거는 한 줄(제목 · 뱃지) — 누르면 예전 카드처럼 펼쳐진다(부제 → 출처)
-///   ④ 글자 130%에서도 넘치지 않는다
+///   ① 머리: 「1 / 5」 · 「AI 분석」 칩 · 제목 — 예전 '근거 살펴보기' 제목·안내 줄은 없다
+///   ② 사진 카드(내가 올린 사진에서 보기)와 근거 카드가 **따로**, 사진 카드가 위, 사이에 요약 한 줄
+///   ③ 근거는 위험 → 확인 필요 → 양호 순, 한 줄 아래에 "등급 · 부제"
+///   ④ 리포트 본문에서 출처 칩(판정 · 규칙 기반 / 설명 · …)과 '중개사에게 물어볼 질문 보기' 버튼이 없다
+///   ⑤ 줄을 누르면 펼쳐진다 · 글자 130%에서도 넘치지 않는다
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jeonse_ai/design_system/components/app_card.dart';
+import 'package:jeonse_ai/design_system/components/source_label.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
+import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
 import 'package:jeonse_ai/screens/report/registry_entry_card.dart';
+import 'package:jeonse_ai/screens/report/registry_findings.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -36,7 +39,7 @@ Future<void> _pump(WidgetTester tester, {double scale = 1}) async {
   );
   await tester.pumpAndSettle();
   await tester.scrollUntilVisible(
-    find.koText('등기부에서 찾은 것'),
+    find.byKey(const ValueKey('findings-card')),
     200,
     scrollable: find.byType(Scrollable).first,
   );
@@ -44,7 +47,7 @@ Future<void> _pump(WidgetTester tester, {double scale = 1}) async {
 }
 
 void main() {
-  testWidgets('머리 · 한 카드 · 진입이 근거보다 위', (tester) async {
+  testWidgets('머리 · 사진 카드와 근거 카드가 따로 · 요약 한 줄', (tester) async {
     await _pump(tester);
     expect(find.koText('1 / 5'), findsOneWidget);
     expect(find.koText('AI 분석'), findsOneWidget);
@@ -53,47 +56,64 @@ void main() {
     expect(find.koTextContaining('카드를 탭하면'), findsNothing);
 
     final entry = find.byType(RegistryEntryCard);
-    expect(entry, findsOneWidget);
-    final rows = find.descendant(of: entry, matching: find.byType(EvidenceCard));
-    expect(rows, findsWidgets, reason: '근거 목록이 사진 카드 안에 있다');
-
-    final double entryTitleY = tester
-        .getTopLeft(find.koText('내가 올린 사진에서 보기'))
-        .dy;
-    final double firstRowY = tester.getTopLeft(rows.first).dy;
-    expect(entryTitleY, lessThan(firstRowY));
+    final card = find.byKey(const ValueKey('findings-card'));
+    expect(find.descendant(of: entry, matching: find.byType(FindingRow)), findsNothing);
+    expect(find.descendant(of: card, matching: find.byType(FindingRow)), findsWidgets);
+    expect(
+      tester.getBottomLeft(entry).dy,
+      lessThan(tester.getTopLeft(find.byKey(const ValueKey('findings-summary'))).dy),
+    );
+    expect(
+      tester.getBottomLeft(find.byKey(const ValueKey('findings-summary'))).dy,
+      lessThan(tester.getTopLeft(card).dy),
+    );
   });
 
-  testWidgets('근거 한 줄을 누르면 부제·출처가 펼쳐진다', (tester) async {
+  testWidgets('위험 → 확인 필요 → 양호 순 · 등급 · 부제 한 줄', (tester) async {
     await _pump(tester);
-    final rows = find.byType(EvidenceCard);
-    // 가장 심각한 1개는 처음부터 펼쳐져 있다 — 접혀 있는 줄 하나를 찾아 연다
-    final EvidenceCard closed = tester
-        .widgetList<EvidenceCard>(rows)
-        .firstWhere((c) => !c.initiallyExpanded);
-    expect(closed.inline, isTrue);
-    final rowFinder = find.byWidget(closed);
-    await tester.ensureVisible(rowFinder);
+    final rows = tester.widgetList<FindingRow>(find.byType(FindingRow)).toList();
+    int sev(RiskGrade g) => switch (g) {
+      RiskGrade.danger => 2,
+      RiskGrade.caution => 1,
+      RiskGrade.ok => 0,
+    };
+    for (int i = 1; i < rows.length; i++) {
+      expect(sev(rows[i - 1].item.grade) >= sev(rows[i].item.grade), isTrue);
+    }
+    final first = rows.first.item;
+    expect(find.koText('${first.grade.label} · ${first.termSubtitle}'), findsOneWidget);
+  });
+
+  testWidgets('출처 칩 · 질문 보기 버튼이 리포트 본문에 없다', (tester) async {
+    await _pump(tester);
+    // 모든 줄을 펼친다
+    for (final row in tester.widgetList<FindingRow>(find.byType(FindingRow)).toList()) {
+      if (row.initiallyExpanded) continue;
+      final f = find.byWidget(row);
+      await tester.ensureVisible(f);
+      await tester.tap(find.descendant(of: f, matching: find.koText(row.item.title)));
+      await tester.pumpAndSettle();
+    }
+    expect(find.byType(VerdictSourceLabel), findsNothing);
+    expect(find.koTextContaining('규칙 기반'), findsNothing);
+    expect(find.koText('중개사에게 물어볼 질문 보기'), findsNothing);
+  });
+
+  testWidgets('줄을 누르면 펼쳐진다', (tester) async {
+    await _pump(tester);
+    final closed = tester
+        .widgetList<FindingRow>(find.byType(FindingRow))
+        .firstWhere((r) => !r.initiallyExpanded);
+    final f = find.byWidget(closed);
+    await tester.ensureVisible(f);
     await tester.pumpAndSettle();
-    final subtitle = find.descendant(
-      of: rowFinder,
-      matching: find.koText(closed.termSubtitle),
+    AnimatedCrossFade fade() => tester.widget<AnimatedCrossFade>(
+      find.descendant(of: f, matching: find.byType(AnimatedCrossFade)),
     );
-    expect(
-      tester.widget<AnimatedCrossFade>(
-        find.descendant(of: rowFinder, matching: find.byType(AnimatedCrossFade)),
-      ).crossFadeState,
-      CrossFadeState.showFirst,
-    );
-    await tester.tap(find.descendant(of: rowFinder, matching: find.koText(closed.title)));
+    expect(fade().crossFadeState, CrossFadeState.showFirst);
+    await tester.tap(find.descendant(of: f, matching: find.koText(closed.item.title)));
     await tester.pumpAndSettle();
-    expect(
-      tester.widget<AnimatedCrossFade>(
-        find.descendant(of: rowFinder, matching: find.byType(AnimatedCrossFade)),
-      ).crossFadeState,
-      CrossFadeState.showSecond,
-    );
-    expect(subtitle, findsOneWidget);
+    expect(fade().crossFadeState, CrossFadeState.showSecond);
   });
 
   testWidgets('글자 130%에서도 넘치지 않는다', (tester) async {

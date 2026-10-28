@@ -1,0 +1,1 @@
+cd /tmp/JeonseAI/frontend && export PATH=/opt/flutter/bin:$PATH && flutter test 2>&1 | grep -E "\[E\]|All tests passed|Some tests failed|^  Expected|^  Actual|Which:|test/.*dart:" | head -80 > /tmp/claude-0/ft2.log; echo done >> /tmp/claude-0/ft2.log

@@ -21,7 +21,6 @@ import '../../design_system/components/app_card.dart';
 import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/components/risk_badge.dart';
 import '../../design_system/components/safety_gauge.dart';
-import '../../design_system/components/term_tooltip_sheet.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -44,6 +43,7 @@ import '../search/capture_loop_route.dart';
 import 'retake_notice_card.dart';
 import 'market_price_reanalyze.dart';
 import 'registry_entry_card.dart';
+import 'registry_findings.dart';
 import '../common/ask_selection.dart';
 import 'report_history_sheet.dart';
 import 'report_share.dart';
@@ -376,6 +376,10 @@ class _ReportScreenState extends State<ReportScreen> {
   /// 예전엔 사진 진입 카드와 '근거 살펴보기' 카드 묶음이 따로였다 — 같은 등기부 이야기라 한 장으로 합쳤다.
   /// 근거 한 줄을 누르면 예전 근거 카드와 **똑같이** 펼쳐진다(숫자 상자 → 쉬운 설명 → 출처 → 행동 버튼).
   Widget _registryChapter(BuildContext context, AnalysisReport report) {
+    final findings = sortBySeverity([
+      for (final e in report.evidences)
+        if (!_isPendingBlacklist(e)) e,
+    ]);
     return Padding(
       key: const ValueKey('report-chapter-registry'),
       padding: const EdgeInsets.only(bottom: AppSpacing.xl),
@@ -431,27 +435,22 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          _originPhotoEntry(
-            context,
-            report,
-            footer: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _evidenceCards(context, report),
-              ),
-            ),
+          _originPhotoEntry(context, report),
+          const SizedBox(height: 18),
+          FindingsSummary(items: findings),
+          const SizedBox(height: 10),
+          FindingsCard(
+            items: findings,
+            actionFor: (e) => _evidenceAction(context, report, e),
+            // 가장 심각한 1개는 처음부터 펼친다 (서연 리뷰 반영 — 정렬했으니 맨 위)
+            expandedIndex: findings.isEmpty ? null : 0,
           ),
         ],
       ),
     );
   }
 
-  Widget _originPhotoEntry(
-    BuildContext context,
-    AnalysisReport report, {
-    Widget? footer,
-  }) {
+  Widget _originPhotoEntry(BuildContext context, AnalysisReport report) {
     final paths = RegistryPhotoStore.instance.pathsFor(report.id);
     final hasPhotos = paths.isNotEmpty;
 
@@ -463,10 +462,9 @@ class _ReportScreenState extends State<ReportScreen> {
     final preview = previewMarkOf(marks);
 
     return RegistryEntryCard(
-      footer: footer,
-      showMascot: footer == null,
+      // 등기부 날짜는 리포트 맨 위로 옮겼다(리포트 전체가 그 날짜 기준) · 이름 가림 안내는 마이에서 (2026-10-28)
       subtitle: hasPhotos
-          ? _withNamesHiddenNote(_registryViewedLine(report))
+          ? null
           : '${RegistryPhotoStore.retentionNotice} 다시 보려면 새로 분석해 주세요.',
       onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
       preview: preview == null
@@ -505,13 +503,6 @@ class _ReportScreenState extends State<ReportScreen> {
   String? _registryViewedLine(AnalysisReport report) {
     final viewed = report.registryViewedAt;
     return viewed == null ? null : '※ $viewed 기준 등기부등본';
-  }
-
-  /// '사진 속 이름 가리기'가 켜져 있으면 부제 끝에 그 사실과 끄는 곳을 붙인다 (2026-10-23 서연 리뷰 #10 · 디자인 #9).
-  /// 뷰어는 가린 이유를 말하는데 진입 카드만 말이 없어, 덮인 띠가 "사진이 깨졌다"로 읽혔다.
-  String? _withNamesHiddenNote(String? line) {
-    if (!PrivacySettings.instance.hideNamesInPhotos) return line;
-    return line == null ? kNamesHiddenSuffix : '$line · $kNamesHiddenSuffix';
   }
 
   /// 무엇이 표시됐는지 **종류별 개수로** — `집주인 이름 1곳과 빚 3건을 사진 위에 표시했어요`.
@@ -647,6 +638,16 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
           textAlign: TextAlign.center,
         ),
+        // 등기부를 언제 뗐는지 — 리포트 전체가 이 날짜 기준이다 (2026-10-28, 사진 카드에서 옮김)
+        if (_registryViewedLine(report) case final String viewed) ...[
+          const SizedBox(height: AppSpacing.xs),
+          AppText(
+            viewed,
+            key: const ValueKey('report-registry-date'),
+            style: AppTypography.caption,
+            textAlign: TextAlign.center,
+          ),
+        ],
         // ── [D4 · 2026-08-14] 시세 출처 칩을 화면에서 뺐다 ──────────────────────
         // 실기기에서 결론 바로 아래 "자동 조회 · 공시가격 기준 (2025.1.1)"이 붙으니,
         // 등급을 읽어야 할 자리에서 시선이 출처 문자열로 새 나갔다.
@@ -744,69 +745,8 @@ class _ReportScreenState extends State<ReportScreen> {
   // 사이를 초록 아웃라인 버튼이 가로질러, 결론에서 근거로 내려가는 시선이 한 번 끊겼다.
   //
   // ⚠ 기능을 없앤 것이 아니다. `/questions/:id` 로 가는 길은 그대로 셋이다 —
-  //   하단 2×2의 첫 칸, 근거 카드의 '중개사에게 물어볼 질문 보기' 액션(`_onEvidenceAction`),
+  //   하단 2×2의 첫 칸(근거 카드의 '질문 보기' 액션은 2026-10-28에 뺐다),
   //   그리고 판례 화면. 여기서는 **중복된 입구 하나**만 지웠다.
-
-  /// 근거 카드 목록 — 가장 심각한 카드 1개는 기본 펼침 (서연 리뷰 반영)
-  ///
-  /// [D6 · 2026-08-14] 명단 미구축 상태의 악성임대인 카드는 이 대열에서 빠진다.
-  /// 이유는 [_isPendingBlacklist] 참고. 빠진 사실은 하단 한계 고지가 말한다.
-  List<Widget> _evidenceCards(BuildContext context, AnalysisReport report) {
-    final visible = [
-      for (final e in report.evidences)
-        if (!_isPendingBlacklist(e)) e,
-    ];
-    final int expandedIndex = _mostSevereIndex(visible);
-    return [
-      for (int i = 0; i < visible.length; i++) ...[
-        if (i > 0)
-          const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
-        _evidenceCard(
-          context,
-          report,
-          visible[i],
-          initiallyExpanded: i == expandedIndex,
-        ),
-      ],
-    ];
-  }
-
-  int _mostSevereIndex(List<EvidenceItem> evidences) {
-    int severity(RiskGrade g) => switch (g) {
-      RiskGrade.danger => 2,
-      RiskGrade.caution => 1,
-      RiskGrade.ok => 0,
-    };
-    int best = 0;
-    for (int i = 1; i < evidences.length; i++) {
-      if (severity(evidences[i].grade) > severity(evidences[best].grade)) {
-        best = i;
-      }
-    }
-    return best;
-  }
-
-  Widget _evidenceCard(
-    BuildContext context,
-    AnalysisReport report,
-    EvidenceItem evidence, {
-    required bool initiallyExpanded,
-  }) {
-    return EvidenceCard(
-      title: evidence.title,
-      termSubtitle: evidence.termSubtitle,
-      grade: evidence.grade,
-      statusLabel: evidence.statusLabel,
-      easyExplanation: evidence.easyExplanation,
-      explanationSpan: _explanationSpan(context, evidence),
-      detailText: evidence.detailText,
-      sourceText: evidence.sourceText,
-      explanationSource: evidence.explanationSource,
-      initiallyExpanded: initiallyExpanded,
-      inline: true,
-      action: _evidenceAction(context, report, evidence),
-    );
-  }
 
   /// 근거 카드의 행동 버튼. **실제로 도는 것만** 그린다 — "곧 제공" 같은 가짜 버튼을 두지 않는다
   /// (2026-10-23 서연 리뷰 #4: 심사위원이 누르면 끝). 모르는 라벨이거나 지금 할 수 없으면 null(버튼 없음).
@@ -818,7 +758,7 @@ class _ReportScreenState extends State<ReportScreen> {
     final String? label = evidence.actionLabel;
     if (label == null) return null;
     final VoidCallback? onPressed = switch (label) {
-      '중개사에게 물어볼 질문 보기' => () => context.push('/questions/$reportId'),
+      // '중개사에게 물어볼 질문 보기'는 리포트에서 뺐다 — 질문은 따로 항목이 있다 (2026-10-28)
       // 시세를 넣고 같은 사진·같은 보증금으로 새로 분석 — 사진이 이 폰에 없으면 버튼을 그리지 않는다
       '시세 입력하기' =>
         canReanalyzeWithMarketPrice(report)
@@ -844,21 +784,6 @@ class _ReportScreenState extends State<ReportScreen> {
       if (address.isNotEmpty) '집: $address',
       "'전입세대 열람내역'과 '확정일자 부여현황'을 보여 주실 수 있을까요?",
     ].join('\n');
-  }
-
-  /// 쉬운 설명에 용어 툴팁(termSpan)을 심는다 (지수·design-reviewer 리뷰 반영).
-  /// "챗봇에 더 물어보기" 연결은 챗봇 실화면과 함께 C-3에서.
-  InlineSpan? _explanationSpan(BuildContext context, EvidenceItem evidence) {
-    if (evidence.termGlossary.isEmpty) return null;
-    // 2026-08-14: 밑줄을 심는 로직을 `buildTermSpan` 한 곳으로 모았다 — 챗봇 답변도
-    // 같은 함수를 쓴다. 화면마다 따로 만들면 한 곳만 고쳐졌을 때 조용히 갈라진다.
-    return buildTermSpan(
-      context,
-      text: evidence.easyExplanation,
-      glossary: evidence.termGlossary,
-      style: AppTypography.body,
-      onAskChatbot: () => context.push('/chatbot'),
-    );
   }
 
   /// 다음 행동 — **네 칸 모두 같은 크기인 2×2 그리드** (2026-08-14 D12).

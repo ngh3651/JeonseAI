@@ -30,7 +30,7 @@ import 'package:provider/provider.dart';
 import 'support/ko_finders.dart';
 
 /// 서버가 실제로 내려주는 18개 (GET /api/glossary, 2026-08-14 확인).
-/// **대항력은 없다** — 검수 대기라 응답에서 제외된다(docs/terms-review-queue.md).
+/// (2026-10-29부터는 대항력 등 검수 대기였던 8개도 검수돼 함께 내려간다.)
 class _FakeContentRepo implements ContentRepository {
   _FakeContentRepo({this.reply, this.pending, this.fail = false});
 

@@ -88,7 +88,7 @@ def load() -> list[Term]:
     ⚠ 2026-08-05: `verified=false`인 항목은 여기서 **걸러진다.** 사용자는 툴팁 문장을
       사실로 읽는데, 35개 설명문이 팀 검수를 받지 않았다. 근거를 댈 수 없는 설명은
       **안 보여주는 편이 낫다** — 밑줄이 안 붙을 뿐 아무것도 깨지지 않는다.
-      검수 대기 목록: `docs/terms-review-queue.md`
+      2026-10-29: 35개 모두 근거를 달아 true — 새 항목은 false로 넣고 근거를 단 뒤 true로.
     """
     return [t for t in _load_raw() if t.verified]
 

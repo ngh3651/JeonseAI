@@ -101,7 +101,8 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
         # 남은 '확인 필요'가 전부 사진 때문 — 다시 찍으면 확정된다는 사실을 앞세운다(수치는 중립으로)
         if market_missing:
             return "사진 다시 확인 필요 · 시세를 못 구했어요"
-        return f"사진 다시 확인 필요 · {_neutral_numbers(verdict)}"
+        # 빠진 쪽에 빚이 있을 수 있다 — 빚 건수는 '보이는 쪽' 것이라고 밝힌다(규칙 감사 2026-10-29)
+        return f"사진 다시 확인 필요 · {_neutral_numbers(verdict, visible_only=True)}"
     if market_missing:
         # E3(2026-07-09): 다른 카드 요약과 톤 통일 — 상태 토큰(시세 미입력)을 앞세운다.
         # 2026-08-03: 자동 조회 실패도 이 자리에 온다 — 사용자가 안 넣은 것처럼 말하지 않는다.
@@ -110,7 +111,7 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
     return _neutral_numbers(verdict)
 
 
-def _neutral_numbers(verdict: RuleVerdict) -> str:
+def _neutral_numbers(verdict: RuleVerdict, *, visible_only: bool = False) -> str:
     """'전세가율 N% · 먼저 갚을 빚 N건' — 높다·낮다 없이 수치만 (시세가 있을 때만 부른다)."""
     senior = next((e for e in verdict.evidences if e.id == "senior_debt"), None)
     debt_count = 0
@@ -121,7 +122,8 @@ def _neutral_numbers(verdict: RuleVerdict) -> str:
             + (senior.facts.get("lease_registration_count") or 0)
         )
     pct = round_half_up(verdict.deposit / verdict.market_price * 100)
-    return f"전세가율 {pct}% · 먼저 갚을 빚 {debt_count}건"
+    debt = f"보이는 쪽 빚 {debt_count}건" if visible_only else f"먼저 갚을 빚 {debt_count}건"
+    return f"전세가율 {pct}% · {debt}"
 
 
 #: 시세를 결정적 문구에서 부를 이름 (2026-08-05).

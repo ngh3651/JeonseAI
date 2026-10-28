@@ -185,7 +185,7 @@ def _auction_only(reg):
 def test_questions_follow_the_real_problem():
     report, _ = build("trust_seizure", mutate=_seizure_only)
     labels = [g.riskLabel for g in questions.build_question_groups(report)]
-    assert "압류·가압류" in labels
+    assert "압류·가압류·가처분" in labels
     assert "신탁등기" not in labels  # 압류만 있는 집에 '신탁원부 보여 주세요'를 묻지 않는다
     auction, _ = build("trust_seizure", mutate=_auction_only)
     labels = [g.riskLabel for g in questions.build_question_groups(auction)]
@@ -214,3 +214,30 @@ def test_auction_only_text_says_auction_not_seizure():
     assert "압류" not in text
     ins = ev(report, "insurance").easyExplanation
     assert ins.startswith("경매개시결정 때문에")
+
+
+def test_ratio_just_over_caution_line_keeps_tag():
+    """반올림하면 80%인 80.3%도 엔진은 '주의'로 판정한다 — 태그도 따라간다(규칙 감사 2026-10-29)."""
+    report, verdict = build("clean_house", deposit=321_200_000, market_price=400_000_000)
+    jr = next(e for e in verdict.evidences if e.id == "jeonse_ratio")
+    assert jr.grade is Grade.CAUTION and jr.facts["jeonse_ratio_pct"] == 80
+    assert "전세가율" in report.riskTags
+    labels = [g.riskLabel for g in questions.build_question_groups(report)]
+    assert "전세가율" in labels
+
+
+def test_capped_summary_says_visible_pages_only():
+    report, _ = build("clean_house", pages_incomplete_reason="3쪽이 빠졌어요")
+    assert "보이는 쪽 빚 0건" in report.topRiskSummary
+    assert "먼저 갚을 빚 0건" not in report.topRiskSummary
+
+
+def test_seizure_group_covers_provisional_disposition():
+    def only_disposition(reg):
+        reg["trust_registrations"] = []
+        reg["seizures"] = []
+        reg["provisional_dispositions"] = [{"rank_number": "4", "purpose": "가처분", "is_canceled": False}]
+
+    report, _ = build("trust_seizure", mutate=only_disposition)
+    group = next(g for g in questions.build_question_groups(report) if g.riskLabel == "압류·가압류·가처분")
+    assert any("가처분" in i.why for i in group.items)

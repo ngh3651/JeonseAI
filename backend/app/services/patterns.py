@@ -10,7 +10,6 @@ import re
 
 from ..schemas.contract import Report
 from ..schemas.internal import Grade, RuleVerdict
-from . import thresholds as T
 
 # 계약 §2.2에 기록된 고정 매핑 (blacklist는 패턴 매핑 없음)
 ID_TO_LABEL = {
@@ -60,7 +59,7 @@ def tags_from_verdict(verdict: RuleVerdict) -> list[str]:
 
     보수적 선택 메모:
     - 사진 때문에 '확인 필요'로 올린 카드(`capped_reason`)는 이 집의 문제가 아니라 사진의 문제다 — 태그하지 않는다.
-    - 전세가율: **실측 비율이 주의 기준(thresholds.JEONSE_RATIO_CAUTION_PCT)을 넘은 경우만**.
+    - 전세가율: **실측 비율이 주의 기준(thresholds.JEONSE_RATIO_CAUTION_PCT)을 넘은 경우만**(판정 결과를 그대로 따른다).
       시세가 없어 '확인 필요'가 된 카드에 깡통전세 판례를 붙이면 과잉 매칭이다.
     - 보증보험: 구조적 '확인 필요'(모든 리포트 공통)는 제외, 결격 신호(위험)일 때만.
     """
@@ -69,8 +68,9 @@ def tags_from_verdict(verdict: RuleVerdict) -> list[str]:
         if ev.grade == Grade.GOOD or ev.facts.get("capped_reason"):
             continue
         if ev.id == "jeonse_ratio":
-            pct = ev.facts.get("jeonse_ratio_pct")
-            if pct is not None and pct > T.JEONSE_RATIO_CAUTION_PCT:
+            # 여기까지 온 카드(양호 아님 · 사진 때문 아님)에 비율이 있으면, 엔진이 **반올림 전 값**으로 이미 주의 기준을
+            # 넘었다고 판정한 것이다. 반올림한 표시값으로 다시 비교하면 80.0~80.5%가 빠진다(규칙 감사 2026-10-29).
+            if ev.facts.get("jeonse_ratio_pct") is not None:
                 tags.append(TAG_RATIO)
         elif ev.id == "senior_debt":
             # 실제 유효 채권이 1건이라도 있을 때만 (채권 0건 카드에 경매·배당 판례를 붙이지 않는다)

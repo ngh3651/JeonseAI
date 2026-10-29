@@ -1,7 +1,7 @@
 /// 리포트 3장 '판례 매칭' (2026-10-29 확정안 J10).
 ///
 /// ① 「3 / 5」 · '실제 판례' · 'AI 매칭' 칩 · 제목 ② 띠 "AI가 실제 판례 중 이 집에 맞춰 고른 N건"
-/// ③ 1순위 판례의 결과 문장 · 사건번호 ④ '대법원 판례'라고 부르지 않는다 ⑤ 판례가 없으면 그렇게 말한다
+/// ③ 1순위 판례의 결과 문장 · 사건번호 ④ '대법원 판례'라고 부르지 않는다 ⑤ 판례가 없으면(양호한 집) 안심 문구 · 자세히 보기 없음
 /// ⑥ 다음 행동 칸에서 빠졌다 ⑦ 글자 130%
 library;
 
@@ -51,6 +51,30 @@ Future<void> _pump(WidgetTester tester, ContentRepository content, {double scale
   await tester.pumpAndSettle();
 }
 
+/// 자세히 보기가 없으니 빈 문구가 보일 때까지 굴린다
+Future<void> _pumpEmpty(WidgetTester tester) async {
+  CasePrefetch.clear();
+  tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
+  tester.view.devicePixelRatio = 3.0;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AnalysisRepository>(create: (_) => DummyAnalysisRepository()),
+        Provider<ContentRepository>.value(value: _Content(const [])),
+      ],
+      child: MaterialApp(theme: buildAppTheme(), home: const ReportScreen(reportId: 'dummy-danger')),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    find.byKey(const ValueKey('case-chapter-empty')),
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('머리 · 띠 · 1순위 판례', (tester) async {
     final dummy = await DummyContentRepository().matchedCases('dummy-danger');
@@ -64,10 +88,11 @@ void main() {
     expect(find.koText('자세히 보기'), findsWidgets);
   });
 
-  testWidgets('판례가 없으면 띠 없이 그렇게 말한다', (tester) async {
-    await _pump(tester, _Content(const []));
+  testWidgets('판례가 없으면(양호한 집) 띠·자세히 보기 없이 안심 문구', (tester) async {
+    await _pumpEmpty(tester);
     expect(find.byKey(const ValueKey('case-chapter-band')), findsNothing);
-    expect(find.koText('이 집과 연결되는 판례를 아직 찾지 못했어요'), findsOneWidget);
+    expect(find.byKey(const ValueKey('case-chapter-more')), findsNothing);
+    expect(find.koText('이 집과 비슷한 피해 판례는 없었어요'), findsOneWidget);
   });
 
   testWidgets('다음 행동 칸에는 판례 매칭이 없다', (tester) async {

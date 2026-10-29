@@ -6,6 +6,7 @@
 /// - 판례는 **사기·피해 사례**라 초록 포인트를 쓰지 않는다 — 띠는 숯색, 따옴표만 연한 빨강(2026-10-29 규혁).
 /// - "대법원"이라고 부르지 않는다 — 하급심도 섞인다. 사건번호 줄만 그 판례의 실제 법원 이름을 쓴다.
 /// - 띠의 N건은 **창고 전체에서 이 집에 맞춰 고른 수**다(순위가 아니다).
+/// - 판례 0건(양호한 집)은 초록 체크 + '이 집과 비슷한 피해 판례는 없었어요', 자세히 보기 없음.
 /// - 데이터는 리포트가 열릴 때 미리 받아 두는 것([CasePrefetch])을 그대로 쓴다 — 요청이 늘지 않는다.
 library;
 
@@ -122,46 +123,43 @@ class _CaseChapterState extends State<CaseChapter> {
                             ),
                           )
                         : cases.isEmpty
-                        ? AppText(
-                            '이 집과 연결되는 판례를 아직 찾지 못했어요',
-                            key: const ValueKey('case-chapter-empty'),
-                            style: AppTypographyNext.body.copyWith(
-                              color: AppColorsNext.textBody,
-                            ),
-                          )
+                        ? _empty()
                         : _preview(cases.first),
                   ),
-                  const Divider(
-                    height: 1,
-                    thickness: 1,
-                    indent: 20,
-                    endIndent: 20,
-                    color: AppColorsNext.divider,
-                  ),
-                  InkWell(
-                    key: const ValueKey('case-chapter-more'),
-                    onTap: () => context.push('/cases/${widget.reportId}'),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: AppText(
-                              '자세히 보기',
-                              style: AppTypographyNext.bodyStrong.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
+                  // 판례 0건 = 양호한 집 — 판례 화면에도 볼 게 없으니 '자세히 보기'를 두지 않는다
+                  if (loading || cases.isNotEmpty) ...[
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 20,
+                      endIndent: 20,
+                      color: AppColorsNext.divider,
+                    ),
+                    InkWell(
+                      key: const ValueKey('case-chapter-more'),
+                      onTap: () => context.push('/cases/${widget.reportId}'),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: AppText(
+                                '자세히 보기',
+                                style: AppTypographyNext.bodyStrong.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
                               ),
                             ),
-                          ),
-                          const Icon(
-                            Icons.chevron_right,
-                            color: AppColors.primary,
-                          ),
-                        ],
+                            const Icon(
+                              Icons.chevron_right,
+                              color: AppColors.primary,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               );
             },
@@ -170,6 +168,31 @@ class _CaseChapterState extends State<CaseChapter> {
       ],
     );
   }
+
+  /// 판례 0건 — 양호한 집에서만 나온다(위험한 집은 판례가 반드시 붙는다, 2026-10-29 규혁). 안심되는 모양으로.
+  Widget _empty() => Row(
+    key: const ValueKey('case-chapter-empty'),
+    children: [
+      Container(
+        width: 44,
+        height: 44,
+        decoration: const BoxDecoration(
+          color: AppColors.okSoft,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.check_rounded, size: 24, color: AppColors.ok),
+      ),
+      const SizedBox(width: 14),
+      Expanded(
+        child: AppText(
+          '이 집과 비슷한 피해 판례는 없었어요',
+          style: AppTypographyNext.title.copyWith(
+            color: AppColorsNext.textStrong,
+          ),
+        ),
+      ),
+    ],
+  );
 
   Widget _band(int count) => Container(
     key: const ValueKey('case-chapter-band'),

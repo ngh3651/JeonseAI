@@ -27,7 +27,7 @@ import '../screens/my/my_screen.dart';
 import '../screens/my/privacy_policy_screen.dart';
 import '../screens/pricing/checkout_screen.dart';
 import '../screens/pricing/pricing_screen.dart';
-import '../screens/questions/question_generator_screen.dart';
+import '../screens/questions/ask_cards_screen.dart';
 import '../screens/report/registry_viewer_screen.dart';
 import '../screens/report/report_screen.dart';
 import '../screens/search/property_search_screen.dart';
@@ -133,7 +133,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/questions/:id',
       builder: (_, state) =>
-          QuestionGeneratorScreen(reportId: state.pathParameters['id']!),
+          AskCardsScreen(reportId: state.pathParameters['id']!),
     ),
     // 요금제 · 계약 지킴이 패스 테스트 결제 (2026-10-22, P2-1) — 마이·계약 여정에서 push.
     GoRoute(path: '/pricing', builder: (_, _) => const PricingScreen()),

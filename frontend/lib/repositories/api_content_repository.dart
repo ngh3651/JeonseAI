@@ -4,6 +4,7 @@
 /// 서버가 꺼져 있으면 예외가 화면 에러 UI로 이어진다(더미 폴백 없음).
 library;
 
+import '../models/ask_cards.dart';
 import '../models/content_models.dart';
 import '../services/api_client.dart';
 import 'content_repository.dart';
@@ -42,6 +43,20 @@ class ApiContentRepository implements ContentRepository {
     return [
       for (final g in json) QuestionGroup.fromJson(g as Map<String, dynamic>),
     ];
+  }
+
+  /// 4장 질문 (계약 §3.6-2). 옛 서버(404)면 빈 묶음 — 4장이 조용히 빠진다.
+  /// 상세 화면(polish)은 AI가 why를 다시 쓰는 시간까지 기다린다.
+  @override
+  Future<AskCards> askCards(String reportId, {bool polish = false}) async {
+    final json = await _api.getJson(
+      '/api/reports/$reportId/ask-cards',
+      query: polish ? const {'polish': 'true'} : null,
+      onNotFound: () => null,
+      timeout: polish ? const Duration(seconds: 60) : null,
+    );
+    if (json == null) return AskCards.empty;
+    return AskCards.fromJson(json as Map<String, dynamic>);
   }
 
   @override

@@ -221,8 +221,10 @@ class _CaseChapterState extends State<CaseChapter> {
         Expanded(
           child: AppText(
             'AI가 실제 판례 중 이 집에 맞춰 고른 $count건',
+            // 15 = 4장 띠와 같은 크기 (2026-10-29 규혁) — 한 줄을 넘으면 말줄임
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppTypographyNext.caption.copyWith(
-              fontSize: 14,
               fontWeight: FontWeight.w700,
               color: Colors.white,
             ),

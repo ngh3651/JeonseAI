@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/design_system/tokens/app_colors.dart';
+import 'package:jeonse_ai/models/ask_cards.dart';
 import 'package:jeonse_ai/models/chat_history.dart';
 import 'package:jeonse_ai/models/content_models.dart';
 import 'package:jeonse_ai/repositories/chat_history_repository.dart';
@@ -49,6 +50,10 @@ class _FakeContentRepo implements ContentRepository {
 
   @override
   Future<List<GlossaryTerm>> glossaryTerms() async => const [];
+
+  @override
+  Future<AskCards> askCards(String reportId, {bool polish = false}) async =>
+      AskCards.empty;
 
   @override
   Future<List<CaseMatch>> matchedCases(String reportId) async => const [];

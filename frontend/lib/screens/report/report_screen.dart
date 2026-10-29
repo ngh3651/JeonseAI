@@ -45,6 +45,7 @@ import 'retake_notice_card.dart';
 import 'report_inputs_sheet.dart';
 import 'registry_entry_card.dart';
 import 'registry_findings.dart';
+import 'loss_chapter.dart';
 import '../common/ask_selection.dart';
 import 'report_history_sheet.dart';
 import 'report_pdf.dart';
@@ -235,6 +236,9 @@ class _ReportScreenState extends State<ReportScreen> {
                 // '중개사 질문 모아 보기'를 뺐다. 자세한 사유는 아래 주석 참고.
                 // 1장 '등기부에서 찾은 것' (2026-10-28 리포트 2안) — 사진 + 근거를 한 카드로
                 _registryChapter(context, report),
+                // 2장 '손실 시뮬레이터' (2026-10-29) — 다음 행동 칸에서 올라왔다
+                LossChapter(reportId: report.id),
+                const SizedBox(height: AppSpacing.xl),
                 // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
                 ?_priceGapCard(report),
                 const SizedBox(height: AppSpacing.xl),
@@ -822,7 +826,9 @@ class _ReportScreenState extends State<ReportScreen> {
   /// 올라왔다), 같은 화면인데 시연할 때마다 다른 모양이 나왔다. 네 칸을 고정한다.
   ///
   ///     [중개사에게 물어볼 질문]  [판례 매칭]
-  ///     [손실 시뮬레이터]        [계약 여정]
+  ///     [계약 여정]
+  ///
+  /// (2026-10-29: 손실 시뮬레이터는 리포트 2장으로 올라가 세 칸이 됐다. 칸 크기는 그대로 같다.)
   ///
   /// 라벨은 **도착 화면의 제목과 같은 말**로 맞췄다 — '질문 생성기'는 화면 제목이
   /// '중개사 질문 생성기'였고, '체크리스트'가 도착하는 화면 제목은 '계약 여정'이다.
@@ -844,11 +850,7 @@ class _ReportScreenState extends State<ReportScreen> {
         label: '판례 매칭', // A1: 화면 제목(판례 매칭)과 라벨 통일
         onTap: () => context.push('/cases/${report.id}'),
       ),
-      (
-        icon: Icons.calculate_outlined,
-        label: '손실 시뮬레이터',
-        onTap: () => context.push('/simulator/${report.id}'),
-      ),
+      // '손실 시뮬레이터'는 리포트 2장으로 올라갔다 (2026-10-29)
       (
         icon: Icons.fact_check_outlined,
         label: '계약 여정',

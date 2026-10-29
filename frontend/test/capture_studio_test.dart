@@ -315,7 +315,7 @@ void main() {
 
   // ── 시세 칸의 출처 라벨 (Phase 1·2 연결) ─────────────────────────────────
 
-  testWidgets('첫 분석에서는 "비우면 국토부 실거래가·공시가격으로 찾아요"를 알린다', (tester) async {
+  testWidgets('첫 분석에서는 "비우면 실거래가·공시가격으로 찾아요"를 알린다', (tester) async {
     await pumpScreen(tester);
     await tester.tap(find.koText('촬영 시작'));
     await tester.pumpAndSettle();
@@ -331,7 +331,7 @@ void main() {
     // 붙어 12px로도 두 줄을 넘겼고, 안내가 입력 칸보다 커 보였다.
     // 못 하는 것을 못 한다고 말하는 원칙은 그대로다 — **말할 자리가 여기가 아니다.**
     // 조회 실패는 리포트 결론 헤더가 '시세를 못 구했어요'로 이미 분명히 말한다.
-    expect(find.koTextContaining('비우면 국토부 실거래가·공시가격으로 찾아요'), findsOneWidget);
+    expect(find.koTextContaining('비우면 실거래가·공시가격으로 찾아요'), findsOneWidget);
     // 이 칸을 비우면 **무엇으로** 찾아오는지가 핵심이라 출처만 굵게 세운다.
     expect(hintEmphasis(tester), '실거래가·공시가격');
     // 한 줄에 들어가야 한다. 폭을 먹는 것은 **한글 글자 수**다 —

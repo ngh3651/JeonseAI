@@ -511,7 +511,7 @@ class _ReportScreenState extends State<ReportScreen> {
       // 등기부 날짜는 리포트 맨 위로 옮겼다(리포트 전체가 그 날짜 기준) · 이름 가림 안내는 마이에서 (2026-10-28)
       subtitle: hasPhotos
           ? null
-          : '${RegistryPhotoStore.retentionNotice} 다시 보려면 새로 분석해 주세요.',
+          : '이 폰에 사진이 없어요',
       onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
       preview: preview == null
           ? null
@@ -697,19 +697,15 @@ class _ReportScreenState extends State<ReportScreen> {
     if (gap >= inflated) {
       tone = CalloutTone.caution;
       title = '실제 거래값이 공시 기준보다 $gap% 높아요';
-      text =
-          '값을 부풀려 신고한 뒤 그 값을 근거로 보증금을 높게 받는 수법이 있어요. '
-          '중개사에게 이 가격이 어떻게 정해졌는지 꼭 물어보세요.';
+      text = '값을 부풀린 뒤 보증금을 높게 받는 수법이 있어요. 가격이 어떻게 정해졌는지 물어보세요.';
     } else if (gap <= depressed) {
       tone = CalloutTone.caution;
-      title = '공시 기준이 실제 거래값보다 높아요';
-      text =
-          '실거래가가 정부 공시 기준보다 ${gap.abs()}% 낮아요. 최근 시세가 내려가고 있을 수 있어요 — '
-          '계약 시점의 시세를 한 번 더 확인하세요.';
+      title = '실거래가가 공시 기준보다 ${gap.abs()}% 낮아요';
+      text = '시세가 내려가고 있을 수 있어요. 계약 때 시세를 한 번 더 확인하세요.';
     } else {
       tone = CalloutTone.info;
       title = '실제 거래값과 공시 기준이 비슷해요';
-      text = '두 값의 차이는 $gap%예요. 시세가 특별히 부풀려졌다고 볼 신호는 없어요.';
+      text = '차이는 $gap%예요.';
     }
 
     return Padding(
@@ -719,7 +715,7 @@ class _ReportScreenState extends State<ReportScreen> {
         icon: Icons.balance,
         title: title,
         // 이 카드는 '정보'라는 것을 문장으로도 못 박는다 — 등급이 바뀐 줄 알면 안 된다.
-        text: '$text\n\n※ 이 비교는 참고 정보예요. 위험 등급 계산에는 들어가지 않아요.',
+        text: '$text\n※ 참고 정보예요 — 등급 계산에는 넣지 않아요.',
       ),
     );
   }
@@ -836,17 +832,13 @@ class _ReportScreenState extends State<ReportScreen> {
         children: [
           if (blacklistPending) ...[
             AppText(
-              '※ 악성임대인 공개 명단은 아직 저희가 데이터를 확보하지 못해 '
-              '이번 분석에서는 판단하지 않았어요. 명단에 없다는 뜻이 아닙니다 — '
-              'HUG 안심전세포털에서 집주인 이름을 직접 확인해 주세요.',
+              '※ 악성임대인 명단은 이번에 대조하지 못했어요 — HUG 안심전세포털에서 집주인 이름을 직접 확인하세요.',
               style: AppTypography.caption.copyWith(color: AppColors.textBody),
             ),
             const SizedBox(height: AppSpacing.sm),
           ],
           AppText(
-            '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
-            '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
-            '확인과 전문가 상담을 통해 이루어져야 합니다.',
+            '참고용 분석이에요. 계약의 안전을 보증하지 않아요 — 최종 판단은 공식 서류와 전문가 상담으로 하세요.',
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),
         ],

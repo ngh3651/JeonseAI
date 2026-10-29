@@ -24,10 +24,10 @@ import '../../state/pass_store.dart';
 import 'guardian_pass_widgets.dart';
 
 /// 요금제 화면 맨 위 첫 줄.
-const String kPricingFreeNowLine = '지금은 돈을 내지 않아도 알림·다시 대조를 모두 쓸 수 있어요';
+const String kPricingFreeNowLine = '지금은 무료로 모두 쓸 수 있어요';
 
 /// 맨 위 둘째 줄 — '예시'는 여기서 한 번, 가격 꼬리표에서 한 번.
-const String kPricingExampleLine = '가격은 아직 정하지 않은 예시예요 · 결제는 테스트 결제(실제 청구 없음)';
+const String kPricingExampleLine = '예시 가격 · 테스트 결제(실제 청구 없음)';
 
 class PricingScreen extends StatefulWidget {
   const PricingScreen({super.key});
@@ -121,7 +121,7 @@ class _PricingScreenState extends State<PricingScreen> {
       title: kPricingFreeNowLine,
       text: pricing.testMode
           ? kPricingExampleLine
-          : '가격은 아직 정하지 않은 예시예요 · 결제 전에 가격을 꼭 확인하세요',
+          : '예시 가격 · 결제 전에 가격을 꼭 확인하세요',
     );
   }
 

@@ -1076,8 +1076,7 @@ class _RegistryPageState extends State<_RegistryPage> {
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: AppText(
-        '${widget.pageIndex + 1}쪽 사진을 불러오지 못했어요.\n'
-        '분석 결과와 판정은 리포트에서 그대로 확인할 수 있어요.',
+        '${widget.pageIndex + 1}쪽 사진을 불러오지 못했어요.',
         textAlign: TextAlign.center,
         style: AppTypography.caption,
       ),
@@ -1090,8 +1089,8 @@ class WholePageCoverLabel extends StatelessWidget {
   const WholePageCoverLabel({super.key});
 
   static const String message =
-      '이 쪽은 이름이 어디 있는지 찾지 못해 통째로 가렸어요.\n'
-      '마이 → 개인정보에서 \'사진 속 이름 가리기\'를 끄면 보여요.';
+      '이름 자리를 못 찾아 통째로 가렸어요.\n'
+      '마이 → 설정에서 \'사진 속 이름 가리기\'를 끄면 보여요.';
 
   @override
   Widget build(BuildContext context) => IgnorePointer(

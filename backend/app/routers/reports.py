@@ -32,8 +32,8 @@ from pydantic import BaseModel, Field
 
 from .. import settings
 from ..dependencies import get_current_user, limit_analyze
-from ..schemas.contract import CaptureCheck, CaseMatch, CompareResult, LossEstimate, QuestionGroup, Report
-from ..services import analysis_cache, capture_check, compare, loss_estimate, patterns, questions, report_builder, store
+from ..schemas.contract import AskCards, CaptureCheck, CaseMatch, CompareResult, LossEstimate, QuestionGroup, Report
+from ..services import ask_cards, analysis_cache, capture_check, compare, loss_estimate, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
@@ -483,6 +483,21 @@ def report_cases(
         return []
     store.put_cases(report_id, cases, device_id=device_id)
     return cases
+
+
+@router.get("/reports/{report_id}/ask-cards", response_model=AskCards)
+def report_ask_cards(
+    report_id: str, polish: bool = False, device_id: str = Depends(get_current_user)
+) -> AskCards:
+    """리포트 4장 '중개사에게 물어볼 질문' (2026-10-29) — 규칙이 고르고 합격선을 계산한다. 최대 4개.
+
+    `polish=true`(상세 화면)면 why 문장만 AI가 이 집 숫자로 다시 쓴다(검사 통과분만, 리포트당 1번 — 결과는 메모리에 둔다).
+    """
+    report = store.get(report_id, device_id=device_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="이 리포트를 불러올 수 없어요")
+    bundle = ask_cards.build(report)
+    return ask_cards.polish(report, bundle) if polish else bundle
 
 
 @router.get("/reports/{report_id}/questions", response_model=list[QuestionGroup])

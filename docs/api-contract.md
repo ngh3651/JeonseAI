@@ -234,6 +234,19 @@ QuestionItem {
 }
 ```
 
+### 2.4-2 `AskCards` / `AskCard` — 리포트 4장 '중개사에게 물어볼 질문' (2026-10-29)
+```
+AskCards { cards: AskCard[] (최대 4), stop: string|null (경매 진행 중이면 질문 대신), shareText: string }
+AskCard {
+  id, title, legal (집주인이 계약 때 보여 줘야 하는 서류를 받는 질문 — 주택임대차보호법 제3조의7),
+  facts: string[]   // [사실] 이 집 등기부에서 본 것 (날짜·금액, 이름 없음)
+  why, whyByAi      // [설명] 왜 물어봐야 하나 — polish면 AI가 이 집 숫자로 다시 씀(검사 통과분만)
+  ask, okReply, badReply, counter   // [큐레이션] 대본 (data/ask_cards.json)
+  passLine { big?, text, sub?, tone: plain|danger }  // [규칙 계산] 합격선 — 손실 계산과 같은 경매 통계
+  docs: string[], clause (말로만 들었을 때 넣을 특약), stopSub
+}
+```
+
 ### 2.5 `GlossaryTerm` / `GlossaryAnswer` — 용어 챗봇 화면 (S-12)
 
 **`GlossaryTerm`** — 추천 칩 목록(`GET /api/glossary`)의 원소.
@@ -439,6 +452,11 @@ MarketPriceAlternative {
 - **인증**: 불필요.
 - **응답 200**: `QuestionGroup[]`. 위험 요소가 없어도 "어떤 집이든 꼭" 기본 그룹을 포함(빈 배열 아님). **404**: 없는 리포트 id.
 - **참고**: 실단계 E-2에서 분석 결과 기반 LLM 생성으로 교체(판정 변경 금지). 위험 패턴 파생은 §2.2 note.
+
+### 3.6-2 `GET /api/reports/{id}/ask-cards` — 4장 질문 · **비회원 허용** (2026-10-29)
+- **응답 200**: `AskCards`(§2.4-2). 고르기·합격선은 규칙(`services/ask_cards.py`), 문구는 `data/ask_cards.json`. **404**: 없는 리포트.
+- `?polish=true`(상세 화면): why만 Solar가 다시 쓴다 — 입력에 없는 숫자·판정 말투면 그 카드는 정해 둔 문장. 리포트당 1번(메모리 캐시).
+- 옛 `GET /api/reports/{id}/questions`(§3.6)는 옛 APK용으로 남긴다.
 
 ### 3.7 `GET /api/journey-stages` — 계약 여정 단계 · **비회원 허용**
 - **목적**: 계약 여정의 정적 단계 목록(9단계).

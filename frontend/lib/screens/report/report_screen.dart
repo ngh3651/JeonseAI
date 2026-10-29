@@ -46,6 +46,7 @@ import 'report_inputs_sheet.dart';
 import 'registry_entry_card.dart';
 import 'registry_findings.dart';
 import 'loss_chapter.dart';
+import 'ask_chapter.dart';
 import 'case_chapter.dart';
 import '../common/ask_selection.dart';
 import 'report_history_sheet.dart';
@@ -243,6 +244,8 @@ class _ReportScreenState extends State<ReportScreen> {
                 // 3장 '판례 매칭' (2026-10-29) — 다음 행동 칸에서 올라왔다
                 CaseChapter(reportId: report.id),
                 const SizedBox(height: AppSpacing.xl),
+                // 4장 '중개사에게 물어볼 질문' (2026-10-29) — 다음 행동 칸에서 올라왔다
+                AskChapter(reportId: report.id),
                 // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
                 ?_priceGapCard(report),
                 const SizedBox(height: AppSpacing.xl),
@@ -823,82 +826,39 @@ class _ReportScreenState extends State<ReportScreen> {
     ].join('\n');
   }
 
-  /// 다음 행동 — **네 칸 모두 같은 크기인 2×2 그리드** (2026-08-14 D12).
-  ///
-  /// 예전에는 등급에 따라 한 칸을 '추천' 뱃지 + 설명 문구가 붙은 전폭 카드로 띄우고
-  /// 나머지를 2열로 깔았다. 그래서 등급마다 배치가 달라졌고(양호면 체크리스트가 위로
-  /// 올라왔다), 같은 화면인데 시연할 때마다 다른 모양이 나왔다. 네 칸을 고정한다.
-  ///
-  ///     [중개사에게 물어볼 질문]  [계약 여정]
-  ///
-  /// (2026-10-29: 손실 시뮬레이터는 리포트 2장으로 올라가 세 칸이 됐다. 칸 크기는 그대로 같다.)
-  ///
-  /// 라벨은 **도착 화면의 제목과 같은 말**로 맞췄다 — '질문 생성기'는 화면 제목이
-  /// '중개사 질문 생성기'였고, '체크리스트'가 도착하는 화면 제목은 '계약 여정'이다.
-  /// 이동 경로(라우트)는 그대로다.
-  ///
-  /// **높이는 두 줄 기준으로 잡는다.** 360dp 기기에서 한 칸의 글자 폭은 134dp인데
-  /// '중개사에게 물어볼 질문'은 15px 한글 11자라 약 171dp — 한 줄에 들어가지 않는다.
-  /// 폰트를 줄이지 말라는 지시에 따라 **줄바꿈을 허용하고 네 칸을 전부 그 높이로**
-  /// 맞췄다(칸마다 높이가 다르면 2×2가 아니라 계단이 된다).
+  /// 다음 행동 — 예전 2×2 그리드(2026-08-14 D12)의 칸이 리포트 장으로 하나씩 올라가
+  /// (손실 → 2장, 판례 → 3장, 질문 → 4장 · 2026-10-29) **계약 여정 한 줄**만 남았다.
   List<Widget> _actionArea(BuildContext context, AnalysisReport report) {
-    final actions = [
-      (
-        icon: Icons.quiz_outlined,
-        label: '중개사에게 물어볼 질문',
-        onTap: () => context.push('/questions/${report.id}'),
-      ),
-      // '판례 매칭'은 리포트 3장으로 올라갔다 (2026-10-29)
-      // '손실 시뮬레이터'는 리포트 2장으로 올라갔다 (2026-10-29)
-      (
-        icon: Icons.fact_check_outlined,
-        label: '계약 여정',
-        // 이 리포트의 집 여정을 연다 — 마지막으로 골라 둔 다른 집이 열리지 않게 (2026-10-29)
-        onTap: () {
-          JourneyScheduleStore.instance.select(
-            propertyKeyOfReport(report, _history),
-          );
-          context.push('/checklist');
-        },
-      ),
-    ];
+    // '중개사에게 물어볼 질문'은 리포트 4장으로 올라갔다 (2026-10-29) — 남은 건 계약 여정 하나라
+    // 반쪽 칸 대신 한 줄 넓은 카드로 그린다.
+    void openJourney() {
+      // 이 리포트의 집 여정을 연다 — 마지막으로 골라 둔 다른 집이 열리지 않게 (2026-10-29)
+      JourneyScheduleStore.instance.select(propertyKeyOfReport(report, _history));
+      context.push('/checklist');
+    }
 
     return [
-      GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: AppSpacing.md,
-        crossAxisSpacing: AppSpacing.md,
-        // 360dp에서 칸 154 x 123dp. 두 줄 라벨의 내용 높이(패딩 24 + 아이콘 26 +
-        // 간격 8 + 두 줄 47 ≈ 105dp)보다 넉넉하고, 320dp 기기에서도 넘치지 않는다.
-        childAspectRatio: 1.25,
-        children: [
-          for (final action in actions)
-            AppCard(
-              onTap: action.onTap,
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.md,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    action.icon,
-                    color: AppColors.primary,
-                    size: AppSize.iconLg,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  AppText(
-                    action.label,
-                    style: AppTypography.bodyStrong,
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
+      AppCard(
+        key: const ValueKey('report-action-journey'),
+        onTap: openJourney,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.fact_check_outlined,
+              color: AppColors.primary,
+              size: AppSize.iconLg,
             ),
-        ],
+            const SizedBox(width: AppSpacing.md),
+            const Expanded(
+              child: AppText('계약 여정', style: AppTypography.bodyStrong),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.primary),
+          ],
+        ),
       ),
     ];
   }

@@ -8,6 +8,7 @@
 /// (api-contract.md §2.2 note) reportId 기반 + 전부 Future가 됐다.
 library;
 
+import '../models/ask_cards.dart';
 import '../models/content_models.dart';
 
 abstract class ContentRepository {
@@ -16,6 +17,10 @@ abstract class ContentRepository {
 
   /// 위험 요소별 질문 그룹. 위험 요소가 없어도 기본 질문 세트 포함.
   Future<List<QuestionGroup>> questionGroups(String reportId);
+
+  /// 리포트 4장 '중개사에게 물어볼 질문' (계약 §3.6-2 · 2026-10-29). 최대 4개.
+  /// [polish]: 상세 화면이면 true — why를 AI가 이 집 숫자로 다시 쓴다(서버가 검사).
+  Future<AskCards> askCards(String reportId, {bool polish = false});
 
   /// 챗봇 추천 용어 칩.
   Future<List<GlossaryTerm>> glossaryTerms();
@@ -61,6 +66,10 @@ class DummyContentRepository implements ContentRepository {
       ),
     ];
   }
+
+  @override
+  Future<AskCards> askCards(String reportId, {bool polish = false}) async =>
+      kDummyAskCards;
 
   @override
   Future<List<QuestionGroup>> questionGroups(String reportId) async {
@@ -410,3 +419,54 @@ class DummyContentRepository implements ContentRepository {
     ),
   ];
 }
+
+
+/// 위젯 테스트 전용 4장 예시 (서울 빌라 — 산 날 대출이 같이 잡힌 집).
+const AskCards kDummyAskCards = AskCards(
+  shareText: '안녕하세요. 전세 계약 전에 확인하고 싶은 게 있어요.',
+  cards: [
+    AskCard(
+      id: 'debt',
+      title: '잔금 날 빚 정리',
+      facts: ['2026.8.12 · 집주인이 이 집을 삼', '2026.8.12 · 근저당 4,800만원'],
+      why: '집을 산 같은 날 대출이 잡혔어요. 안 갚고 두면 경매 때 보증금 2,704만원이 모자라요.',
+      ask: '잔금 날 이 근저당을 갚고 말소해 주실 수 있나요? 갚는 돈은 제가 은행에 직접 보낼게요.',
+      okReply: '네, 특약에 넣고 잔금 날 같이 은행에 가요.',
+      badReply: '집주인분이 알아서 갚으세요. 다들 그래요.',
+      counter: '그럼 계약서 특약에 적어 주실 수 있을까요?',
+      passLine: AskPass(text: '잔금 날 말소 · 특약에 글로', sub: '안 되면 경매 때 2,704만원을 못 받는 계산이에요', danger: true),
+      docs: ['계약서 특약', '말소 접수증'],
+      clause: '임대인은 잔금 날 근저당(채권최고액 4,800만원)을 말소한다.',
+      stopSub: '이 빚이 남으면 경매 때 2,704만원을 못 받는 계산이에요',
+    ),
+    AskCard(
+      id: 'tax',
+      title: '집주인 밀린 세금',
+      legal: true,
+      facts: ['압류 0건 · 세금은 납세증명서로 확인'],
+      why: '밀린 세금은 경매 때 보증금보다 먼저 빠질 수 있어요.',
+      ask: '계약하는 날 집주인분 국세·지방세 납세증명서를 보여 주실 수 있나요?',
+      okReply: '네, 집주인분께 떼 오시라고 할게요.',
+      badReply: '그런 건 요즘 다들 안 떼요.',
+      counter: '계약할 때 집주인이 보여 줘야 하는 서류예요\n(주택임대차보호법 제3조의7)',
+      passLine: AskPass(big: '0원', text: '빚을 말소하면 2,096만원까지'),
+      docs: ['국세 납세증명서', '지방세 납세증명서'],
+      clause: '임대인은 잔금 날 전까지 밀린 국세·지방세를 모두 내고 납세증명서를 보여 준다.',
+      stopSub: '세금을 확인할 수 없으면 보증금이 얼마나 깎일지 알 수 없어요',
+    ),
+    AskCard(
+      id: 'recent',
+      title: '산 지 2개월 된 집',
+      facts: ['2026.8.12 · 매매로 집주인이 바뀜'],
+      why: '산 지 얼마 안 돼 바로 세를 놓는 집이에요.',
+      ask: '계약 기간에 이 집을 파시거나 대출을 더 받으실 계획이 있으세요?',
+      okReply: '없어요. 생기면 미리 알려 드릴게요.',
+      badReply: '집주인 사정은 저도 잘 몰라요.',
+      counter: '그럼 ‘팔거나 대출을 늘리면 미리 알린다’를 특약에 넣어 주세요',
+      passLine: AskPass(text: '특약 2줄 — 잔금 다음 날까지 새 담보 금지 · 팔거나 대출 늘리면 미리 알림'),
+      docs: ['계약서 특약'],
+      clause: '임대인은 잔금 다음 날까지 이 집에 새 담보(근저당 등)를 잡지 않는다.',
+      stopSub: '계약 뒤 새 집주인·새 대출이 생기면 보증금 순서가 밀릴 수 있어요',
+    ),
+  ],
+);

@@ -6,7 +6,7 @@
 /// - 판례는 **사기·피해 사례**라 초록 포인트를 쓰지 않는다 — 띠는 숯색, 따옴표만 연한 빨강(2026-10-29 규혁).
 /// - "대법원"이라고 부르지 않는다 — 하급심도 섞인다. 사건번호 줄만 그 판례의 실제 법원 이름을 쓴다.
 /// - 띠의 N건은 **창고 전체에서 이 집에 맞춰 고른 수**다(순위가 아니다).
-/// - 판례 0건(양호한 집)은 초록 체크 + '이 집과 비슷한 피해 판례는 없었어요', 자세히 보기 없음.
+/// - 판례 0건(양호한 집)은 회색 돋보기 + '이 집과 비슷한 / 피해 판례는 없었어요', 자세히 보기 없음.
 /// - 데이터는 리포트가 열릴 때 미리 받아 두는 것([CasePrefetch])을 그대로 쓴다 — 요청이 늘지 않는다.
 library;
 
@@ -177,15 +177,20 @@ class _CaseChapterState extends State<CaseChapter> {
         width: 44,
         height: 44,
         decoration: const BoxDecoration(
-          color: AppColors.okSoft,
+          color: AppColors.background,
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.check_rounded, size: 24, color: AppColors.ok),
+        // 체크는 '안전 보증'처럼 읽혀서 돋보기 — 찾아봤다는 뜻만 (2026-10-29 규혁)
+        child: const Icon(
+          Icons.search_rounded,
+          size: 24,
+          color: AppColorsNext.textMuted,
+        ),
       ),
       const SizedBox(width: 14),
       Expanded(
         child: AppText(
-          '이 집과 비슷한 피해 판례는 없었어요',
+          '이 집과 비슷한\n피해 판례는 없었어요',
           style: AppTypographyNext.title.copyWith(
             color: AppColorsNext.textStrong,
           ),

@@ -92,7 +92,7 @@ void main() {
     await _pumpEmpty(tester);
     expect(find.byKey(const ValueKey('case-chapter-band')), findsNothing);
     expect(find.byKey(const ValueKey('case-chapter-more')), findsNothing);
-    expect(find.koText('이 집과 비슷한 피해 판례는 없었어요'), findsOneWidget);
+    expect(find.koText('이 집과 비슷한\n피해 판례는 없었어요'), findsOneWidget);
   });
 
   testWidgets('다음 행동 칸에는 판례 매칭이 없다', (tester) async {

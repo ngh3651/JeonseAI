@@ -127,6 +127,15 @@ class RiskFact(BaseModel):
     holder: Optional[str] = None  # "기관" | "개인"
 
 
+class OwnerFacts(BaseModel):
+    """집주인 쪽 사실 — 4장 질문 고르기 재료 (2026-10-29, 판정·화면 미사용). 이름은 담지 않는다."""
+
+    ownerCount: int = 0  # 지금 소유자 수
+    corporate: bool = False  # 소유자 중 회사(법인)가 있다
+    latestTransferDate: Optional[str] = None  # 가장 최근 소유권 이전(또는 보존) 접수일 'YYYY-MM-DD'
+    latestCause: Optional[str] = None  # 그 등기원인 — '매매' · '상속' · '보존' …
+
+
 class Report(BaseModel):
     id: str
     alias: str
@@ -188,6 +197,8 @@ class Report(BaseModel):
     houseTypes: list[str] = Field(default_factory=list)
     # [판례 설명 재료 — 2026-10-24] 살아 있는 위험 항목의 종류·접수일·금액·권리자 종류. 판정·화면에 쓰지 않는다.
     riskFacts: list[RiskFact] = Field(default_factory=list)
+    # [4장 질문 재료 — 2026-10-29] 집주인 수·법인 여부·최근 소유권 이전일. 판정·화면에 쓰지 않는다. 옛 리포트는 None.
+    ownerFacts: Optional[OwnerFacts] = None
     # [판례·질문·'눈에 띈 위험' 재료 — 2026-10-29 QA] 이 집에 **실제로 걸린 문제** 태그(규칙 엔진 건수에서 파생).
     # 예: ['선순위 채권', '압류·가압류']. 카드 문장 속 글자("…은 없었어요")로 고르면 없는 문제가 붙는다.
     # None = 이 필드가 생기기 전에 만든 리포트(그때는 근거 카드에서 다시 파생한다). 판정에 쓰지 않는다.
@@ -265,6 +276,43 @@ class QuestionItem(BaseModel):
 class QuestionGroup(BaseModel):
     riskLabel: str
     items: list[QuestionItem]
+
+
+# ── 리포트 4장 '중개사에게 물어볼 질문' (§2.4-2 AskCard, 2026-10-29) ─────────────
+class AskPass(BaseModel):
+    """합격선 — 이 답이면 OK. 금액은 **규칙 계산**(손실 계산과 같은 경매 통계)으로만 채운다."""
+
+    big: Optional[str] = None  # 크게 쓰는 값 — '0원' (없으면 None)
+    text: str  # '많아도 2,096만원 이하' · '잔금 날 말소 · 특약에 글로'
+    sub: Optional[str] = None  # 한 줄 풀이
+    tone: str = "plain"  # plain | danger — sub를 빨강으로 그릴지
+
+
+class AskCard(BaseModel):
+    """질문 하나. 선택·합격선·좋은 답·핑계·특약 = 규칙과 정해 둔 문구. `why`만 AI가 다듬을 수 있다."""
+
+    id: str  # tax · debt · lease · seizure · trust · tenants · recent · owners · insurance
+    title: str
+    legal: bool = False  # 집주인이 계약 때 보여 줘야 하는 서류(주택임대차보호법 제3조의7)를 받는 질문
+    facts: list[str] = Field(default_factory=list)  # 이 집 등기부에서 본 것 (날짜·금액)
+    why: str
+    whyByAi: bool = False  # why를 AI가 이 집 숫자로 다시 썼나 (검사 통과분만)
+    ask: str
+    okReply: str
+    badReply: str
+    counter: str
+    passLine: AskPass
+    docs: list[str] = Field(default_factory=list)
+    clause: str  # 말로만 들었을 때 넣을 특약 문구
+    stopSub: str  # 거절했을 때 한 줄
+
+
+class AskCards(BaseModel):
+    """4장 묶음. 카드는 최대 4개. 경매가 진행 중이면 카드 없이 `stop`."""
+
+    cards: list[AskCard] = Field(default_factory=list)
+    stop: Optional[str] = None
+    shareText: str = ""  # [중개사에게 미리 보내기] 문자
 
 
 # ── 용어 챗봇 (§2.5 GlossaryTerm) ──────────────────────────────────────────

@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
-from ..schemas.contract import RiskFact
+import re
+
+from ..schemas.contract import OwnerFacts, RiskFact
 from ..schemas.internal import RegistryEntry, RegistryExtract, parse_amount
 from .formatting import looks_like_institution
 
@@ -62,3 +64,43 @@ def build(extract: RegistryExtract) -> list[RiskFact]:
             if len(facts) >= MAX_FACTS:
                 return facts
     return facts
+
+
+# ── 집주인 쪽 사실 (2026-10-29, 4장 질문 고르기 재료) ─────────────────────────
+
+_DATE_RE = re.compile(r"(\d{4})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})")
+
+
+def norm_date(raw: object) -> str | None:
+    """'2026.8.12' · '2026년 8월 12일' · '2026-08-12' → '2026-08-12'. 못 읽으면 None (지어내지 않는다)."""
+    m = _DATE_RE.search(str(raw or ""))
+    if not m:
+        return None
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not (1900 <= y <= 2100 and 1 <= mo <= 12 and 1 <= d <= 31):
+        return None
+    return f"{y:04d}-{mo:02d}-{d:02d}"
+
+
+def owner_facts(extract: RegistryExtract) -> OwnerFacts:
+    """소유자 수·법인 여부·가장 최근 소유권 이전(보존)일 — **판정에 쓰지 않는다.** 이름은 남기지 않는다."""
+    owners = [o for o in (extract.current_owners or []) if (o.name or "").strip()]
+    corporate = any(looks_like_institution(o.name or "") for o in owners)
+    latest: tuple[str, str | None] | None = None
+    for e in extract.ownership_changes or []:
+        if not e.is_active:
+            continue
+        raw = e.model_dump()
+        date = norm_date(raw.get("receipt_date"))
+        if not date:
+            continue
+        purpose = str(raw.get("purpose") or "")
+        cause = "보존" if "보존" in purpose else (str(raw.get("cause") or "").strip() or None)
+        if latest is None or date > latest[0]:
+            latest = (date, cause)
+    return OwnerFacts(
+        ownerCount=len(owners),
+        corporate=corporate,
+        latestTransferDate=latest[0] if latest else None,
+        latestCause=latest[1] if latest else None,
+    )

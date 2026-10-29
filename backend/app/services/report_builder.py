@@ -263,6 +263,7 @@ def _build(
         checkedNotes=checked_notes or [],  # [표시 전용] 무엇을 찾아봤는지 요약
         registryViewedAt=registry_viewed_at,  # [표시 전용] 등기부 열람일시 (없으면 None)
         riskFacts=registry_facts.build(extract),  # [판례 설명 재료] 판정·화면에 쓰지 않음, 이름 없음
+        ownerFacts=registry_facts.owner_facts(extract),  # [4장 질문 재료] 판정·화면에 쓰지 않음, 이름 없음
         riskTags=issue_tags_from_verdict(verdict),  # [판례·질문 재료] 이 집에 실제로 걸린 문제 — 판정에 쓰지 않음
     )
     return report, explanation_result

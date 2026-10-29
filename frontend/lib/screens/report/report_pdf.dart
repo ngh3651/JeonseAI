@@ -20,7 +20,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../../design_system/components/app_button.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
@@ -587,106 +586,68 @@ Future<Uint8List> buildReportPdf(
   return doc.save();
 }
 
-// ── 3. 바닥 시트 ──────────────────────────────────────────────────────────
+// ── 3. 저장 ───────────────────────────────────────────────────────────────
 
-/// [PDF로 저장] — 이름 가리기(기본 켬)를 고르고 PDF를 만든 뒤 인쇄 창의 'PDF로 저장'으로 넘긴다.
-Future<void> showReportPdfSheet(BuildContext context, AnalysisReport report) {
-  return showModalBottomSheet<void>(
+/// [PDF로 저장] — 누르면 바로 만들어 인쇄 창의 'PDF로 저장'으로 넘긴다(2026-10-30: 설명·스위치 시트를 없앴다).
+///
+/// 사람 이름은 **항상** 가린다(홍○○) — PDF는 남에게 건네는 파일이라서. 사진은 넣지 않는다.
+/// 만드는 동안만 작은 '만드는 중' 창을 띄운다. 저장했는지는 알 수 없으니 성공 안내는 하지 않는다.
+Future<void> showReportPdfSheet(BuildContext context, AnalysisReport report) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final navigator = Navigator.of(context);
+  var open = true;
+  showDialog<void>(
     context: context,
-    isScrollControlled: true,
-    builder: (sheetContext) => _ReportPdfSheet(report: report),
-  );
-}
-
-class _ReportPdfSheet extends StatefulWidget {
-  const _ReportPdfSheet({required this.report});
-
-  final AnalysisReport report;
-
-  @override
-  State<_ReportPdfSheet> createState() => _ReportPdfSheetState();
-}
-
-class _ReportPdfSheetState extends State<_ReportPdfSheet> {
-  bool _hideNames = true;
-  bool _making = false;
-
-  Future<void> _make() async {
-    setState(() => _making = true);
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    final navigator = Navigator.of(context);
-    String? problem;
-    try {
-      final data = reportPdfData(widget.report, hideNames: _hideNames);
-      final bytes = await buildReportPdf(data, await ReportPdfFonts.load());
-      if (!mounted) return;
-      navigator.pop();
-      final outcome = await PdfSave.save(bytes, name: reportPdfFileName(data));
-      if (outcome == PdfSaveOutcome.failed)
-        problem = 'PDF 저장 화면을 열지 못했어요. 잠시 후 다시 눌러 주세요';
-    } catch (e) {
-      debugPrint('[PDF] 만들지 못했어요 (${e.runtimeType})');
-      problem = 'PDF를 만들지 못했어요. 잠시 후 다시 눌러 주세요';
-      if (mounted) navigator.pop();
+    barrierDismissible: false,
+    builder: (_) => const _PdfMakingDialog(),
+  ).then((_) => open = false);
+  String? problem;
+  try {
+    final data = reportPdfData(report, hideNames: true);
+    final bytes = await buildReportPdf(data, await ReportPdfFonts.load());
+    if (open) navigator.pop();
+    final outcome = await PdfSave.save(bytes, name: reportPdfFileName(data));
+    if (outcome == PdfSaveOutcome.failed) {
+      problem = 'PDF 저장 화면을 열지 못했어요. 잠시 후 다시 눌러 주세요';
     }
-    if (problem != null) {
-      messenger
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: AppText(problem)));
-    }
+  } catch (e) {
+    debugPrint('[PDF] 만들지 못했어요 (${e.runtimeType})');
+    problem = 'PDF를 만들지 못했어요. 잠시 후 다시 눌러 주세요';
+    if (open) navigator.pop();
   }
+  if (problem != null) {
+    messenger
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: AppText(problem)));
+  }
+}
+
+class _PdfMakingDialog extends StatelessWidget {
+  const _PdfMakingDialog();
 
   @override
   Widget build(BuildContext context) {
-    final bool forced = PrivacySettings.instance.hideNamesInPhotos;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenPadding,
-          AppSpacing.xs,
-          AppSpacing.screenPadding,
-          AppSpacing.xl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const AppText('PDF로 저장', style: AppTypography.title),
-            const SizedBox(height: AppSpacing.xs),
-            AppText(
-              '이 리포트를 PDF 파일로 만들어요. 사진은 넣지 않아요.',
-              style: AppTypography.caption,
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            AppText(
-              "다음 화면 맨 위에서 'PDF로 저장'을 고르고 저장 버튼을 눌러 주세요.",
-              style: AppTypography.caption,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            SwitchListTile(
-              key: const ValueKey('report-pdf-hide-names'),
-              contentPadding: EdgeInsets.zero,
-              value: forced || _hideNames,
-              onChanged: (_making || forced)
-                  ? null
-                  : (v) => setState(() => _hideNames = v),
-              title: const AppText(
-                '사람 이름 가리기',
-                style: AppTypography.bodyStrong,
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        key: const ValueKey('report-pdf-making'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xl,
+            vertical: AppSpacing.lg,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
               ),
-              subtitle: AppText(
-                forced ? "'사진 속 이름 가리기'가 켜져 있어 항상 가려요" : 'PDF에는 홍○○처럼 적혀요',
-                style: AppTypography.caption,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            AppPrimaryButton(
-              label: 'PDF 만들기',
-              icon: Icons.picture_as_pdf_outlined,
-              loading: _making,
-              onPressed: _making ? null : _make,
-            ),
-          ],
+              const SizedBox(width: AppSpacing.md),
+              AppText('PDF 만드는 중', style: AppTypography.bodyStrong),
+            ],
+          ),
         ),
       ),
     );

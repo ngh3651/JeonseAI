@@ -24,6 +24,8 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
 import '../../repositories/analysis_repository.dart';
+import '../../repositories/content_repository.dart';
+import '../../state/case_prefetch.dart';
 import '../../services/api_client.dart';
 import '../search/capture_issue_panel.dart' show CaptureRejection;
 import '../../design_system/text/app_text.dart';
@@ -223,6 +225,16 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
       _syncTicker();
       return;
     }
+
+    // 판례도 받는다 — 판례가 리포트 3장이라 리포트가 열린 뒤 늦게 뜨면 안 된다(2026-10-30). 그동안 막대는 99%에서 기다린다.
+    if (!mounted || _navigated || cancel.isCancelled) return;
+    ContentRepository? content;
+    try {
+      content = context.read<ContentRepository>();
+    } catch (_) {
+      content = null; // 판례 저장소가 없는 화면(테스트 등)
+    }
+    if (content != null) await CasePrefetch.ready(content, report.id);
 
     _timer?.cancel();
     _clock.stop();

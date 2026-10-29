@@ -82,10 +82,18 @@ void main() {
     final repo = await _open(tester, _json());
     await tester.tap(find.byKey(const ValueKey('report-edit-button')));
     await tester.pumpAndSettle();
-    // 지금 값이 채워져 있다 — 시세는 자동으로 찾은 값이라 칸은 비어 있고, 비우면 그 값을 쓴다고 말한다
+    // 지금 값이 모두 채워져 있다 — 보증금 · 자동으로 찾은 시세 · 별칭 (2026-10-30), 설명 문장은 없다
     expect(find.koText('12,000'), findsOneWidget);
-    expect(find.byKey(const ValueKey('inputs-deposit-won')), findsOneWidget);
-    expect(find.koTextContaining('자동으로 찾은 값'), findsOneWidget);
+    final TextField price = tester.widget(
+      find.byKey(const ValueKey('inputs-price-field')),
+    );
+    expect(price.controller!.text, isNotEmpty);
+    final TextField alias = tester.widget(
+      find.byKey(const ValueKey('inputs-alias-field')),
+    );
+    expect(alias.controller!.text, isNotEmpty);
+    expect(find.koTextContaining('만원 단위로'), findsNothing);
+    expect(find.koTextContaining('비우면'), findsNothing);
     await tester.enterText(
       find.byKey(const ValueKey('inputs-deposit-field')),
       '28000',
@@ -95,7 +103,7 @@ void main() {
       '고친 집',
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.koText('저장하고 다시 판정하기'));
+    await tester.tap(find.koText('저장하고 다시 판정'));
     await tester.pumpAndSettle();
 
     expect(repo.sent!.deposit, 280000000);
@@ -115,7 +123,7 @@ void main() {
       '새 이름',
     );
     await tester.pumpAndSettle();
-    expect(find.koText('저장하고 다시 판정하기'), findsNothing);
+    expect(find.koText('저장하고 다시 판정'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('inputs-save-button')));
     await tester.pumpAndSettle();
     expect(repo.sent!.deposit, 120000000);
@@ -158,7 +166,7 @@ void main() {
       find.byKey(const ValueKey('inputs-deposit-field')),
     );
     expect(deposit.enabled, isFalse);
-    expect(find.koTextContaining('이름만 바꿀 수 있어요'), findsOneWidget);
+    expect(find.koText('사진이 없어 못 고쳐요'), findsNWidgets(2));
     expect(
       find.descendant(
         of: find.byType(ReportInputsSheet),

@@ -57,4 +57,22 @@ void main() {
     expect(await CasePrefetch.get(repo, 'r2'), [_case]);
     expect(repo.calls, 3);
   });
+
+  test('ready — 판례를 다 받을 때까지 기다리고, 실패·시간 초과면 그냥 넘어간다 (2026-10-30)', () async {
+    final repo = _Repo();
+    var done = false;
+    final waiting = CasePrefetch.ready(repo, 'r3').then((_) => done = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(done, isFalse, reason: '판례가 오기 전엔 리포트를 열지 않는다');
+    repo.next.complete([_case]);
+    await waiting;
+    expect(done, isTrue);
+    expect(await CasePrefetch.get(repo, 'r3'), [_case]);
+    expect(repo.calls, 1, reason: '리포트 3장은 받아 둔 것을 쓴다');
+
+    final slow = _Repo();
+    await CasePrefetch.ready(slow, 'r4', timeout: const Duration(milliseconds: 10));
+    final broken = _Repo()..next.completeError(Exception('끊김'));
+    await CasePrefetch.ready(broken, 'r5');
+  });
 }

@@ -62,7 +62,7 @@ void main() {
     expect(find.koText('경매로 넘어가면'), findsOneWidget);
     expect(find.byKey(const ValueKey('loss-chapter-bar')), findsOneWidget);
     expect(find.koTextContaining('1억원'), findsWidgets);
-    expect(find.koText('자세히 보기'), findsOneWidget);
+    expect(find.byKey(const ValueKey('loss-chapter-more')), findsOneWidget);
   });
 
   testWidgets('시세가 없으면 같은 카드에 안내', (tester) async {

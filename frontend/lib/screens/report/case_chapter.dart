@@ -23,8 +23,8 @@ import '../../state/case_prefetch.dart';
 import '../cases/case_card.dart'
     show kMaxCardTags, riskTagLabel, stripBoldMarkers;
 
-const Color _kDataChipBg = Color(0xFFECEFED);
-const Color _kDataChipFg = Color(0xFF3C4842);
+Color get _kDataChipBg => AppColors.chipBg;
+Color get _kDataChipFg => AppColors.chipFg;
 
 /// 띠 — 숯색 바탕 · 연한 빨강 따옴표
 const Color _kBandBg = Color(0xFF2A322E);
@@ -69,13 +69,13 @@ class _CaseChapterState extends State<CaseChapter> {
                 color: AppColorsNext.textMuted,
               ),
             ),
-            const _Chip(
+            _Chip(
               icon: Icons.account_balance_outlined,
               label: '실제 판례',
               bg: _kDataChipBg,
               fg: _kDataChipFg,
             ),
-            const _Chip(
+            _Chip(
               icon: Icons.auto_awesome,
               label: 'AI 매칭',
               bg: AppColors.primarySoft,
@@ -128,7 +128,7 @@ class _CaseChapterState extends State<CaseChapter> {
                   ),
                   // 판례 0건 = 양호한 집 — 판례 화면에도 볼 게 없으니 '자세히 보기'를 두지 않는다
                   if (loading || cases.isNotEmpty) ...[
-                    const Divider(
+                    Divider(
                       height: 1,
                       thickness: 1,
                       indent: 20,
@@ -151,7 +151,7 @@ class _CaseChapterState extends State<CaseChapter> {
                                 ),
                               ),
                             ),
-                            const Icon(
+                            Icon(
                               Icons.chevron_right,
                               color: AppColors.primary,
                             ),
@@ -176,12 +176,12 @@ class _CaseChapterState extends State<CaseChapter> {
       Container(
         width: 44,
         height: 44,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.background,
           shape: BoxShape.circle,
         ),
         // 체크는 '안전 보증'처럼 읽혀서 돋보기 — 찾아봤다는 뜻만 (2026-10-29 규혁)
-        child: const Icon(
+        child: Icon(
           Icons.search_rounded,
           size: 24,
           color: AppColorsNext.textMuted,
@@ -277,7 +277,7 @@ class _CaseChapterState extends State<CaseChapter> {
         const SizedBox(height: 10),
         Row(
           children: [
-            const Icon(
+            Icon(
               Icons.account_balance_outlined,
               size: 18,
               color: AppColorsNext.textMuted,

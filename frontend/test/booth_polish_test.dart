@@ -417,7 +417,11 @@ void main() {
             theme: buildAppTheme(),
             home: Scaffold(
               body: ListView(
-                children: const [AccountSection(), AppVersionLine()],
+                children: const [
+                  AccountSection(),
+                  AccountSettingsRows(),
+                  AppVersionLine(),
+                ],
               ),
             ),
           ),
@@ -441,7 +445,6 @@ void main() {
       expect(find.koText(kBoothModeOnMessage), findsOneWidget);
       expect(find.koText('로그아웃'), findsNothing);
       expect(find.koText('회원 탈퇴'), findsNothing);
-      expect(find.koText('부스 모드라 로그아웃·회원 탈퇴는 숨겼어요'), findsOneWidget);
       expect(find.koText('앱 버전 1.0.0 (빌드 42) · 부스 모드'), findsOneWidget);
       // 그 밖의 동작은 그대로 — 처리방침은 그대로 열 수 있다
       expect(find.koText('개인정보 처리방침'), findsOneWidget);

@@ -303,7 +303,7 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const AppText('정보 수정', style: AppTypography.title),
+                    AppText('정보 수정', style: AppTypography.title),
                     const SizedBox(height: AppSpacing.lg),
                     TextField(
                       key: const ValueKey('inputs-deposit-field'),

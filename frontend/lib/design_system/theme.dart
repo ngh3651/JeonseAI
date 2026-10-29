@@ -2,45 +2,56 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'tokens/app_colors.dart';
 import 'tokens/app_spacing.dart';
 import 'tokens/app_typography.dart';
 
+/// 지금 팔레트([AppColors.apply]로 고른 밝게/어둡게)로 테마를 만든다.
 ThemeData buildAppTheme() {
+  final bool dark = AppColors.isDark;
   final ColorScheme colorScheme =
       ColorScheme.fromSeed(
         seedColor: AppColors.primary,
-        brightness: Brightness.light,
+        brightness: dark ? Brightness.dark : Brightness.light,
       ).copyWith(
         primary: AppColors.primary,
-        onPrimary: Colors.white,
+        onPrimary: AppColors.onPrimary,
         secondary: AppColors.primaryBright,
         surface: AppColors.surface,
         onSurface: AppColors.textStrong,
+        onSurfaceVariant: AppColors.textMuted,
         error: AppColors.danger,
         outline: AppColors.line,
       );
 
   return ThemeData(
     useMaterial3: true,
+    brightness: dark ? Brightness.dark : Brightness.light,
     colorScheme: colorScheme,
+    canvasColor: AppColors.surface,
+    dialogTheme: DialogThemeData(backgroundColor: AppColors.surface),
     fontFamily: AppTypography.fontFamily,
     scaffoldBackgroundColor: AppColors.background,
 
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: AppColors.background,
       foregroundColor: AppColors.textStrong,
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: true,
       titleTextStyle: AppTypography.title,
+      // 상태 표시줄 글자색 — 어둡게면 흰 글자
+      systemOverlayStyle: dark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
     ),
 
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+        foregroundColor: AppColors.onPrimary,
         minimumSize: const Size.fromHeight(AppSize.buttonHeight),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.button), // F2: 8
@@ -53,7 +64,7 @@ ThemeData buildAppTheme() {
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.primary,
         minimumSize: const Size.fromHeight(AppSize.buttonHeight),
-        side: const BorderSide(color: AppColors.primary, width: 1.2),
+        side: BorderSide(color: AppColors.primary, width: 1.2),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.button), // F2: 8
         ),
@@ -78,7 +89,7 @@ ThemeData buildAppTheme() {
       margin: EdgeInsets.zero,
     ),
 
-    bottomSheetTheme: const BottomSheetThemeData(
+    bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: AppColors.surface,
       modalBarrierColor: AppColors.dim,
       shape: RoundedRectangleBorder(
@@ -87,7 +98,7 @@ ThemeData buildAppTheme() {
       showDragHandle: true,
     ),
 
-    dividerTheme: const DividerThemeData(color: AppColors.line, thickness: 1),
+    dividerTheme: DividerThemeData(color: AppColors.line, thickness: 1),
 
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -99,28 +110,37 @@ ThemeData buildAppTheme() {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.md),
-        borderSide: const BorderSide(color: AppColors.line),
+        borderSide: BorderSide(color: AppColors.line),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.md),
-        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+        borderSide: BorderSide(color: AppColors.primary, width: 1.5),
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.md),
-        borderSide: const BorderSide(color: AppColors.line),
+        borderSide: BorderSide(color: AppColors.line),
       ),
     ),
 
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith(
-        (states) =>
-            states.contains(WidgetState.selected) ? AppColors.primary : null,
+        (states) => states.contains(WidgetState.selected)
+            ? AppColors.primary
+            : (AppColors.isDark ? AppColors.textMuted : null),
       ),
       trackColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
             ? AppColors.primaryBright.withValues(alpha: 0.45)
-            : null,
+            : (AppColors.isDark ? AppColors.chipBg : null),
       ),
+      // 어둡게 — 꺼진 스위치가 바탕에 묻히지 않게 테두리를 진하게
+      trackOutlineColor: AppColors.isDark
+          ? WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? Colors.transparent
+                  : AppColors.textMuted,
+            )
+          : null,
     ),
 
     sliderTheme: SliderThemeData(
@@ -132,8 +152,11 @@ ThemeData buildAppTheme() {
     ),
 
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: AppColors.primaryDeep,
+      backgroundColor: AppColors.isDark
+          ? const Color(0xFF26332C)
+          : AppColors.primaryDeep,
       contentTextStyle: AppTypography.body.copyWith(color: Colors.white),
+      actionTextColor: AppColors.isDark ? AppColors.primaryBright : null,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.md),
@@ -141,7 +164,7 @@ ThemeData buildAppTheme() {
     ),
 
     // 모든 슬롯을 토큰으로 매핑 — 매핑 누락 슬롯이 Material 기본색을 받는 일이 없게
-    textTheme: const TextTheme(
+    textTheme: TextTheme(
       displayLarge: AppTypography.conclusion,
       displayMedium: AppTypography.conclusion,
       displaySmall: AppTypography.conclusion,

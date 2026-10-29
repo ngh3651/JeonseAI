@@ -13,6 +13,8 @@ import 'package:provider/provider.dart';
 import '../../app/config.dart' show kDevTools;
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_card.dart';
+import '../../design_system/tokens/app_colors.dart';
+import '../../design_system/tokens/app_typography_next.dart';
 import '../../design_system/components/risk_badge.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -26,12 +28,15 @@ import '../../state/booth_mode.dart';
 import '../../state/journey_progress_store.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../state/privacy_settings.dart';
-import '../../state/registry_photo_store.dart';
 import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
 import '../pricing/guardian_pass_widgets.dart';
 import 'account_section.dart';
 import 'app_version_line.dart';
+import 'my_settings.dart';
+
+// '사진 속 이름 가리기' 설명 문장은 처리방침 화면으로 옮겼다(2026-10-30) — 예전 이름으로도 쓸 수 있게 내보낸다.
+export 'privacy_policy_screen.dart' show kHideNamesSwitchDescription;
 import '../../design_system/text/app_text.dart';
 
 class MyScreen extends StatefulWidget {
@@ -161,37 +166,57 @@ class _MyScreenState extends State<MyScreen> {
         title: const AppText('마이'),
         automaticallyImplyLeading: false,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
-        children: [
-          const AccountSection(),
-          const SizedBox(height: AppSpacing.xxl),
-          AppText('분석 이력', style: AppTypography.title),
-          const SizedBox(height: AppSpacing.md),
-          _historyList(),
-          const SizedBox(height: AppSpacing.xxl),
-          // 요금제 · 계약 지킴이 패스 (2026-10-22, P2-1) — 가격은 예시, 결제는 테스트 결제
-          AppText('계약 지킴이 패스', style: AppTypography.title),
-          const SizedBox(height: AppSpacing.md),
-          const GuardianPassEntry(),
-          const SizedBox(height: AppSpacing.xxl),
-          AppText('개인정보', style: AppTypography.title),
-          const SizedBox(height: AppSpacing.md),
-          const PrivacySettingsCard(),
-          const SizedBox(height: AppSpacing.xxl),
-          // 앱 버전 — 부스에서 최신 APK인지 확인. 7번 연속 누르면 부스 모드(state/booth_mode.dart)
-          const AppVersionLine(),
-          // 개발 도구(`--dart-define=DEV_TOOLS=true`일 때만) — 서버 없이 로딩 화면만 띄워 핫 리로드로 다듬는다
-          if (kDevTools)
-            TextButton(
-              onPressed: () => context.push('/dev/loading'),
-              child: const AppText('개발: 로딩 화면 미리보기'),
+      // 2026-10-30 다시 그림: 프로필 → 패스 띠 → 분석 이력 → 설정 묶음(화면 모드 · 이름 가리기 · 계정) → 버전.
+      // 설명 문장은 모두 뺐다(규혁: 글씨 많은 걸 싫어해) — 이름 가리기·사진 보관 설명은 개인정보 처리방침에 있다.
+      body: ListenableBuilder(
+        listenable: BoothMode.instance,
+        builder: (context, _) => ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenPadding,
+            AppSpacing.sm,
+            AppSpacing.screenPadding,
+            AppSpacing.xxxl,
+          ),
+          children: [
+            const AccountSection(),
+            const SizedBox(height: 12),
+            // 요금제 · 계약 지킴이 패스 (2026-10-22, P2-1) — 가격은 예시, 결제는 테스트 결제
+            const GuardianPassEntry(),
+            const SizedBox(height: 28),
+            _sectionTitle('분석 이력'),
+            _historyList(),
+            const SizedBox(height: 28),
+            _sectionTitle('설정'),
+            SettingsGroup(
+              children: [
+                const SettingsRow(
+                  icon: Icons.contrast_rounded,
+                  title: '화면 모드',
+                  trailing: ThemeModeSelector(),
+                ),
+                const PrivacySettingsCard(),
+                const AccountSettingsRows(),
+              ],
             ),
-          const SizedBox(height: AppSpacing.xl),
-        ],
+            const SizedBox(height: AppSpacing.lg),
+            // 앱 버전 — 부스에서 최신 APK인지 확인. 7번 연속 누르면 부스 모드(state/booth_mode.dart)
+            const AppVersionLine(),
+            // 개발 도구(`--dart-define=DEV_TOOLS=true`일 때만) — 서버 없이 로딩 화면만 띄워 핫 리로드로 다듬는다
+            if (kDevTools)
+              TextButton(
+                onPressed: () => context.push('/dev/loading'),
+                child: const AppText('개발: 로딩 화면 미리보기'),
+              ),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _sectionTitle(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+    child: AppText(text, style: AppTypographyNext.title),
+  );
 
   Widget _historyList() {
     return FutureBuilder<List<AnalysisReport>>(
@@ -209,7 +234,7 @@ class _MyScreenState extends State<MyScreen> {
             padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Column(
               children: [
-                const AppText(
+                AppText(
                   '분석 이력을 불러오지 못했어요',
                   style: AppTypography.bodyStrong,
                 ),
@@ -247,121 +272,106 @@ class _MyScreenState extends State<MyScreen> {
             ),
           );
         }
-        return Column(
-          children: [
-            for (final report in history) ...[
-              _historyCard(report),
-              const SizedBox(height: AppSpacing.sm),
+        return Material(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (int i = 0; i < history.length; i++) ...[
+                if (i > 0)
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    indent: 18,
+                    endIndent: 18,
+                    color: AppColorsNext.divider,
+                  ),
+                _historyRow(history[i]),
+              ],
             ],
-          ],
+          ),
         );
       },
     );
   }
 
-  Widget _historyCard(AnalysisReport report) {
-    return AppCard(
+  /// 이력 한 줄 — 별칭 · 날짜·보증금 · 등급 (+ 지우기)
+  Widget _historyRow(AnalysisReport report) {
+    return InkWell(
       onTap: () => context.push('/report/${report.id}'),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AppText(
-                  report.alias,
-                  style: AppTypography.bodyStrong,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                AppText(
-                  '${formatDate(report.analyzedAt)} · 보증금 ${formatWon(report.deposit)}',
-                  style: AppTypography.caption,
-                ),
-                const SizedBox(height: 2),
-                AppText(
-                  report.topRiskSummary,
-                  style: AppTypography.caption,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          RiskBadge(grade: report.grade),
-          // 부스 모드에서는 기록 지우기를 숨긴다 — 관람객이 시연 기록을 지우지 않게(state/booth_mode.dart)
-          ListenableBuilder(
-            listenable: BoothMode.instance,
-            builder: (context, _) => BoothMode.instance.on
-                ? const SizedBox(width: AppSpacing.sm)
-                : IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: AppSize.iconSm,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 6, 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppText(
+                    report.alias,
+                    style: AppTypographyNext.bodyStrong.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppColorsNext.textStrong,
                     ),
-                    tooltip: '삭제',
-                    onPressed: () => _delete(report),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-          ),
-        ],
+                  const SizedBox(height: 2),
+                  AppText(
+                    // 한 줄에 들어가게 짧게 — 분석한 날(월.일) · 보증금
+                    '${report.analyzedAt.month}.${report.analyzedAt.day} · ${formatWon(report.deposit)}',
+                    style: AppTypographyNext.caption.copyWith(
+                      color: AppColorsNext.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            RiskBadge(grade: report.grade),
+            // 부스 모드에서는 기록 지우기를 숨긴다 — 관람객이 시연 기록을 지우지 않게(state/booth_mode.dart)
+            if (BoothMode.instance.on)
+              const SizedBox(width: 12)
+            else
+              IconButton(
+                icon: Icon(
+                  Icons.delete_outline,
+                  size: AppSize.iconSm,
+                  color: AppColorsNext.textMuted,
+                ),
+                tooltip: '삭제',
+                onPressed: () => _delete(report),
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// '사진 속 이름 가리기' 스위치 설명 — **실제로 가리는 범위 그대로** (테스트가 문장을 함께 본다).
+/// 설정 묶음의 '사진 속 이름 가리기' 줄 — 위젯 테스트에서 단독으로 띄울 수 있게 뺐다.
 ///
-/// 2026-10-22: 사진의 이름·주민번호 칸(서버 `privacyMasks`)에 더해 **리포트 글자 속 사람 이름**(`personNames`)도 가린다.
-/// 기본은 꺼짐 — 내 폰의 내 등기부에서는 실명을 계약 상대와 대조하는 것이 목적이다. 남의 진짜 이름이
-/// 큰 화면·포스터·영상에 나올 때(부스 시연·화면 캡처)만 켠다.
-const String kHideNamesSwitchDescription =
-    '부스 시연·화면 캡처처럼 남이 볼 때만 켜 두세요. '
-    '켜면 분석한 등기부 사진과 리포트 글자 속 사람 이름을 가려요(주민번호 칸 포함). '
-    '회사·은행 이름은 그대로예요. 찍는 중이거나 분석 전인 사진은 아직 가리지 못해요.';
-
-/// 마이 화면의 '개인정보' 카드 — 위젯 테스트에서 단독으로 띄울 수 있게 뺐다.
-///
-/// - **사진 속 이름 가리기** (기본 꺼짐): 켜면 '내가 올린 사진에서 보기'와 리포트 미리보기에서
-///   **분석한 사진 속 이름·주민번호 칸 전부**(집주인 + 서버가 찾은 채무자·이전 소유자·권리자 등 — api-contract §9.8)를
-///   상자로 덮는다. 이름 자리를 모르는 쪽(옛 기록·글자를 못 읽은 쪽)은 통째로 덮는다. 부스 시연·화면 공유 전에 켠다.
-///   ⚠ 분석 **전** 사진(촬영 확인 화면·사진 트레이)은 아직 위치를 몰라 가리지 못한다 — 문구에 그대로 적는다.
-///   꺼 두는 것이 기본인 이유: 내 폰의 내 등기부에서는 그 이름을 계약 상대 신분증과 **대조하는 것**이 목적이다.
-/// - 아래 한 줄은 사진을 어디에 남기는지([RegistryPhotoStore.retentionNotice]) — 앱 전체가 같은 문장을 쓴다.
+/// 켜면 '내가 올린 사진에서 보기'와 리포트 미리보기에서 **분석한 사진 속 이름·주민번호 칸 전부**를 상자로 덮고,
+/// 리포트 글자 속 사람 이름을 `홍○○`로 바꾼다(api-contract §9.8). 이름 자리를 모르는 쪽은 통째로 덮는다.
+/// 꺼 두는 것이 기본인 이유: 내 폰의 내 등기부에서는 그 이름을 계약 상대 신분증과 **대조하는 것**이 목적이다.
 class PrivacySettingsCard extends StatelessWidget {
   const PrivacySettingsCard({super.key});
 
   @override
   Widget build(BuildContext context) {
     final settings = PrivacySettings.instance;
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ListenableBuilder(
-            listenable: settings,
-            builder: (context, _) => SwitchListTile(
-              value: settings.hideNamesInPhotos,
-              onChanged: settings.setHideNamesInPhotos,
-              title: const AppText(
-                '사진 속 이름 가리기',
-                style: AppTypography.bodyStrong,
-              ),
-              // 약속을 넘지 않는다 — 덮는 것은 **분석을 마친 사진**의 이름·주민번호 칸이다(서버가 위치를 보낸다).
-              // 분석 전 촬영 화면·사진 트레이는 위치를 몰라 못 덮으므로 그 사실을 함께 적는다.
-              subtitle: const AppText(
-                kHideNamesSwitchDescription,
-                style: AppTypography.caption,
-              ),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          const AppText(
-            RegistryPhotoStore.retentionNotice,
-            style: AppTypography.caption,
-          ),
-        ],
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) => SettingsRow(
+        icon: Icons.visibility_off_outlined,
+        title: '사진 속 이름 가리기',
+        onTap: () => settings.setHideNamesInPhotos(!settings.hideNamesInPhotos),
+        trailing: Switch(
+          key: const ValueKey('hide-names-switch'),
+          value: settings.hideNamesInPhotos,
+          onChanged: settings.setHideNamesInPhotos,
+        ),
       ),
     );
   }

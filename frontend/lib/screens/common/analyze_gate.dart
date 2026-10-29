@@ -43,7 +43,7 @@ void showLoginSheet(BuildContext context, {required String next}) {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AppText(
+          AppText(
             '로그인하면 분석 기록이 계정에 남아요',
             style: AppTypography.headline,
           ),

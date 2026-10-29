@@ -115,11 +115,11 @@ Future<List<String>> pickRegistryPhotos(
               child: Container(
                 width: 64,
                 height: 64,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppColors.primarySoft,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.upload_file,
                   size: 30,
                   color: AppColors.primary,
@@ -153,7 +153,7 @@ Future<List<String>> pickRegistryPhotos(
                 icon: const Icon(Icons.photo_camera_outlined),
                 label: AppText(
                   kCompareShootLabel,
-                  style: AppTypographyNext.button.copyWith(color: Colors.white),
+                  style: AppTypographyNext.button.copyWith(color: AppColors.onPrimary),
                 ),
               ),
             ),
@@ -164,9 +164,9 @@ Future<List<String>> pickRegistryPhotos(
                 onPressed: () =>
                     Navigator.of(sheetContext).pop(_PhotoSource.gallery),
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white,
+                  backgroundColor: AppColors.surface,
                   foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary, width: 1.5),
+                  side: BorderSide(color: AppColors.primary, width: 1.5),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),

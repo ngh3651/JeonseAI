@@ -69,13 +69,13 @@ class RegistryGuideScreen extends StatelessWidget {
             width: 28,
             height: 28,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.primary,
               shape: BoxShape.circle,
             ),
             child: AppText(
               '$number',
-              style: AppTypography.label.copyWith(color: Colors.white),
+              style: AppTypography.label.copyWith(color: AppColors.onPrimary),
             ),
           ),
           const SizedBox(width: AppSpacing.md),

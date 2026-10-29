@@ -403,12 +403,12 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     final bool empty = _photos.isEmpty;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: empty
-          ? const SystemUiOverlayStyle(
+          ? SystemUiOverlayStyle(
               statusBarColor: AppColors.primaryDeep,
               statusBarIconBrightness: Brightness.light,
               statusBarBrightness: Brightness.dark,
             )
-          : const SystemUiOverlayStyle(
+          : SystemUiOverlayStyle(
               statusBarColor: AppColors.viewerBackdrop,
               statusBarIconBrightness: Brightness.dark,
               statusBarBrightness: Brightness.light,
@@ -509,7 +509,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                   child: FilledButton.icon(
                     onPressed: _openCaptureLoop,
                     style: FilledButton.styleFrom(
-                      backgroundColor: Colors.white,
+                      backgroundColor: AppColors.surface,
                       foregroundColor: AppColors.primaryDeep,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(AppRadius.button),
@@ -593,7 +593,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           width: 112,
           height: 150,
           decoration: BoxDecoration(
-            color: const Color(0xFFD8DCDA),
+            color: AppColors.isDark ? const Color(0xFF2A3530) : const Color(0xFFD8DCDA),
             borderRadius: BorderRadius.circular(AppRadius.thumb),
             boxShadow: [
               BoxShadow(
@@ -820,7 +820,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               ],
             ),
           ),
-          const Divider(
+          Divider(
             height: 1,
             thickness: 1,
             color: AppColors.line,
@@ -1022,7 +1022,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     //   Scaffold가 이미 뺀 값을 또 더하는 셈이라 화면 밖으로 밀려나며 오버플로가 났다
     //   (위젯 테스트가 키보드 300dp에서 164px 넘침으로 잡았다).
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
         border: Border(top: BorderSide(color: AppColors.line)),
       ),
@@ -1059,7 +1059,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 onPressed: _canAnalyze ? _analyze : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onPrimary,
                   disabledBackgroundColor: AppColors.buttonDisabledBg,
                   disabledForegroundColor: AppColors.buttonDisabledFg,
                   shape: RoundedRectangleBorder(
@@ -1083,7 +1083,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       key: const ValueKey('retake-left-check'),
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.photo_camera_outlined, size: 17, color: AppColors.caution),
+        Icon(Icons.photo_camera_outlined, size: 17, color: AppColors.caution),
         const SizedBox(width: 5),
         AppText(
           '다시 찍을 장 $count장',

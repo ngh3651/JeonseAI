@@ -490,7 +490,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
               padding: const EdgeInsets.only(right: AppSpacing.sm),
               child: IconButton(
                 tooltip: '새 대화',
-                icon: const Icon(
+                icon: Icon(
                   Icons.refresh,
                   size: AppSize.iconMd,
                   color: AppColorsNext.textStrong,
@@ -545,7 +545,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                   key: const ValueKey('drawer-dot'),
                   width: AppSpacing.sm,
                   height: AppSpacing.sm,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.primaryBright,
                     shape: BoxShape.circle,
                   ),
@@ -633,7 +633,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
       color: AppColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        side: const BorderSide(color: AppColors.line),
+        side: BorderSide(color: AppColors.line),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -656,7 +656,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                const Icon(
+                Icon(
                   Icons.north_east,
                   size: AppSize.iconSm,
                   color: AppColors.primary,
@@ -741,7 +741,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
             horizontal: AppSpacing.lg,
             vertical: AppSpacing.md,
           ),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.primary,
             borderRadius: BorderRadius.only(
               topLeft: Radius.circular(AppRadius.xl),
@@ -965,7 +965,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
               style: OutlinedButton.styleFrom(
                 backgroundColor: AppColors.surface,
                 foregroundColor: AppColors.primary,
-                side: const BorderSide(color: AppColors.primary),
+                side: BorderSide(color: AppColors.primary),
                 shape: const StadiumBorder(),
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
                 textStyle: AppTypographyNext.button,
@@ -985,8 +985,8 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   Widget _inputBar() {
     final quoting = _quoting;
     final enabledSide = quoting != null
-        ? const BorderSide(color: AppColors.primary, width: 2)
-        : const BorderSide(color: AppColors.line);
+        ? BorderSide(color: AppColors.primary, width: 2)
+        : BorderSide(color: AppColors.line);
     return Container(
       color: AppColors.background,
       child: SafeArea(
@@ -1038,7 +1038,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(AppRadius.pill),
-                          borderSide: const BorderSide(
+                          borderSide: BorderSide(
                             color: AppColors.primary,
                             width: 2,
                           ),
@@ -1102,7 +1102,7 @@ class _NumberBadge extends StatelessWidget {
         width: d,
         height: d,
         alignment: Alignment.center,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.primarySoft,
           shape: BoxShape.circle,
         ),
@@ -1135,7 +1135,7 @@ class _BulletDot extends StatelessWidget {
         child: Container(
           width: 6,
           height: 6,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.primaryBright,
             shape: BoxShape.circle,
           ),
@@ -1217,7 +1217,7 @@ class _TypingDotsState extends State<_TypingDots>
                 child: Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.primaryBright,
                     shape: BoxShape.circle,
                   ),

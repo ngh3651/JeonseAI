@@ -147,13 +147,13 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
         children: [
-          const Icon(
+          Icon(
             Icons.wifi_off,
             color: AppColors.textMuted,
             size: AppSize.iconMd,
           ),
           const SizedBox(height: AppSpacing.md),
-          const AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
+          AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
           const SizedBox(height: AppSpacing.xs),
           AppText(
             apiErrorHint(error, fallback: '서버 연결을 확인해 주세요'),
@@ -256,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: AppSpacing.md),
           RiskBadge(grade: report.grade),
           const SizedBox(width: AppSpacing.xs),
-          const Icon(Icons.chevron_right, color: AppColors.textMuted),
+          Icon(Icons.chevron_right, color: AppColors.textMuted),
         ],
       ),
     );
@@ -272,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // 겹쳐 오독되어(페르소나 2인·design-reviewer) 순한 tip(전구) 톤으로.
           const MascotSafe(size: 64, state: MascotState.tip),
           const SizedBox(height: AppSpacing.lg),
-          const AppText('아직 분석한 매물이 없어요', style: AppTypography.title),
+          AppText('아직 분석한 매물이 없어요', style: AppTypography.title),
           const SizedBox(height: AppSpacing.xs),
           AppText(
             '등기부등본 사진만 있으면 바로 시작할 수 있어요',

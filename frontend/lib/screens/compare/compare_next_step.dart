@@ -381,7 +381,7 @@ class _StopCardState extends State<_StopCard> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
+            Icon(
               Icons.support_agent,
               size: AppSize.iconSm,
               color: AppColors.textMuted,

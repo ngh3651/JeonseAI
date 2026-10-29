@@ -211,7 +211,7 @@ class _PricingScreenState extends State<PricingScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
+                Icon(
                   Icons.verified_user_outlined,
                   size: AppSize.iconSm,
                   color: AppColors.primary,

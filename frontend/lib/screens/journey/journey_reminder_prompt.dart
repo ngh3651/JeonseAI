@@ -107,13 +107,13 @@ Future<bool?> showReminderPermissionSheet(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(
+            Icon(
               Icons.notifications_active_outlined,
               size: AppSize.iconLg,
               color: AppColors.primary,
             ),
             const SizedBox(height: AppSpacing.md),
-            const AppText('그날 알림을 보내 드릴까요?', style: AppTypography.headline),
+            AppText('그날 알림을 보내 드릴까요?', style: AppTypography.headline),
             const SizedBox(height: AppSpacing.sm),
             // 이유 — 여정 데이터(journey_stages.json '잔금 보내는 날')와 같은 사실 + 법 조문(전입신고 효력은
             // 다음 날 0시 — 주택임대차보호법 제3조)만 쓴다(새 수치 없음). 판례는 검수 대기라 넣지 않는다.
@@ -133,7 +133,7 @@ Future<bool?> showReminderPermissionSheet(
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.alarm,
                           size: AppSize.iconSm,
                           color: AppColors.primary,

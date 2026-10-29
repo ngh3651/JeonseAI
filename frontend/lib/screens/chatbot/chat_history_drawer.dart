@@ -254,13 +254,13 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
           isDense: true,
           constraints: const BoxConstraints(minHeight: AppSize.minTouchTarget),
           contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-          prefixIcon: const Icon(Icons.search, size: AppSize.iconSm, color: AppColorsNext.textMuted),
+          prefixIcon: Icon(Icons.search, size: AppSize.iconSm, color: AppColorsNext.textMuted),
           prefixIconConstraints: const BoxConstraints(minWidth: AppSize.minTouchTarget, minHeight: AppSize.minTouchTarget),
           suffixIcon: _searchCtrl.text.isEmpty
               ? null
               : IconButton(
                   tooltip: '검색어 지우기',
-                  icon: const Icon(Icons.close, size: AppSize.iconSm, color: AppColorsNext.textMuted),
+                  icon: Icon(Icons.close, size: AppSize.iconSm, color: AppColorsNext.textMuted),
                   onPressed: () => setState(_searchCtrl.clear),
                 ),
           suffixIconConstraints: const BoxConstraints(minWidth: AppSize.minTouchTarget, minHeight: AppSize.minTouchTarget),
@@ -268,7 +268,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
           disabledBorder: OutlineInputBorder(borderRadius: pill, borderSide: BorderSide.none),
           focusedBorder: OutlineInputBorder(
             borderRadius: pill,
-            borderSide: const BorderSide(color: AppColors.primary, width: 2),
+            borderSide: BorderSide(color: AppColors.primary, width: 2),
           ),
         ),
       ),
@@ -287,7 +287,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             child: Row(
               children: [
-                const Icon(Icons.add, size: AppSize.iconSm, color: AppColors.primary),
+                Icon(Icons.add, size: AppSize.iconSm, color: AppColors.primary),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: AppText(
@@ -407,7 +407,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
                 IconButton(
                   tooltip: '대화 메뉴',
                   constraints: const BoxConstraints(minWidth: AppSize.minTouchTarget, minHeight: AppSize.minTouchTarget),
-                  icon: const Icon(Icons.more_horiz, size: AppSize.iconMd, color: AppColorsNext.textMuted),
+                  icon: Icon(Icons.more_horiz, size: AppSize.iconMd, color: AppColorsNext.textMuted),
                   onPressed: () => _openMenu(c),
                 ),
               ],
@@ -578,7 +578,7 @@ class _CenterDialog extends StatelessWidget {
                       minimumSize: const Size.fromHeight(AppSize.minTouchTarget),
                       backgroundColor: AppColors.surface,
                       foregroundColor: AppColorsNext.textStrong,
-                      side: const BorderSide(color: AppColors.line),
+                      side: BorderSide(color: AppColors.line),
                       shape: pill,
                       textStyle: AppTypographyNext.button,
                     ),
@@ -652,7 +652,7 @@ class _RenameDialogState extends State<_RenameDialog> {
     final text = _ctrl.text.trim();
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppRadius.md),
-      borderSide: const BorderSide(color: AppColors.line),
+      borderSide: BorderSide(color: AppColors.line),
     );
     return _CenterDialog(
       title: '이름 바꾸기',
@@ -669,7 +669,7 @@ class _RenameDialogState extends State<_RenameDialog> {
           fillColor: AppColors.surface,
           contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
           enabledBorder: border,
-          focusedBorder: border.copyWith(borderSide: const BorderSide(color: AppColors.primary, width: 2)),
+          focusedBorder: border.copyWith(borderSide: BorderSide(color: AppColors.primary, width: 2)),
         ),
       ),
       confirmLabel: '바꾸기',

@@ -31,7 +31,7 @@ import '../../utils/money_format.dart';
 const String kLossNeedPrice = '매매 시세를 넣으면 계산돼요';
 
 /// 회색 막대 (시세가 없을 때)
-const Color _kBarIdle = Color(0xFFE3E7E5);
+Color get _kBarIdle => AppColors.barIdle;
 
 class LossSimulatorScreen extends StatefulWidget {
   const LossSimulatorScreen({super.key, required this.reportId});
@@ -194,7 +194,7 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
               ClipRRect(
                 key: const ValueKey('loss-bar-idle'),
                 borderRadius: BorderRadius.circular(8),
-                child: const SizedBox(
+                child: SizedBox(
                   height: 16,
                   width: double.infinity,
                   child: ColoredBox(color: _kBarIdle),
@@ -324,13 +324,13 @@ class _DepositBar extends StatelessWidget {
             if (backFlex > 0)
               Expanded(
                 flex: backFlex,
-                child: const ColoredBox(color: AppColors.ok),
+                child: ColoredBox(color: AppColors.ok),
               ),
             if (backFlex > 0 && lossFlex > 0) const SizedBox(width: 2),
             if (lossFlex > 0)
               Expanded(
                 flex: lossFlex,
-                child: const ColoredBox(color: AppColorsNext.dangerText),
+                child: ColoredBox(color: AppColorsNext.dangerText),
               ),
           ],
         ),
@@ -418,7 +418,7 @@ class _Step extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
       decoration: last
           ? null
-          : const BoxDecoration(
+          : BoxDecoration(
               border: Border(bottom: BorderSide(color: AppColorsNext.divider)),
             ),
       child: Row(
@@ -435,7 +435,7 @@ class _Step extends StatelessWidget {
           ),
           if (onTap != null) ...[
             const SizedBox(width: 4),
-            const Icon(
+            Icon(
               Icons.edit_outlined,
               key: ValueKey('loss-price-edit'),
               size: 18,
@@ -654,7 +654,7 @@ class _Message extends StatelessWidget {
                 ),
                 child: AppText(
                   actionLabel!,
-                  style: AppTypographyNext.button.copyWith(color: Colors.white),
+                  style: AppTypographyNext.button.copyWith(color: AppColors.onPrimary),
                 ),
               ),
             ),

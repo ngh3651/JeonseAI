@@ -475,7 +475,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           // 로딩에도 앱바를 유지한다 — 없으면 시스템 백 말고는 빠져나갈 길이 없다.
-          return const Scaffold(
+          return Scaffold(
             backgroundColor: AppColors.surface,
             appBar: _ViewerAppBar(),
             body: Center(child: CircularProgressIndicator()),
@@ -697,7 +697,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(
+        Icon(
           Icons.info_outline,
           size: AppSize.iconSm,
           color: AppColors.caution,
@@ -716,7 +716,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const AppText(
+            AppText(
               '이 분석에 쓴 사진이 남아 있지 않아요.\n${RegistryPhotoStore.retentionNotice}',
               textAlign: TextAlign.center,
               style: AppTypography.body,
@@ -765,7 +765,7 @@ class _ViewerAppBar extends StatelessWidget implements PreferredSizeWidget {
         style: AppTypography.bodyStrong,
         overflow: TextOverflow.ellipsis,
       ),
-      bottom: const PreferredSize(
+      bottom: PreferredSize(
         preferredSize: Size.fromHeight(1),
         child: Divider(height: 1, thickness: 1, color: AppColors.line),
       ),
@@ -980,7 +980,7 @@ class _RegistryPageState extends State<_RegistryPage> {
         // 쪽 높이를 종횡비로 미리 잡아 두었으므로 표시 크기 = 이 상자 크기다.
         final display = constraints.biggest;
         return DecoratedBox(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.surface,
             boxShadow: [
               BoxShadow(
@@ -1363,7 +1363,7 @@ class RegistryPositionRail extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.line)),
       ),

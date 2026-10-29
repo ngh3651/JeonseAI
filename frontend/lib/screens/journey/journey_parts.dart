@@ -19,7 +19,7 @@ import 'change_boxes.dart';
 import 'journey_logic.dart';
 
 /// 단계 부제·왜 설명의 본문 보조색 (#3C4842)
-const Color kJourneyBodySub = AppColors.textBody;
+Color get kJourneyBodySub => AppColors.textBody;
 
 /// 카드 모서리 xl 20 · 큰 버튼 lg 16 · 작은 상자 md 12 · 할 일 번호 sm 8
 const double kRadiusCard = 20;
@@ -104,7 +104,7 @@ class JourneyAppBar extends StatelessWidget {
               child: showBack
                   ? IconButton(
                       tooltip: '뒤로',
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.arrow_back,
                         color: AppColorsNext.textStrong,
                       ),
@@ -157,7 +157,7 @@ class HouseRow extends StatelessWidget {
           color: AppColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(kRadiusMd),
-            side: const BorderSide(color: AppColors.line),
+            side: BorderSide(color: AppColors.line),
           ),
           child: InkWell(
             key: const ValueKey('journey-switch-house'),
@@ -177,7 +177,7 @@ class HouseRow extends StatelessWidget {
                         color: AppColorsNext.textStrong,
                       ),
                     ),
-                    const Icon(
+                    Icon(
                       Icons.expand_more,
                       size: 20,
                       color: AppColorsNext.textStrong,
@@ -317,7 +317,7 @@ class ReportCard extends StatelessWidget {
                     color: AppColors.cautionSoft,
                     borderRadius: BorderRadius.circular(kRadiusMd),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.description_outlined,
                     color: AppColors.caution,
                   ),
@@ -371,7 +371,7 @@ class ReportCard extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.refresh,
                         size: 20,
                         color: AppColors.primary,
@@ -379,7 +379,7 @@ class ReportCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(child: AppText.rich(recheck)),
                       if (onRecheck != null)
-                        const Icon(
+                        Icon(
                           Icons.chevron_right,
                           size: 20,
                           color: AppColorsNext.textMuted,
@@ -451,7 +451,7 @@ class ScheduleCard extends StatelessWidget {
               icon: const Icon(Icons.calendar_month_outlined, size: 22),
               label: AppText(
                 hasAny ? '일정 수정' : '일정 넣기',
-                style: AppTypographyNext.button.copyWith(color: Colors.white),
+                style: AppTypographyNext.button.copyWith(color: AppColors.onPrimary),
               ),
             ),
           ),
@@ -462,11 +462,11 @@ class ScheduleCard extends StatelessWidget {
                 Container(
                   width: 28,
                   height: 28,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.primarySoft,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.notifications_none,
                     size: 18,
                     color: AppColors.primary,
@@ -622,7 +622,7 @@ class _Circles extends StatelessWidget {
         );
       case CircleState.passed:
         bg = AppColors.primary;
-        child = const Icon(Icons.check, size: 22, color: Colors.white);
+        child = Icon(Icons.check, size: 22, color: AppColors.onPrimary);
       case CircleState.current:
         bg = AppColors.primarySoft;
         scale = 1.14;
@@ -762,11 +762,11 @@ class StageChipsRow extends StatelessWidget {
       return Container(
         width: 36,
         height: 36,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.primary,
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.check, size: 20, color: Colors.white),
+        child: Icon(Icons.check, size: 20, color: AppColors.onPrimary),
       );
     }
     return Container(
@@ -871,7 +871,7 @@ class StageCard extends StatelessWidget {
             semanticsLabel: plainMarkup(stage.subtitle),
           ),
           const SizedBox(height: 16),
-          const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
+          Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
           const SizedBox(height: 14),
           AppText(
             '더 챙기면 좋은 것',
@@ -882,7 +882,7 @@ class StageCard extends StatelessWidget {
           ),
           for (int i = 0; i < stage.items.length; i++) ...[
             if (i > 0)
-              const Divider(
+              Divider(
                 height: 1,
                 thickness: 1,
                 color: AppColorsNext.divider,
@@ -915,7 +915,7 @@ class StageCard extends StatelessWidget {
       );
     }
     if (current && date != null)
-      return _pill(dDayLabel(date), AppColors.primary, Colors.white);
+      return _pill(dDayLabel(date), AppColors.primary, AppColors.onPrimary);
     if (date != null)
       return _pill(
         dDayLabel(date),
@@ -1009,7 +1009,7 @@ class _ItemRow extends StatelessWidget {
                   textScaler: TextScaler.noScaling,
                   style: AppTypographyNext.caption.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: AppColors.onPrimary,
                     height: 1,
                   ),
                 ),
@@ -1089,7 +1089,7 @@ class _DetailButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color fg = open ? Colors.white : kJourneyBodySub;
+    final Color fg = open ? AppColors.onInverse : kJourneyBodySub;
     return Semantics(
       button: true,
       expanded: open,
@@ -1170,10 +1170,10 @@ class CompareButton extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.16),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.compare_arrows,
                     size: 20,
-                    color: Colors.white,
+                    color: AppColors.onPrimary,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1185,7 +1185,7 @@ class CompareButton extends StatelessWidget {
                       AppText(
                         label,
                         style: AppTypographyNext.button.copyWith(
-                          color: Colors.white,
+                          color: AppColors.onPrimary,
                         ),
                       ),
                       AppText(
@@ -1268,7 +1268,7 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
           child: Stack(
             children: [
               // 왼쪽 연한 세로선 (점 원 24의 가운데)
-              const Positioned(
+              Positioned(
                 left: 11,
                 top: 24,
                 bottom: 24,
@@ -1467,7 +1467,7 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
                   child: AnimatedRotation(
                     turns: open ? 0.5 : 0,
                     duration: const Duration(milliseconds: 250),
-                    child: const Icon(
+                    child: Icon(
                       Icons.expand_more,
                       color: AppColorsNext.textMuted,
                     ),
@@ -1494,10 +1494,10 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
             textScaler: TextScaler.noScaling,
             style: AppTypographyNext.caption.copyWith(
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: AppColors.onPrimary,
               height: 1,
             ),
           )
-        : const Icon(Icons.check, size: 16, color: Colors.white),
+        : Icon(Icons.check, size: 16, color: AppColors.onPrimary),
   );
 }

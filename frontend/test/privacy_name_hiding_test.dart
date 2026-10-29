@@ -238,15 +238,15 @@ void main() {
         ),
       );
       expect(find.koText('사진 속 이름 가리기'), findsOneWidget);
-      expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value, isFalse);
-      // 사진을 어디에 남기는지 — 앱 전체가 쓰는 같은 문장
-      expect(find.koText(RegistryPhotoStore.retentionNotice), findsOneWidget);
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+      // 마이엔 스위치만 — 설명 문장은 개인정보 처리방침에 있다(2026-10-30)
+      expect(find.koText(RegistryPhotoStore.retentionNotice), findsNothing);
 
-      await tester.tap(find.byType(SwitchListTile));
+      await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
 
       expect(PrivacySettings.instance.hideNamesInPhotos, isTrue);
-      expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value, isTrue);
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool(PrivacySettings.hideNamesKey), isTrue);
       expect(PrivacySettings.hideNamesKey, 'hide_names_in_photos_v1');

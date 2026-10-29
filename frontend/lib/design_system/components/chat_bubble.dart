@@ -55,7 +55,7 @@ class ChatBubble extends StatelessWidget {
           AppText(
             text,
             style: AppTypography.body.copyWith(
-              color: isUser ? Colors.white : AppColors.textBody,
+              color: isUser ? AppColors.onPrimary : AppColors.textBody,
             ),
           ),
           if (action != null) ...[

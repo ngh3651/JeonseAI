@@ -364,7 +364,7 @@ class _CompareScreenState extends State<CompareScreen> {
             child: MascotSafe(size: 96, state: MascotState.analyzing),
           ),
           const SizedBox(height: AppSpacing.lg),
-          const AppText(
+          AppText(
             '두 등기부를 맞춰보고 있어요',
             style: AppTypography.headline,
             textAlign: TextAlign.center,
@@ -487,7 +487,7 @@ class _CompareScreenState extends State<CompareScreen> {
         children: [
           const Center(child: MascotSafe(size: 96, state: MascotState.error)),
           const SizedBox(height: AppSpacing.xl),
-          const AppText(
+          AppText(
             '대조를 끝내지 못했어요',
             style: AppTypography.title,
             textAlign: TextAlign.center,

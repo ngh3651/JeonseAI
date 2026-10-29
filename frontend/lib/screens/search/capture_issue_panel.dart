@@ -88,7 +88,7 @@ class CaptureIssuePanel extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.photo_camera_outlined, size: AppSize.iconSm, color: AppColors.caution),
+              Icon(Icons.photo_camera_outlined, size: AppSize.iconSm, color: AppColors.caution),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: AppText(
@@ -148,7 +148,7 @@ class _PageRow extends StatelessWidget {
               onPressed: onRetake,
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.textStrong,
-                side: const BorderSide(color: AppColors.caution),
+                side: BorderSide(color: AppColors.caution),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
                 textStyle: AppTypography.buttonSmall,
               ),

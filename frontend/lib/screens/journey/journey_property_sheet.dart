@@ -165,14 +165,14 @@ class _HouseSheetState extends State<_HouseSheet> {
                     Container(
                       width: 24,
                       height: 24,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: AppColors.primary,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.check,
                         size: 16,
-                        color: Colors.white,
+                        color: AppColors.onPrimary,
                       ),
                     ),
                 ],
@@ -239,11 +239,11 @@ class _HouseSheetState extends State<_HouseSheet> {
                 Container(
                   width: 36,
                   height: 36,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.primarySoft,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.add, color: AppColors.primary),
+                  child: Icon(Icons.add, color: AppColors.primary),
                 ),
                 const SizedBox(height: 8),
                 AppText(

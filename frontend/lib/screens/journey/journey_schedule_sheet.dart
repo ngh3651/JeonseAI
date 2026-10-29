@@ -25,8 +25,8 @@ import '../report/registry_mark_sheet.dart'
 import 'journey_logic.dart' show circleLabel;
 
 /// 저장 버튼 — 날짜가 하나도 없고 바뀐 것도 없을 때의 회색
-const Color _kSaveIdleBg = Color(0xFFECEFED);
-const Color _kSaveIdleFg = Color(0xFF5E6B64);
+Color get _kSaveIdleBg => AppColors.chipBg;
+Color get _kSaveIdleFg => AppColors.textMuted;
 
 /// 일정 시트를 연다. 저장하면 새 일정을, 그냥 닫으면 null을 돌려준다.
 ///
@@ -139,7 +139,7 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
                     : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onPrimary,
                   disabledBackgroundColor: _kSaveIdleBg,
                   disabledForegroundColor: _kSaveIdleFg,
                   shape: RoundedRectangleBorder(
@@ -149,7 +149,7 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
                 child: AppText(
                   '저장',
                   style: AppTypographyNext.button.copyWith(
-                    color: active ? Colors.white : _kSaveIdleFg,
+                    color: active ? AppColors.onPrimary : _kSaveIdleFg,
                   ),
                 ),
               ),
@@ -182,12 +182,12 @@ class _DateField extends StatelessWidget {
     final String name = circleLabel(dateKey);
     final DateTime? v = value;
     return Material(
-      color: _balance ? AppColors.primarySoft : Colors.white,
+      color: _balance ? AppColors.primarySoft : AppColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: _balance
-            ? const BorderSide(color: AppColors.primary, width: 1.5)
-            : const BorderSide(color: AppColors.line),
+            ? BorderSide(color: AppColors.primary, width: 1.5)
+            : BorderSide(color: AppColors.line),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -259,7 +259,7 @@ class _DateField extends StatelessWidget {
                       minHeight: 44,
                     ),
                     padding: EdgeInsets.zero,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.close,
                       size: 22,
                       color: AppColorsNext.textMuted,
@@ -290,7 +290,7 @@ class _Circle extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: balance ? Colors.white : AppColors.background,
+          color: balance ? AppColors.surface : AppColors.background,
           shape: BoxShape.circle,
           border: balance ? null : Border.all(color: AppColors.line),
         ),
@@ -306,7 +306,7 @@ class _Circle extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: passed ? AppColors.primary : Colors.white,
+        color: passed ? AppColors.primary : AppColors.surface,
         shape: BoxShape.circle,
         border: passed
             ? null
@@ -315,7 +315,7 @@ class _Circle extends StatelessWidget {
       child: Icon(
         Icons.check,
         size: 22,
-        color: passed ? Colors.white : AppColors.primary,
+        color: passed ? AppColors.onPrimary : AppColors.primary,
       ),
     );
   }

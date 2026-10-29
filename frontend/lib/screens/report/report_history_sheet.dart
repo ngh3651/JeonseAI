@@ -106,7 +106,7 @@ Future<void> showReportHistorySheet(
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.lock_outline,
                     size: 20,
                     color: AppColorsNext.textMuted,
@@ -210,7 +210,7 @@ class _VersionRow extends StatelessWidget {
                       ),
                     )
                   else
-                    const Icon(
+                    Icon(
                       Icons.chevron_right,
                       color: AppColorsNext.textMuted,
                     ),
@@ -239,7 +239,7 @@ class PastReportBand extends StatelessWidget {
   Widget build(BuildContext context) {
     final viewed =
         parseRegistryViewedAt(report.registryViewedAt) ?? report.analyzedAt;
-    final style = AppTypographyNext.caption.copyWith(color: Colors.white);
+    final style = AppTypographyNext.caption.copyWith(color: AppColors.onInverse);
     return Container(
       key: const ValueKey('past-report-band'),
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -250,7 +250,7 @@ class PastReportBand extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.history, size: 20, color: Colors.white),
+          Icon(Icons.history, size: 20, color: AppColors.onInverse),
           const SizedBox(width: 8),
           Expanded(
             child: AppText.rich(
@@ -270,7 +270,7 @@ class PastReportBand extends StatelessWidget {
             key: const ValueKey('past-report-latest'),
             onPressed: onLatest,
             style: TextButton.styleFrom(
-              backgroundColor: Colors.white,
+              backgroundColor: AppColors.surface,
               foregroundColor: AppColorsNext.textStrong,
               minimumSize: const Size(0, 40),
               padding: const EdgeInsets.symmetric(horizontal: 12),

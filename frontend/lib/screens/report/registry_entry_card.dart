@@ -217,7 +217,7 @@ class RegistryEntryCard extends StatelessWidget {
           color: AppColors.surface,
           border: Border.all(color: AppColors.viewerEntryBorder, width: 1.5),
           borderRadius: BorderRadius.circular(AppRadius.viewerEntryCard),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
               color: AppColors.viewerEntryShadow,
               blurRadius: 12,
@@ -265,7 +265,7 @@ class RegistryEntryCard extends StatelessWidget {
                         ),
                       ),
                       if (enabled)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(left: AppSpacing.sm),
                           child: Icon(
                             Icons.chevron_right,
@@ -295,7 +295,7 @@ class RegistryEntryCard extends StatelessWidget {
     ),
     child: enabled
         ? const MascotSafe(size: 36, state: kEntryMascotState)
-        : const Icon(
+        : Icon(
             Icons.lock_outline,
             size: AppSize.iconLg,
             color: AppColors.textMuted,
@@ -419,7 +419,7 @@ class _PreviewStripState extends State<_PreviewStrip> {
       // ⚠ **foreground**여야 한다. 기본값(background)으로 두면 구분선을 먼저 그리고
       //   그 위에 사진을 덮어 그려서 선이 사라진다(2026-07-27 실기기에서 확인).
       position: DecorationPosition.foreground,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: AppColors.viewerEntryDivider)),
       ),
       child: ClipRect(

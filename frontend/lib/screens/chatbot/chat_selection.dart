@@ -104,7 +104,7 @@ class ChatSelectableText extends StatefulWidget {
     required this.child,
     required this.onCopy,
     this.onReply,
-    this.selectionColor = AppColors.primarySoft,
+    this.selectionColor,
   });
 
   final Widget child;
@@ -114,7 +114,8 @@ class ChatSelectableText extends StatefulWidget {
   final ValueChanged<String>? onReply;
 
   /// 선택 바탕 — AI 답은 primarySoft. 내 말은 primary 바탕 + 흰 글자라 화면이 primaryDeep을 넘긴다
-  final Color selectionColor;
+  /// 없으면 [AppColors.primarySoft]
+  final Color? selectionColor;
 
   @override
   State<ChatSelectableText> createState() => _ChatSelectableTextState();
@@ -151,7 +152,7 @@ class _ChatSelectableTextState extends State<ChatSelectableText> {
         onReply: onReply == null ? null : () => _act(region, onReply),
       ),
       child: DefaultSelectionStyle(
-        selectionColor: widget.selectionColor,
+        selectionColor: widget.selectionColor ?? AppColors.primarySoft,
         cursorColor: AppColors.primary,
         child: SelectionContainer(delegate: _delegate, child: widget.child),
       ),

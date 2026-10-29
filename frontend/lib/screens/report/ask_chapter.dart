@@ -19,16 +19,17 @@ import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/ask_cards.dart';
 import '../../repositories/content_repository.dart';
 
-const Color _kDataChipBg = Color(0xFFECEFED);
-const Color _kDataChipFg = Color(0xFF3C4842);
+Color get _kDataChipBg => AppColors.chipBg;
+Color get _kDataChipFg => AppColors.chipFg;
 
 /// 띠 — 진초록 바탕 · 연초록 말풍선 아이콘 (판례는 피해 사례라 숯색, 질문은 행동이라 초록)
 const Color kAskBandBg = Color(0xFF0B3D2A);
 const Color kAskBandIcon = Color(0xFF8FD3AE);
 
 /// 내 질문 말풍선
-const Color kAskMineBg = Color(0xFFE7F3EC);
-const Color kAskMineFg = Color(0xFF1F3529);
+Color get kAskMineBg => AppColors.primarySoft;
+Color get kAskMineFg =>
+    AppColors.isDark ? const Color(0xFFD5EBDD) : const Color(0xFF1F3529);
 
 /// 미리보기에 보이는 질문 수
 const int kAskPreviewCount = 2;
@@ -78,13 +79,13 @@ class _AskChapterState extends State<AskChapter> {
                       color: AppColorsNext.textMuted,
                     ),
                   ),
-                  const AskChip(
+                  AskChip(
                     icon: Icons.task_outlined,
                     label: '법이 정한 서류',
                     bg: _kDataChipBg,
                     fg: _kDataChipFg,
                   ),
-                  const AskChip(
+                  AskChip(
                     icon: Icons.auto_awesome,
                     label: 'AI 맞춤',
                     bg: AppColors.primarySoft,
@@ -159,7 +160,7 @@ class _AskChapterState extends State<AskChapter> {
             ],
           ),
         ),
-        const Divider(
+        Divider(
           height: 1,
           thickness: 1,
           indent: 20,
@@ -182,7 +183,7 @@ class _AskChapterState extends State<AskChapter> {
                     ),
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: AppColors.primary),
+                Icon(Icons.chevron_right, color: AppColors.primary),
               ],
             ),
           ),
@@ -268,8 +269,8 @@ class BrokerAvatar extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: 32,
     height: 32,
-    decoration: const BoxDecoration(color: _kDataChipBg, shape: BoxShape.circle),
-    child: const Icon(Icons.person_outline, size: 18, color: AppColorsNext.textMuted),
+    decoration: BoxDecoration(color: _kDataChipBg, shape: BoxShape.circle),
+    child: Icon(Icons.person_outline, size: 18, color: AppColorsNext.textMuted),
   );
 }
 
@@ -287,7 +288,7 @@ class BrokerTyping extends StatelessWidget {
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.background,
             borderRadius: BorderRadius.only(
               topLeft: Radius.circular(6),

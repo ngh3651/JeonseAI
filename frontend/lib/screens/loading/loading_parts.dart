@@ -165,7 +165,7 @@ class LoadingArt extends StatelessWidget {
                 child: Container(
                   width: 236,
                   height: 236,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.primarySoft,
                     shape: BoxShape.circle,
                   ),
@@ -447,7 +447,7 @@ class LoadingSteps extends StatelessWidget {
                 width: span,
                 top: _dot / 2 - 1,
                 height: 2,
-                child: const ColoredBox(color: AppColors.line),
+                child: ColoredBox(color: AppColors.line),
               ),
               // 지난 구간 — 0.5초에 걸쳐 채운다
               Positioned(
@@ -528,11 +528,11 @@ class _StepDot extends StatelessWidget {
       _Step.done => Container(
         width: d,
         height: d,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.primary,
           shape: BoxShape.circle,
         ),
-        child: const Icon(
+        child: Icon(
           Icons.check_rounded,
           size: 18,
           color: AppColors.surface,
@@ -550,7 +550,7 @@ class _StepDot extends StatelessWidget {
         child: Container(
           width: 10,
           height: 10,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.primary,
             shape: BoxShape.circle,
           ),
@@ -632,7 +632,7 @@ class LoadingBar extends StatelessWidget {
             height: 8,
             child: Stack(
               children: [
-                const Positioned.fill(child: ColoredBox(color: AppColors.line)),
+                Positioned.fill(child: ColoredBox(color: AppColors.line)),
                 TweenAnimationBuilder<double>(
                   tween: Tween(end: progress),
                   duration: reduceMotion
@@ -646,7 +646,7 @@ class LoadingBar extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                       child: Stack(
                         children: [
-                          const Positioned.fill(
+                          Positioned.fill(
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
@@ -745,7 +745,7 @@ class LoadingBar extends StatelessWidget {
 // ─────────────────────────────── 4. 리포트 꿀팁 카드 (높이 고정)
 
 /// 꿀팁 본문 글꼴 — 17/400, 줄 높이 27 (3줄 = 81)
-const TextStyle kTipBodyStyle = TextStyle(
+TextStyle get kTipBodyStyle => TextStyle(
   fontFamily: AppTypography.fontFamily,
   fontSize: 17,
   height: 27 / 17,
@@ -779,7 +779,7 @@ class LoadingTipCard extends StatelessWidget {
             height: 21 * scale,
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.lightbulb_outline_rounded,
                   size: 18,
                   color: AppColors.primary,

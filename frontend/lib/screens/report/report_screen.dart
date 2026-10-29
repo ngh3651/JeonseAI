@@ -181,7 +181,7 @@ class _ReportScreenState extends State<ReportScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const AppText('이 리포트를 불러올 수 없어요', style: AppTypography.body),
+                  AppText('이 리포트를 불러올 수 없어요', style: AppTypography.body),
                   const SizedBox(height: AppSpacing.lg),
                   AppCompactButton(
                     label: '홈으로',
@@ -257,7 +257,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
                 ?_priceGapCard(report),
                 const SizedBox(height: AppSpacing.xl),
-                const AppText('다음 행동', style: AppTypography.title),
+                AppText('다음 행동', style: AppTypography.title),
                 const SizedBox(height: AppSpacing.md),
                 ..._actionArea(context, report),
                 const SizedBox(height: AppSpacing.xxl),
@@ -454,7 +454,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.auto_awesome,
                       size: 14,
                       color: AppColors.primary,
@@ -799,16 +799,16 @@ class _ReportScreenState extends State<ReportScreen> {
         ),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.fact_check_outlined,
               color: AppColors.primary,
               size: AppSize.iconLg,
             ),
             const SizedBox(width: AppSpacing.md),
-            const Expanded(
+            Expanded(
               child: AppText('계약 여정', style: AppTypography.bodyStrong),
             ),
-            const Icon(Icons.chevron_right, color: AppColors.primary),
+            Icon(Icons.chevron_right, color: AppColors.primary),
           ],
         ),
       ),

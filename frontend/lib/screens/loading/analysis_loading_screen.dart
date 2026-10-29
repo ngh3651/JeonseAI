@@ -56,7 +56,7 @@ class LoadingStepLine extends StatelessWidget {
           height: AppSize.iconSm,
           child: Center(
             child: active
-                ? const SizedBox(
+                ? SizedBox(
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(
@@ -67,7 +67,7 @@ class LoadingStepLine extends StatelessWidget {
                 : Container(
                     width: 6,
                     height: 6,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColors.line,
                       shape: BoxShape.circle,
                     ),
@@ -310,7 +310,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
           children: [
             const Center(child: MascotSafe(size: 96, state: MascotState.error)),
             const SizedBox(height: AppSpacing.xl),
-            const AppText(
+            AppText(
               '분석을 진행하지 못했어요',
               style: AppTypography.title,
               textAlign: TextAlign.center,

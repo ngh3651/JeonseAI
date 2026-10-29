@@ -318,7 +318,7 @@ class _CompareCaptureScreenState extends State<CompareCaptureScreen> {
                   child: AppText(
                     n == 0 ? '사진을 찍어 주세요' : '$n장으로 비교하기',
                     style: AppTypographyNext.button.copyWith(
-                      color: Colors.white,
+                      color: AppColors.onPrimary,
                     ),
                   ),
                 ),
@@ -734,7 +734,7 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
                     color: AppColorsNext.dangerText,
                   ),
                 )
-              : const Icon(Icons.check, size: 32, color: AppColors.ok),
+              : Icon(Icons.check, size: 32, color: AppColors.ok),
         ),
       ),
       const SizedBox(height: 12),
@@ -753,11 +753,11 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
       const SizedBox(height: 16),
       for (int i = 0; i < lines.length; i++) ...[
         if (i > 0)
-          const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
+          Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
         _summaryRow(lines[i]),
       ],
       if (changed) ...[
-        const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
+        Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
         const SizedBox(height: 16),
         ChangeBoxes(items: compareLogItems(result)),
       ],
@@ -769,9 +769,9 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
           onPressed: () =>
               Navigator.of(context).pop(_OpenReport(newId ?? widget.report.id)),
           style: OutlinedButton.styleFrom(
-            backgroundColor: Colors.white,
+            backgroundColor: AppColors.surface,
             foregroundColor: AppColors.primary,
-            side: const BorderSide(color: AppColors.primary, width: 1.5),
+            side: BorderSide(color: AppColors.primary, width: 1.5),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(kRadiusLg),
             ),
@@ -796,7 +796,7 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
           ),
           child: AppText(
             '확인',
-            style: AppTypographyNext.button.copyWith(color: Colors.white),
+            style: AppTypographyNext.button.copyWith(color: AppColors.onPrimary),
           ),
         ),
       ),

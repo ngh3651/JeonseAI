@@ -8,13 +8,12 @@ library;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../design_system/components/app_card.dart';
 import '../../design_system/components/app_pill.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
-import '../../models/pricing.dart';
+import '../../design_system/tokens/app_typography_next.dart';
 import '../../state/pass_store.dart';
 
 /// 패스 표시 문구 — 알림·재대조·마이가 같은 말을 쓴다.
@@ -39,7 +38,7 @@ class GuardianPassBadge extends StatelessWidget {
         if (!passes.active) return const SizedBox.shrink();
         return Padding(
           padding: padding,
-          child: const AppPill(
+          child: AppPill(
             label: kGuardianPassBadgeLabel,
             icon: Icons.verified_user_outlined,
             color: AppColors.primary,
@@ -51,7 +50,10 @@ class GuardianPassBadge extends StatelessWidget {
   }
 }
 
-/// 요금제 화면으로 가는 카드. 패스가 있으면 "패스가 있어요"로 바뀐다.
+/// 요금제 화면으로 가는 띠(마이). 패스가 있으면 "패스 사용 중"으로 바뀐다.
+///
+/// 2026-10-30 마이 다시 그림: 회색 글줄 카드 → 진초록 띠 한 장(방패 · 이름 · '지금은 무료' 알약 · 꺾쇠).
+/// 돈을 내야 안전한 것처럼 읽히지 않게 '지금은 무료'부터 말한다(지수 #7·서연 #7).
 class GuardianPassEntry extends StatelessWidget {
   const GuardianPassEntry({super.key, this.store});
 
@@ -64,34 +66,77 @@ class GuardianPassEntry extends StatelessWidget {
       listenable: passes,
       builder: (context, _) {
         final bool active = passes.active;
-        return AppCard(
-          onTap: () => context.push('/pricing'),
-          child: Row(
-            children: [
-              Icon(
-                active ? Icons.verified_user : Icons.shield_outlined,
-                size: AppSize.iconLg,
-                color: AppColors.primary,
+        return Material(
+          borderRadius: BorderRadius.circular(20),
+          clipBehavior: Clip.antiAlias,
+          child: Ink(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: AppColors.isDark
+                    ? const [Color(0xFF123F2C), Color(0xFF1B5A3F)]
+                    : const [Color(0xFF0B3D2A), Color(0xFF14724B)],
               ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            child: InkWell(
+              key: const ValueKey('guardian-pass-entry'),
+              onTap: () => context.push('/pricing'),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
+                child: Row(
                   children: [
-                    const AppText('계약 지킴이 패스', style: AppTypography.bodyStrong),
-                    const SizedBox(height: 2),
-                    AppText(
-                      active
-                          ? '패스가 있어요 · $kTestPaymentNotice'
-                          // 돈을 내야 안전한 것처럼 읽히지 않게 — 지금은 무료로 다 된다는 사실부터(지수 #7·서연 #7)
-                          : '지금은 무료로 모두 쓸 수 있어요 · 요금제 보기(예시 가격)',
-                      style: AppTypography.caption,
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        active ? Icons.verified_user : Icons.shield_outlined,
+                        color: Colors.white,
+                        size: 24,
+                      ),
                     ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AppText(
+                            '계약 지킴이 패스',
+                            style: AppTypographyNext.title.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: AppText(
+                              active ? '패스 사용 중 · 테스트 결제' : '지금은 무료',
+                              style: AppTypographyNext.caption.copyWith(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFBFEBD3),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.white),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: AppColors.textMuted),
-            ],
+            ),
           ),
         );
       },

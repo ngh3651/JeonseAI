@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 import 'app/router.dart';
 import 'design_system/text/app_text.dart';
 import 'design_system/theme.dart';
+import 'design_system/tokens/app_colors.dart';
 import 'repositories/analysis_repository.dart';
 import 'screens/home/today_schedule_sheet.dart';
 import 'repositories/api_analysis_repository.dart';
@@ -34,6 +35,7 @@ import 'state/journey_schedule_store.dart';
 import 'state/pass_store.dart';
 import 'state/privacy_settings.dart';
 import 'state/registry_photo_store.dart';
+import 'state/theme_settings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +54,8 @@ Future<void> main() async {
   await PrivacySettings.instance.restore();
   // 부스 모드(2026-10-23) — 켜져 있으면 첫 화면부터 로그아웃·회원 탈퇴·기록 지우기를 숨긴다.
   await BoothMode.instance.restore();
+  // 화면 모드(2026-10-30 다크 모드) — 첫 화면부터 고른 모드로(밝은 화면이 한 번 번쩍이지 않게)
+  await ThemeSettings.instance.restore();
   // 기기 id를 미리 만들어 둔다 — 첫 서버 요청이 저장소를 기다리지 않게. 실패해도 요청 때 다시 만든다.
   await DeviceId.instance.get();
   // 카카오 로그인 세션(2026-10-22) — 폰의 보안 저장소에 남긴 세션을 올린다(만료면 지운다).
@@ -160,21 +164,84 @@ class JeonseSafeApp extends StatelessWidget {
           value: JourneyProgressStore.instance,
         ),
       ],
-      child: MaterialApp.router(
-        title: '전세AI프',
-        scaffoldMessengerKey: rootMessengerKey,
-        theme: buildAppTheme(),
-        routerConfig: appRouter,
-        debugShowCheckedModeBanner: false,
-        // 달력·기본 위젯 문구를 한국어로 (날짜 선택이 'CANCEL/OK'로 뜨지 않게)
-        locale: const Locale('ko', 'KR'),
-        supportedLocales: const [Locale('ko', 'KR')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
+      child: AppThemeHost(
+        builder: (context) => MaterialApp.router(
+          title: '전세AI프',
+          scaffoldMessengerKey: rootMessengerKey,
+          theme: buildAppTheme(),
+          routerConfig: appRouter,
+          debugShowCheckedModeBanner: false,
+          // 달력·기본 위젯 문구를 한국어로 (날짜 선택이 'CANCEL/OK'로 뜨지 않게)
+          locale: const Locale('ko', 'KR'),
+          supportedLocales: const [Locale('ko', 'KR')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+        ),
       ),
     );
   }
+}
+
+/// 밝게/어둡게를 고르는 자리 (2026-10-30 다크 모드).
+///
+/// [ThemeSettings]의 모드와 폰의 다크 모드 설정으로 **지금 밝기**를 정하고 [AppColors.apply]로 팔레트를 바꾼다.
+/// 화면들은 `AppColors.*`를 직접 읽으므로(테마를 거치지 않는다) 밝기가 바뀌면 **아래 위젯을 모두 다시 그린다** —
+/// 화면 상태(스크롤·입력값)는 그대로 남는다.
+class AppThemeHost extends StatefulWidget {
+  const AppThemeHost({super.key, required this.builder, this.settings});
+
+  final WidgetBuilder builder;
+
+  /// 테스트가 넣는다. 없으면 앱 전체의 [ThemeSettings.instance].
+  final ThemeSettings? settings;
+
+  @override
+  State<AppThemeHost> createState() => _AppThemeHostState();
+}
+
+class _AppThemeHostState extends State<AppThemeHost>
+    with WidgetsBindingObserver {
+  ThemeSettings get _settings => widget.settings ?? ThemeSettings.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _settings.addListener(_sync);
+    AppColors.apply(_brightness);
+  }
+
+  @override
+  void dispose() {
+    _settings.removeListener(_sync);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Brightness get _brightness => switch (_settings.mode) {
+    ThemeMode.light => Brightness.light,
+    ThemeMode.dark => Brightness.dark,
+    ThemeMode.system =>
+      WidgetsBinding.instance.platformDispatcher.platformBrightness,
+  };
+
+  @override
+  void didChangePlatformBrightness() => _sync();
+
+  void _sync() {
+    if (!mounted || !AppColors.apply(_brightness)) return;
+    void rebuild(Element e) {
+      e.markNeedsBuild();
+      e.visitChildren(rebuild);
+    }
+
+    (context as Element).visitChildren(rebuild);
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context);
 }

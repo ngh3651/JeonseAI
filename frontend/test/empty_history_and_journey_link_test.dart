@@ -168,12 +168,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(
-        find.koText('계약 여정'),
+        find.byKey(const ValueKey('journey-chapter-more')),
         300,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.koText('계약 여정'));
+      await tester.tap(find.byKey(const ValueKey('journey-chapter-more')));
       await tester.pumpAndSettle();
 
       expect(JourneyScheduleStore.instance.selectedPropertyKey, keyB);

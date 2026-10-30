@@ -224,9 +224,9 @@ class _JourneyScreenState extends State<JourneyScreen> {
       stages: _stages,
       schedule: schedule,
       hasProperty: property != null,
-      manualDone: property == null
-          ? null
-          : (i) => progressStore.manualDone(property.key, i),
+      checkedThrough: property == null
+          ? 0
+          : progressStore.checkedThrough(property.key),
     );
     if (_stages.isEmpty) return const SizedBox.shrink();
 
@@ -473,9 +473,15 @@ class _JourneyScreenState extends State<JourneyScreen> {
       });
       return;
     }
-    if (property == null || !progress.canToggle(i)) return;
+    if (property == null || progress.toggleSilentlyIgnored(i)) return;
+    // 체크는 순서대로만 (2026-10-30) — 안 되면 왜 안 되는지 한 줄
+    final String? blocked = progress.toggleBlockReason(i);
+    if (blocked != null) {
+      showJourneySnack(context, blocked);
+      return;
+    }
     HapticFeedback.selectionClick();
-    progressStore.setDone(property.key, i, !progress.isDone(i));
+    progressStore.setCheckedThrough(property.key, progress.toggledThrough(i)!);
   }
 
   /// 잔금 배너의 [최근 분석과 대조하기] — 잔금(또는 입주 다음 날) 단계로 기록한다.

@@ -73,12 +73,40 @@ class _JourneyScheduleSheetState extends State<_JourneyScheduleSheet> {
 
   Future<void> _pick(JourneyDateKey key) async {
     final now = DateTime.now();
+    // 이미 지난 계약서 날짜를 넣는 경우가 있어 과거도 연다(1년 전까지).
+    DateTime first = DateTime(now.year - 1);
+    DateTime last = DateTime(now.year + 3);
+    // 순서를 거꾸로 고를 수 없게 — 가계약금 ≤ 계약서 ≤ 잔금 ≤ 이사 (같은 날은 된다).
+    // 앞뒤 단계 날짜 밖의 날은 달력에서 **그냥 막는다** — 안내 문구는 띄우지 않는다 (2026-10-30 규혁)
+    final keys = JourneyDateKey.editable;
+    final int at = keys.indexOf(key);
+    for (int i = at - 1; i >= 0; i--) {
+      final d = _draft[keys[i]];
+      if (d != null) {
+        if (d.isAfter(first)) first = d;
+        break;
+      }
+    }
+    for (int i = at + 1; i < keys.length; i++) {
+      final d = _draft[keys[i]];
+      if (d != null) {
+        if (d.isBefore(last)) last = d;
+        break;
+      }
+    }
+    // 예전에 순서가 뒤집혀 저장된 일정이면 막지 않는다(달력이 열리지 않는 일이 없게)
+    if (first.isAfter(last)) {
+      first = DateTime(now.year - 1);
+      last = DateTime(now.year + 3);
+    }
+    DateTime initial = _draft[key] ?? now;
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _draft[key] ?? now,
-      // 이미 지난 계약서 날짜를 넣는 경우가 있어 과거도 연다(1년 전까지).
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 3),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
       helpText: circleLabel(key),
       confirmText: '선택',
       cancelText: '취소',

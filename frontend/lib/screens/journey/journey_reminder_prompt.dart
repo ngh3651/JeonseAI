@@ -16,6 +16,7 @@ import '../../services/journey_reminder_service.dart';
 import '../../services/journey_reminders.dart';
 import '../../state/journey_progress_store.dart';
 import '../../state/journey_schedule_store.dart';
+import 'journey_parts.dart' show showJourneySnack;
 
 /// 알림 권한을 묻기 전에 말하는 이유 (2026-10-23 지수 #5·#6 · 서연 #5).
 const String kReminderPermissionReason =
@@ -69,18 +70,11 @@ Future<void> applyJourneyReminders(
   await JourneyProgressStore.instance.setNotificationsOn(enabled);
   if (!context.mounted || enabled != true)
     return; // 꺼져 있으면 아무 안내도 띄우지 않는다(2026-10-26)
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  if (messenger == null) return;
-  messenger
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: AppText(
-          '알림을 맞춰 뒀어요 · 첫 알림 ${describeReminderTime(plan.first.fireAt)}',
-        ),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+  // 짧게 — 언제 첫 알림이 오는지만 (2026-10-30 규혁)
+  showJourneySnack(
+    context,
+    '${describeReminderTime(plan.first.fireAt)}에 첫 알림이 와요',
+  );
 }
 
 /// 권한을 묻기 전에 **왜** 필요한지 말하는 시트. [알림 받기] = true, 그 밖 = false/null.

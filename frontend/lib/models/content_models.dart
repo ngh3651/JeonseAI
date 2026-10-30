@@ -196,6 +196,38 @@ class ChatTurn {
   };
 }
 
+/// 챗봇 질문과 함께 보내는 **이 폰의 계약 일정** 한 집 (계약 §3.21 `ChatJourney` · 2026-10-30).
+///
+/// 규혁: "잔금이 내일인 걸 챗봇이 알아야 '다음에 뭐 해?'에 답한다". 서버는 이 답을 쓰는 동안만 쓰고
+/// **저장하지 않는다**(대화와 같다). 날짜를 저장하는 곳은 여전히 이 휴대폰뿐이다([JourneyScheduleStore]).
+class ChatJourney {
+  const ChatJourney({
+    required this.reportId,
+    this.dates = const {},
+    this.doneThrough = 0,
+    this.selected = false,
+  });
+
+  /// 그 집의 최신 리포트 id — 서버가 '내 집' 묶음에서 같은 집을 찾는다
+  final String reportId;
+
+  /// downPayment | contract | balance | moveIn → 'YYYY-MM-DD' (넣지 않은 날은 없다)
+  final Map<String, String> dates;
+
+  /// 끝난 마지막 단계 번호(0 = 분석만) — 여정 화면과 같은 계산(`JourneyProgress.doneThrough`)
+  final int doneThrough;
+
+  /// 계약 여정에서 고른 집인가
+  final bool selected;
+
+  Map<String, dynamic> toJson() => {
+    'reportId': reportId,
+    'dates': dates,
+    'doneThrough': doneThrough,
+    'selected': selected,
+  };
+}
+
 /// 챗봇 답 하나 (계약 §3.21 `ChatResponse`).
 ///
 /// `answer`에는 줄바꿈과 `**굵게**` 표시가 들어 있다 — 화면이 굵게 그린다. 출처 라벨·유도 버튼은 없다

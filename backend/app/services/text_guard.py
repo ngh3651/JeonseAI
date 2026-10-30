@@ -279,7 +279,8 @@ def unsupported_numbers(text: str, allowed: set[float]) -> list[str]:
 # 그래서 리포트와 같은 **화이트리스트** 방식으로 바꿨다: 그 밖의 숫자를 AI가 지어내면 걸린다.
 
 #: 챗봇 답 길이 상한 — 넘으면 자르지 않고 고쳐 쓰게 한다(잘린 문장은 뜻이 바뀐다).
-CHAT_MAX_LEN = 450
+#: 2026-10-30 450 → 600: "이 앱으로 막을 수 있는 사기·못 막는 사기"처럼 목록 답이 늘었다(지시는 500자 안).
+CHAT_MAX_LEN = 600
 
 #: 집·계약에 대한 **판정 문장** — 어느 쪽(해도 된다/하지 마라)이든 챗봇이 말하면 안 된다.
 #: 공백을 지운 문자열에 댄다. `계약해도 되는지는 제가 정할 수 없어요`처럼 **묻거나 부정하는 꼴**은 통과.
@@ -324,6 +325,18 @@ def chat_allowed_numbers(user_texts: Iterable[str], extra: Iterable[float] = ())
     return allowed
 
 
+def percent_values(text: str) -> set[float]:
+    """글에 **퍼센트로** 나온 수만 (2026-10-30). 자료의 날짜·전화번호·글자 수가 '%'로 둔갑해 통과하지 않게."""
+    return {float(m.group(1)) for m in _PERCENT_RE.finditer(text or "")}
+
+
+#: 경매 매각가율 표의 퍼센트는 **매각가율을 말하는 문장에서만** 근거가 된다(2026-10-30) — 표가 36~96%를
+#: 촘촘히 덮어서, 문맥 없이 허용하면 '전세가율 77%' 같은 지어낸 수가 표의 76.9%에 기대 통과한다.
+RATE_CONTEXT_RE = re.compile(r"매각가율|낙찰|경매")
+#: % 앞뒤로 문맥을 찾는 폭(글자 수)
+_CONTEXT_WINDOW = 30
+
+
 #: 리포트의 등급 글자 → 그 등급 단어 패턴 이름 (리포트를 아는 챗봇이 **리포트가 낸 등급만** 그대로 전할 수 있게)
 GRADE_LABEL_OF = {"양호": "등급단어-양호", "확인 필요": "등급단어-확인필요", "위험": "등급단어-위험라벨"}
 
@@ -337,11 +350,20 @@ def check_chat_reply(
     allowed: set[float],
     careful: bool = False,
     report_grades: Iterable[str] | None = None,
+    quote_report: bool | None = None,
+    context_numbers: Iterable[tuple[re.Pattern[str], set[float]]] = (),
 ) -> tuple[str, str] | None:
     """챗봇 답을 내보내도 되나. 통과면 None, 아니면 `(분류, 쉬운 말 사유)`.
 
     분류는 로그용(사용자 글이 섞이지 않는다), 사유는 AI에게 고쳐 쓰라고 돌려줄 문장이다.
     금지 표현·등급 단어는 리포트와 **같은 패턴**을 쓴다(두 화면이 다른 그물을 쓰면 조용히 갈라진다).
+
+    `report_grades`: 리포트·내 집들이 실제로 낸 등급 — 이것만 그대로 전할 수 있다.
+    `quote_report`: "기준을 넘었어요" 같은 말을 **리포트 인용**으로 봐 줄까(자세한 리포트를 받았을 때만).
+      None이면 예전처럼 `report_grades`가 있으면 켠다. 내 집 목록만 있을 때는 끈다 — 사용자가 말한 금액을
+      기준에 대 보는 말이 '인용'으로 새지 않게(2026-10-30).
+    `context_numbers`: (문맥 패턴, 퍼센트들) — 그 퍼센트는 % 앞뒤 30자 안에 패턴이 있을 때만 근거가 된다
+      (경매 매각가율 표 → `RATE_CONTEXT_RE`).
     """
     if not text or not text.strip():
         return ("빈답", "답이 비어 있어요")
@@ -368,8 +390,9 @@ def check_chat_reply(
         if report_mode
         else "집이나 계약, 가격이 괜찮은지 판단하는 말은 할 수 없어요. 판단 없이 확인할 방법만 알려 주세요"
     )
+    quoting = report_mode if quote_report is None else quote_report
     for name, pattern in _CHAT_VERDICT_PATTERNS + (_CHAT_CAREFUL_PATTERNS if careful else ()):
-        if report_mode and name in _REPORT_QUOTABLE:
+        if quoting and name in _REPORT_QUOTABLE:
             continue
         if pattern.search(squeezed):
             return (name, verdict_msg)
@@ -380,9 +403,15 @@ def check_chat_reply(
         host = m.group(1).lower()
         if "." in host and not _PUBLIC_DOMAIN_RE.search(host):
             return ("주소", "공공기관(go.kr·or.kr)이 아닌 인터넷 주소는 쓸 수 없어요. 기관 이름만 말로 써 주세요")
+    contexts = list(context_numbers)
     for m in _PERCENT_RE.finditer(text):
-        if not _supported(float(m.group(1)), allowed):
-            return ("숫자", f"'{m.group(0)}'는 근거가 없어 쓸 수 없어요. 판정 기준표의 퍼센트만 쓰거나 말로 풀어 주세요")
+        value = float(m.group(1))
+        if _supported(value, allowed):
+            continue
+        window = text[max(0, m.start() - _CONTEXT_WINDOW) : m.end() + _CONTEXT_WINDOW]
+        if any(pattern.search(window) and _supported(value, nums) for pattern, nums in contexts):
+            continue
+        return ("숫자", f"'{m.group(0)}'는 근거가 없어 쓸 수 없어요. 자료에 있는 퍼센트만 쓰거나 말로 풀어 주세요")
     return None
 
 

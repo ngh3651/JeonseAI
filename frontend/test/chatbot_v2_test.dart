@@ -34,7 +34,11 @@ class _FakeContentRepo implements ContentRepository {
   final List<String?> reportIds = [];
 
   @override
-  Future<ChatReply> chat(List<ChatTurn> messages, {String? reportId}) async {
+  Future<ChatReply> chat(
+    List<ChatTurn> messages, {
+    String? reportId,
+    List<ChatJourney>? journeys,
+  }) async {
     sent.add(List.of(messages));
     reportIds.add(reportId);
     final last = messages.last.content.split('\n').last;

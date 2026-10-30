@@ -519,3 +519,234 @@ def test_POST_chat_없는_reportId면_리포트_없이_답한다(client, fake_ll
     r = client.post("/api/chat", json={"messages": [_u("안녕")], "reportId": "nope"}, headers={"X-Device-Id": "dev-test-4"})
     assert r.status_code == 200
     assert "이 사용자의 안전도 리포트" not in p.calls[0]["system"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 맞춤형 (2026-10-30) — 앱 안내 · 계약 여정 · 매각가율 · 내 집 · 계약 일정을 알고 답한다
+# 규혁: "내 계약 여정 못 읽어?"에 "개인 정보를 읽을 수 없어요"가 나왔다 → 내 정보로 바로 답해야 한다.
+# ══════════════════════════════════════════════════════════════════════════════
+
+from datetime import date, timedelta  # noqa: E402
+
+
+def _house(report_id: str, *, alias: str, address: str, deposit: int, analyzed: str, pid: str | None = None):
+    from tests.test_clean_report import build_clean_report
+
+    r = build_clean_report().model_copy(deep=True)
+    r.id = report_id
+    r.alias = alias
+    r.address = address
+    r.propertyAddress = address
+    r.propertyId = pid
+    r.deposit = deposit
+    r.analyzedAt = analyzed
+    r.registryViewedAt = "2026.08.14"
+    return r
+
+
+def _two_houses():
+    """최신순(서버 이력과 같은 순서): 두 번째로 등록한 집이 가장 최근에 분석한 집이다."""
+    newer = _house("rep-b", alias="망원동 빌라", address="서울특별시 마포구 망원동 1-2 제302호",
+                   deposit=150_000_000, analyzed="2026-10-28T03:00:00+00:00", pid="11111111111111")
+    older = _house("rep-a", alias="성산동 아파트", address="인천광역시 남동구 구월동 3-4 제501호",
+                   deposit=100_000_000, analyzed="2026-10-01T03:00:00+00:00", pid="22222222222222")
+    return [newer, older]
+
+
+def test_참고_자료에_앱_안내_계약_여정_매각가율이_들어간다(fake_llm):
+    p = fake_llm(_a("네!"))
+    chat.answer("이 앱으로 막을 수 있는 사기는 뭐야?")
+    system = p.calls[0]["system"]
+    assert "이 앱 안내" in system and "등기부로는 못 보는 위험" in system and "막을 수 있는 위험" in system
+    assert "이체 직전 등기부 대조" in system, "여정 화면과 같은 파일의 할 일이 들어간다"
+    assert "매각가율" in system and "대법원" in system
+
+
+def test_내_집과_보증금을_알고_답한다(fake_llm):
+    p = fake_llm(_a("2개, 1억 5,000만원, 1억원"))
+    r = chat.reply([_u("내 집 몇 개고 보증금 얼마야? 숫자로만")], houses=_two_houses(), journeys=[])
+    system = p.calls[0]["system"]
+    assert "이 사용자 정보" in system and "내 집 2곳" in system
+    assert "1억 5,000만원" in system and "망원동" in system, "주소·보증금이 들어간다(규혁 결정)"
+    assert r.mode == chat.MODE_NORMAL and r.answer == "2개, 1억 5,000만원, 1억원"
+
+
+def test_등록_순서는_처음_분석한_순서다(fake_llm):
+    p = fake_llm(_a("네!"))
+    chat.reply([_u("두 번째로 등록한 집은?")], houses=_two_houses(), journeys=[])
+    system = p.calls[0]["system"]
+    assert "[1번째로 등록한 집] '성산동 아파트'" in system
+    assert "[2번째로 등록한 집] '망원동 빌라' (가장 최근에 분석한 집" in system
+
+
+def test_같은_집은_한_곳으로_센다(fake_llm):
+    p = fake_llm(_a("네!"))
+    houses = _two_houses()
+    again = houses[0].model_copy(update={"id": "rep-b-old", "analyzedAt": "2026-10-20T03:00:00+00:00"})
+    chat.reply([_u("내 집 몇 개야")], houses=[houses[0], again, houses[1]], journeys=[])
+    system = p.calls[0]["system"]
+    assert "내 집 2곳" in system and "이 집 분석 2번" in system
+
+
+def test_일정이_있으면_다음_단계와_할_일과_날짜를_안다(fake_llm):
+    p = fake_llm(_a("내일이 잔금 날이에요."))
+    today = chat.today_kst()
+    journeys = [{
+        "reportId": "rep-b",
+        "dates": {"downPayment": (today - timedelta(days=17)).isoformat(), "contract": today.isoformat(),
+                  "balance": (today + timedelta(days=1)).isoformat()},
+        "doneThrough": 2,
+        "selected": True,
+    }]
+    chat.reply([_u("나 다음에 해야 하는 주요 행동은 뭐야?")], houses=_two_houses(), journeys=journeys)
+    system = p.calls[0]["system"]
+    assert "계약서" in system and "오늘" in system and "내일, D-1" in system
+    assert "다음은 4단계 '잔금 보내는 날'" in system
+    assert "다음 단계 할 일: 이체 직전 등기부 대조" in system
+    assert "다음에 등기부를 다시 떼서 대조할 때: 4단계" in system
+    assert "77일 전에 뗀 서류" in system or "일 전에 뗀 서류" in system
+
+
+def test_옛_앱은_일정이_안_왔다고_적는다(fake_llm):
+    p = fake_llm(_a("네!"))
+    chat.reply([_u("내 일정 알아?")], houses=_two_houses(), journeys=None)
+    system = p.calls[0]["system"]
+    assert "이번 질문에는 함께 오지 않았어요" in system
+    assert "개인정보라서 볼 수 없어요'라고 말하지 마세요" in system
+
+
+def test_일정이_없으면_넣는_곳을_알려_준다(fake_llm):
+    p = fake_llm(_a("네!"))
+    chat.reply([_u("내 일정 알아?")], houses=_two_houses(), journeys=[])
+    assert "아직 넣지 않았어요 (계약 여정에서 날짜를 넣을 수 있어요)" in p.calls[0]["system"]
+
+
+def test_집이_없으면_분석하라고_적는다(fake_llm):
+    p = fake_llm(_a("네!"))
+    chat.reply([_u("내 집 몇 개야")], houses=[], journeys=[])
+    assert "내 집: 아직 없어요" in p.calls[0]["system"]
+
+
+def test_잘못된_일정_칸은_그_칸만_버린다():
+    parsed = chat.parse_journeys([
+        {"reportId": "a", "dates": {"balance": "2026-10-31", "nope": "2026-10-01", "contract": "어제"}, "doneThrough": 3},
+        {"reportId": "", "dates": {}},
+        "이상한 값",
+    ])
+    assert parsed == [chat.JourneyIn("a", {"balance": date(2026, 10, 31)}, 3, False)]
+    assert chat.parse_journeys(None) is None and chat.parse_journeys([]) == []
+
+
+def test_매각가율은_매각가율을_말할_때만_쓸_수_있다(fake_llm):
+    fake_llm(_a("서울 아파트 경매 매각가율은 96.3%예요."))
+    assert chat.answer("서울 아파트 매각가율 얼마야?").mode == chat.MODE_NORMAL
+    p = fake_llm(_a("이 집 전세가율은 96.3%예요."), _a("이 집 전세가율은 96.3%예요."))
+    r = chat.answer("전세가율 알려 줘")
+    assert r.mode == chat.MODE_FALLBACK and len(p.calls) == 2, "매각가율 표에 기대 다른 퍼센트를 지어내면 걸린다"
+
+
+def test_실생활_정보의_퍼센트는_쓸_수_있다(fake_llm):
+    fake_llm(_a("계약갱신요구권을 쓰면 보증금은 5% 이내로만 올릴 수 있어요."))
+    assert chat.answer("갱신할 때 보증금 얼마나 올릴 수 있어?").mode == chat.MODE_NORMAL
+
+
+def test_내_집_목록만_있으면_기준에_대_보는_말은_막힌다(fake_llm):
+    """자세한 리포트 없이 집 목록만 있을 때 "90%를 넘어요"는 리포트 인용이 아니라 새 판정이다."""
+    p = fake_llm(_a("말씀하신 금액이면 90%를 넘어요."), _a("말씀하신 금액이면 90%를 넘어요."))
+    r = chat.reply([_u("보증금 2억 집값 2억 1천이면?")], houses=_two_houses(), journeys=[])
+    assert r.mode == chat.MODE_FALLBACK and len(p.calls) == 2
+
+
+def test_내_집이_낸_등급은_전할_수_있다(fake_llm):
+    fake_llm(_a("리포트에서는 '망원동 빌라'가 양호로 나왔어요."))
+    r = chat.reply([_u("내 집 결과 어떻게 나왔어?")], houses=_two_houses(), journeys=[])
+    assert r.mode == chat.MODE_NORMAL
+
+
+def test_계약_허락은_내_정보가_있어도_막힌다(fake_llm):
+    p = fake_llm(_a("네, 계약하셔도 돼요."), _a("네, 계약하셔도 돼요."))
+    r = chat.reply([_u("이 집 계약해도 돼?")], houses=_two_houses(), journeys=[])
+    assert r.mode == chat.MODE_FALLBACK and len(p.calls) == 2
+
+
+@pytest.mark.parametrize("q", ["카르마에 대해 어떻게 생각해?", "끝말잇기 단어 골라줘", "번역 좀 봐줘"])
+def test_결정과_상관없는_말은_조심_모드가_아니다(q):
+    assert chat.verdict_request_hit(q) is None
+
+
+@pytest.mark.parametrize("q", ["이 집 어떻게 생각해?", "두 집 중에 골라줘 이 매물이랑", "이 집 좀 봐줘"])
+def test_집을_가리키면_조심_모드다(q):
+    assert chat.verdict_request_hit(q) is not None
+
+
+def test_POST_chat_내_집과_일정을_알고_답한다(client, fake_llm):
+    from app.services import store
+
+    p = fake_llm(_a("내일이 잔금 날이에요."))
+    h = {"X-Device-Id": "dev-test-5"}
+    for r in reversed(_two_houses()):  # 오래된 것부터 넣는다(서버 이력은 최신순으로 나온다)
+        store.add(r, device_id=h["X-Device-Id"])
+    tomorrow = (chat.today_kst() + timedelta(days=1)).isoformat()
+    body = {
+        "messages": [_u("다음에 뭐 해야 해?")],
+        "journeys": [{"reportId": "rep-b", "dates": {"balance": tomorrow}, "doneThrough": 2, "selected": True}],
+    }
+    r = client.post("/api/chat", json=body, headers=h)
+    assert r.status_code == 200 and set(r.json()) == {"answer", "mode", "model"}
+    system = p.calls[0]["system"]
+    assert "내 집 2곳" in system and "잔금" in system and "내일, D-1" in system
+    assert "이 사용자의 안전도 리포트" in system, "보던 리포트가 없으면 가장 최근 집의 리포트를 자세히 안다"
+
+
+def test_POST_chat_옛_앱_요청도_그대로_된다(client, fake_llm):
+    p = fake_llm(_a("안녕하세요!", "small_talk"))
+    r = client.post("/api/chat", json={"messages": [_u("안녕")]}, headers={"X-Device-Id": "dev-test-6"})
+    assert r.status_code == 200
+    assert "내 집: 아직 없어요" in p.calls[0]["system"] and "이번 질문에는 함께 오지 않았어요" not in p.calls[0]["system"]
+
+
+def test_POST_chat_남의_리포트_id로는_일정이_붙지_않는다(client, fake_llm):
+    from app.services import store
+
+    p = fake_llm(_a("네!"))
+    store.add(_two_houses()[0], device_id="dev-test-7-other")
+    body = {"messages": [_u("내 일정?")], "journeys": [{"reportId": "rep-b", "dates": {"balance": "2026-10-31"}}]}
+    r = client.post("/api/chat", json=body, headers={"X-Device-Id": "dev-test-7"})
+    assert r.status_code == 200
+    system = p.calls[0]["system"]
+    assert "망원동" not in system and "내 집: 아직 없어요" in system
+
+
+def test_POST_chat_잘못된_일정_모양은_422(client, fake_llm):
+    fake_llm()
+    bad = {"messages": [_u("안녕")], "journeys": [{"dates": {}}]}
+    assert client.post("/api/chat", json=bad, headers={"X-Device-Id": "dev-test-8"}).status_code == 422
+
+
+def test_내_정보도_가린_사본만_AI에_간다(client, fake_llm):
+    """서버의 가린 사본(홍○○)으로 만든다 — 설명용 LLM 입력에 실명이 없다(CLAUDE.md §2-5)."""
+    from app.services import store
+
+    p = fake_llm(_a("네!"))
+    r = _two_houses()[0]
+    r.personNames = ["홍길동"]
+    r.headline = "홍길동 소유 집이에요"
+    store.add(r, device_id="dev-test-9")
+    client.post("/api/chat", json={"messages": [_u("내 집 알려 줘")], "journeys": []}, headers={"X-Device-Id": "dev-test-9"})
+    system = p.calls[0]["system"]
+    assert "홍길동" not in system and "홍○○" in system
+
+
+def test_로그에_주소와_일정이_없다(fake_llm, caplog):
+    import logging
+
+    fake_llm(_a("네!"))
+    caplog.set_level(logging.INFO, logger="jeonseai")
+    chat.reply(
+        [_u("다음 할 일?")],
+        houses=_two_houses(),
+        journeys=[{"reportId": "rep-b", "dates": {"balance": "2026-10-31"}, "doneThrough": 2}],
+    )
+    logged = "\n".join(rec.getMessage() for rec in caplog.records)
+    assert "망원동" not in logged and "2026-10-31" not in logged and "1억" not in logged
+    assert "집 2곳" in logged

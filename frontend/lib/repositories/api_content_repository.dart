@@ -71,14 +71,21 @@ class ApiContentRepository implements ContentRepository {
   ///
   /// 기다리는 시간 30초 — 서버는 실패하면 스스로 기본 문장으로 답하므로, 여기서 기다리는 시간은
   /// **AI가 답을 쓰고 한 번 고쳐 쓸 시간**이면 충분하다.
+  ///
+  /// [journeys](2026-10-30): 이 폰의 계약 일정 — 넣으면 서버가 '다음 할 일'을 알고 답한다(서버는 저장하지 않는다).
   @override
-  Future<ChatReply> chat(List<ChatTurn> messages, {String? reportId}) async {
+  Future<ChatReply> chat(
+    List<ChatTurn> messages, {
+    String? reportId,
+    List<ChatJourney>? journeys,
+  }) async {
     final recent = messages.length > 8
         ? messages.sublist(messages.length - 8)
         : messages;
     final json = await _api.postJson('/api/chat', {
       'messages': [for (final m in recent) m.toJson()],
       'reportId': ?reportId,
+      if (journeys != null) 'journeys': [for (final j in journeys) j.toJson()],
     }, timeout: const Duration(seconds: 30));
     return ChatReply.fromJson(json as Map<String, dynamic>);
   }

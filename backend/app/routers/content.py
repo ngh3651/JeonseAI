@@ -64,16 +64,47 @@ def chat_reply(
     if len(last.content.strip()) > chat.MAX_USER_CHARS:
         raise HTTPException(status_code=400, detail=f"질문은 {chat.MAX_USER_CHARS}자까지 보낼 수 있어요")
     limit_chat(request, checked_device_id(x_device_id) or "no-device")
-    r = chat.reply([m.model_dump() for m in body.messages], report=_own_report(body.reportId, x_device_id, authorization))
+    owner = _owner(x_device_id, authorization)
+    houses = _own_reports(owner)
+    report = _own_report(body.reportId, owner) or (houses[0] if houses else None)
+    r = chat.reply(
+        [m.model_dump() for m in body.messages],
+        report=report,
+        houses=houses,
+        journeys=body.journeys,
+    )
     return ChatResponse(answer=r.answer, mode=r.mode, model=r.model)
 
 
-def _own_report(report_id: Optional[str], x_device_id: Optional[str], authorization: Optional[str]):
-    """이 사용자의 리포트(서버의 **가린 사본**) — 없거나 남의 것·세션 오류면 None(리포트 없이 답한다)."""
-    if not report_id:
-        return None
+def _owner(x_device_id: Optional[str], authorization: Optional[str]) -> Optional[str]:
+    """이 요청의 주인 — 세션 오류·기기 정보 없음이면 None(내 정보 없이 답한다).
+
+    ⚠ 옛 앱이 함께 쓰는 `legacy-device`는 주인으로 보지 않는다 — 여러 사람의 기록이 한 주인에 섞여 있다.
+    """
+    from .. import settings
+
     try:
         owner = get_current_user(x_device_id=x_device_id, authorization=authorization)
+    except Exception:  # noqa: BLE001 — 주인을 몰라도 챗봇은 답한다
+        return None
+    return None if owner == settings.LEGACY_DEVICE_ID else owner
+
+
+def _own_reports(owner: Optional[str]):
+    """이 사용자의 이력(서버의 **가린 사본**, 최신순) — 챗봇의 '내 집'. 주인을 모르면 None."""
+    if owner is None:
+        return None
+    try:
+        return store.list_reports(device_id=owner)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _own_report(report_id: Optional[str], owner: Optional[str]):
+    """이 사용자의 리포트(서버의 **가린 사본**) — 없거나 남의 것·세션 오류면 None(리포트 없이 답한다)."""
+    if not report_id or owner is None:
+        return None
+    try:
         return store.get(report_id, device_id=owner)
     except Exception:  # noqa: BLE001 — 리포트를 못 찾아도 챗봇은 답한다
         return None

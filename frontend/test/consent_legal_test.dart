@@ -198,7 +198,7 @@ void main() {
 
     test('처리방침 — 서버 나라·받는 곳 연락처·보호책임자·문의·구제 기관 4곳', () {
       final text = privacyPolicyDoc().plainText;
-      expect(text, contains('보관하는 나라 싱가포르'));
+      expect(text, contains('보관하는 나라 미국(버지니아). 접속 기록도 미국'));
       expect(text, contains('Railway Corp.'));
       expect(text, contains('privacy@railway.com'), reason: '국외 이전 — 받는 자의 연락처(제28조의8 제2항)');
       expect(text, contains('제28조의8 제1항 제3호'));

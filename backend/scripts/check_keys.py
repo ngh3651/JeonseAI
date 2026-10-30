@@ -153,7 +153,7 @@ def _openai_style_check(
         return Result(
             name,
             classify_http(resp.status_code),
-            f"GET /models → HTTP {resp.status_code} · 크레딧 잔액은 확인하지 않음",
+            f"GET /models → HTTP {resp.status_code} · 크레딧 잔액은 확인하지 않음{_model_listing(resp)}",
         )
 
     try:
@@ -174,6 +174,23 @@ def _openai_style_check(
         classify_http(resp.status_code),
         f"모델 목록 주소가 없어 1토큰 채팅으로 확인(⚠ 아주 적은 크레딧 사용) → HTTP {resp.status_code}",
     )
+
+
+def _model_listing(resp: requests.Response) -> str:
+    """모델 목록에 우리가 부를 Solar 모델이 있는지 (2026-10-31 — solar-pro2 서비스 종료 공지). 못 읽으면 빈 문자열."""
+    if resp.status_code != 200:
+        return ""
+    try:
+        data = resp.json()
+        ids = {str(m.get("id")) for m in (data.get("data") or []) if isinstance(m, dict)}
+    except Exception:  # noqa: BLE001 — 목록 모양이 달라도 키 점검 결과는 그대로
+        return ""
+    if not ids:
+        return ""
+    from app.services.llm import solar_models
+
+    marks = [f"{m} {'있음' if m in ids else '없음'}" for m in solar_models.chain()]
+    return " · 모델 목록: " + ", ".join(marks)
 
 
 def check_upstage(*, http_get: HttpGet = requests.get, http_post: HttpPost = requests.post) -> Result:

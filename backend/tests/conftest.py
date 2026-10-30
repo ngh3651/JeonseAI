@@ -25,7 +25,11 @@ os.environ["TOSS_SECRET_KEY"] = ""
 # 서버 문(2026-10-21): 개발자 `.env`의 값이 테스트 결과를 바꾸지 않게 비운다.
 # (load_dotenv는 이미 있는 환경변수를 덮지 않으므로, 빈 값이 그대로 유지된다)
 os.environ["APP_KEY"] = ""
-os.environ["REQUIRE_DEVICE_ID"] = ""
+# 기기 id 헤더는 운영 기본이 **필수**다(2026-10-30). 헤더 없이 부르는 옛 테스트가 많아 테스트 기본만 끈다 —
+# 필수 동작 자체는 test_server_access.py가 켜고(값을 지워) 시험한다.
+os.environ["REQUIRE_DEVICE_ID"] = "0"
+# 저장 데이터 잠금(2026-10-30): 기본은 끄고(평문 — DB를 직접 들여다보는 옛 테스트), test_data_sealing.py가 켜고 시험한다.
+os.environ["DATA_SECRET"] = ""
 os.environ["SAVE_RAW_RESPONSES"] = ""
 os.environ["RATE_LIMIT_ANALYZE_PER_HOUR"] = ""
 os.environ["RATE_LIMIT_GLOBAL_PER_DAY"] = ""

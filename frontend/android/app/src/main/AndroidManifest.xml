@@ -1,8 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 백엔드 서버 호출을 위한 인터넷 권한 -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- 카메라로 등기부등본을 촬영하기 위한 권한 -->
-    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- 카메라 권한은 두지 않는다 (2026-10-30 보안): 촬영은 휴대폰 기본 카메라 앱이 하고(image_picker 인텐트),
+         그 방식은 권한이 필요 없다. 오히려 권한을 선언해 두면 첫 촬영 때 권한 창이 뜨고 거절하면 촬영이 막혔다. -->
     <!-- 계약 지킴이 알림 (2026-10-22): 안드로이드 13 이상은 알림 권한이 따로 있다.
          사용자가 잔금일·이사일을 저장하는 순간 이유와 함께 묻는다(앱을 켤 때 묻지 않는다). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -11,10 +11,15 @@
     <!-- ⚠ 정확한 알람 권한(SCHEDULE_EXACT_ALARM·USE_EXACT_ALARM)은 일부러 넣지 않는다 — 구글 정책상
          달력·알람 앱이 아니면 쓰기 어렵다. 알림은 몇 분 늦게 울릴 수 있다(inexactAllowWhileIdle). -->
 
+    <!-- 백업·기기 옮기기 끔 (2026-10-30 보안): 폰에 남는 원본 사진·실명 리포트·기기 id가 구글 백업이나
+         새 폰 옮기기로 빠져나가지 않게. "원본은 이 휴대폰에만"이라는 약속을 지키는 설정이다.
+         res/xml/data_extraction_rules.xml은 안드로이드 12 이상에서 기기 옮기기까지 막는다. -->
     <application
         android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="${usesCleartextTraffic}"><!-- http(비-HTTPS) 통신 허용 여부 — app/build.gradle.kts가 정한다: 개발 빌드는 허용(adb reverse로 http://127.0.0.1:8000), 릴리스는 서버 주소(API_BASE_URL)가 http일 때만 -->
         <activity
             android:name=".MainActivity"
@@ -33,6 +38,9 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- 다른 앱이 주소를 붙여 우리 앱의 아무 화면(리포트·결제 등)이나 바로 열지 못하게 (2026-10-30 보안).
+                 알림은 알림 내용(payload)으로, 카카오 로그인은 아래 카카오 전용 화면으로 돌아오므로 영향이 없다. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

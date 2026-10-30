@@ -181,8 +181,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       # 고정 링크 = app-latest 릴리스의 jeonseai.apk. 디버그 키 APK는 올리지 않는다(덮어 설치가 끊기므로).
-      - name: 최신 APK를 고정 링크에 올리기 (main + 고정 키일 때만)
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.signing.outputs.kind == 'release'
+      # 서버 주소가 https일 때만 올린다(2026-10-30 보안) — 변수가 빠지면 평문·127.0.0.1로 보내는 APK가 부스 폰에 덮어 깔릴 수 있었다.
+      - name: 최신 APK를 고정 링크에 올리기 (main + 고정 키 + https 주소일 때만)
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.signing.outputs.kind == 'release' && startsWith(vars.API_BASE_URL, 'https://')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -204,8 +205,8 @@ jobs:
       # app-preview 릴리스에 pr-<번호>.apk로 올리고, PR에 링크 댓글을 하나 단다(새로 올리면 같은 댓글을 고친다).
       # ⚠ 시연 앱('전세AI프')과 같은 앱이라 **덮어 설치**된다(기록은 그대로). main에 합쳐지면 고정 링크 APK로 다시 덮으면 된다.
       # 같은 저장소의 PR + 고정 키일 때만(다른 저장소에서 온 PR엔 비밀값이 없다). PR을 닫으면 pr-apk-cleanup.yml이 지운다.
-      - name: PR 미리보기 APK 링크 올리기 (PR + 고정 키일 때만)
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.signing.outputs.kind == 'release'
+      - name: PR 미리보기 APK 링크 올리기 (PR + 고정 키 + https 주소일 때만)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.signing.outputs.kind == 'release' && startsWith(vars.API_BASE_URL, 'https://')
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}

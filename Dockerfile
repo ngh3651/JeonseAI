@@ -37,6 +37,7 @@ EXPOSE 8000
 # (PREPARE_RUNTIME_ON_START=1 → app/main.py lifespan → scripts/prepare_runtime.py). 수백 MB를 받는 동안에도
 # 헬스체크가 통과하고, 진행은 GET / 의 priceDb·precedentIndex로 보인다. 준비가 실패해도 서버는 돈다.
 ENV PREPARE_RUNTIME_ON_START=1
+# --no-server-header: 응답에 서버 프로그램 이름·버전을 싣지 않는다(2026-10-30 보안).
 # ⚠ --no-access-log: uvicorn 접근 로그는 주소 전체를 찍는다 → 챗봇 질문(GET /api/glossary/lookup?q=…)이
 #   로그에 남는다. 앱 자체의 [요청] 로그(경로·상태·시간만)는 그대로 남는다.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log --no-server-header"]

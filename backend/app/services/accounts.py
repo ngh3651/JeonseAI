@@ -21,7 +21,6 @@ import hashlib
 import hmac
 import logging
 import secrets
-import sqlite3
 import threading
 from contextlib import closing
 from dataclasses import dataclass
@@ -30,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from .. import settings
-from . import analysis_cache, payments, store
+from . import analysis_cache, payments, sealing, store
 
 _log = logging.getLogger("jeonseai")
 
@@ -177,8 +176,7 @@ _db_lock = threading.Lock()
 def _execute(sql: str, params: tuple = ()) -> list[tuple]:
     path = store.db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with _db_lock, closing(sqlite3.connect(path, timeout=10)) as conn, conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+    with _db_lock, closing(store.connect(path)) as conn, conn:
         conn.execute(_SCHEMA)
         conn.execute(_INDEX)
         conn.execute(_PROFILE_SCHEMA)
@@ -276,6 +274,98 @@ def claim_device_records(device_id: str | None, owner: str) -> int:
     return moved
 
 
+# ── 기기 주인 값 가리기 (2026-10-30 보안) ─────────────────────────────────────────
+# 로그인 없이 둘러보는 사람의 기록 주인은 원래 **기기 id 원문**이었다. DB가 새면 그 값을 `X-Device-Id`에 실어
+# 그 사람의 앞으로의 기록까지 볼 수 있었다 → 열쇠(`DATA_SECRET`)가 있으면 HMAC 값(`dv-…`)을 주인으로 쓴다.
+# 원문으로 쌓인 옛 기록은 **서버가 켜질 때 한꺼번에** 옮긴다([mask_all_device_owners] — 다시 오지 않는 기기의
+# 원문도 DB에 남지 않게). 그 정리가 끝나기 전의 몇 초 동안만, 처음 다시 부르는 기기를 요청 때 옮긴다.
+
+_adopted: set[str] = set()
+_adopted_lock = threading.Lock()
+#: 원문 주인 값이 DB에 남아 있을 수 있나 — 켜질 때 정리가 끝나면 False(그 뒤로는 요청마다 옮기기를 하지 않는다:
+#: 무작위 기기 id를 보내는 요청마다 쓰기가 생기고 `_adopted`가 끝없이 커지는 것을 막는다 — 2026-10-30 보안 리뷰)
+_raw_owners_remain = True
+
+
+def mask_all_device_owners() -> int:
+    """DB에 남은 **기기 id 원문** 주인 값을 모두 가린 값(`dv-…`)으로 옮긴다 → 옮긴 주인 수. 열쇠가 없으면 0.
+
+    리포트·대조 기준·재판정 재료·캐시 쪽지·패스(`device:<원문>`)를 모두 본다. 여러 번 불러도 같다.
+    """
+    global _raw_owners_remain
+    if not sealing.enabled():
+        return 0
+    device_prefix = pass_owner_key("")  # "device:"
+    raw = store.raw_device_owners()
+    raw |= {
+        o for o in analysis_cache.owners() if not o.startswith((sealing.DEVICE_OWNER_PREFIX, ACCOUNT_PREFIX))
+    }
+    raw |= {
+        key[len(device_prefix):]
+        for key in payments.owner_keys()
+        if key.startswith(device_prefix)
+        and not key[len(device_prefix):].startswith((sealing.DEVICE_OWNER_PREFIX, ACCOUNT_PREFIX))
+    }
+    for device_id in raw:
+        owner = sealing.device_owner(device_id)
+        store.adopt_owner(device_id, owner)
+        analysis_cache.move_owner(device_id, owner)
+        payments.move_owner(pass_owner_key(device_id), pass_owner_key(owner))
+    _raw_owners_remain = False
+    if raw:
+        _log.info(f"[보안] 기기 id 원문으로 남아 있던 주인 {len(raw)}개를 가린 값으로 옮겼어요")
+    return len(raw)
+
+
+def device_owner(device_id: str) -> str:
+    """기기 id → 기록의 주인 값. 열쇠가 없으면 원문 그대로(예전과 같다).
+
+    켜질 때 정리([mask_all_device_owners])가 끝나기 전이면, 처음 보는 기기의 원문 기록을 가린 주인 값으로 옮긴다.
+    """
+    owner = sealing.device_owner(device_id)
+    if owner == device_id:
+        return owner
+    if device_id.lower().startswith(sealing.DEVICE_OWNER_PREFIX):
+        # 가린 주인 값을 기기 id로 보낸 경우 — 그 값의 기록을 옮겨 오면 남의 기록을 빼앗는 길이 된다(라우터가 400으로 먼저 막는다)
+        return owner
+    if not _raw_owners_remain:
+        return owner
+    with _adopted_lock:
+        if device_id in _adopted:
+            return owner
+    try:
+        moved = store.adopt_owner(device_id, owner)
+        analysis_cache.move_owner(device_id, owner)
+        passes = payments.move_owner(pass_owner_key(device_id), pass_owner_key(owner))
+        if moved or passes:
+            _log.info(f"[보안] 기기 기록의 주인 값을 가렸어요 — 리포트 {moved}건 · 패스 {passes}건")
+    except Exception as e:  # noqa: BLE001 — 옮기기가 실패해도 요청은 막지 않는다(다음 요청 때 다시)
+        _log.error(f"[보안] ⚠ 기기 기록을 옮기지 못함 ({type(e).__name__})")
+        return owner
+    with _adopted_lock:
+        _adopted.add(device_id)
+    return owner
+
+
+def reset_adopted_for_test() -> None:
+    global _raw_owners_remain
+    with _adopted_lock:
+        _adopted.clear()
+    _raw_owners_remain = True
+
+
+def seal_existing_profiles() -> int:
+    """평문으로 남은 표시 이름을 잠근다(서버가 켜질 때 뒤에서). 잠근 수."""
+    if not sealing.enabled():
+        return 0
+    rows = _execute(
+        "SELECT owner, display_name FROM profiles WHERE display_name NOT LIKE ?", (sealing.PREFIX + "%",)
+    )
+    for owner, name in rows:
+        _execute("UPDATE profiles SET display_name = ? WHERE owner = ?", (sealing.seal(name), owner))
+    return len(rows)
+
+
 #: 표시 이름 최대 글자 수 — 인사말 "○○님 안녕하세요"가 한 줄에 들어가게
 DISPLAY_NAME_MAX = 12
 
@@ -290,7 +380,12 @@ def clean_display_name(name: str) -> str:
 
 def display_name(owner: str) -> str | None:
     rows = _execute("SELECT display_name FROM profiles WHERE owner = ?", (owner,))
-    return rows[0][0] if rows else None
+    if not rows:
+        return None
+    try:
+        return sealing.unseal(rows[0][0])
+    except sealing.SealedUnavailable:
+        return None
 
 
 def set_display_name(owner: str, name: str) -> str | None:
@@ -304,7 +399,7 @@ def set_display_name(owner: str, name: str) -> str | None:
     _execute(
         "INSERT INTO profiles (owner, display_name, updated_at) VALUES (?, ?, ?) "
         "ON CONFLICT(owner) DO UPDATE SET display_name = excluded.display_name, updated_at = excluded.updated_at",
-        (owner, cleaned, _iso(_now())),
+        (owner, sealing.seal(cleaned), _iso(_now())),
     )
     return cleaned
 
@@ -319,6 +414,53 @@ def delete_account(owner: str) -> None:
     _execute("DELETE FROM sessions WHERE owner = ?", (owner,))
     _execute("DELETE FROM profiles WHERE owner = ?", (owner,))
     _log.info(f"[탈퇴] 계정의 기록을 모두 지움 — 리포트 {reports}건 · 패스 {passes}건 · 세션 전부")
+
+
+def sweep_inactive_guests(*, days: int | None = None, now: datetime | None = None) -> int:
+    """로그인하지 않은 주인(기기 칸) 중 마지막 분석·결제가 `days`일보다 오래된 칸의 기록을 **모두** 지운다 → 지운 칸 수.
+
+    2026-10-30 보안: 앱을 지우면 기기 번호가 사라져 사용자가 서버 기록을 지울 길이 없다. 처리방침
+    "로그인 없이 쓴 기록은 마지막으로 쓴 날부터 1년이 지나면 지워요"를 지키는 곳. 계정 칸(`acct-`)은 건드리지 않는다
+    (탈퇴로 지운다). 기본 날수는 `GUEST_RECORD_DAYS`(365), 0 이하면 아무것도 지우지 않는다.
+    """
+    keep_days = settings.guest_record_days() if days is None else days
+    if keep_days <= 0:
+        return 0
+    cutoff = (now or _now()) - timedelta(days=keep_days)
+
+    def _when(text: str) -> datetime | None:
+        try:
+            moment = datetime.fromisoformat(text)
+        except (TypeError, ValueError):
+            return None  # 읽을 수 없는 시각 = 지우지 않는다(보수적으로 남긴다)
+        return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+    last: dict[str, datetime | None] = {}
+    for owner, created in store.last_report_by_owner().items():
+        if not is_account_owner(owner):
+            last[owner] = _when(created)
+    device_prefix = pass_owner_key("")  # "device:" — 모양은 pass_owner_key 한 곳에서만 정한다
+    for key, created in payments.last_pass_by_owner().items():
+        if key.startswith(device_prefix):
+            owner = key[len(device_prefix):]
+            moment = _when(created)
+            prev = last.get(owner, moment)
+            last[owner] = None if moment is None or prev is None else max(prev, moment)
+    removed = 0
+    for owner, moment in last.items():
+        if not owner or moment is None or moment >= cutoff:
+            continue
+        # 지우기 직전에 한 번 더 — 계산과 삭제 사이에 새로 분석·결제했으면 남긴다(2026-10-30 보안 리뷰)
+        recheck = [_when(t) for t in (store.last_report_at(owner), payments.last_pass_at(pass_owner_key(owner))) if t]
+        if any(t is None or t >= cutoff for t in recheck):
+            continue
+        store.delete_owner(owner)
+        analysis_cache.delete_owner(owner)
+        payments.delete_owner(pass_owner_key(owner))
+        removed += 1
+    if removed:
+        _log.info(f"[정리] {keep_days}일 넘게 쓰지 않은 기기 칸 {removed}개의 기록을 지웠어요")
+    return removed
 
 
 def sessions_for_test() -> list[tuple]:

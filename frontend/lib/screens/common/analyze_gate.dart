@@ -17,9 +17,13 @@ import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../state/app_session.dart';
 import '../auth/kakao_login_button.dart';
+import '../legal/consent_sheet.dart';
 
 /// 분석 시작 — 로그인했거나 카카오 키가 없는 빌드면 바로 S-04, 둘러보는 중이면 로그인 유도.
-void startAnalysis(BuildContext context) {
+///
+/// 그 전에 이용약관·개인정보 동의가 없으면 동의 시트부터(2026-10-30) — 사진을 받기 전에 한 번.
+Future<void> startAnalysis(BuildContext context) async {
+  if (!await ensureConsent(context) || !context.mounted) return;
   final session = context.read<AppSession>();
   if (session.isGuest && session.kakaoAvailable) {
     showLoginSheet(context, next: '/analyze');

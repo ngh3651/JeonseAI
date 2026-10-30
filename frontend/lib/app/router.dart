@@ -27,6 +27,9 @@ import '../screens/my/my_screen.dart';
 import '../screens/my/privacy_policy_screen.dart';
 import '../screens/pricing/checkout_screen.dart';
 import '../screens/pricing/pricing_screen.dart';
+import '../screens/legal/data_sources_content.dart';
+import '../screens/legal/legal_doc.dart';
+import '../screens/legal/terms_content.dart';
 import '../screens/questions/ask_cards_screen.dart';
 import '../screens/report/registry_viewer_screen.dart';
 import '../screens/report/report_screen.dart';
@@ -47,8 +50,16 @@ final appRouter = GoRouter(
       builder: (_, state) =>
           LoginScreen(next: state.uri.queryParameters['next']),
     ),
-    // 개인정보 처리방침 (시작·로그인·마이에서 push)
+    // 개인정보 처리방침 · 이용약관 · 데이터 출처 (시작·동의 시트·마이에서 push — 2026-10-30)
     GoRoute(path: '/privacy', builder: (_, _) => const PrivacyPolicyScreen()),
+    GoRoute(
+      path: '/terms',
+      builder: (_, _) => LegalDocScreen(doc: termsDoc()),
+    ),
+    GoRoute(
+      path: '/data-sources',
+      builder: (_, _) => LegalDocScreen(doc: dataSourcesDoc()),
+    ),
     GoRoute(path: '/guide', builder: (_, _) => const RegistryGuideScreen()),
 
     // ── 메인 셸 (하단 탭) ──────────────────────────────────────

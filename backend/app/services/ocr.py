@@ -195,7 +195,7 @@ def run_ocr(
             result.errors.append(f"{filename}: {e.detail}")
             continue
         except Exception as e:  # noqa: BLE001 — OCR은 어떤 이유로도 분석을 막지 못한다
-            _log.info(f"[OCR] {i + 1}/{total} {filename} → 예기치 못한 실패 {type(e).__name__}: {e}")
+            _log.info(f"[OCR] {i + 1}/{total} {filename} → 예기치 못한 실패 {type(e).__name__}")
             result.errors.append(f"{filename}: {type(e).__name__}")
             continue
 

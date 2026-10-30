@@ -24,6 +24,7 @@ import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../state/app_session.dart';
 import '../../design_system/tokens/app_colors.dart';
+import '../legal/consent_sheet.dart';
 import 'kakao_login_button.dart';
 
 /// 시작 화면 색 — 이 화면에서만 쓴다(시안 A). 카카오 색은 [kKakaoYellow] 등 카카오 가이드 값 그대로.
@@ -54,6 +55,7 @@ class StartScreen extends StatefulWidget {
   static const String title = '전세AI프';
   static const String tagline = 'AI가 지켜주는 안전한 전세 계약';
   static const String privacyLabel = '개인정보 처리방침';
+  static const String termsLabel = '이용약관';
 
   /// 반복 애니메이션(손 흔들기·반짝이)을 켤지 — null이면 자동(`flutter test`에서는 끔: pumpAndSettle이 끝나도록).
   @visibleForTesting
@@ -167,12 +169,15 @@ class _StartScreenState extends State<StartScreen>
     super.dispose();
   }
 
-  void _browse(BuildContext context) {
+  // 처음 시작할 때 이용약관·개인정보 동의를 한 번 받는다(2026-10-30) — 닫으면 아무것도 하지 않는다
+  Future<void> _browse(BuildContext context) async {
+    if (!await ensureConsent(context) || !context.mounted) return;
     context.read<AppSession>().continueAsGuest();
     context.go('/home');
   }
 
   Future<void> _kakao(BuildContext context) async {
+    if (!await ensureConsent(context) || !context.mounted) return;
     setState(() => _signingIn = true);
     final ok = await runKakaoLogin(context);
     if (!context.mounted) return;
@@ -249,27 +254,47 @@ class _StartScreenState extends State<StartScreen>
     required bool kakao,
     required bool busy,
   }) {
+    // 이용약관 · 개인정보 처리방침 — 처리방침만 굵은 초록, 약관은 흐린 글자(다른 고지와 구별 · 표준 개인정보 보호지침 제20조).
+    // 글자 15 · 누르는 높이 48 (2026-10-30 디자인 리뷰 — 15 미만 글자 없음, 터치 48).
+    Widget linkButton(String label, String path, {required bool strong}) {
+      final color = strong ? StartColors.primary : StartColors.sub;
+      return TextButton(
+        onPressed: busy ? null : () => context.push(path),
+        style: TextButton.styleFrom(
+          foregroundColor: color,
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
+        child: AppText(
+          label,
+          style: AppTypography.body.copyWith(
+            fontSize: 15,
+            fontWeight: strong ? FontWeight.w700 : FontWeight.w500,
+            color: color,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      );
+    }
     final link = _rise(
       _beatLink,
       _Dimmed(
         dim: busy,
         child: SizedBox(
-          height: 44,
-          child: TextButton(
-            onPressed: busy ? null : () => context.push('/privacy'),
-            style: TextButton.styleFrom(
-              foregroundColor: StartColors.primary,
-              minimumSize: const Size(0, 44),
-            ),
-            child: AppText(
-              StartScreen.privacyLabel,
-              style: AppTypography.body.copyWith(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: StartColors.primary,
-                decoration: TextDecoration.none,
+          height: 48,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              linkButton(StartScreen.termsLabel, '/terms', strong: false),
+              AppText(
+                '·',
+                style: AppTypography.body.copyWith(
+                  fontSize: 15,
+                  color: StartColors.sub,
+                ),
               ),
-            ),
+              linkButton(StartScreen.privacyLabel, '/privacy', strong: true),
+            ],
           ),
         ),
       ),
@@ -284,7 +309,10 @@ class _StartScreenState extends State<StartScreen>
           _GuestButton(
             label: '시작하기',
             filled: true,
-            onPressed: () => context.go('/home'),
+            onPressed: () async {
+              if (!await ensureConsent(context) || !context.mounted) return;
+              context.go('/home');
+            },
           ),
         ),
         const SizedBox(height: 10),

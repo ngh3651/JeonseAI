@@ -7,6 +7,8 @@
 /// 위치는 전부 **고정 높이**다 — 팁 글이 2줄이든 3줄이든 다른 요소가 1px도 움직이지 않게(시안 2026-10-28).
 library;
 
+import 'dart:async';
+
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -532,11 +534,7 @@ class _StepDot extends StatelessWidget {
           color: AppColors.primary,
           shape: BoxShape.circle,
         ),
-        child: Icon(
-          Icons.check_rounded,
-          size: 18,
-          color: AppColors.surface,
-        ),
+        child: Icon(Icons.check_rounded, size: 18, color: AppColors.surface),
       ),
       _Step.now => Container(
         width: d,
@@ -753,21 +751,84 @@ TextStyle get kTipBodyStyle => TextStyle(
   color: AppColors.textStrong,
 );
 
-class LoadingTipCard extends StatelessWidget {
-  const LoadingTipCard({super.key, required this.index, required this.scale});
+/// 꿀팁이 저절로 넘어가는 간격 — 팁 5개 × 6초 = 30초(예상 시간)에 한 바퀴
+const Duration kTipEvery = Duration(seconds: 6);
 
-  final int index;
+/// 리포트 꿀팁 카드 — **저절로도, 손으로도** 넘긴다 (2026-10-30 규혁).
+///
+/// - 6초마다 다음 팁으로 저절로 넘어간다.
+/// - 손가락으로 옆으로 밀면 앞·뒤 팁으로 간다(끝에서 처음으로 이어짐). 미는 동안은 멈춘다.
+/// - 손으로 넘긴 뒤에는 **그 팁을 다시 6초** 보여 주고 다음으로 — 3번에서 2번으로 되돌아가 읽으면 6초 뒤 3번.
+/// - 높이는 고정(3줄) — 팁이 바뀌어도 화면의 다른 것이 움직이지 않는다.
+class LoadingTipCard extends StatefulWidget {
+  const LoadingTipCard({
+    super.key,
+    required this.scale,
+    this.reduceMotion = false,
+  });
 
   /// 글자 배율 — 카드 높이도 같은 비율로 (화면 안에서는 늘 같은 값이라 팁이 바뀌어도 안 움직인다)
   final double scale;
 
+  /// 휴대폰 '동작 줄이기' — 넘어갈 때 미끄러지지 않고 바로 바뀐다
+  final bool reduceMotion;
+
+  @override
+  State<LoadingTipCard> createState() => _LoadingTipCardState();
+}
+
+class _LoadingTipCardState extends State<LoadingTipCard> {
+  /// 끝 없이 넘기게 가운데쯤에서 시작한다 (팁 번호 = 쪽 % 팁 수)
+  static final int _startPage = kLoadingTips.length * 1000;
+
+  final PageController _pages = PageController(initialPage: _startPage);
+  Timer? _auto;
+  int _page = _startPage;
+  bool _dragging = false;
+
+  int get _index => _page % kLoadingTips.length;
+
+  @override
+  void initState() {
+    super.initState();
+    _restart();
+  }
+
+  @override
+  void dispose() {
+    _auto?.cancel();
+    _pages.dispose();
+    super.dispose();
+  }
+
+  /// 지금 팁을 처음부터 6초 — 넘어갈 때마다(저절로든 손으로든) 다시 잰다.
+  void _restart() {
+    _auto?.cancel();
+    if (_dragging) return;
+    _auto = Timer(kTipEvery, _next);
+  }
+
+  void _next() {
+    if (!mounted || !_pages.hasClients) return;
+    if (widget.reduceMotion) {
+      _pages.jumpToPage(_page + 1);
+    } else {
+      _pages.animateToPage(
+        _page + 1,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final tip = kLoadingTips[index];
+    final scale = widget.scale;
     return Container(
       key: const ValueKey('loading-tip-card'),
       height: 38 + 102 * scale, // 배율 1 = 140
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
@@ -775,62 +836,86 @@ class LoadingTipCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            height: 21 * scale,
-            child: Row(
-              children: [
-                Icon(
-                  Icons.lightbulb_outline_rounded,
-                  size: 18,
-                  color: AppColors.primary,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: AppText(
-                    kLoadingTipsTitle,
-                    maxLines: 1,
-                    style: AppTypography.bodyStrong.copyWith(
-                      fontSize: 15,
-                      height: 1.4,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: SizedBox(
+              height: 21 * scale,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lightbulb_outline_rounded,
+                    size: 18,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: AppText(
+                      kLoadingTipsTitle,
+                      maxLines: 1,
+                      style: AppTypography.bodyStrong.copyWith(
+                        fontSize: 15,
+                        height: 1.4,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
                     ),
                   ),
-                ),
-                for (var i = 0; i < kLoadingTips.length; i++)
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 350),
-                    margin: const EdgeInsets.only(left: 4),
-                    width: i == index ? 16 : 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: i == index ? AppColors.primary : AppColors.line,
-                      borderRadius: BorderRadius.circular(3),
+                  for (var i = 0; i < kLoadingTips.length; i++)
+                    AnimatedContainer(
+                      key: ValueKey('tip-dot-$i'),
+                      duration: const Duration(milliseconds: 350),
+                      margin: const EdgeInsets.only(left: 4),
+                      width: i == _index ? 16 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: i == _index ? AppColors.primary : AppColors.line,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 6),
           SizedBox(
             height: 81 * scale,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 350),
-              layoutBuilder: (current, previous) => Stack(
-                alignment: Alignment.topLeft,
-                children: [...previous, ?current],
-              ),
-              child: AppText.rich(
-                TextSpan(
-                  children: tipSpans(
-                    tip,
-                    bold: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                key: ValueKey('tip-$index'),
-                maxLines: 3,
-                overflow: TextOverflow.clip,
-                style: kTipBodyStyle,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                // 손가락이 닿아 있는 동안은 저절로 넘기지 않는다
+                if (n is ScrollStartNotification && n.dragDetails != null) {
+                  _dragging = true;
+                  _auto?.cancel();
+                } else if (n is ScrollEndNotification && _dragging) {
+                  _dragging = false;
+                  _restart();
+                }
+                return false;
+              },
+              child: PageView.builder(
+                key: const ValueKey('loading-tip-pages'),
+                controller: _pages,
+                onPageChanged: (p) {
+                  setState(() => _page = p);
+                  _restart();
+                },
+                itemBuilder: (context, p) {
+                  final int i = p % kLoadingTips.length;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: AppText.rich(
+                      TextSpan(
+                        children: tipSpans(
+                          kLoadingTips[i],
+                          bold: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      key: ValueKey('tip-$i'),
+                      maxLines: 3,
+                      overflow: TextOverflow.clip,
+                      style: kTipBodyStyle,
+                    ),
+                  );
+                },
               ),
             ),
           ),

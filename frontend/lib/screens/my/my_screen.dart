@@ -13,12 +13,12 @@ import 'package:provider/provider.dart';
 import '../../app/config.dart' show kDevTools;
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_card.dart';
-import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
-import '../../design_system/components/risk_badge.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../models/analysis_report.dart';
+import '../../models/content_models.dart';
+import '../../repositories/content_repository.dart';
 import '../../models/property_reports.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../services/api_client.dart';
@@ -28,8 +28,8 @@ import '../../state/booth_mode.dart';
 import '../../state/journey_progress_store.dart';
 import '../../state/journey_schedule_store.dart';
 import '../../state/privacy_settings.dart';
-import '../../utils/money_format.dart';
 import '../common/analyze_gate.dart';
+import '../common/house_card.dart';
 import '../pricing/guardian_pass_widgets.dart';
 import 'account_section.dart';
 import 'app_version_line.dart';
@@ -49,6 +49,15 @@ class MyScreen extends StatefulWidget {
 class _MyScreenState extends State<MyScreen> {
   late Future<List<AnalysisReport>> _historyFuture;
   late final AnalysisRepository _repo;
+
+  /// 여정 단계 — 집 카드의 연초록 줄에 쓴다
+  late final Future<List<JourneyStage>> _stages = () async {
+    try {
+      return await context.read<ContentRepository>().journeyStages();
+    } catch (_) {
+      return const <JourneyStage>[];
+    }
+  }();
 
   @override
   void initState() {
@@ -238,10 +247,7 @@ class _MyScreenState extends State<MyScreen> {
             padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Column(
               children: [
-                AppText(
-                  '분석 이력을 불러오지 못했어요',
-                  style: AppTypography.bodyStrong,
-                ),
+                AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
                 const SizedBox(height: AppSpacing.xs),
                 AppText(
                   apiErrorHint(snapshot.error, fallback: '서버 연결을 확인해 주세요'),
@@ -276,22 +282,28 @@ class _MyScreenState extends State<MyScreen> {
             ),
           );
         }
-        return Material(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
+        // 홈 '내 집'과 같은 집 카드를 세로로 (2026-10-30 홈 리뉴얼 — 같은 집이 화면마다 다르게 생기지 않게).
+        // 카드 = 리포트, 연초록 줄 = 그 집 여정, 첫 줄 오른쪽 휴지통 = 그 집 리포트 모두 지우기.
+        final properties = groupByProperty(_allHistory);
+        return FutureBuilder<List<JourneyStage>>(
+          future: _stages,
+          builder: (context, stages) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (int i = 0; i < history.length; i++) ...[
-                if (i > 0)
-                  Divider(
-                    height: 1,
-                    thickness: 1,
-                    indent: 18,
-                    endIndent: 18,
-                    color: AppColorsNext.divider,
+              for (int i = 0; i < properties.length; i++) ...[
+                if (i > 0) const SizedBox(height: 12),
+                HouseCard(
+                  key: ValueKey('my-house-${properties[i].key}'),
+                  property: properties[i],
+                  subline: houseAnalyzedLine(properties[i]),
+                  onTap: () =>
+                      context.push('/report/${properties[i].latest.id}'),
+                  trailing: _deleteButton(properties[i].latest),
+                  footer: HouseJourneyButton(
+                    property: properties[i],
+                    stages: stages.data ?? const [],
                   ),
-                _historyRow(history[i]),
+                ),
               ],
             ],
           ),
@@ -300,54 +312,25 @@ class _MyScreenState extends State<MyScreen> {
     );
   }
 
-  /// 이력 한 줄 — 별칭 · 날짜·보증금 · 등급 (+ 지우기)
-  Widget _historyRow(AnalysisReport report) {
-    return InkWell(
-      onTap: () => context.push('/report/${report.id}'),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 6, 14),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppText(
-                    report.alias,
-                    style: AppTypographyNext.bodyStrong.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppColorsNext.textStrong,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  AppText(
-                    // 한 줄에 들어가게 짧게 — 분석한 날(월.일) · 보증금
-                    '${report.analyzedAt.month}.${report.analyzedAt.day} · ${formatWon(report.deposit)}',
-                    style: AppTypographyNext.caption.copyWith(
-                      color: AppColorsNext.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            RiskBadge(grade: report.grade),
-            // 부스 모드에서는 기록 지우기를 숨긴다 — 관람객이 시연 기록을 지우지 않게(state/booth_mode.dart)
-            if (BoothMode.instance.on)
-              const SizedBox(width: 12)
-            else
-              IconButton(
-                icon: Icon(
-                  Icons.delete_outline,
-                  size: AppSize.iconSm,
-                  color: AppColorsNext.textMuted,
-                ),
-                tooltip: '삭제',
-                onPressed: () => _delete(report),
-              ),
-          ],
+  /// 집 카드 첫 줄 오른쪽 휴지통 — 부스 모드에서는 숨긴다(관람객이 시연 기록을 지우지 않게, state/booth_mode.dart)
+  Widget? _deleteButton(AnalysisReport report) {
+    if (BoothMode.instance.on) return null;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: SizedBox(
+        width: 32,
+        height: 28,
+        child: IconButton(
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
+          icon: Icon(
+            Icons.delete_outline,
+            size: AppSize.iconSm,
+            color: AppColorsNext.textMuted,
+          ),
+          tooltip: '삭제',
+          onPressed: () => _delete(report),
         ),
       ),
     );

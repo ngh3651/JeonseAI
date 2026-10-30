@@ -218,6 +218,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('분석 시작'));
       await tester.pumpAndSettle();
+      // 새 집 분석의 문 = '매물 분석 시작하기' 시트 → [촬영하기] (2026-10-30 홈 리뉴얼)
+      await tester.tap(find.byKey(const ValueKey('analyze-camera')));
+      await tester.pumpAndSettle();
       expect(find.text('분석 화면'), findsOneWidget);
     });
 
@@ -308,6 +311,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('분석 시작'));
       await tester.pumpAndSettle();
+      // 새 집 분석의 문 = '매물 분석 시작하기' 시트 → [촬영하기] (2026-10-30 홈 리뉴얼)
+      await tester.tap(find.byKey(const ValueKey('analyze-camera')));
+      await tester.pumpAndSettle();
       expect(find.koText('로그인하면 분석 기록이 계정에 남아요'), findsOneWidget);
       expect(find.koText(KakaoLoginButton.label), findsOneWidget);
       await tester.tap(find.koText('로그인 없이 분석하기'));
@@ -322,6 +328,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('분석 시작'));
       await tester.pumpAndSettle();
+      // 새 집 분석의 문 = '매물 분석 시작하기' 시트 → [촬영하기] (2026-10-30 홈 리뉴얼)
+      await tester.tap(find.byKey(const ValueKey('analyze-camera')));
+      await tester.pumpAndSettle();
       await tester.tap(find.koText(KakaoLoginButton.label));
       await tester.pumpAndSettle();
       expect(session.isLoggedIn, isTrue);
@@ -335,6 +344,9 @@ void main() {
       await tester.pumpWidget(_app(session, initial: '/gate'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('분석 시작'));
+      await tester.pumpAndSettle();
+      // 새 집 분석의 문 = '매물 분석 시작하기' 시트 → [촬영하기] (2026-10-30 홈 리뉴얼)
+      await tester.tap(find.byKey(const ValueKey('analyze-camera')));
       await tester.pumpAndSettle();
       expect(find.text('분석 화면'), findsOneWidget);
     });

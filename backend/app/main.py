@@ -410,6 +410,20 @@ def health_check():
         body["precedentExplain"] = precedent_explainer.last_status()  # 판례 AI 설명 마지막 결과·폐기 이유(2026-10-24)
     except Exception:  # noqa: BLE001 — 헬스체크는 절대 실패하지 않는다
         pass
+    try:
+        # 2026-10-31 — 악성임대인 명단을 받았나(건수 없이 참/거짓·날짜만) · 최우선변제 표 확인 · 지금 쓰는 Solar 모델
+        from .services import blacklist_source, law_watch
+        from .services.llm import solar_models
+
+        body["blacklist"] = {
+            "configured": blacklist_source.configured(),
+            "loaded": bool(blacklist_source.load()),
+        }
+        lw = law_watch.read_status()
+        body["priorityTable"] = {"checkedAt": lw.get("checkedAt"), "stale": bool(lw.get("stale"))}
+        body["solarModel"] = solar_models.current()
+    except Exception:  # noqa: BLE001
+        pass
     commit = settings.env_str("RAILWAY_GIT_COMMIT_SHA")
     if commit:
         body["version"] = commit[:7]

@@ -74,7 +74,13 @@ def test_헬스체크는_키_값을_절대_내보내지_않는다(client, tmp_pa
     for secret in (secret_upstage, secret_molit, "booth-key-2026", "law-oc-secret-777", str(tmp_path)):
         assert secret not in resp.text
     # 값의 종류도 못 박는다 — 참/거짓과 짧은 버전 문자열, 판례 업데이트 요약(날짜·수·성공 여부·실패 종류)뿐
-    assert {k for k, v in body.items() if not isinstance(v, bool)} == {"status", "version", "precedentUpdate", "chat", "precedentExplain"}
+    assert {k for k, v in body.items() if not isinstance(v, bool)} == {
+        "status", "version", "precedentUpdate", "chat", "precedentExplain",
+        # 2026-10-31: 명단을 받았나(참/거짓뿐 — 주소·키·건수 없음) · 최우선변제 표 확인 날짜 · 지금 쓰는 Solar 모델 이름
+        "blacklist", "priorityTable", "solarModel",
+    }
+    assert all(isinstance(v, bool) for v in body["blacklist"].values())
+    assert set(body["priorityTable"]) == {"checkedAt", "stale"}
     assert set(body["precedentUpdate"]) == {
         "lastCheckAt", "lastSuccessAt", "added", "ok", "error",
         "running", "startedAt", "docCount", "extraRaw", "backfillDone",  # 진행 보기 (2026-10-24)

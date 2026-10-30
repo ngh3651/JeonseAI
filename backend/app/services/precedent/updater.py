@@ -459,6 +459,14 @@ def _loop() -> None:
                 law_watch.check()
         except Exception as e:  # noqa: BLE001
             _log.info(f"[법령] ⚠ 알람시계 오류 ({type(e).__name__})")
+        try:
+            # 악성임대인 공개 명단도 매주 다시 받는다(2026-10-31) — 받는 곳이 설정됐을 때만, 이름은 가린 채로
+            from .. import blacklist_source
+
+            if blacklist_source.due():
+                blacklist_source.refresh()
+        except Exception as e:  # noqa: BLE001
+            _log.info(f"[명단] ⚠ 알람시계 오류 ({type(e).__name__})")
         time.sleep(CHECK_EVERY_SECONDS)
 
 

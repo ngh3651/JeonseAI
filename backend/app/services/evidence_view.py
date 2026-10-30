@@ -50,7 +50,10 @@ def _jeonse(ev: EvidenceVerdict, verdict: RuleVerdict, _facts: list):
             [_pt("이 집", "단독·다가구로 보여요", "caution"),
              _pt("보증금", format_won(f.get("deposit") or verdict.deposit))],
             None,
-            ["임대인에게 **전입세대 열람내역**과 **확정일자 부여현황**을 달라고 해서 앞순위 보증금 합계를 확인하세요"],
+            [
+                "임대인에게 **전입세대 열람내역**과 **확정일자 부여현황**을 달라고 해서 앞순위 보증금 합계를 확인하세요",
+                "다가구는 소액임차인 **최우선변제**도 다른 세입자와 나눠요. 손실 시뮬레이터(2장)에서 한도를 보세요",
+            ],
         )
     pct = f.get("jeonse_ratio_pct")
     if pct is None:

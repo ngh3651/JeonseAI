@@ -59,7 +59,16 @@ _OWNERSHIP_FIELDS = (
 
 
 def load_blacklist() -> list[dict]:
-    """data/blacklist.json에서 실제 항목(is_sample 아님)만 읽는다. 실패 시 빈 목록(대조 불가)."""
+    """악성임대인 공개 명단 — 서버가 받아 이름을 가려 둔 명단(`blacklist_source`, 2026-10-31)이 있으면 그것.
+
+    없으면 예전처럼 data/blacklist.json의 실제 항목(is_sample 아님)만 — 지금은 견본뿐이라 빈 목록(대조 불가).
+    ⚠ 실명 명단을 저장소에 넣지 않는다(공개 저장소). 받은 명단은 서버 볼륨에 가린 채로만 있다.
+    """
+    from . import blacklist_source
+
+    hashed = blacklist_source.load()
+    if hashed:
+        return hashed
     try:
         raw = json.loads((_DATA_DIR / "blacklist.json").read_text(encoding="utf-8"))
         entries = raw.get("entries", [])
@@ -537,19 +546,20 @@ def _judge_blacklist(extract: RegistryExtract, entries: list[dict]) -> EvidenceV
             facts={"matched": [], "list_size": 0},
         )
 
-    listed = {e.get("name", "").strip() for e in entries if e.get("name")}
-    # ⚠ 맞춰보기는 실명으로 하되, 리포트(저장됨)·설명 재료에는 **가린 이름만** 남긴다
-    #   (2026-10-21 개인정보). 사용자는 자기 사진에서 전체 이름을 볼 수 있다.
-    matched = sorted({mask_name(n) for n in set(owner_names) & listed})
+    # ⚠ 맞춰보기는 실명으로 하되(서버가 받은 명단은 이름 열쇠로만 있다 — blacklist_source), 리포트(저장됨)·
+    #   설명 재료에는 **가린 이름만** 남긴다(2026-10-21 개인정보). 사용자는 자기 사진에서 전체 이름을 볼 수 있다.
+    from . import blacklist_source
+
+    matched = blacklist_source.match(owner_names, entries)
     if matched:
         # 동명이인 가능성 때문에 '위험' 단정 대신 강한 '확인 필요' + 직접 확인 유도
         return EvidenceVerdict(
             id="blacklist",
             grade=Grade.CAUTION,
-            status_label="명단 일치 — 직접 확인 필요",
+            status_label="명단 일치 · 직접 확인 필요",
             detail_text=(
-                f"공개 명단에 같은 이름이 있어요: {', '.join(matched)}"
-                " (이름만 같은 다른 사람일 수 있어요 — 단정이 아니에요)"
+                f"공개 명단에 같은 이름이 있어요: {', '.join(matched)}. "
+                "이름만 같은 다른 사람일 수 있어요(단정이 아니에요)"
             ),
             source_text=_SRC_BLACKLIST,
             facts={"matched": matched, "list_size": len(entries)},
@@ -558,7 +568,7 @@ def _judge_blacklist(extract: RegistryExtract, entries: list[dict]) -> EvidenceV
         id="blacklist",
         grade=Grade.GOOD,
         detail_text=(
-            f"공개 명단 {len(entries)}건과 맞춰봤어요 — 같은 이름은 없었어요"
+            f"공개 명단 {len(entries)}건과 맞춰봤어요. 같은 이름은 없었어요"
             " (명단에 없다고 안심할 수는 없어요)"
         ),
         source_text=_SRC_BLACKLIST,

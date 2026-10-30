@@ -334,6 +334,8 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
     final id = evidenceIdForMark(m.kind);
     if (id == null) return null;
     for (final e in _report?.evidences ?? const <EvidenceItem>[]) {
+      // 명단을 아직 못 받은 카드('명단 대조 아직 안 됨')는 이 집 이야기가 아니라서 싣지 않는다
+      if (e.id == id && e.statusLabel == '명단 대조 아직 안 됨') return null;
       if (e.id == id && e.easyExplanation.trim().isNotEmpty) return e.easyExplanation;
     }
     return null;

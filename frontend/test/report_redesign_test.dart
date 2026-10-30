@@ -119,6 +119,7 @@ void main() {
     expect(evidenceIdForMark('mortgage'), 'senior_debt');
     expect(evidenceIdForMark('provisional_seizure'), 'ownership');
     expect(evidenceIdForMark('pending_application'), 'pending');
+    expect(evidenceIdForMark('owner'), 'blacklist');
     expect(evidenceIdForMark('address'), isNull);
   });
 }

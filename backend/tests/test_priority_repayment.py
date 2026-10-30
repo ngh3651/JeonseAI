@@ -270,3 +270,20 @@ def test_확인이_실패해도_아무것도_바꾸지_않는다(tmp_path, monke
 
     st = W.check(get_json=boom)
     assert st["stale"] is False and "확인 실패" in st["note"]
+
+
+def test_사실이_넘쳐도_최우선변제가_기대는_사실은_남는다():
+    """압류류가 30건을 넘어도 경매개시결정·가장 먼저 잡힌 담보·날짜 못 읽은 담보는 잘리지 않는다 (규칙 감사 2026-10-31)."""
+    from app.services import registry_facts as RF
+
+    facts = [RiskFact(kind="가압류", receiptDate=f"2025-01-{i % 28 + 1:02d}", amount=1_000_000, holder="개인")
+             for i in range(RF.MAX_FACTS + 5)]
+    facts += [RiskFact(kind="경매개시결정", receiptDate="2026-03-02", amount=None, holder="기관"),
+              _mortgage("2020-05-01"), _mortgage(None), _mortgage("2009-02-03")]
+    kept = RF._trim(facts)
+    assert len(kept) == RF.MAX_FACTS
+    kinds = [(f.kind, f.receiptDate) for f in kept]
+    assert ("경매개시결정", "2026-03-02") in kinds
+    assert ("근저당", "2009-02-03") in kinds and ("근저당", None) in kinds
+    assert _p(SEOUL_ADDR, facts=kept, debt=120_000_000).status == "blocked_auction"
+    assert RF._trim(facts[:5]) == facts[:5]  # 넘치지 않으면 그대로

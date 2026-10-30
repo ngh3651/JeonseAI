@@ -29,6 +29,8 @@ const _senior = EvidenceItem(
   ],
   meter: EvidenceMeter(label: '빚 ÷ 시세', value: 90, marks: [60], tone: 'danger'),
   todo: ['잔금 날 근저당을 **말소**할지 그대로 둘지 중개사에게 묻고, 특약으로 남기세요'],
+  termGlossary: {'말소': '등기부에 적혀 있던 권리가 없어졌다는 표시예요.'},
+  explanationSource: 'solar-pro4',
 );
 
 Future<void> _pumpCard(WidgetTester tester, EvidenceItem e) async {
@@ -62,6 +64,25 @@ void main() {
     expect(find.koTextContaining('—'), findsNothing);
   });
 
+  testWidgets('①-2 준비된 문구면 \'AI 설명\'이라고 하지 않는다', (tester) async {
+    const fallback = EvidenceItem(
+      id: 'senior_debt',
+      title: '나보다 먼저 돈 받아갈 빚이 있나요?',
+      termSubtitle: '선순위 채권 · 근저당권',
+      grade: RiskGrade.danger,
+      easyExplanation: '준비된 설명',
+      points: [EvidencePoint(label: '먼저 받아갈 빚', value: '1억원 · 1건', tone: 'danger')],
+      explanationSource: '준비된 문구',
+    );
+    await _pumpCard(tester, fallback);
+    expect(find.koText('AI 설명'), findsNothing);
+    expect(find.koText('설명'), findsOneWidget);
+    expect(explanationByAi('solar-pro4'), isTrue);
+    expect(explanationByAi('준비된 문구'), isFalse);
+    expect(explanationByAi(null), isFalse);
+    expect(explanationByAi('자동 생성'), isFalse);
+  });
+
   testWidgets('② 옛 리포트는 예전 상세 상자 (줄표는 걷는다)', (tester) async {
     const old = EvidenceItem(
       id: 'senior_debt',
@@ -93,13 +114,20 @@ void main() {
       body: '집이 경매로 넘어가면 이 돈을 빌려준 곳이 먼저 가져가요.\n지금 남은 빚은 부채증명원으로 확인하세요.',
       source: '등기부 을구 — 이 앱이 사진에서 직접 찾은 위치',
       facts: ['1순위', '2021.6.30 접수', '○○은행', '채권최고액 1억 3,000만원'],
-      plan: ['잔금 날 이 빚(1억 3,000만원)을 갚고 **말소**하는지 중개사에게 묻고, 특약으로 남기세요'],
+      plan: [
+        '잔금 날 이 빚(1억 3,000만원)을 갚고 **말소**하는지 중개사에게 묻고, 특약으로 남기세요',
+        '지금 남은 빚은 집주인 **대출 잔액 확인서(부채증명원)**로 확인하세요',
+      ],
     );
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
         home: const Scaffold(
-          body: RegistryMarkSheet(mark: mark, aiText: '이 집 빚은 시세의 90%예요 — 높아요.\n둘째 문단.\n셋째 문단.'),
+          body: RegistryMarkSheet(
+            mark: mark,
+            aiText: '이 집 빚은 시세의 90%예요 — 높아요.\n둘째 문단.\n셋째 문단.',
+            aiWritten: true,
+          ),
         ),
       ),
     );
@@ -109,7 +137,11 @@ void main() {
     expect(find.koText('이 집 맞춤 할 일'), findsOneWidget);
     expect(find.byKey(const ValueKey('mark-sheet-ai')), findsOneWidget);
     expect(find.koTextContaining('셋째 문단'), findsNothing, reason: 'AI 설명은 두 문단까지');
+    expect(find.koText('AI가 이 집에 맞춰 쓴 설명'), findsOneWidget);
     expect(find.koText('기본 확인'), findsOneWidget);
+    // 기본 확인 = 맞춤 할 일에 없는 줄만. '부채증명원으로 확인하세요'는 할 일 2번과 같은 말이라 빠진다
+    expect(find.koTextContaining('먼저 가져가요'), findsOneWidget);
+    expect(find.koTextContaining('부채증명원으로 확인하세요'), findsNothing);
     expect(find.koTextContaining('위험도 판정이 아닙니다'), findsNothing);
     expect(find.koText('근거 · 등기부 을구 · 사진에서 직접 찾은 위치'), findsOneWidget);
     expect(find.koTextContaining('—'), findsNothing);

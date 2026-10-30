@@ -90,6 +90,8 @@ class Highlight(BaseModel):
     # 옛 서버·옛 리포트면 비어 있다(앱은 기본 확인만 그린다). 사람 이름은 없다.
     facts: list[str] = Field(default_factory=list)
     plan: list[str] = Field(default_factory=list)
+    # 2026-10-31: 할 일·기본 확인 속 용어 → 풀이 (근거 카드 termGlossary와 같은 구조 — 키가 본문에 글자 그대로 있다)
+    termGlossary: dict[str, str] = Field(default_factory=dict)
     # 이 문장이 어디서 왔는지 (근거 카드의 sourceText와 같은 역할 — 없으면 '앱이 그냥 하는 말'로 읽힌다)
     source: Optional[str] = None
 

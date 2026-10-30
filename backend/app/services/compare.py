@@ -369,7 +369,7 @@ def _detail(items: list[Fingerprint]) -> str:
             y, m, d = f.receipt_date.split("-")
             lines.append(f"{y}년 {int(m)}월 {int(d)}일 접수")
     if any(f.amount_unknown for f in items):
-        lines.append("금액을 읽지 못한 항목이 있어요 — 등기부 원본을 확인하세요")
+        lines.append("금액을 읽지 못한 항목이 있어요. 등기부 원본을 확인하세요")
     return "\n".join(lines)
 
 
@@ -689,7 +689,7 @@ def different_property_result(
 #: 처리 중인 등기 신청 줄 (2026-10-31) — 등기예규 제1815호: 처리 결과는 **접수 시로 소급**해 등기기록을 바꿀 수 있다.
 PENDING_TITLE = "처리 중인 등기 신청이 있어요"
 PENDING_SUBTITLE = "아직 등기부에 적히지 않은 변화예요. 무엇인지 확인될 때까지 잔금을 보내지 마세요"
-PENDING_DETAIL = "신청사건 처리중 · 끝나면 접수한 때로 거슬러 효력이 생겨요"
+PENDING_DETAIL = "신청사건 처리중 · 늦게 끝나도 접수한 때 생긴 걸로 쳐요"
 
 
 def _pending_rows(base: RegistrySnapshot, cur: RegistrySnapshot) -> list[CompareRow]:
@@ -751,7 +751,7 @@ def compare(base: RegistrySnapshot, cur: RegistrySnapshot) -> CompareResult:
     identity_unclear = relation == "unclear"
     if identity_unclear:
         notices.append(
-            "같은 집인지는 확인하지 못했어요 — 고유번호가 보이는 1쪽을 함께 올리면 확인할 수 있어요"
+            "같은 집인지는 확인하지 못했어요. 고유번호가 보이는 1쪽을 함께 올리면 확인할 수 있어요"
         )
     elif basis == "소재지":
         notices.append("같은 집인지 소재지로 확인했어요 (고유번호는 두 서류에서 읽지 못했어요)")
@@ -781,7 +781,8 @@ def compare(base: RegistrySnapshot, cur: RegistrySnapshot) -> CompareResult:
         # 달라진 것은 없지만 처리 중인 신청이 있다 — '변동 없음'으로 말하지 않는다
         result = "changed"
         headline = PENDING_TITLE
-        subline = f"{total}가지를 모두 맞춰봤고 그대로예요 · 처리 중인 신청이 끝난 뒤 다시 떼서 대조하세요"
+        # '그대로예요'를 앞세우면 잔금을 보내도 되는 줄 안다(2026-10-31 페르소나 리뷰) — 멈춤을 먼저, 그대로인 줄은 아래 목록에
+        subline = "잔금은 아직 보내지 마세요 · 신청이 끝나면 다시 떼서 대조하세요"
     elif changed_count:
         result = "changed"
         headline = f"달라진 점이 {changed_count}가지 있어요"

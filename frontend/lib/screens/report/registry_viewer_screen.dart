@@ -51,7 +51,7 @@ import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import 'registry_document_layout.dart';
 import 'registry_entry_card.dart' show previewMarkOf;
-import 'registry_findings.dart' show softenDashes;
+import 'registry_findings.dart' show explanationByAi, softenDashes;
 import 'registry_mark_carousel.dart';
 import 'registry_mark_sheet.dart';
 import 'registry_mark_stripe.dart';
@@ -329,16 +329,28 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
   /// 아래 카드 줄 거르기 — null이면 전부, 아니면 그 톤(따져볼 곳 · 대조할 곳)만 (2026-10-31)
   final ValueNotifier<MarkTone?> _filter = ValueNotifier<MarkTone?>(null);
 
-  /// 이 표시와 같은 이야기를 하는 근거 카드의 AI 설명 (없으면 null)
-  String? _aiFor(RegistryHighlight m) {
+  /// 이 표시와 같은 이야기를 하는 근거 카드 (없으면 null) — 시트가 그 카드의 설명·용어 풀이를 함께 싣는다
+  EvidenceItem? _evidenceFor(RegistryHighlight m) {
     final id = evidenceIdForMark(m.kind);
     if (id == null) return null;
     for (final e in _report?.evidences ?? const <EvidenceItem>[]) {
       // 명단을 아직 못 받은 카드('명단 대조 아직 안 됨')는 이 집 이야기가 아니라서 싣지 않는다
       if (e.id == id && e.statusLabel == '명단 대조 아직 안 됨') return null;
-      if (e.id == id && e.easyExplanation.trim().isNotEmpty) return e.easyExplanation;
+      if (e.id == id && e.easyExplanation.trim().isNotEmpty) return e;
     }
     return null;
+  }
+
+  /// 자세히 보기 — 같은 이야기를 하는 근거 카드의 설명(모델이 썼을 때만 'AI'라고)과 함께
+  void _openSheet(RegistryHighlight m) {
+    final e = _evidenceFor(m);
+    showRegistryMarkSheet(
+      context,
+      m,
+      aiText: e?.easyExplanation,
+      aiWritten: explanationByAi(e?.explanationSource),
+      glossary: e?.termGlossary ?? const {},
+    );
   }
 
   void _publishMetrics() {
@@ -624,7 +636,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
                     // 고르고, 다시 긋고, 설명까지 연다.
                     onTapHighlight: (h) {
                       _select(h, layout, marks);
-                      showRegistryMarkSheet(context, h, aiText: _aiFor(h));
+                      _openSheet(h);
                     },
                     onZoomChanged: (z) => _onZoomChanged(i, z),
                   ),
@@ -659,7 +671,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
   // test/registry_viewer_layout_test.dart가 360dp 기준으로 재고 상한을 지킨다.
 
   /// 하단 한 줄 (2026-10-31 개편 — 규혁 "흐린 글씨·긴 줄글 싫다, 트렌디하게"):
-  /// [● 따져볼 곳 N] [● 대조할 곳 N] 거르기 칩 + 오른쪽 [ⓘ 메모 N](누르면 표시하지 않은 것·교차 확인을 시트로).
+  /// [● 따져볼 곳 N] [● 대조할 곳 N] 거르기 칩 + 오른쪽 [ⓘ 참고 N](누르면 표시하지 않은 것·교차 확인을 시트로).
   /// 예전의 범례 한 줄 + 회색 두 줄 문장을 칩 한 줄로 줄였다 — 색-의미 대응은 칩의 점이 맡는다.
   Widget _bottomInfo(AnalysisReport report, List<RegistryHighlight> marks) {
     final notes = unmarkedNotes(report.checkedNotes);
@@ -729,7 +741,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
           // '자세히 보기' 탭 — 같은 이동 + **첫 탭에 바로** 시트.
           onTapDetail: (m) {
             _select(m, layout, marks);
-            showRegistryMarkSheet(context, m, aiText: _aiFor(m));
+            _openSheet(m);
           },
         ),
       ),
@@ -1675,7 +1687,7 @@ class ToneFilterChip extends StatelessWidget {
   }
 }
 
-/// 하단 [ⓘ 메모 N] — 사진에 표시하지 않은 것·두 방법으로 읽은 결과. 누르면 시트.
+/// 하단 [ⓘ 참고 N] — 사진에 표시하지 않은 것·두 방법으로 읽은 결과. 누르면 시트.
 class NotesChip extends StatelessWidget {
   const NotesChip({super.key, required this.count, required this.onTap});
 
@@ -1700,7 +1712,8 @@ class NotesChip extends StatelessWidget {
           Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textBody),
           const SizedBox(width: 5),
           AppText(
-            '메모 $count',
+            // '메모'는 내가 쓴 메모처럼 읽혔다(2026-10-31 페르소나 리뷰) → '참고'. 짧게 둬야 왼쪽 거르기 칩 두 개가 360dp에 다 보인다
+            '참고 $count',
             style: AppTypography.label.copyWith(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -1713,7 +1726,7 @@ class NotesChip extends StatelessWidget {
   );
 }
 
-/// 메모 시트 — "사진에 표시하지 않은 것과 읽은 방법". 한 줄에 한 사실, 진한 글씨.
+/// 참고 시트 — "사진에 표시하지 않은 것과 읽은 방법". 한 줄에 한 사실, 진한 글씨.
 Future<void> showViewerNotesSheet(BuildContext context, List<String> notes) {
   return showModalBottomSheet<void>(
     context: context,

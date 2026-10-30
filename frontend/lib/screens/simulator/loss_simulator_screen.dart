@@ -496,19 +496,29 @@ class _PriorityStep extends StatelessWidget {
     final String base = e.priorityBaseDate != null
         ? '${_dot(e.priorityBaseDate!)} ${e.priorityBaseKind ?? '담보'} 기준'
         : '담보가 없어 오늘 기준';
-    final String region =
-        '${e.priorityRegion ?? ''}${e.priorityRegionUnsure ? '(보호가 적은 쪽으로 봤어요)' : ''}';
+    // 지역 이름 뒤에 조사를 붙이지 않는다('서울특별시은' — 2026-10-31 페르소나 리뷰). 애매하면 따로 한 토막.
+    String join(List<String?> parts) => [
+      for (final p in parts)
+        if (p != null && p.trim().isNotEmpty) p.trim(),
+    ].join(' · ');
+    final String? region = e.priorityRegion;
+    final String? unsure = e.priorityRegionUnsure ? '지역이 애매해 보호가 적은 쪽으로 봤어요' : null;
     final (String value, Color color, String sub) = switch (e.priorityStatus) {
       PriorityStatus.ok => (
         priced ? '+ ${formatWon(e.priorityAmount)}' : '최대 ${formatWon(e.priorityLimit ?? 0)}',
         AppColors.ok,
-        '$region · 보증금 ${formatWon(e.priorityCap ?? 0)} 이하 · $base'
-            '${e.priorityHalfCapped ? ' · 낙찰가의 절반까지' : ''}',
+        join([
+          region,
+          '보증금 ${formatWon(e.priorityCap ?? 0)} 이하',
+          base,
+          e.priorityHalfCapped ? '낙찰가의 절반까지' : null,
+          unsure,
+        ]),
       ),
       PriorityStatus.overCap => (
         '대상 아님',
         AppColorsNext.textMuted,
-        '$region은 보증금 ${formatWon(e.priorityCap ?? 0)} 이하만 받아요 · $base',
+        join(['보증금 ${formatWon(e.priorityCap ?? 0)} 이하만 받아요', region, base, unsure]),
       ),
       PriorityStatus.blockedAuction => (
         '0원',
@@ -578,8 +588,10 @@ class _PriorityStep extends StatelessWidget {
             AppText(
               sub,
               key: const ValueKey('loss-priority-sub'),
+              // 흐린 글씨 금지(규혁 2026-10-31) — 이 집 한 줄은 본문 색으로
               style: AppTypographyNext.caption.copyWith(
-                color: AppColorsNext.textMuted,
+                color: AppColorsNext.textBody,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],

@@ -45,6 +45,8 @@ Future<void> showRegistryMarkSheet(
   BuildContext context,
   RegistryHighlight mark, {
   String? aiText,
+  bool aiWritten = false,
+  Map<String, String> glossary = const {},
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -62,7 +64,7 @@ Future<void> showRegistryMarkSheet(
         top: Radius.circular(AppRadius.sheet),
       ),
     ),
-    builder: (_) => RegistryMarkSheet(mark: mark, aiText: aiText),
+    builder: (_) => RegistryMarkSheet(mark: mark, aiText: aiText, aiWritten: aiWritten, glossary: glossary),
   );
 }
 
@@ -76,6 +78,24 @@ String? evidenceIdForMark(String kind) => switch (kind) {
   _ => null,
 };
 
+/// 기본 확인 줄이 '이 집 맞춤 할 일'에 이미 있는 말인가 — 같은 말을 두 번 읽히지 않게 (2026-10-31 페르소나 리뷰).
+///
+/// 글자 두 개씩 묶음(띄어쓰기·굵게 표시 무시)이 할 일 한 줄에 **60% 이상** 들어 있으면 같은 말로 본다.
+/// 거르기만 한다 — 문장을 고치지 않는다(문구는 백엔드 것).
+bool coveredByPlan(String line, List<String> plan) {
+  String norm(String t) => t.replaceAll('**', '').replaceAll(RegExp(r'[\s.,·()]'), '');
+  Set<String> grams(String t) => {for (int i = 0; i + 2 <= t.length; i++) t.substring(i, i + 2)};
+  final g = grams(norm(line));
+  if (g.isEmpty) return false;
+  for (final p in plan) {
+    final pg = grams(norm(p));
+    if (pg.isEmpty) continue;
+    final hit = g.where(pg.contains).length;
+    if (hit / g.length >= 0.6) return true;
+  }
+  return false;
+}
+
 /// 출처 한 줄 — 줄표 없이 "등기부 을구 · 사진에서 직접 찾은 위치"
 String markSourceLine(String? source) {
   final raw = (source ?? '등기부 원본').replaceAll('이 앱이 사진에서 직접 찾은 위치', '사진에서 직접 찾은 위치');
@@ -86,21 +106,35 @@ String markSourceLine(String? source) {
 /// [톤 칩 · 번호] 제목 → **이 집에서 본 것**(칩) → **이 집 맞춤 할 일**(번호) → ✦ AI 설명(리포트 근거 카드의 설명)
 /// → **기본 확인**(어느 집에나 같은 원래 안내, 줄마다) → 공동명의 안내 → 근거 한 줄. '위험도 판정이 아닙니다'는 뺐다.
 class RegistryMarkSheet extends StatelessWidget {
-  const RegistryMarkSheet({super.key, required this.mark, this.aiText});
+  const RegistryMarkSheet({
+    super.key,
+    required this.mark,
+    this.aiText,
+    this.aiWritten = false,
+    this.glossary = const {},
+  });
 
   final RegistryHighlight mark;
 
-  /// 같은 이야기를 하는 근거 카드의 AI 설명 (없으면 그 칸이 없다)
+  /// 같은 이야기를 하는 근거 카드의 설명 (없으면 그 칸이 없다)
   final String? aiText;
+
+  /// 그 설명을 모델(AI)이 썼나 — 아니면(준비된 문구·옛 리포트) 'AI'라고 쓰지 않는다
+  final bool aiWritten;
+
+  /// 그 근거 카드의 용어 풀이 — 설명 칸에 쓴다(할 일·기본 확인은 표시 자체의 풀이)
+  final Map<String, String> glossary;
 
   @override
   Widget build(BuildContext context) {
     final tone = mark.markKind.tone;
     final color = AppColors.markSolid(tone);
+    // 기본 확인 = 어느 집에나 같은 원래 안내. 맞춤 할 일에 이미 있는 줄은 뺀다(같은 말 두 번 X)
     final basics = [
       for (final line in softenDashes(mark.body).split('\n'))
-        if (line.trim().isNotEmpty) line.trim(),
+        if (line.trim().isNotEmpty && !coveredByPlan(line.trim(), mark.plan)) line.trim(),
     ];
+    final markGlossary = mark.termGlossary;
     final ai = aiText == null
         ? const <String>[]
         : [
@@ -179,7 +213,7 @@ class RegistryMarkSheet extends StatelessWidget {
                   const _Label('이 집 맞춤 할 일'),
                   const SizedBox(height: 8),
                   for (int i = 0; i < mark.plan.length; i++)
-                    _NumberedRow(index: i + 1, text: mark.plan[i]),
+                    _NumberedRow(index: i + 1, text: mark.plan[i], glossary: markGlossary),
                 ],
                 if (ai.isNotEmpty) ...[
                   const SizedBox(height: 14),
@@ -196,14 +230,19 @@ class RegistryMarkSheet extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.auto_awesome, size: 15, color: AppColors.primary),
+                            Icon(
+                              aiWritten ? Icons.auto_awesome : Icons.notes_rounded,
+                              size: 15,
+                              color: aiWritten ? AppColors.primary : AppColorsNext.textMuted,
+                            ),
                             const SizedBox(width: 5),
                             AppText(
-                              'AI가 이 집에 맞춰 쓴 설명',
+                              // 모델이 쓴 설명일 때만 'AI'. 준비된 문구면 사실대로(2026-07-09 결정 · 과대 표기 금지)
+                              aiWritten ? 'AI가 이 집에 맞춰 쓴 설명' : '리포트 근거 카드 설명',
                               style: AppTypographyNext.caption.copyWith(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
+                                color: aiWritten ? AppColors.primary : AppColorsNext.textMuted,
                               ),
                             ),
                           ],
@@ -218,6 +257,7 @@ class RegistryMarkSheet extends StatelessWidget {
                                 color: AppColorsNext.textStrong,
                                 height: 1.5,
                               ),
+                              glossary: glossary,
                             ),
                           ),
                         ],
@@ -235,11 +275,14 @@ class RegistryMarkSheet extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 3),
-                            child: Icon(Icons.check_circle_outline_rounded, size: 16, color: AppColorsNext.textMuted),
+                          // 점 — 체크 표시는 '이미 확인됨'으로 읽혔다(2026-10-31 페르소나 리뷰)
+                          Container(
+                            width: 5,
+                            height: 5,
+                            margin: const EdgeInsets.only(top: 10, left: 4, right: 4),
+                            decoration: BoxDecoration(color: AppColorsNext.textMuted, shape: BoxShape.circle),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: AppText.rich(
                               caseRichText(
@@ -249,6 +292,7 @@ class RegistryMarkSheet extends StatelessWidget {
                                   color: AppColorsNext.textBody,
                                   height: 1.5,
                                 ),
+                                glossary: markGlossary,
                               ),
                             ),
                           ),
@@ -309,10 +353,11 @@ class _Label extends StatelessWidget {
 }
 
 class _NumberedRow extends StatelessWidget {
-  const _NumberedRow({required this.index, required this.text});
+  const _NumberedRow({required this.index, required this.text, this.glossary = const {}});
 
   final int index;
   final String text;
+  final Map<String, String> glossary;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -346,6 +391,7 @@ class _NumberedRow extends StatelessWidget {
                 color: AppColorsNext.textStrong,
                 height: 1.45,
               ),
+              glossary: glossary,
             ),
           ),
         ),

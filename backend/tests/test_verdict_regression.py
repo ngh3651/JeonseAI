@@ -29,14 +29,16 @@ FIXTURES = Path(__file__).parent / "fixtures" / "registry"
 
 # 픽스처 → (종합등급, 게이지, 선순위채권합계, {근거 id: 등급})
 # 2026-10-31: 등기부로 볼 수 있는 HUG 가입요건을 모두 통과한 깨끗한 집은 보증보험 카드가 '양호'다
-#   (decisions.md 2026-10-31). 종합 등급은 그대로(보증보험은 위험일 때만 종합에 들어간다) — 게이지만 0.8 → 0.9.
+#   (decisions.md 2026-10-31). 단 ④ 악성임대인 명단을 **맞춰 봤을 때만** — 이 표의 픽스처는 명단이 없는 상태라
+#   (blacklist '확인 필요' = 대조 아직 안 됨) 보증보험도 '확인 필요', 게이지 0.8 그대로다(규칙 감사 2026-10-31 위반 1 반영,
+#   decisions.md 같은 날 '명단을 못 받았으면 양호가 아니다'). 명단이 있을 때의 '양호'는 test_insurance_good.py가 지킨다.
 GOLDEN: dict[str, tuple[str, float, int, dict[str, str]]] = {
-    "canceled_only": ("양호", 0.9, 0, {
+    "canceled_only": ("양호", 0.8, 0, {
         "jeonse_ratio": "양호", "senior_debt": "양호", "ownership": "양호",
-        "insurance": "양호", "blacklist": "확인 필요"}),
-    "clean_house": ("양호", 0.9, 0, {
+        "insurance": "확인 필요", "blacklist": "확인 필요"}),
+    "clean_house": ("양호", 0.8, 0, {
         "jeonse_ratio": "양호", "senior_debt": "양호", "ownership": "양호",
-        "insurance": "양호", "blacklist": "확인 필요"}),
+        "insurance": "확인 필요", "blacklist": "확인 필요"}),
     "messy_amounts": ("확인 필요", 0.7, 120_000_000, {
         "jeonse_ratio": "양호", "senior_debt": "확인 필요", "ownership": "양호",
         "insurance": "확인 필요", "blacklist": "확인 필요"}),
@@ -46,9 +48,9 @@ GOLDEN: dict[str, tuple[str, float, int, dict[str, str]]] = {
     "mortgage_heavy": ("위험", 0.35, 180_000_000, {
         "jeonse_ratio": "양호", "senior_debt": "위험", "ownership": "양호",
         "insurance": "확인 필요", "blacklist": "확인 필요"}),
-    "real_snapshot": ("양호", 0.9, 0, {
+    "real_snapshot": ("양호", 0.8, 0, {
         "jeonse_ratio": "양호", "senior_debt": "양호", "ownership": "양호",
-        "insurance": "양호", "blacklist": "확인 필요"}),
+        "insurance": "확인 필요", "blacklist": "확인 필요"}),
     "trust_seizure": ("위험", 0.35, 0, {
         "jeonse_ratio": "양호", "senior_debt": "양호", "ownership": "위험",
         "insurance": "위험", "blacklist": "확인 필요"}),

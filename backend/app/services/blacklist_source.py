@@ -70,6 +70,15 @@ def _salt() -> bytes:
     return store.name_salt()
 
 
+def salt_id(salt: bytes | None = None) -> str:
+    """소금 지문(되돌릴 수 없음) — 받아 둔 명단이 **지금 소금으로 만든 것인지** 확인한다(2026-10-31 규칙 감사 경고 6).
+
+    기록 DB를 새로 만들어 소금이 바뀌면 옛 명단의 이름 열쇠는 하나도 맞지 않는다. 그대로 쓰면 다음 주 갱신까지
+    모든 집이 '같은 이름 없음(양호)'이 된다 → 지문이 다르면 명단이 없는 것으로 보고(대조 안 됨) 바로 다시 받는다.
+    """
+    return hmac.new(salt or _salt(), b"jeonseai-blacklist-salt-check", hashlib.sha256).hexdigest()[:12]
+
+
 def name_key(name: str, salt: bytes | None = None) -> str:
     """이름 → HMAC 열쇠 (공백·가운뎃점 무시). 실명은 남기지 않는다."""
     normalized = re.sub(r"[\s·.]", "", name or "")
@@ -194,8 +203,8 @@ def refresh(*, get: Callable[..., Any] | None = None, salt: bytes | None = None)
         path = store_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"fetchedAt": now, "count": len(entries), "entries": entries},
-                                  ensure_ascii=False), encoding="utf-8")
+        tmp.write_text(json.dumps({"fetchedAt": now, "count": len(entries), "saltId": salt_id(salt),
+                                   "entries": entries}, ensure_ascii=False), encoding="utf-8")
         tmp.replace(path)
         st.update(ok=True, count=len(entries), note="받음")
         _log.info(f"[명단] 악성임대인 공개 명단 {len(entries)}명을 이름을 가려 저장했어요")
@@ -218,6 +227,8 @@ def _save_status(st: dict) -> dict:
 def due(days: int = REFRESH_DAYS) -> bool:
     if not configured():
         return False
+    if store_path().exists() and not load():
+        return True  # 받아 둔 파일이 지금 소금과 안 맞거나(소금이 바뀜) 비었다 — 기다리지 않고 다시 받는다
     try:
         last = json.loads(status_path().read_text(encoding="utf-8")).get("checkedAt")
         return (datetime.now(KST) - datetime.strptime(last, "%Y-%m-%d").replace(tzinfo=KST)).days >= days
@@ -227,19 +238,25 @@ def due(days: int = REFRESH_DAYS) -> bool:
 
 # ── 읽기·맞춰 보기 ───────────────────────────────────────────────────────────
 
-_cache: tuple[float, list[dict]] | None = None
+_cache: tuple[float, str, list[dict]] | None = None
 
 
 def load() -> list[dict]:
-    """가린 명단(없으면 빈 목록). 파일이 바뀌면 다시 읽는다."""
+    """가린 명단(없으면 빈 목록). 파일이 바뀌면 다시 읽는다. **지금 소금으로 만든 명단이 아니면 빈 목록**(대조 안 됨)."""
     global _cache
     try:
         p = store_path()
         mtime = p.stat().st_mtime
-        if _cache and _cache[0] == mtime:
-            return _cache[1]
-        entries = list(json.loads(p.read_text(encoding="utf-8")).get("entries") or [])
-        _cache = (mtime, entries)
+        current = salt_id()
+        if _cache and _cache[0] == mtime and _cache[1] == current:
+            return _cache[2]
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        entries = list(raw.get("entries") or [])
+        if raw.get("saltId") != current:
+            # 소금이 바뀐 뒤의 옛 명단 — 맞춰 봐도 다 빗나가 '같은 이름 없음'만 나온다. 없는 것으로 본다.
+            _log.info("[명단] ⚠ 받아 둔 명단이 지금 기록 DB와 맞지 않아요(소금이 바뀜) — 다시 받을 때까지 대조 안 함")
+            entries = []
+        _cache = (mtime, current, entries)
         return entries
     except (OSError, ValueError):
         return []

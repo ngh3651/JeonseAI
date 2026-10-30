@@ -11,6 +11,7 @@ from app.schemas.internal import Grade, Owner, RegistryExtract
 from app.services import ask_cards, compare, fallback_texts, report_builder, rule_engine
 from app.services.patterns import TAG_PENDING, tags_from_report, tags_from_verdict
 from tests.test_compare import _extract, _snapshot
+from tests.test_analyze_smoke import no_network  # noqa: F401 — pytest 픽스처 재사용
 
 
 def _clean_extract(**kw) -> RegistryExtract:
@@ -70,7 +71,7 @@ def test_설명_기본_문장과_태그():
     verdict = rule_engine.evaluate(ex, deposit=100_000_000, market_price=300_000_000, blacklist_entries=[])
     texts = fallback_texts.build(verdict)["evidences"]["pending"]
     assert texts["title"] == "아직 처리 중인 등기 신청이 있나요?"
-    assert "접수한 때로 거슬러" in texts["easy_explanation"]
+    assert "접수한 때 생긴 걸로" in texts["easy_explanation"]
     assert "—" not in texts["easy_explanation"]  # 대시 없이
     assert texts["action_label"] == "무슨 신청인지 묻기"
     assert TAG_PENDING in tags_from_verdict(verdict)
@@ -166,3 +167,83 @@ def test_질문_카드가_맨_앞에_나온다():
     assert cards[0].id == "pending"
     assert "신청사건 처리중" in cards[0].facts[0]
     assert "2026.10.31" in cards[0].facts[0]
+
+
+# ── 규칙 감사·페르소나 리뷰 반영 (2026-10-31) ──────────────────────────────────
+
+
+def test_형광펜을_못_칠해도_글자가_있으면_판정_재료로_켠다():
+    """상자 계산이 실패하거나 표시 단계가 예외로 끝나도 '신청사건' 글자만 있으면 카드가 생긴다(감사 경고 5)."""
+    from app.services import highlight, ocr
+    from app.services.ocr_layout import OcrPage, group_lines
+    from tests.test_highlight import PAGE_H, PAGE_W, W, eul_gu_page
+
+    base = eul_gu_page()
+    words = list(base.words) + [W("신청사건처리중", 300, 30, 140)]
+    page = OcrPage(name="p1.jpg", index=0, words=words, lines=group_lines(words), width=PAGE_W, height=PAGE_H)
+    assert highlight.pending_text_found(ocr.OcrResult(pages=[page], elapsed=1.0)) is True
+    assert highlight.pending_text_found(ocr.OcrResult(pages=[eul_gu_page()], elapsed=1.0)) is False
+    assert highlight.pending_text_found(None) is False
+
+
+def test_신청사건만_있으면_윗줄은_멈춤부터():
+    """'그대로예요'를 앞세우면 잔금을 보내도 되는 줄 안다(페르소나 리뷰) — 그대로인 줄은 아래 목록에."""
+    base = _snapshot(_extract(), report_id="base")
+    cur_ex = _extract()
+    cur_ex.pending_application = True
+    result = compare.compare(base, _snapshot(cur_ex, report_id="cur"))
+    assert result.subline.startswith("잔금은 아직 보내지 마세요")
+    assert "그대로예요" not in result.subline and "—" not in result.subline
+
+
+def test_펼친_카드의_체크는_반올림이_아니라_판정과_같은_비교로():
+    """빚이 시세의 60.3%면 빚 카드는 '위험' — 보증보험 펼침에 '60% 이하 ✓'가 뜨면 안 된다(감사 경고 1)."""
+    from app.services import evidence_view
+    from app.schemas.internal import MoneyEntry
+
+    ex = _clean_extract()
+    ex.mortgages = [MoneyEntry(rank_number="1", receipt_date="2021-06-30", amount=180_900_000, mortgagee="○○은행")]
+    v = rule_engine.evaluate(ex, deposit=60_000_000, market_price=300_000_000, blacklist_entries=[{"name": "이영희"}])
+    senior = next(e for e in v.evidences if e.id == "senior_debt")
+    assert senior.grade is Grade.DANGER and senior.facts["senior_ratio_pct"] == 60
+    ins = next(e for e in v.evidences if e.id == "insurance")
+    pts = {p.label: p for p in evidence_view.build(ins, v)["points"]}
+    assert pts["빚이 시세의 60% 이하"].tone == "danger"
+
+
+def test_명단_카드_펼침은_카드_결과를_따른다():
+    """집주인 이름을 못 읽었는데 'N명과 맞춰봤어요 · 같은 사람 없음'(초록)이 뜨면 안 된다(감사 위반 2)."""
+    from app.services import evidence_view
+
+    ex = _clean_extract()
+    ex.current_owners = []
+    v = rule_engine.evaluate(ex, deposit=100_000_000, market_price=300_000_000, blacklist_entries=[{"name": "이영희"}])
+    bl = next(e for e in v.evidences if e.id == "blacklist")
+    pt = evidence_view.build(bl, v)["points"][0]
+    assert pt.tone == "caution" and "못 읽어" in pt.value
+    # 같은 이름이면 '이름이 같은 사람'(나이는 아직 대조하지 않는다)
+    ex.current_owners = [Owner(name="이영희")]
+    v = rule_engine.evaluate(ex, deposit=100_000_000, market_price=300_000_000, blacklist_entries=[{"name": "이영희"}])
+    bl = next(e for e in v.evidences if e.id == "blacklist")
+    pt = evidence_view.build(bl, v)["points"][0]
+    assert "이름이 같은 사람" in pt.value and "나이" not in pt.value
+
+
+def test_사진_글자를_한_장도_못_읽으면_양호가_없다(monkeypatch, no_network):
+    """OCR이 통째로 실패하면 신청사건·빠진 쪽을 볼 수 없다 — 모르면 '양호' 금지(규칙 재감사 2026-10-31 위반 1)."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.services import ocr
+    from tests.test_analyze_smoke import PAGE_H, PAGE_W, blank_image, post_analyze, registry_raw
+
+    assert report_builder.ocr_unread([("a.jpg", b"x")], ocr.OcrResult(pages=[], elapsed=0.0)) is True
+    assert report_builder.ocr_unread([], ocr.OcrResult(pages=[], elapsed=0.0)) is False
+
+    no_network(registry_raw(), [])
+    monkeypatch.setattr(ocr, "run_ocr", lambda images, **kw: ocr.OcrResult(pages=[], elapsed=0.0))
+    resp = post_analyze(TestClient(app), [blank_image(PAGE_W, PAGE_H)], deposit=60_000_000)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "양호" not in {e["grade"] for e in body["evidences"]} and body["grade"] != "양호"
+    assert any(report_builder.OCR_UNREAD_REASON in (e.get("detailText") or "") for e in body["evidences"])

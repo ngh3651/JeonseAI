@@ -221,7 +221,8 @@ def _build(
                 detailText=ev.detail_text,  # [판정]
                 sourceText=ev.source_text,  # [판정]
                 actionLabel=t["action_label"],  # [UI]
-                termGlossary=t["term_glossary"],  # [설명]
+                # [설명] 설명 속 용어 + '이 집에서 할 일' 속 용어(말소·특약 등 — 2026-10-31 페르소나 리뷰: 할 일에 풀이가 없었다)
+                termGlossary=_merge_glossary(t["term_glossary"], terms.attach("\n".join(view["todo"]))),
                 # [설명 출처 · D26] 이 카드의 문장을 모델이 썼는지 준비된 문구인지.
                 # 카드마다 다를 수 있다(설명 폴백은 필드 단위다 — explanation.py 참고).
                 explanationSource=explanation_result.evidence_sources.get(ev.id),
@@ -445,6 +446,25 @@ def _add_house_type_to_address_mark(report: Report) -> None:
         _log.error("[매칭] ⚠ 주소 표시에 용도를 붙이지 못했습니다", exc_info=True)
 
 
+def _merge_glossary(base: dict[str, str], extra: dict[str, str]) -> dict[str, str]:
+    """용어 풀이 합치기 — 이미 있는 표기와 겹치는(한쪽이 다른 쪽을 품는) 표기는 더하지 않는다(앱이 긴 표기를 반으로 자르지 않게)."""
+    out = dict(base)
+    for k, v in extra.items():
+        if k in out or any(k in b or b in k for b in out):
+            continue
+        out[k] = v
+    return out
+
+
+def _attach_mark_glossary(report: Report) -> None:
+    """사진 표시마다 '이 집 맞춤 할 일'·기본 확인에 나온 용어 풀이 (2026-10-31 페르소나 리뷰). 표시 전용."""
+    try:
+        for h in report.highlights:
+            h.termGlossary = terms.attach("\n".join([*h.plan, h.body or "", h.caution or ""]))
+    except Exception:  # noqa: BLE001 — 풀이 밑줄 때문에 리포트를 잃지 않는다
+        _log.error("[매칭] ⚠ 표시 용어 풀이를 붙이지 못했습니다", exc_info=True)
+
+
 def _add_blacklist_to_owner_mark(report: Report) -> None:
     """소유자 표시에 '공개 명단과 맞춰 본 결과'를 붙인다 (2026-10-31 — 사진에서 보기에서도 보이게). 표시 전용.
 
@@ -467,6 +487,15 @@ def _add_blacklist_to_owner_mark(report: Report) -> None:
         _log.error("[매칭] ⚠ 소유자 표시에 명단 결과를 붙이지 못했습니다", exc_info=True)
 
 
+OCR_UNREAD_REASON = "사진 글자를 따로 읽지 못해 빠진 쪽이나 처리 중인 등기 신청이 없는지 확인하지 못했어요"
+
+
+def ocr_unread(images, ocr_result) -> bool:
+    """사진을 올렸는데 OCR이 글자를 한 장도 못 읽었나 — 그러면 신청사건·빠진 쪽을 볼 수 없다(판정 재료가 비었다)."""
+    pages = list(getattr(ocr_result, "pages", None) or [])
+    return bool(images) and not any(getattr(p, "words", None) for p in pages)
+
+
 def has_pending_application(highlights: list[Highlight] | None) -> bool:
     """사진 위 표시에 '신청사건 처리중'이 있나 — 판정에 넣는 단 하나의 기준(2026-10-31)."""
     return any(h.kind == "pending_application" for h in (highlights or []))
@@ -479,6 +508,11 @@ def rejudge_kit(extract: RegistryExtract, report: Report) -> dict:
     blacklist = next((e for e in report.evidences if e.id == "blacklist"), None)
     kit: dict = {"version": 1, "extract": masked}
     if blacklist is not None:
+        facts: dict = {"matched": [], "list_size": None, "from_original_analysis": True}
+        # 원래 '맞춰 봤고 같은 이름 없음'이었는데 사진이 불완전해 '확인 필요'로 올라간 카드 — 그 사실을 남긴다
+        # (없으면 다시 판정이 '집주인 이름을 못 읽어'라고 잘못 말한다 · 규칙 재감사 2026-10-31). 사진 문제는 재료의 게이트가 다시 막는다.
+        if blacklist.grade == "확인 필요" and "같은 이름은 없었어요" in (blacklist.detailText or ""):
+            facts["capped_reason"] = extract.pages_incomplete_reason or "사진이 불완전했어요"
         kit["blacklist"] = {
             "id": "blacklist",
             "grade": blacklist.grade,
@@ -487,7 +521,7 @@ def rejudge_kit(extract: RegistryExtract, report: Report) -> dict:
             "source_text": blacklist.sourceText,
             "action_label": None,
             # 명단 대조 사실(일치 이름은 원래 가린 꼴) — 설명 재료
-            "facts": {"matched": [], "list_size": None, "from_original_analysis": True},
+            "facts": facts,
         }
     return kit
 
@@ -509,6 +543,16 @@ def rejudge(
     # 옛 재료(2026-10-31 전)엔 이 칸이 없다 — 같은 리포트의 사진 표시로 다시 켠다
     extract.pending_application = extract.pending_application or has_pending_application(old.highlights)
     blacklist = EvidenceVerdict.model_validate(kit["blacklist"]) if kit.get("blacklist") else None
+    if blacklist is None:
+        # 재료에 명단 결과가 없으면 가린 이름(김○○)으로 다시 맞추지 않는다 — 다 빗나가 '같은 이름 없음'이 된다(재감사 경고 2)
+        blacklist = EvidenceVerdict(
+            id="blacklist",
+            grade=Grade.CAUTION,
+            status_label=rule_engine.BLACKLIST_PENDING_LABEL,
+            detail_text="다시 판정에서는 명단과 다시 맞춰 보지 않았어요(이름을 가린 재료라서)",
+            source_text=None,
+            facts={"matched": [], "list_size": None},
+        )
     try:
         price_info = price_lookup.collect(
             address=extract.address, area_sqm=extract.exclusive_area_sqm, manual_price_won=market_price
@@ -812,7 +856,16 @@ def analyze(
 
     # 잔금 당일 빈틈 (2026-10-31) — 등기부에 '신청사건 처리중'이 찍혀 있으면 규칙 엔진이 '확인 필요' 카드를 더한다.
     # 사진 위 표시(OCR 글자 규칙)와 **같은 근거**로 켠다 — 화면의 형광펜과 카드가 어긋나지 않게.
-    extract.pending_application = has_pending_application(highlight_result.highlights)
+    # 형광펜을 못 칠했어도(상자 계산 실패·표시 단계 예외) 글자가 있으면 판정 재료로 켠다 — 카드가 조용히 빠지지 않게(감사 경고 5)
+    extract.pending_application = has_pending_application(highlight_result.highlights) or highlight.pending_text_found(
+        ocr_result
+    )
+    # 사진 글자(OCR)를 **한 장도** 못 읽었으면(OCR 장애 등) 빠진 쪽·처리 중인 신청이 있는지 모른다 — 모르면 '양호' 금지
+    # (규칙 재감사 2026-10-31: 신청사건을 못 본 채 보증보험·종합이 '양호'로 새던 길). 문서 게이트가 모든 '양호'를 막는다.
+    if ocr_unread(images, ocr_result):
+        extract.pages_incomplete = True
+        extract.pages_incomplete_reason = extract.pages_incomplete_reason or OCR_UNREAD_REASON
+        _log.info("[판정] 사진 글자를 한 장도 못 읽음 — 빠진 쪽·신청사건을 확인 못 해 '양호' 금지")
 
     _raise_if_cancelled(cancelled, "설명 생성(Solar)")
     report, explain = _build(
@@ -851,6 +904,7 @@ def analyze(
         _log.error("[손실예상] ⚠ 용도 후보를 정하지 못했습니다", exc_info=True)
     _add_house_type_to_address_mark(report)
     _add_blacklist_to_owner_mark(report)
+    _attach_mark_glossary(report)
     if doc_check is not None:
         # 두 번째 기준(쪽 머리 주소) · 빠진 쪽 · 장마다 쪽 번호 — 표시·묶기 전용
         report.propertyAddress = doc_check.header_address

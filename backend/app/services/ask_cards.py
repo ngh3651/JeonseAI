@@ -105,7 +105,8 @@ def build(report: Report) -> AskCards:
     W = format_won
     dep = int(report.deposit or 0)
     debt = int(report.seniorDebtAmount or 0)
-    est = loss_estimate.estimate(report)
+    # 합격선은 최우선변제를 **빼고** 본다 — 조건이 붙는 돈에 기대 '빚을 둬도 된다'고 하지 않게(2026-10-31)
+    est = loss_estimate.estimate(report, priority=False)
     priced = est.status == "ok" and est.expectedSale is not None
     sale = int(est.expectedSale or 0)
     lost = int(est.expectedLoss or 0) if est.status in ("ok", "debt_exceeds") else 0

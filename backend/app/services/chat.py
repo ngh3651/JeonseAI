@@ -490,8 +490,34 @@ def _loss_line(report) -> str:
         return (
             f"· 경매로 넘어가면(손실 시뮬레이터): {where} 매각가율 {est.ratePct}% → 예상 낙찰가 {_won(est.expectedSale)}"
             f" · 돌려받을 돈 {_won(est.expectedReturn)} · 못 돌려받는 돈 {_won(est.expectedLoss)}"
+            + _priority_line(est)
         )
-    return f"· 이 집 지역·용도의 매각가율: {where} {est.ratePct}% (시세가 없어 손실 계산은 안 됨)"
+    return f"· 이 집 지역·용도의 매각가율: {where} {est.ratePct}% (시세가 없어 손실 계산은 안 됨)" + _priority_line(est)
+
+
+def _priority_line(est) -> str:
+    """최우선변제(2026-10-31) 한 줄 — 손실 시뮬레이터와 같은 규칙 계산. 숫자는 이 계산에서만 나온다."""
+    s = est.priorityStatus
+    if not s or s == "no_table":
+        return ""
+    table = f"{est.priorityTableFrom} 표" if est.priorityTableFrom else ""
+    base = (f"가장 먼저 잡힌 {est.priorityBaseKind} {est.priorityBaseDate} 기준" if est.priorityBaseDate
+            else "담보가 없어 오늘 기준")
+    where = f"{est.priorityRegion}{'(지역이 애매해 보호가 적은 쪽)' if est.priorityRegionUnsure else ''}"
+    if s == "ok":
+        return (f"\n  · 최우선변제(소액임차인): 낙찰가에서 가장 먼저 {_won(est.priorityAmount)}을 받아요"
+                f" ({where} · 보증금 {_won(est.priorityCap)} 이하 · {base} {table}"
+                f"{' · 낙찰가의 절반 한도' if est.priorityHalfCapped else ''}) — 경매 전에 전입신고·입주를 마쳐야 해요")
+    if s == "over_cap":
+        return f"\n  · 최우선변제(소액임차인): 보증금이 {where} 상한 {_won(est.priorityCap)}보다 커서 못 받아요 ({base} {table})"
+    if s == "blocked_auction":
+        return "\n  · 최우선변제(소액임차인): 이미 경매가 시작된 집이라 지금 들어가면 못 받아요 (주택임대차보호법 제8조 ①)"
+    if s == "shared":
+        return (f"\n  · 최우선변제(소액임차인): 단독·다가구라 다른 소액임차인과 낙찰가의 절반을 나눠요 — 혼자면 최대"
+                f" {_won(est.priorityLimit)}, 계산에는 넣지 않았어요")
+    if s == "unknown_date":
+        return "\n  · 최우선변제(소액임차인): 빚이 잡힌 날짜를 못 읽어 계산에 넣지 않았어요"
+    return ""
 
 
 def _stage_date(stage, j: JourneyIn) -> date | None:

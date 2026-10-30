@@ -20,7 +20,11 @@
 - 사용자가 시뮬레이터에서 매매 시세를 직접 넣으면 그 값으로만 계산한다(`price`) — 리포트는 바뀌지 않는다.
 - 매각가율 자료가 없으면 지어내지 않는다(`no_rate`).
 - 매각가율은 **감정가 대비**다. 감정가가 없어 시세에 곱한다.
-- 경매 비용·세금·최우선변제는 아직 넣지 않았다(2단계).
+- 경매 비용·세금은 아직 넣지 않았다.
+- 2026-10-31: 소액임차인 **최우선변제**를 넣었다(`priority_repayment.py`). 낙찰가에서 **가장 먼저** 내 몫으로 빠지고,
+  남은 돈에서 먼저 갚을 빚이 빠진 뒤 내 차례가 온다:
+      돌려받을 돈 = min(보증금, 최우선 + max(0, 예상 낙찰가 − 최우선 − 먼저 갚을 빚))
+  날짜를 못 읽었거나·다가구·이미 경매 중이면 더하지 않는다(보수적 편향).
 
 판정 등급과는 무관하다(참고 정보). 판정 엔진은 이 파일을 모른다.
 """
@@ -264,10 +268,56 @@ def _uses_for(report: Report) -> list[str]:
 # ── 계산 ─────────────────────────────────────────────────────────────────────
 
 
-def estimate(report: Report, table: RateTable | None = None, price: int | None = None) -> LossEstimate:
+def _priority_fields(report: Report, sale: int | None) -> tuple[int, dict]:
+    """최우선변제 → (돌려받음에 더할 금액, 계약 칸들). 실패해도 0과 빈 칸(손실 계산은 그대로 산다)."""
+    from . import priority_repayment as P  # 순환 import 방지(그쪽이 sido_of를 이 파일에서 가져간다)
+
+    try:
+        pr = P.compute(
+            deposit=int(report.deposit or 0),
+            address=report.propertyAddress or report.address,
+            risk_facts=report.riskFacts,
+            senior_debt=int(report.seniorDebtAmount or 0),
+            expected_sale=sale,
+            whole_building=N.is_whole_building(report.propertyAddress or report.address or ""),
+        )
+    except Exception:  # noqa: BLE001 — 최우선변제 하나 때문에 손실 계산을 잃지 않는다
+        _log.error("[최우선변제] ⚠ 계산 실패 — 최우선변제 없이 계산합니다", exc_info=True)
+        return 0, {}
+    fields = dict(
+        priorityStatus=pr.status,
+        priorityAmount=pr.amount if pr.status == "ok" else 0,
+        priorityLimit=pr.limit,
+        priorityCap=pr.cap,
+        priorityRegion=pr.region,
+        priorityRegionUnsure=pr.region_unsure,
+        priorityTableFrom=pr.table_from,
+        priorityBaseDate=pr.base_date,
+        priorityBaseKind=pr.base_kind,
+        priorityHalfCapped=pr.half_capped,
+        prioritySource=pr.source,
+        priorityTableStale=_table_stale(),
+    )
+    return (pr.amount if pr.status == "ok" else 0), fields
+
+
+def _table_stale() -> bool:
+    try:
+        from . import law_watch
+
+        return law_watch.priority_table_stale()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def estimate(
+    report: Report, table: RateTable | None = None, price: int | None = None, *, priority: bool = True
+) -> LossEstimate:
     """리포트 → 손실 예상. 예외를 던지지 않는다(못 하면 no_price / no_rate).
 
     [price]: 시뮬레이터에서 사용자가 넣은 매매 시세(원). 있으면 리포트 시세 대신 쓴다 — 리포트는 바꾸지 않는다.
+    [priority]: 최우선변제를 더할지(2026-10-31). 4장 질문 합격선은 **더하지 않고** 본다 — 최우선변제는 전입·입주
+      시점 같은 조건이 붙는 돈이라, '빚을 그대로 둬도 된다'는 판단에 기대지 않게 한다(보수적 편향).
     """
     table = table or load_table()
     deposit = int(report.deposit or 0)
@@ -285,11 +335,14 @@ def estimate(report: Report, table: RateTable | None = None, price: int | None =
     picked = min(found, key=lambda x: x[1][0]) if found else None
     if base is None:
         # 시세가 없어도 쓸 매각가율은 정해진다 — 화면이 '낙찰가 N%' 꼬리표를 먼저 보여 준다
+        # 최우선변제 한도도 알린다(낙찰가를 몰라 절반 한도는 아직 못 본다 — 더하지 않는다)
+        pfields = _priority_fields(report, None)[1] if priority else {}
         if picked is None:
-            return LossEstimate(status="no_price", **common)
+            return LossEstimate(status="no_price", **common, **pfields)
         use, (rate, sold, used_region, fallback) = picked
         return LossEstimate(status="no_price", ratePct=round(rate * 100, 1), region=used_region,
-                            regionFallback=fallback, use=use, useGuessed=len(uses) > 1, soldCount=sold, **common)
+                            regionFallback=fallback, use=use, useGuessed=len(uses) > 1, soldCount=sold,
+                            **common, **pfields)
     if picked is None:
         if debt >= base:
             # 매각가율 자료가 없어도 빚 ≥ 시세면 답이 정해진다 — 어떤 값에 팔려도 내 차례가 오지 않는다.
@@ -300,7 +353,9 @@ def estimate(report: Report, table: RateTable | None = None, price: int | None =
     use, (rate, sold, used_region, fallback) = picked
 
     sale = int(base * rate)
-    back = min(deposit, max(0, sale - debt))
+    first, pfields = _priority_fields(report, sale) if priority else (0, {})
+    # 최우선변제가 낙찰가에서 가장 먼저 빠지고(내 몫), 남은 돈에서 먼저 갚을 빚 → 그다음 내 차례
+    back = min(deposit, first + max(0, sale - first - debt))
     return LossEstimate(
         status="ok",
         ratePct=round(rate * 100, 1),
@@ -313,4 +368,5 @@ def estimate(report: Report, table: RateTable | None = None, price: int | None =
         expectedReturn=back,
         expectedLoss=deposit - back,
         **common,
+        **pfields,
     )

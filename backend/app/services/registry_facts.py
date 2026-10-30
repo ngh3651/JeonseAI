@@ -27,7 +27,8 @@ _KINDS: tuple[tuple[str, str, str | None, str | None], ...] = (
     ("lease_registrations", "임차권등기", "deposit_amount", "holder"),
 )
 
-MAX_FACTS = 12  # 재료가 너무 길어지지 않게 (프롬프트 길이)
+# 재료가 너무 길어지지 않게 (프롬프트 길이). 2026-10-31 12 → 30: 최우선변제가 '가장 먼저 잡힌 담보'를 찾으려면 잘리면 안 된다
+MAX_FACTS = 30
 
 
 def _holder_kind(name: object) -> str | None:

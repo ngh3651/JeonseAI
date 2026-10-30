@@ -242,6 +242,8 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                 tag: '${_pct(e.ratePct)}%',
                 value: priced ? formatWon(e.expectedSale ?? 0) : '-',
               ),
+            // 최우선변제(2026-10-31) — 낙찰가에서 **가장 먼저** 내 몫으로 빠진다(빚보다 앞). 그래서 이 자리다.
+            if (e.hasPriority) _PriorityStep(e: e, priced: priced),
             _Step(
               label: '먼저 갚을 빚',
               value: '− ${formatWon(e.seniorDebt)}',
@@ -482,6 +484,129 @@ class _Step extends StatelessWidget {
   }
 }
 
+/// 최우선변제 줄 (2026-10-31) — 이름 · 칩 · 금액 + 이 집에 맞춘 한 줄(지역 · 상한 · 어느 날짜의 표).
+class _PriorityStep extends StatelessWidget {
+  const _PriorityStep({required this.e, required this.priced});
+
+  final LossEstimate e;
+  final bool priced;
+
+  @override
+  Widget build(BuildContext context) {
+    final String base = e.priorityBaseDate != null
+        ? '${_dot(e.priorityBaseDate!)} ${e.priorityBaseKind ?? '담보'} 기준'
+        : '담보가 없어 오늘 기준';
+    final String region =
+        '${e.priorityRegion ?? ''}${e.priorityRegionUnsure ? '(보호가 적은 쪽으로 봤어요)' : ''}';
+    final (String value, Color color, String sub) = switch (e.priorityStatus) {
+      PriorityStatus.ok => (
+        priced ? '+ ${formatWon(e.priorityAmount)}' : '최대 ${formatWon(e.priorityLimit ?? 0)}',
+        AppColors.ok,
+        '$region · 보증금 ${formatWon(e.priorityCap ?? 0)} 이하 · $base'
+            '${e.priorityHalfCapped ? ' · 낙찰가의 절반까지' : ''}',
+      ),
+      PriorityStatus.overCap => (
+        '대상 아님',
+        AppColorsNext.textMuted,
+        '$region은 보증금 ${formatWon(e.priorityCap ?? 0)} 이하만 받아요 · $base',
+      ),
+      PriorityStatus.blockedAuction => (
+        '0원',
+        AppColorsNext.dangerText,
+        '이미 경매가 시작된 집이에요 · 경매 전에 입주한 세입자만 받아요',
+      ),
+      PriorityStatus.shared => (
+        '나눠 받아요',
+        AppColors.caution,
+        '다가구는 다른 세입자와 낙찰가의 절반을 나눠요 · 혼자면 최대 ${formatWon(e.priorityLimit ?? 0)}',
+      ),
+      PriorityStatus.unknownDate => (
+        '계산 못 함',
+        AppColorsNext.textMuted,
+        '빚이 잡힌 날짜를 못 읽어 어느 표인지 몰라요',
+      ),
+      PriorityStatus.none => ('-', AppColorsNext.textMuted, ''),
+    };
+    return Container(
+      key: const ValueKey('loss-priority-row'),
+      padding: const EdgeInsets.fromLTRB(0, 10, 8, 10),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColorsNext.divider)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              AppText(
+                '최우선변제',
+                style: AppTypographyNext.body.copyWith(
+                  color: AppColorsNext.textBody,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.chipBg,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: AppText(
+                  '먼저 받아요',
+                  style: AppTypographyNext.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.chipFg,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: AppText(
+                  value,
+                  textAlign: TextAlign.right,
+                  style: AppTypographyNext.bodyStrong.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (sub.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            AppText(
+              sub,
+              key: const ValueKey('loss-priority-sub'),
+              style: AppTypographyNext.caption.copyWith(
+                color: AppColorsNext.textMuted,
+              ),
+            ),
+          ],
+          if (e.priorityTableStale) ...[
+            const SizedBox(height: 4),
+            AppText(
+              '법령이 바뀌어 금액을 다시 확인하고 있어요',
+              key: const ValueKey('loss-priority-stale'),
+              style: AppTypographyNext.caption.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColors.caution,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 'YYYY-MM-DD' → 'YYYY.M.D'
+String _dot(String iso) {
+  final parts = iso.split('-');
+  if (parts.length != 3) return iso;
+  return '${parts[0]}.${int.tryParse(parts[1]) ?? parts[1]}.${int.tryParse(parts[2]) ?? parts[2]}';
+}
+
 /// 근거 — 기준 · 기간 · 출처 세 줄. 왼쪽 이름 칸을 맞춰 줄바꿈해도 가지런하다.
 class _Basis extends StatelessWidget {
   const _Basis(this.e);
@@ -504,6 +629,15 @@ class _Basis extends StatelessWidget {
       ),
       if (e.period != null && e.period!.isNotEmpty) ('기간', e.period!),
       if (e.source != null && e.source!.isNotEmpty) ('출처', e.source!),
+      // 최우선변제 근거 (2026-10-31) — 법령 이름 + 고른 표
+      if (e.hasPriority && e.prioritySource != null)
+        (
+          '법령',
+          [
+            e.prioritySource!,
+            if (e.priorityTableFrom != null) '${_dot(e.priorityTableFrom!)} 개정 표',
+          ].join(' · '),
+        ),
     ];
     final TextStyle label = AppTypographyNext.caption.copyWith(
       fontWeight: FontWeight.w600,

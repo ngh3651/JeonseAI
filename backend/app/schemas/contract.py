@@ -441,7 +441,8 @@ class LossEstimate(BaseModel):
     """손실 예상 (2026-10-28) — 이 집이 경매로 넘어가면 보증금이 얼마나 돌아오나. **규칙 계산, AI 없음.**
 
     매각가율 = 그 지역·용도에서 최근 경매로 팔린 값 ÷ 법원 감정가 (`data/auction_sale_rates.json`, 출처·기간 동봉).
-    판정 등급에는 쓰지 않는다(참고 정보). 경매 비용·세금·최우선변제는 아직 넣지 않았다(2단계).
+    판정 등급에는 쓰지 않는다(참고 정보). 경매 비용·세금은 아직 넣지 않았다.
+    2026-10-31: 소액임차인 **최우선변제**(주택임대차보호법 제8조, 시행령 제10·11조)를 넣었다 — `priority*` 칸.
     """
 
     # ok(계산함) | debt_exceeds(먼저 갚을 빚 ≥ 집값 — 매각가율과 상관없이 돌려받기 어렵다)
@@ -459,8 +460,23 @@ class LossEstimate(BaseModel):
     period: Optional[str] = None  # 집계 기간 '2025.11~2026.10'
     source: Optional[str] = None  # 출처 이름
     expectedSale: Optional[int] = None  # 예상 낙찰가 = 기준가 × 매각가율
-    expectedReturn: Optional[int] = None  # 내가 돌려받을 돈
+    expectedReturn: Optional[int] = None  # 내가 돌려받을 돈 (최우선변제 포함)
     expectedLoss: Optional[int] = None  # 못 돌려받는 돈
+    # ── 최우선변제 (2026-10-31, `priority_repayment.py`) ───────────────────────────────
+    # ok(더했다) | over_cap(보증금이 상한보다 크다) | blocked_auction(이미 경매가 시작된 집) | shared(단독·다가구라 나눈다 — 안 더함)
+    # | unknown_date(빚 날짜를 못 읽음 — 안 더함) | no_table(표 없음). 옛 서버면 None
+    priorityStatus: Optional[str] = None
+    priorityAmount: int = 0  # 돌려받음에 실제로 더한 금액 (ok일 때만)
+    priorityLimit: Optional[int] = None  # 그 표·지역에서 먼저 받는 한도(일정액)
+    priorityCap: Optional[int] = None  # 그 표·지역의 보증금 상한 (이하여야 받는다)
+    priorityRegion: Optional[str] = None  # '서울특별시' · '수도권 과밀억제권역(서울 제외)' …
+    priorityRegionUnsure: bool = False  # 지역이 애매해 보호가 적은 쪽으로 봤다
+    priorityTableFrom: Optional[str] = None  # 고른 표가 시작된 날 'YYYY-MM-DD'
+    priorityBaseDate: Optional[str] = None  # 그 표를 고른 날짜(가장 먼저 잡힌 담보) — 없으면 오늘 기준
+    priorityBaseKind: Optional[str] = None  # 그 날짜의 종류 — '근저당' …
+    priorityHalfCapped: bool = False  # 낙찰가의 절반(시행령 제10조 ②)에 걸려 줄었다
+    prioritySource: Optional[str] = None  # '주택임대차보호법 시행령 제10·11조'
+    priorityTableStale: bool = False  # 법제처에서 시행령이 바뀐 걸 알아챘는데 우리 표가 아직 그대로다(law_watch)
 
 
 class CompareItem(BaseModel):

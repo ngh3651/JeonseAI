@@ -612,11 +612,10 @@ def me_block(
             )
             viewed = _registry_date(r.registryViewedAt)
             analyzed = _iso_date_kst(r.analyzedAt)
-            reg = (
-                f"· 등기부 열람일 {r.registryViewedAt}" + (f" ({(today - viewed).days}일 전에 뗀 서류)" if viewed else "")
-                if r.registryViewedAt
-                else "· 등기부 열람일: 못 읽음"
-            )
+            age = (today - viewed).days if viewed else None
+            # 날짜를 잘못 읽어 오늘보다 뒤면 며칠 전인지 말하지 않는다(지어내지 않는다)
+            age_text = "" if age is None or age < 0 else (" (오늘 뗀 서류)" if age == 0 else f" ({age}일 전에 뗀 서류)")
+            reg = f"· 등기부 열람일 {r.registryViewedAt}{age_text}" if r.registryViewedAt else "· 등기부 열람일: 못 읽음"
             if analyzed:
                 reg += f" · 마지막 분석 {analyzed.isoformat()}"
             if len(h.reports) > 1:

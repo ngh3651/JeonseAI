@@ -750,3 +750,15 @@ def test_로그에_주소와_일정이_없다(fake_llm, caplog):
     logged = "\n".join(rec.getMessage() for rec in caplog.records)
     assert "망원동" not in logged and "2026-10-31" not in logged and "1억" not in logged
     assert "집 2곳" in logged
+
+
+def test_열람일을_잘못_읽어_미래면_며칠_전인지_말하지_않는다(fake_llm):
+    p = fake_llm(_a("네!"))
+    houses = _two_houses()
+    future = chat.today_kst() + timedelta(days=5)
+    houses[0].registryViewedAt = future.strftime("%Y.%m.%d")
+    houses[1].registryViewedAt = chat.today_kst().strftime("%Y.%m.%d")
+    chat.reply([_u("등기부 언제 뗐어?")], houses=houses, journeys=[])
+    system = p.calls[0]["system"]
+    assert "-5일" not in system and f"등기부 열람일 {future.strftime('%Y.%m.%d')} ·" in system
+    assert "(오늘 뗀 서류)" in system

@@ -162,7 +162,7 @@
 
 | 필드 | 타입 | 출처 | 설명 |
 |---|---|---|---|
-| `id` | string | [메타] | 항목 식별자: `jeonse_ratio` \| `senior_debt` \| `ownership` \| `insurance` \| `blacklist` |
+| `id` | string | [메타] | 항목 식별자: `jeonse_ratio` \| `senior_debt` \| `ownership` \| `insurance` \| `blacklist` \| `pending`(신청사건 처리중 — 있을 때만, 2026-10-31) |
 | `title` | string | [설명] | 쉬운 질문형 제목 (예: "나보다 먼저 돈 받아갈 빚이 있나요?") |
 | `termSubtitle` | string | [UI] | 전문용어 부제 (예: "선순위 채권 · 근저당권") |
 | `grade` | string | [판정] | 이 항목의 등급 (`"위험"` \| `"확인 필요"` \| `"양호"`) |
@@ -172,7 +172,10 @@
 | `sourceText` | string \| null | [판정] | 판정 출처 (예: "HUG 공식 기준 등 확정 예정" — E-1에서 실제 출처로 교체) |
 | `actionLabel` | string \| null | [UI] | 다음 행동 버튼 라벨 (예: "중개사에게 물어볼 질문 보기", "시세 입력하기"). null이면 버튼 없음 |
 | `termGlossary` | object(map) | [설명] | `easyExplanation` 속 용어→툴팁 설명. 키=용어, 값=설명 문장 (예: `{"근저당권":"집주인이 …"}`) |
-| `explanationSource` | string? | [설명] | **이 카드의 설명 문장을 누가 썼는가** (2026-08-14 D26 추가 · additive). LLM이 쓴 문장이면 **실제 호출된 모델 문자열**(예: `"solar-pro2"`), 검증에 걸려 미리 준비한 문장이 나갔으면 `"준비된 문구"`. 없으면(옛 리포트) 앱이 종전 라벨 `자동 생성`을 쓴다 |
+| `explanationSource` | string? | [설명] | **이 카드의 설명 문장을 누가 썼는가** (2026-08-14 D26 추가 · additive). LLM이 쓴 문장이면 **실제 호출된 모델 문자열**(예: `"solar-pro2"`), 검증에 걸려 미리 준비한 문장이 나갔으면 `"준비된 문구"`. 없으면(옛 리포트) 앱이 종전 라벨 `자동 생성`을 쓴다. 앱은 모델 문자열일 때만 펼침에 '✦ AI 설명'이라고 쓴다(2026-10-31) |
+| `points` | `EvidencePoint[]` | [UI — 규칙 값] | 펼침의 **이 집 숫자** 줄 `{label, value, tone}` — tone = `plain`\|`ok`\|`caution`\|`danger`. 색은 규칙 엔진이 **원값으로 견준 결과**(반올림한 표시값으로 다시 견주지 않는다). 옛 리포트면 `[]`(앱은 예전 상세 상자) (2026-10-31) |
+| `meter` | `EvidenceMeter?` | [UI — 규칙 값] | 기준 막대 `{label, value(%), marks(기준선 %, thresholds.py 그대로), tone}` (2026-10-31) |
+| `todo` | string[] | [UI — 규칙 문장] | **이 집에서 할 일** — 기존 문구에 있던 행동에 이 집 숫자만 끼운 문장(`**굵게**`). AI 아님. 속 용어 풀이는 `termGlossary`에 함께 (2026-10-31) |
 
 - ⚠ `explanationSource`는 **판정 출처가 아니다.** 판정은 언제나 규칙 엔진이고 그 출처는 `sourceText`다.
   설명 계층에만 해당하며, **카드마다 다를 수 있다** — 설명 폴백이 필드 단위라 한 리포트 안에서
@@ -332,6 +335,7 @@ CompareRow {
   action:      string | null, // "recapture" | "analyze"
   actionLabel: string | null,
   group: string | null,      // owner(갑구 소유자) | seizure(갑구 압류·가압류) | debt(을구 빚) | grade(안전도) — 앱이 두 줄로 묶는다(2026-10-26)
+                             // | pending(신청사건 처리중 — 이번 서류에 있으면 danger·changed로 **늘 맨 위**, 끝났으면 neutral·same 한 줄. 대조 항목 수에는 안 센다, 2026-10-31)
   items: CompareItem[]       // added·removed 줄의 항목 — 한 건에 한 줄(2026-10-27). 그 밖의 줄은 []
 }
 CompareItem {
@@ -605,9 +609,11 @@ MarketPriceAlternative {
   예상 낙찰가 = 시세 × 매각가율(그 시도·용도, 최근 12개월 매각가 합 ÷ 감정가 합) · 돌려받을 돈 = min(보증금, max(0, 낙찰가 − 먼저 갚을 빚)).
   용도는 `Report.houseTypes`(분석 때 실거래가·공시가격 매칭 유형으로 정함) — 여럿이면 **가장 낮은 매각가율**, 통건물은 단독·다가구 소계. 시도 매각 건수 30건 미만이거나 주소의 시·도를 못 알아보면 전국 값(데이터 파일의 `전국` 줄만 — 시·도를 더해 만들지 않는다).
   `price`(선택, 원, 1 이상): 시뮬레이터에서 사용자가 넣은 매매 시세 — 이번 계산에만 쓰고 **리포트는 바꾸지 않는다**. 0 이하 → 422.
-- **응답 200** `LossEstimate`: `status`(ok | debt_exceeds | no_price | no_rate) · `deposit` · `basePrice` · `seniorDebt` · `ratePct` · `region` · `regionFallback` · `use` · `useGuessed` · `soldCount` · `period` · `source` · `expectedSale` · `expectedReturn` · `expectedLoss`.
+- **응답 200** `LossEstimate`: `status`(ok | debt_exceeds | no_price | no_rate) · `deposit` · `basePrice` · `seniorDebt` · `ratePct` · `region` · `regionFallback` · `use` · `useGuessed` · `soldCount` · `period` · `source` · `expectedSale` · `expectedReturn` · `expectedLoss`
+  + 최우선변제(2026-10-31, 주택임대차보호법 제8조·시행령 제10·11조 — `priority_repayment.py`): `priorityStatus`(ok | over_cap | blocked_auction | shared | unknown_date | no_table) · `priorityAmount`(돌려받음에 실제로 더한 금액, ok일 때만) · `priorityLimit` · `priorityCap` · `priorityRegion` · `priorityRegionUnsure` · `priorityTableFrom` · `priorityBaseDate`·`priorityBaseKind`(표를 고른 가장 먼저 잡힌 담보) · `priorityHalfCapped` · `prioritySource` · `priorityTableStale`(법제처에서 개정을 알아챘는데 표가 아직 그대로).
+  돌려받을 돈 = min(보증금, 최우선변제 + max(0, 낙찰가 − 최우선변제 − 먼저 갚을 빚)). 단독·다가구는 나눠 받으므로(`shared`) 더하지 않는다.
   - `no_price`: 시세가 없어 계산하지 않는다(보증금을 기준가로 쓰지 않는다). 쓸 매각가율(`ratePct`·`region`·`use`·`soldCount`)은 채워 보낸다 — 화면이 낙찰가 꼬리표를 먼저 보여 준다. `debt_exceeds`: 빚 ≥ 시세인데 매각가율 자료가 없을 때 — 돌려받을 돈 0원(자료가 있으면 그냥 `ok`로 계산해 0원이 나온다). 앱은 `ok`와 같은 모양으로 그린다. `no_rate`: 그 용도의 자료가 없다(지어내지 않는다).
-  - 경매 비용·세금·최우선변제는 아직 넣지 않았다(2단계). 앱은 계산에 **쓴** 근거(기준 · 기간 · 출처)만 적는다.
+  - 경매 비용·세금은 아직 넣지 않았다(2단계). 앱은 계산에 **쓴** 근거(기준 · 기간 · 출처 · 법령)만 적는다.
 - **에러**: **404** 없는 리포트.
 
 ### 3.23 `PATCH /api/reports/{id}` — 입력값 고치기(별칭·보증금·매매 시세) · **기기 id 필요** (2026-10-29 추가)
@@ -755,6 +761,9 @@ Information Extract는 필드를 구조화해주지만 **좌표를 주지 않는
 | `body` | string | 사용자가 지금 할 행동 |
 | `caution` | string? | 추가 주의 (예: 공동명의 전원 동의) |
 | `source` | string? | 이 문장이 어디서 왔는지 (예: `등기부 갑구 — 이 앱이 사진에서 직접 찾은 위치`). 없으면 "앱이 그냥 하는 말"로 읽힌다 |
+| `facts` | string[] | **이 집에서 본 것** — 순위·접수일·권리자 종류('개인'/기관명)·금액 칩 (2026-10-31, `mark_plans.py` 규칙 값). 사람 이름 없음. 옛 리포트면 `[]` |
+| `plan` | string[] | **이 집 맞춤 할 일** — 이 집 날짜·금액을 끼운 규칙 문장(`**굵게**`). 앱은 `body`(기본 확인) 줄 중 여기와 같은 말은 빼고 그린다 (2026-10-31) |
+| `termGlossary` | `{용어: 설명}` | `plan`·`body`·`caution` 속 어려운 말 풀이 — §2.2와 같은 규칙(키가 본문에 글자 그대로) (2026-10-31) |
 
 #### 9.3-a `kind` 목록 (2026-07-28 · 3종 → 15종)
 

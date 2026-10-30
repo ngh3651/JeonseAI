@@ -209,10 +209,14 @@ class RegistryHighlight {
     this.source,
     this.facts = const [],
     this.plan = const [],
+    this.termGlossary = const {},
   });
 
   /// 이 집에서 본 것 — 순위·접수일·권리자 종류·금액 (2026-10-31, 서버 규칙 값). 옛 리포트면 비어 있다.
   final List<String> facts;
+
+  /// 할 일·기본 확인 속 용어 → 풀이 (2026-10-31). 근거 카드 [EvidenceItem.termGlossary]와 같은 규칙 — 옛 리포트면 비어 있다.
+  final Map<String, String> termGlossary;
 
   /// 이 집 맞춤 할 일 — 이 집 숫자를 끼운 규칙 문장(`**굵게**` 포함). 옛 리포트면 비어 있다.
   final List<String> plan;
@@ -293,6 +297,9 @@ class RegistryHighlight {
         source: json['source'] as String?,
         facts: [for (final f in (json['facts'] as List? ?? const [])) f as String],
         plan: [for (final f in (json['plan'] as List? ?? const [])) f as String],
+        termGlossary: {
+          for (final e in ((json['termGlossary'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}',
+        },
       );
 }
 

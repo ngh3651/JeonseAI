@@ -13,6 +13,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/components/source_label.dart' show kLegacyExplanationSource;
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
@@ -313,7 +314,10 @@ class _FindingRowState extends State<FindingRow> {
           ),
           const SizedBox(height: 16),
         ],
-        const _SectionLabel(icon: Icons.auto_awesome, text: 'AI 설명', ai: true),
+        // 'AI 설명'은 **모델이 쓴 카드만**(서버가 카드마다 알려 준다). 준비된 문구·옛 리포트에 'AI'라 쓰면 거짓말이다(2026-07-09 결정)
+        explanationByAi(e.explanationSource)
+            ? const _SectionLabel(icon: Icons.auto_awesome, text: 'AI 설명', ai: true)
+            : const _SectionLabel(icon: Icons.notes_rounded, text: '설명'),
         const SizedBox(height: 6),
         for (int i = 0; i < paragraphs.length; i++) ...[
           if (i > 0) const SizedBox(height: 8),
@@ -334,7 +338,7 @@ class _FindingRowState extends State<FindingRow> {
           const _SectionLabel(icon: Icons.checklist_rounded, text: '이 집에서 할 일'),
           const SizedBox(height: 8),
           for (int i = 0; i < e.todo.length; i++)
-            _TodoRow(index: i + 1, text: e.todo[i]),
+            _TodoRow(index: i + 1, text: e.todo[i], glossary: e.termGlossary),
         ],
         if (e.sourceText != null && e.sourceText!.trim().isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -353,6 +357,13 @@ class _FindingRowState extends State<FindingRow> {
       ],
     );
   }
+}
+
+/// 이 설명을 모델(AI)이 썼나 — 서버가 카드마다 알려 준다(`explanationSource`, 계약 §2.2).
+/// 준비된 문구거나 옛 리포트(알 수 없음)면 'AI'라고 하지 않는다 — 과대 표기 금지(2026-07-09 · 2026-10-31 페르소나 리뷰).
+bool explanationByAi(String? source) {
+  final s = source?.trim() ?? '';
+  return s.isNotEmpty && s != '준비된 문구' && s != kLegacyExplanationSource;
 }
 
 /// 줄표(—, –)를 문장 끊기로 바꾼다 (2026-10-31 규혁 "대시는 AI 티가 난다"). 서버·AI 문장 모두 화면에서 한 번 더.
@@ -546,10 +557,13 @@ class EvidenceMeterBar extends StatelessWidget {
 
 /// 할 일 한 줄 — 번호 원 + 문장(**굵게** 표시)
 class _TodoRow extends StatelessWidget {
-  const _TodoRow({required this.index, required this.text});
+  const _TodoRow({required this.index, required this.text, this.glossary = const {}});
 
   final int index;
   final String text;
+
+  /// 할 일 속 어려운 말(말소·특약 …) 풀이 — 누르면 뜻 (2026-10-31 페르소나 리뷰)
+  final Map<String, String> glossary;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -583,6 +597,7 @@ class _TodoRow extends StatelessWidget {
                 color: AppColorsNext.textStrong,
                 height: 1.45,
               ),
+              glossary: glossary,
             ),
           ),
         ),

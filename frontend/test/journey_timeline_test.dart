@@ -475,7 +475,7 @@ void main() {
       expect(find.koTextContaining('오전 8시'), findsOneWidget);
     });
 
-    testWidgets('날짜 없는 앞 단계는 순서로 추정해 완료 — 잔금이 현재면 가계약금·계약서는 체크', (
+    testWidgets('잔금 날짜만 넣으면 앞 단계는 그대로 — 다음은 가계약금 (2026-10-30 짐작 없앰)', (
       tester,
     ) async {
       await JourneyScheduleStore.instance.save(
@@ -483,19 +483,16 @@ void main() {
         const JourneySchedule().copyWith(JourneyDateKey.balance, _day(6)),
       );
       await _pumpJourney(tester);
-      expect(find.koText('9단계 중 4단계'), findsOneWidget);
-      expect(find.koText('잔금 보내는 날'), findsOneWidget);
-      // 가계약금 칸을 누르면 그 단계 — '완료' 칩, 대조 버튼 없음
-      await _tapChip(tester, 1);
+      expect(find.koText('9단계 중 2단계'), findsOneWidget);
+      expect(find.koText('다음은 가계약금 보내기 전'), findsOneWidget);
       expect(find.koText('가계약금 보내기 전'), findsOneWidget);
-      expect(find.koText('완료'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('journey-compare-button')),
-        findsNothing,
+        findsOneWidget,
       );
     });
 
-    testWidgets('같은 칩을 한 번 더 누르면 완료가 켜지고 꺼진다 — 분석 단계는 늘 완료', (tester) async {
+    testWidgets('같은 칩을 한 번 더 누르면 체크가 켜지고 꺼진다 — 분석 단계는 늘 완료', (tester) async {
       await _pumpJourney(tester);
       // 처음 = 2단계(가계약금) 선택, 대조 버튼 있음
       expect(find.koText('가계약금 보내기 전'), findsOneWidget);
@@ -506,7 +503,7 @@ void main() {
       );
 
       await _tapChip(tester, 1); // 한 번 더 → 완료
-      expect(JourneyProgressStore.instance.manualDone(_jeongjaKey, 1), isTrue);
+      expect(JourneyProgressStore.instance.checkedThrough(_jeongjaKey), 1);
       expect(find.koText('완료'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('journey-compare-button')),
@@ -514,7 +511,7 @@ void main() {
       );
 
       await _tapChip(tester, 1); // 또 한 번 → 꺼짐
-      expect(JourneyProgressStore.instance.manualDone(_jeongjaKey, 1), isFalse);
+      expect(JourneyProgressStore.instance.checkedThrough(_jeongjaKey), 0);
       expect(
         find.byKey(const ValueKey('journey-compare-button')),
         findsOneWidget,
@@ -522,8 +519,16 @@ void main() {
 
       await _tapChip(tester, 0); // 분석 단계로
       await _tapChip(tester, 0); // 한 번 더 눌러도 그대로 완료
-      expect(JourneyProgressStore.instance.manualDone(_jeongjaKey, 0), isNull);
+      expect(JourneyProgressStore.instance.checkedThrough(_jeongjaKey), 0);
       expect(find.koText('완료'), findsOneWidget);
+    });
+
+    testWidgets('순서를 건너뛰면 체크되지 않고 한 줄로 알려 준다', (tester) async {
+      await _pumpJourney(tester);
+      await _tapChip(tester, 3); // 잔금으로
+      await _tapChip(tester, 3); // 한 번 더 → 막힘
+      expect(JourneyProgressStore.instance.checkedThrough(_jeongjaKey), 0);
+      expect(find.koText('가계약금부터 체크해 주세요'), findsOneWidget);
     });
 
     testWidgets('[자세히]를 누르면 왜·어디서가 같이 펼쳐지고, 단계를 바꾸면 접힌다', (tester) async {
@@ -621,7 +626,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('compare-result-ok')));
       await tester.pumpAndSettle();
       // 그 단계 자동 완료 + 기록
-      expect(JourneyProgressStore.instance.manualDone(_jeongjaKey, 1), isTrue);
+      expect(JourneyProgressStore.instance.checkedThrough(_jeongjaKey), 1);
       final log = JourneyProgressStore.instance.logFor(_jeongjaKey).single;
       expect(log.changed, isFalse);
       expect(log.stageTitle, '가계약금 보내기 전');

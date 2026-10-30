@@ -143,7 +143,7 @@ void main() {
 
       expect(platform.permissionRequests, 1);
       expect(platform.scheduled.length, 2); // 하루 전 8시 + 당일 8시
-      expect(find.koTextContaining('알림을 맞춰 뒀어요'), findsOneWidget);
+      expect(find.koTextContaining('첫 알림이 와요'), findsOneWidget);
     });
 
     testWidgets('거절해도 아무 안내도 띄우지 않는다 (2026-10-26)', (tester) async {
@@ -188,7 +188,7 @@ void main() {
       final first = describeReminderTime(
         DateTime(_day(4).year, _day(4).month, _day(4).day, 8),
       );
-      expect(find.koText('알림을 맞춰 뒀어요 · 첫 알림 $first'), findsOneWidget);
+      expect(find.koText('$first에 첫 알림이 와요'), findsOneWidget);
     });
 
     testWidgets('저장 뒤 가족·배우자에게 보내기 버튼이 없다 (2026-10-26 기능 뺌)', (tester) async {
@@ -221,7 +221,7 @@ void main() {
 
       expect(find.koText('그날 알림을 보내 드릴까요?'), findsNothing);
       // 알림을 약속하지 않고, 꺼져 있다는 안내도 띄우지 않는다
-      expect(find.koTextContaining('알림을 맞춰 뒀어요'), findsNothing);
+      expect(find.koTextContaining('첫 알림이 와요'), findsNothing);
       expect(find.byType(SnackBar), findsNothing);
     });
   });

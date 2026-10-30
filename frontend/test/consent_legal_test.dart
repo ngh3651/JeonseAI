@@ -318,7 +318,7 @@ void main() {
         'house-1',
         JourneySchedule(dates: {JourneyDateKey.balance: DateTime(2026, 11, 20)}),
       );
-      await JourneyProgressStore.instance.setDone('house-1', 2, true);
+      await JourneyProgressStore.instance.setCheckedThrough('house-1', 2);
       final chats = MemoryChatHistoryRepository();
       await chats.save(
         ChatConversation(

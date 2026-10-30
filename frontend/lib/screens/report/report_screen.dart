@@ -17,7 +17,6 @@ import 'package:provider/provider.dart';
 // import '../../models/market_price_source.dart' show marketPriceSourceLabel;
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_callout.dart';
-import '../../design_system/components/app_card.dart';
 import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/components/risk_badge.dart';
 import '../../design_system/components/safety_gauge.dart';
@@ -41,6 +40,7 @@ import '../common/share_feedback.dart';
 import '../../utils/korean_date.dart';
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
+import 'journey_chapter.dart';
 import 'retake_notice_card.dart';
 import '../legal/notices.dart';
 import 'report_inputs_sheet.dart';
@@ -258,9 +258,11 @@ class _ReportScreenState extends State<ReportScreen> {
                 // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
                 ?_priceGapCard(report),
                 const SizedBox(height: AppSpacing.xl),
-                AppText('다음 행동', style: AppTypography.title),
-                const SizedBox(height: AppSpacing.md),
-                ..._actionArea(context, report),
+                // 5장 '계약 여정' (2026-10-30) — 다음 행동 칸의 마지막 한 줄이 장으로 올라왔다
+                JourneyChapter(
+                  propertyKey: propertyKeyOfReport(report, _history),
+                  onOpen: () => _openJourney(report),
+                ),
                 const SizedBox(height: AppSpacing.xxl),
                 _disclaimer(report),
                 const SizedBox(height: AppSpacing.xxxl),
@@ -775,41 +777,10 @@ class _ReportScreenState extends State<ReportScreen> {
     ].join('\n');
   }
 
-  /// 다음 행동 — 예전 2×2 그리드(2026-08-14 D12)의 칸이 리포트 장으로 하나씩 올라가
-  /// (손실 → 2장, 판례 → 3장, 질문 → 4장 · 2026-10-29) **계약 여정 한 줄**만 남았다.
-  List<Widget> _actionArea(BuildContext context, AnalysisReport report) {
-    // '중개사에게 물어볼 질문'은 리포트 4장으로 올라갔다 (2026-10-29) — 남은 건 계약 여정 하나라
-    // 반쪽 칸 대신 한 줄 넓은 카드로 그린다.
-    void openJourney() {
-      // 이 리포트의 집 여정을 연다 — 마지막으로 골라 둔 다른 집이 열리지 않게 (2026-10-29)
-      JourneyScheduleStore.instance.select(propertyKeyOfReport(report, _history));
-      context.push('/checklist');
-    }
-
-    return [
-      AppCard(
-        key: const ValueKey('report-action-journey'),
-        onTap: openJourney,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.md,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.fact_check_outlined,
-              color: AppColors.primary,
-              size: AppSize.iconLg,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: AppText('계약 여정', style: AppTypography.bodyStrong),
-            ),
-            Icon(Icons.chevron_right, color: AppColors.primary),
-          ],
-        ),
-      ),
-    ];
+  /// 이 리포트의 집 여정을 연다 — 마지막으로 골라 둔 다른 집이 열리지 않게 (2026-10-29)
+  void _openJourney(AnalysisReport report) {
+    JourneyScheduleStore.instance.select(propertyKeyOfReport(report, _history));
+    context.push('/checklist');
   }
 
   /// D4: 전역 면책 안내 — 리포트 최하단 상시 노출(캡처 공유 시 자연 포함).

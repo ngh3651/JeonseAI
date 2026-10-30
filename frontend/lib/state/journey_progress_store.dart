@@ -174,7 +174,7 @@ class JourneyProgressStore extends ChangeNotifier {
 
   static const String _key = 'journey_progress_v1';
 
-  /// 매물 키 → (단계 번호 → 사용자가 정한 완료 여부). 없으면 날짜로 정한다.
+  /// 매물 키 → (단계 번호 → 체크). 1부터 이어진 true만 센다([checkedThrough]).
   final Map<String, Map<int, bool>> _manual = {};
 
   /// 매물 키 → 대조 기록 (최신이 앞)
@@ -223,12 +223,21 @@ class JourneyProgressStore extends ChangeNotifier {
     _restored = false;
   }
 
-  /// 사용자가 정한 완료 여부. 정하지 않았으면 null.
-  bool? manualDone(String propertyKey, int stageIndex) =>
-      _manual[propertyKey]?[stageIndex];
+  /// 앞에서부터 이어서 체크한 마지막 단계 번호(0 = 분석만) — 체크는 순서대로만 한다 (2026-10-30).
+  /// 예전에 건너뛰며 켜 둔 기록(1·3·5)은 앞에서부터 이어진 것(1)만 센다.
+  int checkedThrough(String propertyKey) {
+    final m = _manual[propertyKey];
+    if (m == null) return 0;
+    int k = 0;
+    while (m[k + 1] == true) {
+      k++;
+    }
+    return k;
+  }
 
-  Future<void> setDone(String propertyKey, int stageIndex, bool done) async {
-    (_manual[propertyKey] ??= {})[stageIndex] = done;
+  /// 1단계부터 [through]단계까지 체크로 저장한다 (나머지는 지운다).
+  Future<void> setCheckedThrough(String propertyKey, int through) async {
+    _manual[propertyKey] = {for (int i = 1; i <= through; i++) i: true};
     notifyListeners();
     await _persist();
   }
@@ -249,8 +258,11 @@ class JourneyProgressStore extends ChangeNotifier {
   /// 대조를 마쳤다 — 기록을 맨 위에 넣고, 그 단계를 완료로 켠다.
   Future<void> addCompare(String propertyKey, CompareLogEntry entry) async {
     (_logs[propertyKey] ??= []).insert(0, entry);
+    // 그 단계에서 대조했다 = 그 단계까지 끝났다 (체크는 앞에서부터 이어진다)
     final stage = entry.stageIndex;
-    if (stage != null) (_manual[propertyKey] ??= {})[stage] = true;
+    if (stage != null && stage > checkedThrough(propertyKey)) {
+      _manual[propertyKey] = {for (int i = 1; i <= stage; i++) i: true};
+    }
     notifyListeners();
     await _persist();
   }

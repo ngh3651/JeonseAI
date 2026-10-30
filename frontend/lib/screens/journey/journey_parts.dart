@@ -195,6 +195,19 @@ class HouseRow extends StatelessWidget {
 
 // ── 흰 카드 ────────────────────────────────────────────────────────────────
 
+/// 여정의 짧은 안내 한 줄 — 3초 뒤 사라지고, 옆으로 밀어도 사라진다 (2026-10-30).
+void showJourneySnack(BuildContext context, String message) {
+  ScaffoldMessenger.maybeOf(context)
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: AppText(message),
+        duration: const Duration(seconds: 3),
+        dismissDirection: DismissDirection.horizontal,
+      ),
+    );
+}
+
 class JourneyCard extends StatelessWidget {
   const JourneyCard({
     super.key,
@@ -409,7 +422,8 @@ class ScheduleCard extends StatelessWidget {
   final JourneyProgress progress;
   final VoidCallback onEdit;
 
-  /// 알림이 켜져 있을 때만 "일정마다 오전 8시에 알려 드려요"
+  /// 알림이 켜져 있으면 "일정마다 오전 8시에 알려 드려요". 날짜를 넣기 전에는 늘 보인다 —
+  /// 처음 본 사람도 날짜를 넣으면 무엇이 좋은지 알게 (2026-10-30 규혁).
   final bool showNotifyLine;
 
   @override
@@ -455,7 +469,7 @@ class ScheduleCard extends StatelessWidget {
               ),
             ),
           ),
-          if (showNotifyLine && hasAny) ...[
+          if (showNotifyLine || !hasAny) ...[
             const SizedBox(height: 12),
             Row(
               children: [
@@ -837,8 +851,11 @@ class StageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final DateTime? date = progress.dateOf(index);
     final Widget? chip = _statusChip(date);
+    final bool hasCompare = onCompare != null && progress.showsCompare(index);
     return JourneyCard(
       flash: flash,
+      // 마지막 할 일 줄로 끝나면 아래 여백을 줄 사이 여백만큼만 — 대조 버튼이 없을 때 아래가 넓어 보이지 않게 (2026-10-30)
+      padding: EdgeInsets.fromLTRB(20, 20, 20, hasCompare ? 20 : 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -887,14 +904,14 @@ class StageCard extends StatelessWidget {
                 thickness: 1,
                 color: AppColorsNext.divider,
               ),
-            _ItemRow(
+            JourneyItemRow(
               number: i + 1,
               item: stage.items[i],
               open: openItems.contains(i),
               onToggle: () => onToggleItem(i),
             ),
           ],
-          if (onCompare != null && progress.showsCompare(index)) ...[
+          if (hasCompare) ...[
             const SizedBox(height: 12),
             CompareButton(subtitle: compareSubtitle, onPressed: onCompare!),
           ],
@@ -972,18 +989,24 @@ class StageCard extends StatelessWidget {
 }
 
 /// 할 일 한 줄 — 번호 네모(caution) + 제목 + [자세히 ⌄]. 펼치면 "왜 ·" / "어디서 ·".
-class _ItemRow extends StatelessWidget {
-  const _ItemRow({
+///
+/// [preview] = 리포트 5장 미리보기 — [자세히 ⌄]는 보이지 않지만 **자리는 그대로** 둔다.
+/// 글이 줄을 바꾸는 자리가 여정 화면과 똑같아지게 (2026-10-30 규혁 — "보증금 / 기록 받기").
+class JourneyItemRow extends StatelessWidget {
+  const JourneyItemRow({
+    super.key,
     required this.number,
     required this.item,
-    required this.open,
-    required this.onToggle,
+    this.open = false,
+    this.onToggle,
+    this.preview = false,
   });
 
   final int number;
   final JourneyItem item;
   final bool open;
-  final VoidCallback onToggle;
+  final VoidCallback? onToggle;
+  final bool preview;
 
   @override
   Widget build(BuildContext context) {
@@ -1024,13 +1047,26 @@ class _ItemRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _DetailButton(open: open, onTap: onToggle),
+              if (preview)
+                ExcludeSemantics(
+                  child: IgnorePointer(
+                    child: Visibility(
+                      visible: false,
+                      maintainSize: true,
+                      maintainAnimation: true,
+                      maintainState: true,
+                      child: _DetailButton(open: false, onTap: () {}),
+                    ),
+                  ),
+                )
+              else
+                _DetailButton(open: open, onTap: onToggle ?? () {}),
             ],
           ),
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             alignment: Alignment.topCenter,
-            child: !open
+            child: (preview || !open)
                 ? const SizedBox(width: double.infinity)
                 : Padding(
                     padding: const EdgeInsets.only(left: 32, top: 8),

@@ -277,22 +277,58 @@ def claim_device_records(device_id: str | None, owner: str) -> int:
 # ── 기기 주인 값 가리기 (2026-10-30 보안) ─────────────────────────────────────────
 # 로그인 없이 둘러보는 사람의 기록 주인은 원래 **기기 id 원문**이었다. DB가 새면 그 값을 `X-Device-Id`에 실어
 # 그 사람의 앞으로의 기록까지 볼 수 있었다 → 열쇠(`DATA_SECRET`)가 있으면 HMAC 값(`dv-…`)을 주인으로 쓴다.
-# 원문으로 쌓인 옛 기록은 그 기기가 처음 다시 부를 때 옮긴다(이 프로세스에서 한 번).
+# 원문으로 쌓인 옛 기록은 **서버가 켜질 때 한꺼번에** 옮긴다([mask_all_device_owners] — 다시 오지 않는 기기의
+# 원문도 DB에 남지 않게). 그 정리가 끝나기 전의 몇 초 동안만, 처음 다시 부르는 기기를 요청 때 옮긴다.
 
 _adopted: set[str] = set()
 _adopted_lock = threading.Lock()
+#: 원문 주인 값이 DB에 남아 있을 수 있나 — 켜질 때 정리가 끝나면 False(그 뒤로는 요청마다 옮기기를 하지 않는다:
+#: 무작위 기기 id를 보내는 요청마다 쓰기가 생기고 `_adopted`가 끝없이 커지는 것을 막는다 — 2026-10-30 보안 리뷰)
+_raw_owners_remain = True
+
+
+def mask_all_device_owners() -> int:
+    """DB에 남은 **기기 id 원문** 주인 값을 모두 가린 값(`dv-…`)으로 옮긴다 → 옮긴 주인 수. 열쇠가 없으면 0.
+
+    리포트·대조 기준·재판정 재료·캐시 쪽지·패스(`device:<원문>`)를 모두 본다. 여러 번 불러도 같다.
+    """
+    global _raw_owners_remain
+    if not sealing.enabled():
+        return 0
+    device_prefix = pass_owner_key("")  # "device:"
+    raw = store.raw_device_owners()
+    raw |= {
+        o for o in analysis_cache.owners() if not o.startswith((sealing.DEVICE_OWNER_PREFIX, ACCOUNT_PREFIX))
+    }
+    raw |= {
+        key[len(device_prefix):]
+        for key in payments.owner_keys()
+        if key.startswith(device_prefix)
+        and not key[len(device_prefix):].startswith((sealing.DEVICE_OWNER_PREFIX, ACCOUNT_PREFIX))
+    }
+    for device_id in raw:
+        owner = sealing.device_owner(device_id)
+        store.adopt_owner(device_id, owner)
+        analysis_cache.move_owner(device_id, owner)
+        payments.move_owner(pass_owner_key(device_id), pass_owner_key(owner))
+    _raw_owners_remain = False
+    if raw:
+        _log.info(f"[보안] 기기 id 원문으로 남아 있던 주인 {len(raw)}개를 가린 값으로 옮겼어요")
+    return len(raw)
 
 
 def device_owner(device_id: str) -> str:
     """기기 id → 기록의 주인 값. 열쇠가 없으면 원문 그대로(예전과 같다).
 
-    처음 보는 기기면 원문으로 쌓인 기록(리포트·대조 기준·재료·캐시 쪽지·패스)을 가린 주인 값으로 옮긴다.
+    켜질 때 정리([mask_all_device_owners])가 끝나기 전이면, 처음 보는 기기의 원문 기록을 가린 주인 값으로 옮긴다.
     """
     owner = sealing.device_owner(device_id)
     if owner == device_id:
         return owner
     if device_id.lower().startswith(sealing.DEVICE_OWNER_PREFIX):
         # 가린 주인 값을 기기 id로 보낸 경우 — 그 값의 기록을 옮겨 오면 남의 기록을 빼앗는 길이 된다(라우터가 400으로 먼저 막는다)
+        return owner
+    if not _raw_owners_remain:
         return owner
     with _adopted_lock:
         if device_id in _adopted:
@@ -312,8 +348,10 @@ def device_owner(device_id: str) -> str:
 
 
 def reset_adopted_for_test() -> None:
+    global _raw_owners_remain
     with _adopted_lock:
         _adopted.clear()
+    _raw_owners_remain = True
 
 
 def seal_existing_profiles() -> int:
@@ -411,6 +449,10 @@ def sweep_inactive_guests(*, days: int | None = None, now: datetime | None = Non
     removed = 0
     for owner, moment in last.items():
         if not owner or moment is None or moment >= cutoff:
+            continue
+        # 지우기 직전에 한 번 더 — 계산과 삭제 사이에 새로 분석·결제했으면 남긴다(2026-10-30 보안 리뷰)
+        recheck = [_when(t) for t in (store.last_report_at(owner), payments.last_pass_at(pass_owner_key(owner))) if t]
+        if any(t is None or t >= cutoff for t in recheck):
             continue
         store.delete_owner(owner)
         analysis_cache.delete_owner(owner)

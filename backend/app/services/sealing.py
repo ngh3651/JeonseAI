@@ -8,7 +8,7 @@
 
 열쇠는 환경변수 `DATA_SECRET` **하나**다(32자 이상 무작위). 여기서 용도별 열쇠를 따로 뽑는다(같은 열쇠를 두 곳에 쓰지 않게).
 ⚠ **한 번 정하면 바꾸지 않는다** — 바꾸면 잠근 기록을 못 읽고, 기기 주인 값이 달라져 기록이 안 보인다.
-비어 있으면(로컬 개발·테스트) 예전처럼 평문으로 쓰고 기기 id도 그대로 쓴다 — 헬스체크 `dataSealed`로 보인다.
+비어 있으면(로컬 개발·테스트) 예전처럼 평문으로 쓰고 기기 id도 그대로 쓴다 — 서버가 켜질 때 로그 `[보안]` 한 줄로 보인다.
 
 막는 것: 볼륨·백업·DB 파일만 새는 경우. 서버 프로세스 자체를 빼앗기면(환경변수까지) 막지 못한다.
 """
@@ -65,8 +65,20 @@ def _keys() -> tuple[Fernet | None, bytes | None]:
 
 
 def enabled() -> bool:
-    """저장 데이터 잠금이 켜져 있나 (헬스체크 `dataSealed`)."""
+    """저장 데이터 잠금이 켜져 있나."""
     return _keys()[0] is not None
+
+
+def key_fingerprint() -> str | None:
+    """지금 열쇠의 지문(16자) — 열쇠 자체는 드러나지 않는다. 열쇠가 없으면 None.
+
+    DB(`meta.data_key_fp`)에 적어 두고, 서버가 켜질 때 견준다 — 열쇠가 바뀌었거나 빠졌으면 크게 알린다
+    (바뀐 열쇠로는 잠근 기록을 못 열고 기기 기록이 안 보인다 — 2026-10-30 보안 리뷰).
+    """
+    if not enabled():
+        return None
+    secret = settings.env_str("DATA_SECRET").encode("utf-8")
+    return hmac.new(secret, b"jeonseai:key-check:v1", hashlib.sha256).hexdigest()[:16]
 
 
 def is_sealed(value: str | None) -> bool:

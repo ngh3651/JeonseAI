@@ -23,6 +23,7 @@ import re
 import secrets
 import sqlite3
 import threading
+import time
 from contextlib import closing
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -155,10 +156,11 @@ def reset() -> None:
 
     테스트가 "서버 재시작"을 흉내 낼 때 쓴다(파일은 그대로 남는다).
     """
-    global _store
+    global _store, _writable_cache
     with _store_lock:
         _store = None
     _cases_cache.clear()
+    _writable_cache = None
 
 
 def clear_all_cases() -> None:
@@ -171,16 +173,28 @@ def name_salt() -> bytes:
     return _db().name_salt
 
 
+_writable_cache: tuple[float, bool] | None = None
+#: 쓰기 확인을 다시 하는 간격(초) — 헬스체크는 누구나 부를 수 있어, 부를 때마다 DB에 쓰지 않는다(2026-10-30 보안 리뷰)
+_WRITABLE_TTL_SECONDS = 60.0
+
+
 def writable() -> bool:
     """기록 DB에 지금 **쓸 수 있는가** — 헬스체크(`historyDb`)용. 예외를 밖으로 내지 않는다.
 
     볼륨이 root 소유로 붙어 못 쓰는 경우(Railway `RAILWAY_RUN_UID=0` 누락)를 바로 보이게 한다.
     """
+    global _writable_cache
+    now = time.monotonic()
+    cached = _writable_cache
+    if cached is not None and now - cached[0] < _WRITABLE_TTL_SECONDS and cached[1]:
+        return True
     try:
         _db().execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('health_probe', ?)", (_now_iso(),))
-        return True
+        ok = True
     except Exception:  # noqa: BLE001 — 헬스체크는 참/거짓만 말한다
-        return False
+        ok = False
+    _writable_cache = (now, ok)
+    return ok
 
 
 # ── 리포트 ───────────────────────────────────────────────────────────────────
@@ -485,6 +499,36 @@ def move_owner(from_owner: str, to_owner: str) -> int:
     return int(moved)
 
 
+def check_key_fingerprint() -> str:
+    """열쇠 지문을 DB와 견준다 → 'off'(열쇠 없음·처음부터) · 'new'(처음 적음) · 'ok' · 'mismatch'(바뀜) · 'missing'(빠짐)."""
+    current = sealing.key_fingerprint()
+    db = _db()
+    rows = db.execute("SELECT value FROM meta WHERE key = 'data_key_fp'")
+    stored = rows[0][0] if rows else None
+    if current is None:
+        return "missing" if stored else "off"
+    if stored is None:
+        db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('data_key_fp', ?)", (current,))
+        return "new"
+    return "ok" if stored == current else "mismatch"
+
+
+def raw_device_owners() -> set[str]:
+    """아직 기기 id **원문**이 주인인 값들 — 가린 값(`dv-`)·계정(`acct-`)이 아닌 것. 서버가 켜질 때 한꺼번에 옮긴다."""
+    owners: set[str] = set()
+    for table, column in (("reports", "device_id"), ("snapshots", "device_id"), ("rejudge_kits", "device_id")):
+        for (owner,) in _db().execute(f"SELECT DISTINCT {column} FROM {table}"):
+            if owner and not owner.startswith((sealing.DEVICE_OWNER_PREFIX, "acct-")):
+                owners.add(owner)
+    return owners
+
+
+def last_report_at(owner: str) -> str | None:
+    """그 주인의 가장 최근 리포트를 만든 시각(ISO) — 지우기 직전에 다시 확인할 때."""
+    rows = _db().execute("SELECT MAX(created_at) FROM reports WHERE device_id = ?", (owner,))
+    return rows[0][0] if rows and rows[0][0] else None
+
+
 def last_report_by_owner() -> dict[str, str]:
     """주인 → 그 주인의 가장 최근 리포트를 만든 시각(ISO). 오래 쓰지 않은 기기 칸을 찾는 데 쓴다(2026-10-30)."""
     rows = _db().execute("SELECT device_id, MAX(created_at) FROM reports GROUP BY device_id")
@@ -527,8 +571,13 @@ def seal_existing() -> int:
     for table, column in SEALED_COLUMNS:
         rows = db.execute(f"SELECT rowid, {column} FROM {table} WHERE {column} NOT LIKE ?", (sealing.PREFIX + "%",))
         for rowid, value in rows:
-            db.execute(f"UPDATE {table} SET {column} = ? WHERE rowid = ?", (sealing.seal(value), rowid))
-            count += 1
+            # 읽은 값이 **그대로일 때만** 덮어쓴다 — 그 사이 고치기(PATCH)가 끼었거나 행이 지워지고 rowid가
+            # 다른 행에 다시 쓰였으면 건너뛴다(낡은 값·남의 값으로 덮어쓰지 않게, 2026-10-30 보안 리뷰)
+            changed = db.execute(
+                f"UPDATE {table} SET {column} = ? WHERE rowid = ? AND {column} = ? RETURNING rowid",
+                (sealing.seal(value), rowid, value),
+            )
+            count += len(changed)
     if count:
         with db._lock, closing(db._connect()) as conn:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")

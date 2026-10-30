@@ -248,6 +248,11 @@ def move_owner(from_owner: str, to_owner: str) -> None:
     )
 
 
+def owners() -> list[str]:
+    """쪽지의 주인 값 전부 — 원문 기기 주인 값을 가린 값으로 옮길 때."""
+    return [o for (o,) in _execute("SELECT DISTINCT device_id FROM analysis_cache") if o]
+
+
 def delete_owner(owner: str) -> None:
     """회원 탈퇴 — 그 계정의 쪽지를 전부 지운다."""
     if owner:

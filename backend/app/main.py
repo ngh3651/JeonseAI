@@ -108,8 +108,8 @@ def _start_housekeeping() -> None:
     threading.Thread(target=_housekeeping, name="housekeeping", daemon=True).start()
 
 
-def _housekeeping(first_delay: float = 60.0, every: float = 6 * 3600.0) -> None:
-    """하루 네 번 — ① 마지막으로 쓴 지 1년(`GUEST_RECORD_DAYS`)이 지난 기기 칸의 기록 ② 기간 지난 캐시 쪽지를 지운다.
+def _housekeeping(first_delay: float = 60.0, every: float = 3600.0) -> None:
+    """한 시간마다 — ① 마지막으로 쓴 지 1년(`GUEST_RECORD_DAYS`)이 지난 기기 칸의 기록 ② 기간 지난 캐시 쪽지를 지운다.
 
     처리방침의 약속("로그인 없이 쓴 기록은 1년", "같은 사진 확인 값은 24시간")을 사람 손 없이 지키는 곳.
     실패해도 서버는 돈다 — 다음 차례에 다시 한다. 로그에는 지운 수와 오류 종류만 남는다.
@@ -127,16 +127,36 @@ def _housekeeping(first_delay: float = 60.0, every: float = 6 * 3600.0) -> None:
 
 
 def _seal_existing() -> None:
+    """서버가 켜질 때 뒤에서 한 번 — 열쇠 확인 · 기기 id 원문 주인 값 가리기 · 옛 평문 잠그기 · 상태 한 줄 로그.
+
+    보안 설정은 공개 헬스체크(`GET /`)에 싣지 않고 **배포 로그**에만 남긴다(2026-10-30 보안 리뷰 — 바깥에서 설정을 엿보지 못하게).
+    Railway → Deployments → Logs에서 `[보안]` 줄을 본다.
+    """
     try:
         from .services import accounts, sealing, store
 
+        device_rule = "기기 id 필수" if settings.require_device_id() else "⚠ 기기 id 없이도 받음(REQUIRE_DEVICE_ID=0)"
+        key_state = store.check_key_fingerprint()
+        if key_state == "mismatch":
+            logger.error(
+                "[보안] ⚠⚠ DATA_SECRET이 예전과 달라요 — 예전에 잠근 기록을 열 수 없고 기기 기록이 안 보여요. "
+                "Railway 변수를 예전 값으로 되돌리세요"
+            )
+        elif key_state == "missing":
+            logger.error(
+                "[보안] ⚠⚠ DATA_SECRET이 빠졌어요 — 예전에 잠근 기록을 열 수 없고 새 기록은 잠기지 않아요. "
+                "Railway 변수를 예전 값으로 되돌리세요"
+            )
         if not sealing.enabled():
-            if settings.data_secret_set():
-                return  # 짧은 열쇠 — sealing이 이미 경고를 남겼다
-            logger.info("[보안] DATA_SECRET 없음 — 기록을 잠그지 않고 저장합니다(로컬 개발용)")
-            return
+            if not settings.data_secret_set():
+                logger.info(f"[보안] DATA_SECRET 없음 — 기록을 잠그지 않고 저장합니다(로컬 개발용) · {device_rule}")
+            return  # 짧은 열쇠면 sealing이 이미 경고를 남겼다
+        owners = accounts.mask_all_device_owners()
         sealed = store.seal_existing() + accounts.seal_existing_profiles()
-        logger.info(f"[보안] 저장 데이터 잠금 켜짐 — 옛 평문 {sealed}건을 잠금")
+        state = "열쇠 확인됨" if key_state in ("ok", "new") else "⚠ 열쇠가 예전과 다름"
+        logger.info(
+            f"[보안] 저장 데이터 잠금 켜짐 · {state} · {device_rule} — 옛 평문 {sealed}건 잠금 · 기기 주인 값 {owners}개 가림"
+        )
     except Exception as e:  # noqa: BLE001 — 잠그기가 실패해도 서버는 돈다(새 기록은 잠겨서 쓰인다)
         logger.error(f"[보안] ⚠ 옛 기록 잠그기 실패 ({type(e).__name__})")
 
@@ -264,8 +284,7 @@ app.router.routes.extend(auth.router.routes)  # 카카오 로그인·로그아�
 # 예전엔 모든 웹사이트를 허용(`*`)해 두었다. 웹 버전을 만들면 그 도메인만 허용하는 설정을 다시 넣는다.
 
 
-class _BodyTooLarge(Exception):
-    pass
+_MSG_BODY_TOO_LARGE = "보낸 사진이 너무 커요. 사진 수를 줄이거나 다시 찍어 주세요"
 
 
 class LimitRequestBody:
@@ -273,6 +292,10 @@ class LimitRequestBody:
 
     예전엔 업로드를 끝까지 받아 메모리에 올린 뒤에야 용량을 봤다 → 아주 큰 파일 하나로 서버가 죽을 수 있었다.
     `Content-Length`가 크면 바로 거절하고, 길이를 밝히지 않고 흘려보내는 본문도 받은 바이트를 세어 넘으면 끊는다.
+
+    넘는 순간 예외를 던지지 않고 **'연결 끊김'을 건넨다** — 안쪽의 `@app.middleware("http")` 층이 받기를 작업 묶음
+    (TaskGroup)으로 감싸 예외가 ExceptionGroup이 되고, FastAPI가 그것을 영어 400("There was an error parsing the
+    body")으로 바꿨다(2026-10-30 보안 리뷰 재현). 그래서 안쪽이 무엇을 답하든 그 답을 버리고 우리가 한국어 413을 보낸다.
     """
 
     def __init__(self, app, max_bytes: int) -> None:
@@ -292,34 +315,46 @@ class LimitRequestBody:
                 except ValueError:
                     pass
         received = 0
+        exceeded = False
         started = False
+        rejected = False
 
         async def limited_receive():
-            nonlocal received
+            nonlocal received, exceeded
+            if exceeded:
+                return {"type": "http.disconnect"}
             message = await receive()
             if message.get("type") == "http.request":
                 received += len(message.get("body", b""))
                 if received > self.max_bytes:
-                    raise _BodyTooLarge()
+                    exceeded = True
+                    return {"type": "http.disconnect"}
             return message
 
-        async def tracking_send(message):
-            nonlocal started
+        async def guarded_send(message):
+            nonlocal started, rejected
+            if exceeded and not started:
+                # 상한을 넘은 요청 — 안쪽의 답(400·500 등)은 버리고 413을 한 번만 보낸다
+                if not rejected:
+                    rejected = True
+                    await self._reject(send)
+                return
             if message.get("type") == "http.response.start":
                 started = True
             await send(message)
 
         try:
-            await self.app(scope, limited_receive, tracking_send)
-        except _BodyTooLarge:
-            if not started:
-                await self._reject(send)
+            await self.app(scope, limited_receive, guarded_send)
+        except Exception:
+            if not exceeded:
+                raise
+        if exceeded and not started and not rejected:
+            rejected = True
+            await self._reject(send)
 
     @staticmethod
     async def _reject(send) -> None:
-        body = json.dumps(
-            {"detail": "보낸 사진이 너무 커요. 사진 수를 줄이거나 다시 찍어 주세요"}, ensure_ascii=False
-        ).encode("utf-8")
+        body = json.dumps({"detail": _MSG_BODY_TOO_LARGE}, ensure_ascii=False).encode("utf-8")
         await send(
             {
                 "type": "http.response.start",
@@ -361,9 +396,6 @@ def health_check():
         "upstageKey": bool(settings.env_str("UPSTAGE_API_KEY")),
         "molitKey": bool(settings.env_str("MOLIT_API_KEY")),
         "lawOc": bool(settings.env_str("LAW_API_OC")),
-        # 보안 (2026-10-30) — 기록을 잠가 저장하는가 · 기기 id 없는 요청을 막는가
-        "dataSealed": _data_sealed(),
-        "deviceIdRequired": settings.require_device_id(),
     }
     # 판례 자동 업데이트 결과 (2026-10-24) — 로그를 열지 않고 "법제처에서 받아 왔나"를 본다. 날짜·성공 여부·실패 종류만.
     try:
@@ -384,10 +416,3 @@ def health_check():
     return body
 
 
-def _data_sealed() -> bool:
-    try:
-        from .services import sealing
-
-        return sealing.enabled()
-    except Exception:  # noqa: BLE001 — 헬스체크는 절대 실패하지 않는다
-        return False

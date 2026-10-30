@@ -113,30 +113,43 @@ def _read_images(files: list[UploadFile], *, empty_detail: str) -> list[tuple[st
             continue
         if len(data) > MAX_UPLOAD_BYTES:
             raise too_big
-        _check_pixels(data)
-        images.append((f.filename or "page.jpg", data))
+        ext = _photo_ext(data)
+        # 이름은 서버가 정한다 — 보낸 쪽 파일 이름(확장자)으로 형식(MIME)이 정해지거나 로그에 남지 않게
+        images.append((f"page_{len(images) + 1}.{ext}", data))
     if not images:
         raise HTTPException(status_code=400, detail=empty_detail)
     return images
 
 
-def _check_pixels(data: bytes) -> None:
-    """그림 머리만 읽어 화소 수를 본다 — 압축 폭탄(작은 파일·거대한 화소)을 디코딩 **전에** 막는다.
+#: 받는 사진 형식 → 확장자. 앱은 늘 JPEG로 바꿔 보낸다(registry_upload_service.dart). PNG는 화면 캡처용.
+_PHOTO_FORMATS = {"JPEG": "jpg", "PNG": "png"}
 
-    그림으로 열리지 않는 파일은 여기서 막지 않는다(뒤의 촬영 검사·문서 검사가 '등기부가 아닌 사진'으로 안내한다).
+
+def _photo_ext(data: bytes) -> str:
+    """**한 장짜리 JPEG·PNG 사진만** 받는다 → 확장자. 아니면 400 (2026-10-30 보안).
+
+    그림 머리만 읽어 형식·장수·화소 수를 본다 — 디코딩 **전에** 압축 폭탄(작은 파일·거대한 화소)을 막는다.
+    예전엔 그림으로 열리지 않는 파일을 그냥 통과시켜, 이름만 `.pdf`인 수백 쪽 PDF 한 개가 IE·OCR을 쪽 수만큼
+    불러 크레딧을 썼다(분석 횟수는 1회로만 셌다 — 2026-10-30 보안 리뷰).
     """
     try:
         with Image.open(io.BytesIO(data)) as im:
+            fmt = (im.format or "").upper()
             width, height = im.size
+            frames = getattr(im, "n_frames", 1)
     except Image.DecompressionBombError:
         raise HTTPException(status_code=400, detail=_MSG_TOO_MANY_PIXELS) from None
-    except Exception:  # noqa: BLE001 — 그림이 아니면 여기서는 지나간다
-        return
+    except Exception:  # noqa: BLE001 — 그림이 아닌 파일
+        raise HTTPException(status_code=400, detail=_MSG_NOT_PHOTO) from None
+    if fmt not in _PHOTO_FORMATS or frames != 1:
+        raise HTTPException(status_code=400, detail=_MSG_NOT_PHOTO)
     if width * height > settings.MAX_IMAGE_PIXELS:
         raise HTTPException(status_code=400, detail=_MSG_TOO_MANY_PIXELS)
+    return _PHOTO_FORMATS[fmt]
 
 
 _MSG_TOO_MANY_PIXELS = "사진이 너무 커요. 휴대폰 카메라로 찍은 사진으로 다시 시도해 주세요"
+_MSG_NOT_PHOTO = "등기부 사진(JPG·PNG)만 올릴 수 있어요. 휴대폰으로 찍은 사진으로 다시 시도해 주세요"
 
 
 def _capture_gate(images: list[tuple[str, bytes]]) -> tuple[CaptureCheck | None, JSONResponse | None]:

@@ -307,6 +307,17 @@ def last_pass_by_owner() -> dict[str, str]:
     return {key: created for key, created in rows if key and created}
 
 
+def last_pass_at(owner_key: str) -> str | None:
+    """그 주인의 가장 최근 결제 기록 시각(ISO) — 지우기 직전에 다시 확인할 때."""
+    rows = _execute("SELECT MAX(created_at) FROM passes WHERE owner_key = ?", (owner_key,))
+    return rows[0][0] if rows and rows[0][0] else None
+
+
+def owner_keys() -> list[str]:
+    """결제 기록의 주인 키 전부 — 원문 기기 주인 값을 가린 값으로 옮길 때."""
+    return [key for (key,) in _execute("SELECT DISTINCT owner_key FROM passes") if key]
+
+
 def delete_owner(owner_key: str) -> int:
     """회원 탈퇴 — 그 계정의 패스(결제 기록)를 전부 지운다. 지운 건수."""
     if not owner_key:

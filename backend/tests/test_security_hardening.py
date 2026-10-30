@@ -301,8 +301,9 @@ def test_보안_헤더가_붙고_CORS는_없다(client):
     assert "access-control-allow-origin" not in resp.headers
     api = client.get("/api/reports", headers=DEVICE)
     assert api.headers["cache-control"] == "no-store"
-    assert resp.json()["deviceIdRequired"] in (True, False)
-    assert "dataSealed" in resp.json()
+    # 공개 헬스체크에는 보안 설정을 싣지 않는다(바깥에서 엿보지 못하게 — 배포 로그 `[보안]` 줄로만 본다)
+    assert "dataSealed" not in resp.json()
+    assert "deviceIdRequired" not in resp.json()
 
 
 def test_예기치_못한_오류는_내용_없이_한국어_500(client, monkeypatch):
@@ -397,3 +398,158 @@ def test_기간_지난_같은_사진_쪽지는_다른_기기_것까지_모두_�
     assert analysis_cache.purge_expired(now=now) == 1
     left = analysis_cache._execute("SELECT device_id FROM analysis_cache")
     assert left == [("dv-here",)]
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 보안 리뷰 반영 (2026-10-30 오후)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_사진이_아닌_파일은_IE를_부르기_전에_400(client, no_network, monkeypatch):
+    """이름만 page_1.pdf인 여러 쪽 PDF가 IE·OCR을 쪽 수만큼 부르던 길을 막는다 — 한 장짜리 JPEG·PNG만."""
+    from app.services import extraction
+
+    called: list[int] = []
+    monkeypatch.setattr(extraction, "extract_registry", lambda *a, **k: called.append(1))
+    pdf = b"%PDF-1.4\n" + b"0" * 2000
+    for name, data, mime in (
+        ("page_1.pdf", pdf, "application/pdf"),
+        ("page_1.jpg", pdf, "image/jpeg"),  # 이름·형식을 속여도
+        ("page_1.jpg", b"not an image", "image/jpeg"),
+    ):
+        resp = client.post(
+            "/api/analyze", files=[("files", (name, data, mime))], data={"deposit": "120000000"}, headers=DEVICE
+        )
+        assert resp.status_code == 400, name
+        assert "JPG·PNG" in resp.json()["detail"]
+    # 여러 장이 든 그림(움직이는 GIF·여러 쪽 TIFF)도 막는다
+    frames = [Image.new("RGB", (400, 600), c) for c in ("white", "gray")]
+    buf = io.BytesIO()
+    frames[0].save(buf, format="TIFF", save_all=True, append_images=frames[1:])
+    resp = client.post(
+        "/api/analyze", files=[("files", ("page_1.tif", buf.getvalue(), "image/tiff"))],
+        data={"deposit": "120000000"}, headers=DEVICE,
+    )
+    assert resp.status_code == 400
+    assert called == []
+
+
+def test_올린_사진_이름은_서버가_정한다():
+    """보낸 쪽 파일 이름(확장자)이 형식(MIME)·로그를 정하지 못하게 — page_N.jpg/png."""
+    from app.routers import reports as r
+
+    class _File:
+        def __init__(self, name, data):
+            self.filename, self.size, self.file = name, len(data), io.BytesIO(data)
+
+    png = io.BytesIO()
+    Image.new("RGB", (300, 400), "white").save(png, format="PNG")
+    jpg = _jpeg(Image.new("RGB", (300, 400), "white"))
+    images = r._read_images(
+        [_File("evil\nname.pdf", jpg), _File("x.jpg", png.getvalue())], empty_detail="없음"
+    )
+    assert [name for name, _ in images] == ["page_1.jpg", "page_2.png"]
+
+
+def test_길이를_밝히지_않은_큰_본문도_실제_앱에서_한국어_413():
+    """FastAPI가 본문 읽기 예외를 영어 400으로 바꾸던 것 — 진짜 앱으로 확인한다."""
+    from fastapi.testclient import TestClient
+
+    def chunks():
+        boundary = b"--b\r\n"
+        yield boundary + b'Content-Disposition: form-data; name="files"; filename="a.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'
+        piece = b"0" * (1024 * 1024)
+        for _ in range(settings.MAX_REQUEST_BYTES // len(piece) + 2):
+            yield piece
+
+    c = TestClient(main.app)
+    resp = c.post(
+        "/api/analyze",
+        content=chunks(),
+        headers={"Content-Type": "multipart/form-data; boundary=b", **DEVICE},
+    )
+    assert resp.status_code == 413
+    assert "너무 커요" in resp.json()["detail"]
+
+
+def test_켜질_때_기기_id_원문_주인을_모두_가리고_그_뒤로는_요청마다_옮기지_않는다(client, no_network, sealed):
+    """다시 오지 않는 기기의 원문 id도 DB에 남지 않게(리포트·캐시·패스) — 무작위 id 요청이 쓰기를 만들지 않게."""
+    from app.services import analysis_cache, payments
+    from tests.test_compare import _report
+
+    raw = "never-coming-back-0001"
+    store.add(_report("r-raw"), device_id=raw)
+    analysis_cache._execute(
+        "INSERT INTO analysis_cache (device_id, cache_key, report_id, created_at) VALUES (?, ?, ?, ?)",
+        (raw, "k", "r-raw", "2099-01-01T00:00:00+00:00"),
+    )
+    payments.add_pass(
+        owner_key=accounts.pass_owner_key(raw), order_id="o-raw", plan_id="pass",
+        payment_key="pk", amount=1000, method="카드", approved_at=None, test_mode=True,
+    )
+    assert accounts.mask_all_device_owners() == 1
+    assert store.raw_device_owners() == set()
+    assert raw.encode() not in _db_bytes()
+    masked = sealing.device_owner(raw)
+    assert [r.id for r in store.list_reports(device_id=masked)] == ["r-raw"]
+    assert analysis_cache.owners() == [masked]
+    assert payments.owner_keys() == [accounts.pass_owner_key(masked)]
+    # 정리가 끝난 뒤에는 처음 보는 기기 id가 와도 옮기기(쓰기)를 하지 않는다
+    for i in range(5):
+        client.get("/api/reports", headers={"X-Device-Id": f"random-device-{i:04d}"})
+    assert accounts._adopted == set()
+
+
+def test_열쇠가_바뀌거나_빠지면_알아챈다(monkeypatch):
+    monkeypatch.setenv("DATA_SECRET", SECRET)
+    sealing.reset_for_test()
+    assert store.check_key_fingerprint() == "new"
+    assert store.check_key_fingerprint() == "ok"
+    monkeypatch.setenv("DATA_SECRET", SECRET + "-changed")
+    sealing.reset_for_test()
+    assert store.check_key_fingerprint() == "mismatch"
+    monkeypatch.setenv("DATA_SECRET", "")
+    sealing.reset_for_test()
+    assert store.check_key_fingerprint() == "missing"
+    sealing.reset_for_test()
+
+
+def test_옛_평문_잠그기는_그사이_바뀐_행을_덮어쓰지_않는다(monkeypatch):
+    """SELECT와 UPDATE 사이에 고치기가 끼면 그 행은 건너뛴다(낡은 값으로 되돌리지 않게)."""
+    from tests.test_compare import _report
+
+    store.add(_report("r-1"), device_id="dv-x")  # 열쇠 없이 평문으로 쓴다
+    monkeypatch.setenv("DATA_SECRET", SECRET)
+    sealing.reset_for_test()
+    real_execute = store._Store.execute
+    state = {"done": False}
+
+    def racing(self, sql, params=()):
+        if sql.startswith("UPDATE reports SET report_json") and not state["done"]:
+            state["done"] = True
+            real_execute(self, "UPDATE reports SET report_json = ? WHERE id = 'r-1'", ('{"edited": true}',))
+        return real_execute(self, sql, params)
+
+    monkeypatch.setattr(store._Store, "execute", racing)
+    store.seal_existing()
+    monkeypatch.setattr(store._Store, "execute", real_execute)
+    raw = store._db().execute("SELECT report_json FROM reports WHERE id = 'r-1'")[0][0]
+    assert raw == '{"edited": true}'  # 고친 값이 그대로 — 낡은 값으로 덮지 않았다
+    sealing.reset_for_test()
+
+
+def test_헬스체크를_마구_불러도_DB_쓰기는_1분에_한_번(client, monkeypatch):
+    calls: list[str] = []
+    real = store._Store.execute
+
+    def counting(self, sql, params=()):
+        if "health_probe" in sql:
+            calls.append(sql)
+        return real(self, sql, params)
+
+    monkeypatch.setattr(store._Store, "execute", counting)
+    monkeypatch.setattr(store, "_writable_cache", None)
+    for _ in range(20):
+        assert client.get("/").json()["historyDb"] is True
+    assert len(calls) == 1

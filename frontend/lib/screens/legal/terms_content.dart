@@ -77,6 +77,7 @@ LegalDoc termsDoc({String contact = kPrivacyContact}) => LegalDoc(
     LegalSection('서비스 변경과 중단', [
       LegalParagraph('더 나은 서비스를 위해 기능을 바꿀 수 있어요. 중요한 변경은 앱에서 미리 알려요.'),
       LegalParagraph('점검이나 장애가 있으면 잠시 멈출 수 있어요.'),
+      LegalParagraph('서비스를 끝낼 때는 30일 전에 앱에서 알리고, 남은 기록은 모두 지워요.'),
     ]),
     LegalSection('책임', [
       LegalParagraph('운영자는 공개된 기준을 따르고 근거를 함께 보여 드려, 리포트가 정확하도록 힘써요.'),

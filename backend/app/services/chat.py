@@ -1016,7 +1016,7 @@ def _generate(turns: list[Turn], careful: bool, report=None, *, houses=None, jou
                     f" · {resp.elapsed:.1f}초 · {len(text or '')}자"
                 )
                 return ChatReply(
-                    answer=text or "",
+                    answer=text_guard.soften_dashes(text or ""),  # 줄표 없이(2026-10-31)
                     mode=MODE_CAREFUL if careful else MODE_NORMAL,
                     model=resp.model or provider.model,
                     llm_calls=calls,

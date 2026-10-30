@@ -71,6 +71,8 @@ String? evidenceIdForMark(String kind) => switch (kind) {
   'mortgage' || 'jeonse' || 'lease_registration' => 'senior_debt',
   'seizure' || 'provisional_seizure' || 'auction' || 'trust' => 'ownership',
   'pending_application' => 'pending',
+  // 집주인 이름 — 공개 명단과 맞춰 본 카드(명단을 받았을 때만 설명이 있다, 아래 _aiFor가 '아직 안 됨'은 거른다)
+  'owner' => 'blacklist',
   _ => null,
 };
 

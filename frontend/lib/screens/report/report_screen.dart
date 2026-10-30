@@ -70,7 +70,7 @@ const String kBlacklistPendingLabel = '명단 대조 아직 안 됨';
 /// ⚠ 판정에는 아무 영향이 없다. 등급은 서버가 계산하고, 서버의 worst-of 계산은
 ///   이 상태의 blacklist를 **이미 제외하고** 있다(`rule_engine.evaluate`).
 ///   여기서는 그려진 것을 안 그릴 뿐이다.
-/// ⚠ 명단 데이터가 채워지면 status_label이 '확인 필요'/'명단 일치 — 직접 확인 필요'
+/// ⚠ 명단 데이터가 채워지면 status_label이 '확인 필요'/'명단 일치 · 직접 확인 필요'
 ///   또는 null(양호)로 바뀌므로, 이 조건이 저절로 거짓이 되어 **카드가 되돌아온다.**
 bool _isPendingBlacklist(EvidenceItem e) =>
     e.id == 'blacklist' && e.statusLabel == kBlacklistPendingLabel;

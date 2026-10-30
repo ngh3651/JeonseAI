@@ -1,0 +1,96 @@
+"""악성임대인 공개 명단 (2026-10-31) — 받아 와서 이름을 가린 채로 두고, 집주인 이름과 맞춰 본다."""
+
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from app.schemas.internal import Grade, Owner
+from app.services import blacklist_source as B
+from app.services import rule_engine
+from tests.test_compare import _extract
+
+SALT = b"test-salt-1234567"
+
+
+@pytest.fixture()
+def data_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(B, "store_path", lambda: tmp_path / B.STORE_FILE)
+    monkeypatch.setattr(B, "status_path", lambda: tmp_path / B.STATUS_FILE)
+    monkeypatch.setattr(B, "_salt", lambda: SALT)
+    monkeypatch.setattr(B, "_cache", None)
+    return tmp_path
+
+
+def test_실명은_열쇠로만_남고_가린_이름과_출생연도():
+    rows = [{"성명": "홍길동", "나이": "45", "채무액": "1,234,000,000"}, {"성명": "홍 길동", "나이": "45"}]
+    out = B.to_entries(rows, salt=SALT, year=2026)
+    assert len(out) == 1  # 공백만 다른 같은 사람·같은 나이는 하나로
+    e = out[0]
+    assert e["m"] == "홍○○" and e["by"] == 1981 and e["debt"] == 1_234_000_000
+    assert "홍길동" not in json.dumps(out, ensure_ascii=False)
+
+
+def test_감싼_모양이_달라도_줄을_찾는다():
+    data = {"response": {"body": {"items": {"item": [{"lsrNm": "김철수", "age": 50}]}}}}
+    assert B.find_rows(data) == [{"lsrNm": "김철수", "age": 50}]
+
+
+def test_받아서_가린_채로_저장하고_매주_다시(data_dir, monkeypatch):
+    monkeypatch.setenv("BLACKLIST_SOURCE_URL", "https://example.invalid/api")
+    monkeypatch.setenv("BLACKLIST_API_KEY", "k")
+    pages = {1: [{"성명": f"사람{i}", "나이": 40} for i in range(B.PAGE_SIZE)], 2: [{"성명": "홍길동", "나이": 45}]}
+    calls = []
+
+    def get(url, params=None, timeout=None):
+        calls.append(params)
+        return SimpleNamespace(text=json.dumps({"data": pages.get(params["pageNo"], [])}, ensure_ascii=False),
+                               headers={"content-type": "application/json"}, raise_for_status=lambda: None)
+
+    st = B.refresh(get=get, salt=SALT)
+    assert st["ok"] and st["count"] == B.PAGE_SIZE + 1
+    assert [c["pageNo"] for c in calls] == [1, 2] and calls[0]["serviceKey"] == "k"
+    raw = (data_dir / B.STORE_FILE).read_text(encoding="utf-8")
+    assert "홍길동" not in raw and "사람1" not in raw
+    assert not B.due()  # 방금 받았다
+    assert len(B.load()) == B.PAGE_SIZE + 1
+
+
+def test_받기가_실패하면_전에_받은_명단_그대로(data_dir, monkeypatch):
+    monkeypatch.setenv("BLACKLIST_SOURCE_URL", "https://example.invalid/api")
+    (data_dir / B.STORE_FILE).write_text(json.dumps({"entries": [{"h": "x", "m": "김○○"}]}), encoding="utf-8")
+
+    def boom(*a, **k):
+        raise RuntimeError("down")
+
+    st = B.refresh(get=boom, salt=SALT)
+    assert not st["ok"] and len(B.load()) == 1
+
+
+def test_설정이_없으면_아무것도_안_한다(data_dir, monkeypatch):
+    monkeypatch.delenv("BLACKLIST_SOURCE_URL", raising=False)
+    assert not B.configured() and not B.due()
+    assert B.refresh()["ok"] is False
+
+
+def test_규칙엔진이_가린_명단으로_맞춰_본다(data_dir):
+    entries = B.to_entries([{"성명": "김철수", "나이": 50}], salt=SALT, year=2026)
+    ex = _extract(address="서울특별시 서초구 서초동 1 제3층 제301호")
+    ex.current_owners = [Owner(name="김철수")]
+    v = rule_engine.evaluate(ex, deposit=100_000_000, market_price=300_000_000, blacklist_entries=entries)
+    bl = next(e for e in v.evidences if e.id == "blacklist")
+    assert bl.grade is Grade.CAUTION and bl.facts["matched"] == ["김○○"]
+    assert "—" not in bl.detail_text and "김철수" not in bl.detail_text
+    # 다른 이름이면 '명단 N건과 맞춰봤어요'
+    ex.current_owners = [Owner(name="이영희")]
+    v = rule_engine.evaluate(ex, deposit=100_000_000, market_price=300_000_000, blacklist_entries=entries)
+    bl = next(e for e in v.evidences if e.id == "blacklist")
+    assert bl.grade is Grade.GOOD and bl.facts["list_size"] == 1
+
+
+def test_서버가_받은_명단이_있으면_그것을_쓴다(data_dir):
+    entries = B.to_entries([{"성명": "김철수"}], salt=SALT)
+    (data_dir / B.STORE_FILE).write_text(json.dumps({"entries": entries}), encoding="utf-8")
+    assert rule_engine.load_blacklist() == entries

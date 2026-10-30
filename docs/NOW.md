@@ -226,6 +226,7 @@
    - (선택) `GUEST_RECORD_DAYS` — 로그인 없이 쓴 기록을 지우는 날수(마지막 분석·결제 뒤), 기본 365 · 0이면 끔. 처리방침 '1년'과 같은 값
    - 속도 제한(선택, 기본값이 있다): `RATE_LIMIT_ANALYZE_PER_HOUR=30`(기기×IP) · `RATE_LIMIT_IP_PER_HOUR=60` ·
      `RATE_LIMIT_GLOBAL_PER_HOUR=300` · `RATE_LIMIT_GLOBAL_PER_DAY=500`(서버 전체·하루). ⚠ **결선 날**에는 부스 폰들이 같은 와이파이(같은 IP)를 쓰므로 IP·전체 상한을 올려 둔다
+     ✅ **2026-10-30 결선 기간용으로 올려 둠**: `RATE_LIMIT_ANALYZE_PER_HOUR=200` · `RATE_LIMIT_IP_PER_HOUR=400` · `RATE_LIMIT_GLOBAL_PER_HOUR=600` · `RATE_LIMIT_GLOBAL_PER_DAY=1500` (Railway Variables). 결선이 끝나면 네 변수를 지워 기본값으로 되돌린다
    - 챗봇 질문 상한(선택, 2026-10-24): `RATE_LIMIT_CHAT_PER_HOUR=60`(기기×IP) · `RATE_LIMIT_CHAT_IP_PER_HOUR=300` · `RATE_LIMIT_CHAT_GLOBAL_PER_DAY=3000`. 챗봇이 이상하면 `CHATBOT_LLM=off`(AI 끄고 용어 풀이·안내 문장만)
    - `RAILWAY_RUN_UID=0` — 볼륨에 쓰기 위해 필요(Railway 볼륨은 root 소유로 붙는다)
    - `SAVE_RAW_RESPONSES`는 **넣지 않는다**(실명 원응답 저장 — 로컬 디버깅 전용)

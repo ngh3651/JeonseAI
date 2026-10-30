@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
@@ -49,6 +50,7 @@ class SettingsRow extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.danger = false,
+    this.strong = false,
   });
 
   final IconData icon;
@@ -59,9 +61,14 @@ class SettingsRow extends StatelessWidget {
   /// 회원 탈퇴처럼 되돌릴 수 없는 줄 — 빨간 글자
   final bool danger;
 
+  /// 개인정보 처리방침 — 다른 줄과 구별되게 굵은 초록(개인정보위 처리방침 작성지침)
+  final bool strong;
+
   @override
   Widget build(BuildContext context) {
-    final Color fg = danger ? AppColors.danger : AppColorsNext.textStrong;
+    final Color fg = danger
+        ? AppColors.danger
+        : (strong ? AppColors.primaryStrong : AppColorsNext.textStrong);
     return InkWell(
       onTap: onTap,
       child: ConstrainedBox(
@@ -81,7 +88,7 @@ class SettingsRow extends StatelessWidget {
                   title,
                   style: AppTypographyNext.body.copyWith(
                     color: fg,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: strong ? FontWeight.w800 : FontWeight.w600,
                   ),
                 ),
               ),
@@ -93,6 +100,44 @@ class SettingsRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 약관·정책 줄 — 이용약관 · 개인정보 처리방침(굵게) · 데이터 출처 · 오픈소스 라이선스 (2026-10-30)
+class PolicySettingsRows extends StatelessWidget {
+  const PolicySettingsRows({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsGroup(
+      children: [
+        SettingsRow(
+          icon: Icons.description_outlined,
+          title: '이용약관',
+          onTap: () => context.push('/terms'),
+        ),
+        SettingsRow(
+          icon: Icons.privacy_tip_outlined,
+          title: '개인정보 처리방침',
+          strong: true,
+          onTap: () => context.push('/privacy'),
+        ),
+        SettingsRow(
+          icon: Icons.dataset_outlined,
+          title: '데이터 출처',
+          onTap: () => context.push('/data-sources'),
+        ),
+        SettingsRow(
+          icon: Icons.code_rounded,
+          title: '오픈소스 라이선스',
+          onTap: () => showLicensePage(
+            context: context,
+            applicationName: '전세AI프',
+            applicationLegalese: '팀 동크크',
+          ),
+        ),
+      ],
     );
   }
 }

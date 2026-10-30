@@ -25,6 +25,7 @@ import 'package:jeonse_ai/screens/auth/login_screen.dart';
 import 'package:jeonse_ai/screens/auth/start_screen.dart';
 import 'package:jeonse_ai/screens/common/analyze_gate.dart';
 import 'package:jeonse_ai/screens/my/account_section.dart';
+import 'package:jeonse_ai/screens/my/my_settings.dart';
 import 'package:jeonse_ai/screens/my/privacy_policy_screen.dart';
 import 'package:jeonse_ai/services/api_client.dart';
 import 'package:jeonse_ai/services/device_id.dart';
@@ -135,7 +136,9 @@ Widget _app(AppSession session, {String initial = '/start'}) {
         path: '/my',
         builder: (_, _) => const Scaffold(
           body: SingleChildScrollView(
-            child: Column(children: [AccountSection(), AccountSettingsRows()]),
+            child: Column(
+              children: [AccountSection(), PolicySettingsRows(), AccountSettingsRows()],
+            ),
           ),
         ),
       ),
@@ -567,7 +570,7 @@ void main() {
       expect(kakao.unlinks, 1);
       expect(session.isGuest, isTrue);
       expect(storage.saved, isNull);
-      expect(find.koText('탈퇴했어요. 서버의 기록을 모두 지웠어요'), findsOneWidget);
+      expect(find.koText('탈퇴했어요. 기록을 모두 지웠어요'), findsOneWidget);
       expect(find.byType(StartScreen), findsOneWidget);
     });
 
@@ -599,38 +602,59 @@ void main() {
       await tester.pumpAndSettle();
       expect(auth.deletes, 1);
       expect(session.isGuest, isTrue);
-      expect(find.koTextContaining('카카오 연결은 끊지 못했어요'), findsOneWidget);
+      expect(find.koTextContaining('카카오 연결은 카카오 설정에서 끊을 수 있어요'), findsOneWidget);
     });
   });
 
   group('개인정보 처리방침', () {
-    test('서버 지역·문의처가 비어 있으면 그 줄을 뺀다 (지어내지 않는다)', () {
-      final empty = privacyPolicySections(serverRegion: '', contact: '');
-      final lines = [for (final s in empty) ...s.lines];
-      expect(lines.any((l) => l.contains('서버 지역')), isFalse);
-      expect(empty.any((s) => s.title == '문의'), isFalse);
+    test('서버 나라·문의처가 비어 있으면 그 줄을 뺀다 (지어내지 않는다)', () {
+      final emptyDoc = privacyPolicyDoc(serverRegion: '', contact: '');
+      final empty = emptyDoc.plainText;
+      expect(empty, isNot(contains('보관하는 나라')));
+      expect(emptyDoc.contact, isNull);
+      expect(empty, isNot(contains('문의 ')));
+      // 나라를 모를 때도 받는 회사(미국)와 연락처는 남는다 — 국외 이전 필수 항목
+      expect(empty, contains('Railway Corp.'));
+      expect(empty, contains('privacy@railway.com'));
 
-      final filled = privacyPolicySections(
+      final filled = privacyPolicyDoc(
         serverRegion: '싱가포르',
         contact: 'team@example.com',
       );
-      final filledLines = [for (final s in filled) ...s.lines];
-      expect(filledLines, contains('서버 지역 — 싱가포르'));
-      expect(filled.last.title, '문의');
-      expect(filled.last.lines, ['team@example.com']);
+      expect(filled.plainText, contains('보관하는 나라 싱가포르'));
+      expect(filled.contact, 'team@example.com');
+      expect(filled.plainText, contains('team@example.com'));
     });
 
-    test('받는 것 — 회원번호(암호화 값)·기기 id·분석 기록, 이름·이메일은 안 받음', () {
-      final all = [
-        for (final s in privacyPolicySections()) ...s.lines,
-      ].join('\n');
+    test('받는 것 — 카카오 회원번호만·기기 번호·분석 기록, 이름·이메일은 안 받음 · 법정 항목', () {
+      final all = privacyPolicyDoc().plainText;
       expect(all, contains('카카오 회원번호'));
-      expect(all, contains('암호화 값'));
-      expect(all, contains('이름·이메일·닉네임·프로필 사진은 받지 않아요'));
-      expect(all, contains('기기 id'));
-      expect(all, contains('사진은 글자를 읽으려고 국내 AI(Upstage)에만 보내요'));
+      expect(all, contains('이름, 이메일, 프로필 사진은 받지 않아요'));
+      expect(all, contains('무작위 기기 번호'));
+      expect(all, contains('등기부 사진은 서버에 남기지 않아요'));
       expect(all, contains('Railway'));
       expect(all, contains('탈퇴하면'));
+      // 개인정보 보호법 제30조·시행령 제31조 항목
+      for (final title in [
+        '받는 정보와 쓰는 곳',
+        '처리 근거',
+        '등기부에 적힌 다른 사람의 정보',
+        '얼마나 두나요',
+        '맡기는 곳',
+        '나라 밖으로 옮기는 정보',
+        '지우는 방법',
+        '이용자의 권리',
+        '정보를 지키는 방법',
+        'AI는 이렇게 써요',
+        '자동으로 만드는 값',
+        '만 14세 미만',
+        '책임자와 문의',
+        '도움을 받을 수 있는 곳',
+        '바뀌면 알려 드려요',
+      ]) {
+        expect(privacyPolicyDoc().sections.map((s) => s.title), contains(title));
+      }
+      expect(all, isNot(contains('—')), reason: '대시 없이 쓴다');
     });
 
     testWidgets('시작 화면에서 들어가 볼 수 있다', (tester) async {
@@ -638,8 +662,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.koText('개인정보 처리방침'));
       await tester.pumpAndSettle();
-      expect(find.koText('받는 것'), findsOneWidget);
-      expect(find.koTextContaining('카카오 회원번호'), findsOneWidget);
+      expect(find.koText('받는 정보와 쓰는 곳'), findsOneWidget);
+      expect(find.koTextContaining('카카오 회원번호'), findsWidgets);
     });
   });
 

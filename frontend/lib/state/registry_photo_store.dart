@@ -237,13 +237,48 @@ class RegistryPhotoStore {
     }
   }
 
-  /// 보관 폴더와 기록을 통째로 지운다 (스위치를 끈 채 앱이 켜졌을 때).
+  /// 이 폰의 원본 사진·실명 리포트를 **전부** 지운다 — 회원 탈퇴 (2026-10-30, `services/phone_wipe.dart`).
+  Future<void> purgeAll() async {
+    clear();
+    await _purgeAll();
+  }
+
+  /// 촬영·변환 때 임시 폴더에 생긴 사진 사본을 지운다 — 앱을 켤 때 한 번 (2026-10-30 보안).
+  ///
+  /// 카메라 원본(`<uuid>….jpg`)·갤러리 사본(`<uuid>/파일명`)·보낼 JPEG(`upload_….jpg`)·PDF 공유 사본(`share/`)이
+  /// 지우는 곳 없이 쌓여, "최근 5건만 남아요"·"기록을 지우면 폰 사본도 지워요"가 사실과 달라졌다.
+  /// 보관본은 앱 문서 폴더(`registry_photos/`)라 여기서 건드리지 않는다. 실패는 조용히 넘어간다.
+  static Future<int> sweepTempCopies({Directory? tempDir}) async {
+    var removed = 0;
+    try {
+      final tmp = tempDir ?? await getTemporaryDirectory();
+      if (!tmp.existsSync()) return 0;
+      final uuid = RegExp(
+        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+      );
+      await for (final e in tmp.list(followLinks: false)) {
+        final name = _basename(e.path);
+        final ours = e is File
+            ? (name.startsWith('upload_') || uuid.hasMatch(name))
+            : (uuid.hasMatch(name) || name == 'share');
+        if (!ours) continue;
+        await e.delete(recursive: true);
+        removed++;
+      }
+      if (removed > 0) debugPrint('[사진보관] 임시 사진 사본 $removed개를 지웠어요');
+    } catch (e) {
+      debugPrint('[사진보관] 임시 사본 정리 실패 (${e.runtimeType})');
+    }
+    return removed;
+  }
+
+  /// 보관 폴더와 기록을 통째로 지운다 (스위치를 끈 채 앱이 켜졌을 때 · 회원 탈퇴).
   Future<void> _purgeAll() async {
     try {
       final root = await _root();
       if (root.existsSync()) {
         await root.delete(recursive: true);
-        debugPrint('[사진보관] 스위치 off — 보관해 둔 사진·리포트를 삭제했어요');
+        debugPrint('[사진보관] 보관해 둔 사진·리포트를 모두 삭제했어요');
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefsKey);

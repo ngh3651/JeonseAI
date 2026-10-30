@@ -361,7 +361,7 @@ class _ChatHistoryDrawerState extends State<ChatHistoryDrawer> {
     if (matches.isEmpty) return TextSpan(text: text, style: base);
     final hit = base.copyWith(
       backgroundColor: AppColors.primarySoft,
-      color: AppColors.primaryDeep,
+      color: AppColors.primaryStrong,
       fontWeight: FontWeight.w600,
     );
     final spans = <TextSpan>[];

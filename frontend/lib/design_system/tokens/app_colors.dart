@@ -36,6 +36,10 @@ abstract final class AppColors {
   static Color get onInverse =>
       isDark ? const Color(0xFF0D1210) : const Color(0xFFFFFFFF);
 
+  /// 진초록 바탕([primaryDeep] — 인용 칩) 위 글자·아이콘. 밝게는 연초록, 어둡게는 밝은 초록
+  /// (어둡게의 연초록은 바탕만큼 어두워 글자가 사라진다 — 2026-10-30 어둡게 대비 점검).
+  static Color get onPrimaryDeep => isDark ? _p.primaryStrong : _p.primarySoft;
+
   /// 회색 데이터 칩(실제 판례 · 실제 경매 통계 · 법이 정한 서류) 바탕 / 글자 — 화면마다 따로 두던 #ECEFED·#3C4842
   static Color get chipBg =>
       isDark ? const Color(0xFF26302B) : const Color(0xFFECEFED);
@@ -212,6 +216,15 @@ abstract final class AppColors {
     MarkTone.verify => markSolidVerify,
     MarkTone.risk => markSolidRisk,
   };
+
+  /// 톤 → 카드(앱 표면) 위 **글자** 색. 밝게는 [markSolid]와 같고, 어둡게는 어두운 카드 위에서 읽히게 밝은 쪽
+  /// (2026-10-30 어둡게 대비 점검 — 진한 초록·주황 글자가 어두운 카드에 묻혔다).
+  static Color markText(MarkTone tone) => !isDark
+      ? markSolid(tone)
+      : switch (tone) {
+          MarkTone.verify => primaryStrong,
+          MarkTone.risk => caution,
+        };
 
   /// 톤 → 위치 레일 점 색.
   static Color markDot(MarkTone tone) => switch (tone) {

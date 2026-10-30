@@ -241,7 +241,7 @@ class _DateField extends StatelessWidget {
                               ? FontWeight.w700
                               : FontWeight.w600,
                           color: _balance
-                              ? AppColors.primaryDeep
+                              ? AppColors.primaryStrong
                               : AppColorsNext.textStrong,
                         ),
                       ),

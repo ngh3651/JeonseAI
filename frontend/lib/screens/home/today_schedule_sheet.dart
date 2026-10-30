@@ -215,7 +215,7 @@ class TodayBellButton extends StatelessWidget {
                               fontSize: 13,
                               height: 1.2,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              color: AppColors.onPrimary,
                             ),
                           )
                         : null,

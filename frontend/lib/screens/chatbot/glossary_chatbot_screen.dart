@@ -955,7 +955,7 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   /// 한 줄 — 글 · **굵게**(primaryDeep) · 주소 칸(누를 수 없음, 밑줄 없음)
   Widget _inlineText(String line, TextStyle body) {
     final bold = AppTypographyNext.bodyStrong.copyWith(
-      color: AppColors.primaryDeep,
+      color: AppColors.primaryStrong,
     );
     return AppText.rich(
       TextSpan(

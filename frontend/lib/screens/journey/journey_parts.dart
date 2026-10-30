@@ -648,7 +648,7 @@ class _Circles extends StatelessWidget {
             spreadRadius: 1,
           ),
         ];
-        child = _dText(dDayLabel(d!), AppColors.primaryDeep);
+        child = _dText(dDayLabel(d!), AppColors.primaryStrong);
       case CircleState.future:
         bg = AppColors.surface;
         border = Border.all(color: AppColors.primary, width: 1);
@@ -810,7 +810,7 @@ class StageChipsRow extends StatelessWidget {
         style: AppTypographyNext.caption.copyWith(
           fontWeight: FontWeight.w700,
           height: 1,
-          color: current ? AppColors.primaryDeep : AppColorsNext.textMuted,
+          color: current ? AppColors.primaryStrong : AppColorsNext.textMuted,
         ),
       ),
     );

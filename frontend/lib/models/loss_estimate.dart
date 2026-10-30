@@ -25,6 +25,36 @@ enum LossStatus {
   };
 }
 
+/// 최우선변제 상태 (2026-10-31 — 주택임대차보호법 제8조, 시행령 제10·11조). 옛 서버면 [none].
+enum PriorityStatus {
+  /// 더했다 — 낙찰가에서 가장 먼저 받는다
+  ok,
+
+  /// 보증금이 그 지역 상한보다 커서 못 받는다
+  overCap,
+
+  /// 이미 경매가 시작된 집 — 지금 들어가면 못 받는다
+  blockedAuction,
+
+  /// 단독·다가구 — 다른 소액임차인과 나눠 계산에 넣지 않았다
+  shared,
+
+  /// 빚 날짜를 못 읽어 표를 고르지 못했다
+  unknownDate,
+
+  /// 표가 없다·옛 서버
+  none;
+
+  static PriorityStatus fromWire(String? v) => switch (v) {
+    'ok' => PriorityStatus.ok,
+    'over_cap' => PriorityStatus.overCap,
+    'blocked_auction' => PriorityStatus.blockedAuction,
+    'shared' => PriorityStatus.shared,
+    'unknown_date' => PriorityStatus.unknownDate,
+    _ => PriorityStatus.none,
+  };
+}
+
 class LossEstimate {
   const LossEstimate({
     required this.status,
@@ -42,6 +72,18 @@ class LossEstimate {
     this.expectedSale,
     this.expectedReturn,
     this.expectedLoss,
+    this.priorityStatus = PriorityStatus.none,
+    this.priorityAmount = 0,
+    this.priorityLimit,
+    this.priorityCap,
+    this.priorityRegion,
+    this.priorityRegionUnsure = false,
+    this.priorityTableFrom,
+    this.priorityBaseDate,
+    this.priorityBaseKind,
+    this.priorityHalfCapped = false,
+    this.prioritySource,
+    this.priorityTableStale = false,
   });
 
   final LossStatus status;
@@ -72,6 +114,37 @@ class LossEstimate {
   final int? expectedReturn;
   final int? expectedLoss;
 
+  // ── 최우선변제 (2026-10-31) ──
+  final PriorityStatus priorityStatus;
+
+  /// 돌려받음에 실제로 더한 금액 (ok일 때만)
+  final int priorityAmount;
+
+  /// 그 표·지역에서 먼저 받는 한도(일정액)
+  final int? priorityLimit;
+
+  /// 그 표·지역의 보증금 상한
+  final int? priorityCap;
+
+  /// '서울특별시' · '수도권 과밀억제권역(서울 제외)' …
+  final String? priorityRegion;
+  final bool priorityRegionUnsure;
+
+  /// 고른 표가 시작된 날 'YYYY-MM-DD'
+  final String? priorityTableFrom;
+
+  /// 그 표를 고른 날짜(가장 먼저 잡힌 담보) — 없으면 오늘 기준
+  final String? priorityBaseDate;
+  final String? priorityBaseKind;
+  final bool priorityHalfCapped;
+  final String? prioritySource;
+
+  /// 법제처에서 시행령이 바뀐 걸 알아챘는데 금액표가 아직 그대로다 — '확인 중' 한 줄
+  final bool priorityTableStale;
+
+  /// 서버가 최우선변제를 따져 봤나 (옛 서버면 false — 줄을 그리지 않는다)
+  bool get hasPriority => priorityStatus != PriorityStatus.none;
+
   factory LossEstimate.fromJson(Map<String, dynamic> j) => LossEstimate(
     status: LossStatus.fromWire(j['status'] as String?),
     deposit: (j['deposit'] as num?)?.toInt() ?? 0,
@@ -88,5 +161,17 @@ class LossEstimate {
     expectedSale: (j['expectedSale'] as num?)?.toInt(),
     expectedReturn: (j['expectedReturn'] as num?)?.toInt(),
     expectedLoss: (j['expectedLoss'] as num?)?.toInt(),
+    priorityStatus: PriorityStatus.fromWire(j['priorityStatus'] as String?),
+    priorityAmount: (j['priorityAmount'] as num?)?.toInt() ?? 0,
+    priorityLimit: (j['priorityLimit'] as num?)?.toInt(),
+    priorityCap: (j['priorityCap'] as num?)?.toInt(),
+    priorityRegion: j['priorityRegion'] as String?,
+    priorityRegionUnsure: j['priorityRegionUnsure'] as bool? ?? false,
+    priorityTableFrom: j['priorityTableFrom'] as String?,
+    priorityBaseDate: j['priorityBaseDate'] as String?,
+    priorityBaseKind: j['priorityBaseKind'] as String?,
+    priorityHalfCapped: j['priorityHalfCapped'] as bool? ?? false,
+    prioritySource: j['prioritySource'] as String?,
+    priorityTableStale: j['priorityTableStale'] as bool? ?? false,
   );
 }

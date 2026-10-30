@@ -51,7 +51,10 @@ class _LossChapterState extends State<LossChapter> {
       key: const ValueKey('report-chapter-loss'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             AppText(
               '2 / 5',
@@ -60,7 +63,6 @@ class _LossChapterState extends State<LossChapter> {
                 color: AppColorsNext.textMuted,
               ),
             ),
-            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
               decoration: BoxDecoration(
@@ -87,6 +89,8 @@ class _LossChapterState extends State<LossChapter> {
                 ],
               ),
             ),
+            // 최우선변제(2026-10-31) — 법령 금액표라 같은 회색(공공 자료) 칩
+            _dataChip(Icons.gavel_rounded, '최우선변제', key: const ValueKey('loss-chip-priority')),
           ],
         ),
         const SizedBox(height: 6),
@@ -153,6 +157,30 @@ class _LossChapterState extends State<LossChapter> {
       ],
     );
   }
+
+  Widget _dataChip(IconData icon, String label, {Key? key}) => Container(
+    key: key,
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+    decoration: BoxDecoration(
+      color: _kDataChipBg,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: _kDataChipFg),
+        const SizedBox(width: 4),
+        AppText(
+          label,
+          style: AppTypographyNext.caption.copyWith(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: _kDataChipFg,
+          ),
+        ),
+      ],
+    ),
+  );
 
   /// 받는 동안 — 자리만 잡아 둔다(화면이 튀지 않게)
   Widget _loading() => const SizedBox(
@@ -275,6 +303,63 @@ class _LossChapterState extends State<LossChapter> {
             ],
           ),
         ],
+        if (e != null && e.hasPriority) ...[
+          const SizedBox(height: 12),
+          _priorityNote(e),
+        ],
+      ],
+    );
+  }
+
+  /// 최우선변제 한 줄 (2026-10-31) — 이 집에 맞춘 말. 계산은 서버, 여기선 그리기만.
+  Widget _priorityNote(LossEstimate e) {
+    final (IconData icon, Color fg, String text) = switch (e.priorityStatus) {
+      PriorityStatus.ok => (
+        Icons.verified_outlined,
+        AppColors.ok,
+        '최우선변제 ${formatWon(e.priorityAmount)} 먼저 받는 계산이에요',
+      ),
+      PriorityStatus.overCap => (
+        Icons.info_outline,
+        AppColorsNext.textMuted,
+        '보증금이 ${formatWon(e.priorityCap ?? 0)}보다 커서 최우선변제는 없어요',
+      ),
+      PriorityStatus.blockedAuction => (
+        Icons.block,
+        AppColorsNext.dangerText,
+        '이미 경매가 시작돼 지금 들어가면 최우선변제를 못 받아요',
+      ),
+      PriorityStatus.shared => (
+        Icons.groups_outlined,
+        AppColors.caution,
+        '다가구라 최우선변제는 다른 세입자와 나눠요 · 계산에 안 넣었어요',
+      ),
+      PriorityStatus.unknownDate => (
+        Icons.help_outline,
+        AppColorsNext.textMuted,
+        '빚 날짜를 못 읽어 최우선변제는 계산에 안 넣었어요',
+      ),
+      PriorityStatus.none => (Icons.info_outline, AppColorsNext.textMuted, ''),
+    };
+    return Row(
+      key: const ValueKey('loss-chapter-priority'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(icon, size: 18, color: fg),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: AppText(
+            text,
+            style: AppTypographyNext.caption.copyWith(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColorsNext.textBody,
+            ),
+          ),
+        ),
       ],
     );
   }

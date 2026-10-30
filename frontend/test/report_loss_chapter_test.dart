@@ -89,4 +89,50 @@ void main() {
     await _pump(tester, _zero, scale: 1.3);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('최우선변제 — 회색 칩 · 이 집에 맞춘 한 줄 (2026-10-31)', (tester) async {
+    await _pump(
+      tester,
+      const LossEstimate(
+        status: LossStatus.ok,
+        deposit: 100000000,
+        basePrice: 400000000,
+        seniorDebt: 300000000,
+        ratePct: 75,
+        expectedSale: 300000000,
+        expectedReturn: 50000000,
+        expectedLoss: 50000000,
+        priorityStatus: PriorityStatus.ok,
+        priorityAmount: 50000000,
+        priorityLimit: 50000000,
+        priorityCap: 150000000,
+        priorityRegion: '서울특별시',
+        priorityTableFrom: '2021-05-11',
+        priorityBaseDate: '2021-06-30',
+        priorityBaseKind: '근저당',
+        prioritySource: '주택임대차보호법 시행령 제10·11조',
+      ),
+    );
+    expect(find.byKey(const ValueKey('loss-chip-priority')), findsOneWidget);
+    expect(find.koTextContaining('최우선변제 5,000만원 먼저 받는 계산이에요'), findsOneWidget);
+  });
+
+  testWidgets('최우선변제 — 경매가 시작된 집은 못 받는다고 말한다', (tester) async {
+    await _pump(
+      tester,
+      const LossEstimate(
+        status: LossStatus.ok,
+        deposit: 100000000,
+        basePrice: 572600000,
+        seniorDebt: 1400000000,
+        ratePct: 70.9,
+        expectedSale: 405869020,
+        expectedReturn: 0,
+        expectedLoss: 100000000,
+        priorityStatus: PriorityStatus.blockedAuction,
+      ),
+    );
+    expect(find.koTextContaining('이미 경매가 시작돼'), findsOneWidget);
+  });
 }
+

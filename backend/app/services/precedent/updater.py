@@ -451,6 +451,14 @@ def _loop() -> None:
                     run_update()
         except Exception as e:  # noqa: BLE001
             _log.info(f"[판례 업데이트] ⚠ 알람시계 오류 ({type(e).__name__})")
+        try:
+            # 같은 알람시계로 최우선변제 금액표(시행령 제10·11조)가 바뀌었는지도 매주 본다(2026-10-31) — 알아채기만 한다
+            from .. import law_watch
+
+            if law_watch.due():
+                law_watch.check()
+        except Exception as e:  # noqa: BLE001
+            _log.info(f"[법령] ⚠ 알람시계 오류 ({type(e).__name__})")
         time.sleep(CHECK_EVERY_SECONDS)
 
 

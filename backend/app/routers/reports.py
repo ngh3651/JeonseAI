@@ -21,6 +21,7 @@ E-2: 질문은 data/questions.json 템플릿 실연동 완료. E-3: 판례도 �
 
 from __future__ import annotations
 
+import io
 import logging
 from dataclasses import replace as _replace
 from typing import Optional
@@ -28,10 +29,11 @@ from typing import Optional
 import anyio
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
+from PIL import Image
 from pydantic import BaseModel, Field
 
 from .. import settings
-from ..dependencies import get_current_user, limit_analyze
+from ..dependencies import get_current_user, limit_global, limit_requester
 from ..schemas.contract import AskCards, CaptureCheck, CaseMatch, CompareResult, LossEstimate, QuestionGroup, Report
 from ..services import ask_cards, analysis_cache, capture_check, compare, loss_estimate, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
@@ -42,7 +44,7 @@ router = APIRouter(prefix="/api", tags=["reports"])
 # 서버 콘솔 로거 — services 쪽과 같은 이름을 쓴다(main.py가 핸들러를 붙인다).
 _log = logging.getLogger("jeonseai")
 
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 파일당 10MB (기존 /api/upload와 동일 상한)
+MAX_UPLOAD_BYTES = settings.MAX_UPLOAD_BYTES  # 파일당 10MB
 
 #: 앱이 분석을 중단해 연결을 끊었을 때의 상태 코드(nginx 관례 'Client Closed Request') — 받을 사람은 이미 없다.
 CLIENT_CLOSED_STATUS = 499
@@ -96,27 +98,52 @@ def _read_images(files: list[UploadFile], *, empty_detail: str) -> list[tuple[st
             status_code=400,
             detail=f"사진이 너무 많아요. 한 번에 {limit}장까지 올릴 수 있어요",
         )
+    too_big = HTTPException(
+        status_code=413,
+        detail="사진 용량이 너무 커요. 10MB 이하 사진으로 다시 시도해 주세요",
+    )
     images: list[tuple[str, bytes]] = []
     for f in files:
-        data = f.file.read()
+        # 크기를 아는 파일은 읽기 **전에** 거르고, 읽어도 상한 + 1바이트까지만 읽는다(2026-10-30 보안 —
+        # 예전엔 통째로 읽은 뒤에 재서, 아주 큰 파일 하나로 서버 메모리를 다 쓸 수 있었다).
+        if f.size is not None and f.size > MAX_UPLOAD_BYTES:
+            raise too_big
+        data = f.file.read(MAX_UPLOAD_BYTES + 1)
         if not data:
             continue
         if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail="사진 용량이 너무 커요. 10MB 이하 사진으로 다시 시도해 주세요",
-            )
+            raise too_big
+        _check_pixels(data)
         images.append((f.filename or "page.jpg", data))
     if not images:
         raise HTTPException(status_code=400, detail=empty_detail)
     return images
 
 
+def _check_pixels(data: bytes) -> None:
+    """그림 머리만 읽어 화소 수를 본다 — 압축 폭탄(작은 파일·거대한 화소)을 디코딩 **전에** 막는다.
+
+    그림으로 열리지 않는 파일은 여기서 막지 않는다(뒤의 촬영 검사·문서 검사가 '등기부가 아닌 사진'으로 안내한다).
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            width, height = im.size
+    except Image.DecompressionBombError:
+        raise HTTPException(status_code=400, detail=_MSG_TOO_MANY_PIXELS) from None
+    except Exception:  # noqa: BLE001 — 그림이 아니면 여기서는 지나간다
+        return
+    if width * height > settings.MAX_IMAGE_PIXELS:
+        raise HTTPException(status_code=400, detail=_MSG_TOO_MANY_PIXELS)
+
+
+_MSG_TOO_MANY_PIXELS = "사진이 너무 커요. 휴대폰 카메라로 찍은 사진으로 다시 시도해 주세요"
+
+
 def _capture_gate(images: list[tuple[str, bytes]]) -> tuple[CaptureCheck | None, JSONResponse | None]:
     """촬영 검사(P1-1, 2026-10-22) — IE·OCR **전에** 사진 품질을 본다. (검사 결과, 거절 응답).
 
     심하게 흐리거나 어두운 장이 있으면 **분석하지 않고** 400을 돌려준다(크레딧 0원). 분석 횟수는 1회 센다 —
-    라우터가 `limit_analyze` **뒤에** 부른다(검사도 서버 계산을 쓰므로 횟수로 묶어 둔다).
+    라우터가 `limit_requester` **뒤에** 부른다(검사도 서버 계산을 쓰므로 횟수로 묶어 둔다).
     본문은 일관 에러 형식 그대로 `detail`(한국어 한 줄) + 덧붙인 `captureCheck`(장별 안내)다 —
     옛 앱은 `detail`만 읽고, 새 앱은 `captureCheck`로 "그 장만 다시 찍기"를 그린다.
     가벼운 문제는 통과시킨다(리포트의 `captureCheck`에 실린다).
@@ -139,7 +166,7 @@ def analyze(
     files: list[UploadFile] = File(..., description="등기부 페이지 이미지(여러 장)"),
     deposit: int = Form(..., description="예정 보증금(원)"),
     marketPrice: Optional[int] = Form(default=None, description="매매 시세(원, 선택)"),
-    alias: Optional[str] = Form(default=None, description="매물 별칭(선택)"),
+    alias: Optional[str] = Form(default=None, max_length=40, description="매물 별칭(선택, 40자까지)"),
     replaces: Optional[str] = Form(
         default=None,
         description="이 분석이 **대신하는** 리포트 id(선택) — 빠진 쪽을 보충해 다시 낸 경우. 같은 집이면 그 리포트를 지운다",
@@ -153,8 +180,9 @@ def analyze(
     걸릴 수 있어 동기(def) 핸들러로 두어 스레드풀에서 실행되게 한다.
     """
     images = _read_images(files, empty_detail="등기부 사진을 1장 이상 올려 주세요")
-    # 입력 검사를 모두 통과한 뒤에만 센다 — 형식이 틀린 요청은 분석 기회를 깎지 않는다
-    limit_analyze(request, device_id)
+    # 입력 검사를 모두 통과한 뒤에만 센다 — 형식이 틀린 요청은 분석 기회를 깎지 않는다.
+    # 서버 전체 상한은 크레딧을 실제로 쓰기 직전에 따로 센다(아래 limit_global — 2026-10-30 보안)
+    limit_requester(request, device_id)
     # 같은 사진·같은 입력이면 같은 리포트 (P1-1 — `analysis_cache`). 촬영 검사·IE·OCR 전부 건너뛴다.
     cache_key = analysis_cache.make_key(images, deposit=deposit, market_price=marketPrice)
     cached = analysis_cache.lookup(cache_key, device_id=device_id)
@@ -167,6 +195,7 @@ def analyze(
         return rejected
 
     gone = lambda: _client_gone(request)  # noqa: E731 — 분석 단계 사이마다 묻는다
+    limit_global()  # 여기서부터 Upstage 크레딧을 쓴다
     try:
         report = report_builder.analyze(
             images,
@@ -242,7 +271,8 @@ def update_inputs(
         kit = store.get_rejudge_kit(report_id, device_id=device_id)
         if kit is None:
             raise HTTPException(status_code=409, detail=NO_KIT_DETAIL)
-        limit_analyze(request, device_id)  # 설명 문장에 AI를 한 번 쓴다 — 분석 횟수로 센다
+        limit_requester(request, device_id)  # 설명 문장에 AI를 한 번 쓴다 — 분석 횟수로 센다
+        limit_global()
         updated = report_builder.rejudge(
             old, kit, deposit=body.deposit, market_price=body.marketPrice, alias=alias
         )
@@ -352,11 +382,12 @@ def compare_registry(
 
     images = _read_images(files, empty_detail="다시 뗀 등기부 사진을 1장 이상 올려 주세요")
     # 다시 분석하므로 분석과 같은 상한을 쓴다 — 검사를 통과한 뒤, 외부 호출 직전에 센다
-    limit_analyze(request, device_id)
+    limit_requester(request, device_id)
     # 대조도 새 사진을 다시 분석한다 — 같은 촬영 검사(심하면 크레딧 0원으로 거절)
     capture, rejected = _capture_gate(images)
     if rejected is not None:
         return rejected
+    limit_global()  # 여기서부터 Upstage 크레딧을 쓴다
 
     try:
         # ⚠ 보증금·시세는 **기준 분석과 같은 값**을 쓴다. 다른 값으로 계산하면 등급 차이가

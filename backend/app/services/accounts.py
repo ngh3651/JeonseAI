@@ -21,7 +21,6 @@ import hashlib
 import hmac
 import logging
 import secrets
-import sqlite3
 import threading
 from contextlib import closing
 from dataclasses import dataclass
@@ -30,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from .. import settings
-from . import analysis_cache, payments, store
+from . import analysis_cache, payments, sealing, store
 
 _log = logging.getLogger("jeonseai")
 
@@ -177,8 +176,7 @@ _db_lock = threading.Lock()
 def _execute(sql: str, params: tuple = ()) -> list[tuple]:
     path = store.db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with _db_lock, closing(sqlite3.connect(path, timeout=10)) as conn, conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+    with _db_lock, closing(store.connect(path)) as conn, conn:
         conn.execute(_SCHEMA)
         conn.execute(_INDEX)
         conn.execute(_PROFILE_SCHEMA)
@@ -276,6 +274,60 @@ def claim_device_records(device_id: str | None, owner: str) -> int:
     return moved
 
 
+# ── 기기 주인 값 가리기 (2026-10-30 보안) ─────────────────────────────────────────
+# 로그인 없이 둘러보는 사람의 기록 주인은 원래 **기기 id 원문**이었다. DB가 새면 그 값을 `X-Device-Id`에 실어
+# 그 사람의 앞으로의 기록까지 볼 수 있었다 → 열쇠(`DATA_SECRET`)가 있으면 HMAC 값(`dv-…`)을 주인으로 쓴다.
+# 원문으로 쌓인 옛 기록은 그 기기가 처음 다시 부를 때 옮긴다(이 프로세스에서 한 번).
+
+_adopted: set[str] = set()
+_adopted_lock = threading.Lock()
+
+
+def device_owner(device_id: str) -> str:
+    """기기 id → 기록의 주인 값. 열쇠가 없으면 원문 그대로(예전과 같다).
+
+    처음 보는 기기면 원문으로 쌓인 기록(리포트·대조 기준·재료·캐시 쪽지·패스)을 가린 주인 값으로 옮긴다.
+    """
+    owner = sealing.device_owner(device_id)
+    if owner == device_id:
+        return owner
+    if device_id.lower().startswith(sealing.DEVICE_OWNER_PREFIX):
+        # 가린 주인 값을 기기 id로 보낸 경우 — 그 값의 기록을 옮겨 오면 남의 기록을 빼앗는 길이 된다(라우터가 400으로 먼저 막는다)
+        return owner
+    with _adopted_lock:
+        if device_id in _adopted:
+            return owner
+    try:
+        moved = store.adopt_owner(device_id, owner)
+        analysis_cache.move_owner(device_id, owner)
+        passes = payments.move_owner(pass_owner_key(device_id), pass_owner_key(owner))
+        if moved or passes:
+            _log.info(f"[보안] 기기 기록의 주인 값을 가렸어요 — 리포트 {moved}건 · 패스 {passes}건")
+    except Exception as e:  # noqa: BLE001 — 옮기기가 실패해도 요청은 막지 않는다(다음 요청 때 다시)
+        _log.error(f"[보안] ⚠ 기기 기록을 옮기지 못함 ({type(e).__name__})")
+        return owner
+    with _adopted_lock:
+        _adopted.add(device_id)
+    return owner
+
+
+def reset_adopted_for_test() -> None:
+    with _adopted_lock:
+        _adopted.clear()
+
+
+def seal_existing_profiles() -> int:
+    """평문으로 남은 표시 이름을 잠근다(서버가 켜질 때 뒤에서). 잠근 수."""
+    if not sealing.enabled():
+        return 0
+    rows = _execute(
+        "SELECT owner, display_name FROM profiles WHERE display_name NOT LIKE ?", (sealing.PREFIX + "%",)
+    )
+    for owner, name in rows:
+        _execute("UPDATE profiles SET display_name = ? WHERE owner = ?", (sealing.seal(name), owner))
+    return len(rows)
+
+
 #: 표시 이름 최대 글자 수 — 인사말 "○○님 안녕하세요"가 한 줄에 들어가게
 DISPLAY_NAME_MAX = 12
 
@@ -290,7 +342,12 @@ def clean_display_name(name: str) -> str:
 
 def display_name(owner: str) -> str | None:
     rows = _execute("SELECT display_name FROM profiles WHERE owner = ?", (owner,))
-    return rows[0][0] if rows else None
+    if not rows:
+        return None
+    try:
+        return sealing.unseal(rows[0][0])
+    except sealing.SealedUnavailable:
+        return None
 
 
 def set_display_name(owner: str, name: str) -> str | None:
@@ -304,7 +361,7 @@ def set_display_name(owner: str, name: str) -> str | None:
     _execute(
         "INSERT INTO profiles (owner, display_name, updated_at) VALUES (?, ?, ?) "
         "ON CONFLICT(owner) DO UPDATE SET display_name = excluded.display_name, updated_at = excluded.updated_at",
-        (owner, cleaned, _iso(_now())),
+        (owner, sealing.seal(cleaned), _iso(_now())),
     )
     return cleaned
 

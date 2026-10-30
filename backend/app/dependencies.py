@@ -23,7 +23,7 @@ from typing import Annotated, Optional
 from fastapi import Depends, Header, HTTPException, Request
 
 from . import settings
-from .services import accounts
+from .services import accounts, sealing
 
 #: 앱이 처음 실행될 때 만들어 폰에 저장하는 기기 id 형식 (UUID 등).
 _DEVICE_ID_RE = re.compile(r"[A-Za-z0-9-]{8,64}")
@@ -34,11 +34,13 @@ _log = logging.getLogger("jeonseai")
 def checked_device_id(x_device_id: Optional[str]) -> Optional[str]:
     """`X-Device-Id` 헤더의 형식 검사. 없으면 None, 틀리면 400, 맞으면 그 값.
 
-    ⚠ 막는 값 두 가지(사칭 차단):
+    ⚠ 막는 값 세 가지(사칭 차단):
       - 공용 통로 이름 `legacy-device` — `REQUIRE_DEVICE_ID=1`로 통로를 닫은 뒤에도 헤더 하나로
         옛 앱의 공용 기록에 들어가는 길이 남지 않게.
       - 계정 주인 앞머리 `acct-` — 기기 id를 `acct-…`로 보내 남의 **계정 기록**에 들어가는 길을 막는다
         (2026-10-22 카카오 로그인. 대소문자를 가리지 않는다).
+      - 가린 기기 주인 앞머리 `dv-` (2026-10-30) — DB가 새어 주인 값을 알아도 그 값을 기기 id로 보내
+        "옛 기록 옮기기"로 남의 기록을 끌어오지 못하게. 앱의 기기 id(UUID)는 16진수라 `dv-`로 시작할 수 없다.
     """
     raw = (x_device_id or "").strip()
     if not raw:
@@ -46,6 +48,7 @@ def checked_device_id(x_device_id: Optional[str]) -> Optional[str]:
     if (
         raw == settings.LEGACY_DEVICE_ID
         or raw.lower().startswith(accounts.ACCOUNT_PREFIX)
+        or raw.lower().startswith(sealing.DEVICE_OWNER_PREFIX)
         or not _DEVICE_ID_RE.fullmatch(raw)
     ):
         raise HTTPException(status_code=400, detail="기기 정보 형식이 올바르지 않아요")
@@ -61,7 +64,7 @@ def get_current_user(
     - `X-Device-Id`가 있으면 형식부터 검사한다(틀리면 400 — [checked_device_id]).
     - `Authorization: Bearer <세션>`이 있으면: 살아 있는 세션이면 **계정 주인**(`acct-…`),
       틀리거나 만료됐으면 **401 "다시 로그인해 주세요"**(앱은 세션을 지우고 로그인을 안내한다).
-    - 세션이 없으면(로그인 없이 둘러보기) 지금까지처럼 **기기 id**.
+    - 세션이 없으면(로그인 없이 둘러보기) **기기 id로 만든 주인 값**(열쇠가 있으면 HMAC으로 가린 `dv-…`, 없으면 원문).
       헤더도 없으면: `REQUIRE_DEVICE_ID=1`이면 400, 아니면 옛 앱이 함께 쓰는 `legacy-device`.
     """
     device_id = checked_device_id(x_device_id)
@@ -82,7 +85,8 @@ def get_current_user(
                 detail="기기 정보가 없어요. 앱을 최신 버전으로 업데이트해 주세요",
             )
         return settings.LEGACY_DEVICE_ID
-    return device_id
+    # 열쇠(DATA_SECRET)가 있으면 기기 id 원문 대신 가린 값(`dv-…`)이 주인이다 — DB가 새도 앱 행세를 못 하게(2026-10-30)
+    return accounts.device_owner(device_id)
 
 
 def get_pass_owner(user: str = Depends(get_current_user)) -> str:
@@ -183,23 +187,46 @@ def _cleanup(now: float) -> None:
             _hits.pop(key, None)
 
 
-def limit_analyze(request: Request, device_id: str) -> None:
-    """분석·대조 1건을 센다. 네 겹 중 하나라도 상한에 닿아 있으면 **세지 않고** 429.
-
-    라우터가 입력 검사를 마친 뒤, 외부 API를 부르기 직전에 부른다(위 '언제 세나').
-    확인과 기록을 한 잠금 안에서 하므로, 동시에 몰려 와도 상한을 넘겨 통과하지 못한다.
-    """
+def _requester_limits(request: Request, device_id: str) -> list:
     ip = client_ip(request)
+    return [
+        ((device_id, ip), settings.rate_limit_analyze_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
+        (("ip", ip), settings.rate_limit_ip_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
+    ]
+
+
+def _global_limits() -> list:
+    return [
+        (_GLOBAL, settings.rate_limit_global_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
+        (_GLOBAL_DAY, settings.rate_limit_global_per_day(), _DAY_SECONDS, _MSG_DAY),
+    ]
+
+
+def limit_analyze(request: Request, device_id: str) -> None:
+    """분석·대조 1건을 네 겹 모두로 센다. 하나라도 상한에 닿아 있으면 **세지 않고** 429.
+
+    확인과 기록을 한 잠금 안에서 하므로, 동시에 몰려 와도 상한을 넘겨 통과하지 못한다.
+    라우터는 둘로 나눠 부른다 — [limit_requester](입력 검사 직후) + [limit_global](크레딧을 쓰기 직전).
+    """
     _count(
-        [
-            ((device_id, ip), settings.rate_limit_analyze_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
-            (("ip", ip), settings.rate_limit_ip_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
-            (_GLOBAL, settings.rate_limit_global_per_hour(), _WINDOW_SECONDS, _MSG_HOUR),
-            (_GLOBAL_DAY, settings.rate_limit_global_per_day(), _DAY_SECONDS, _MSG_DAY),
-        ],
+        _requester_limits(request, device_id) + _global_limits(),
         day_key=_GLOBAL_DAY,
         day_env="RATE_LIMIT_GLOBAL_PER_DAY",
     )
+
+
+def limit_requester(request: Request, device_id: str) -> None:
+    """한 사람(기기 id × IP)·한 주소(IP)의 분석 횟수 — 입력 검사를 마친 직후에 센다(촬영 거절도 센다)."""
+    _count(_requester_limits(request, device_id), day_key=_GLOBAL_DAY, day_env="RATE_LIMIT_GLOBAL_PER_DAY")
+
+
+def limit_global() -> None:
+    """서버 전체(시간·하루) 분석 횟수 — **실제로 크레딧을 쓰기 직전에만** 센다(2026-10-30 보안).
+
+    예전엔 같은 사진 캐시 적중·촬영 거절(크레딧 0원)도 서버 전체 칸을 깎았다. 그래서 흰 그림 한 장을
+    주소 몇 개로 반복해 보내면 하루 상한(500)을 채워, 부스 시연까지 하루 종일 429가 될 수 있었다.
+    """
+    _count(_global_limits(), day_key=_GLOBAL_DAY, day_env="RATE_LIMIT_GLOBAL_PER_DAY")
 
 
 def limit_chat(request: Request, device_id: str) -> None:

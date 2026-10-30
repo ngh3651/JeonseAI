@@ -99,7 +99,8 @@ class MarketPriceError(Exception):
 #     보증금 합계가 등기부에 나오지 않기 때문**이다(선순위 임차인 확인 불가, 기존 미결
 #     항목과 같은 뿌리). 배선 단계의 안내 문구는 "자동 조회 불가"에서 멈추지 말고
 #     이 실제 한계까지 이어져야 한다.
-_BASE = "http://apis.data.go.kr/1613000"
+# https — 서비스 키가 주소에 실리고, 응답(시세)이 판정 재료라 중간에서 바뀌면 안 된다(2026-10-30 보안)
+_BASE = "https://apis.data.go.kr/1613000"
 ENDPOINTS: dict[str, str] = {
     "apt": f"{_BASE}/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade",
     "row_house": f"{_BASE}/RTMSDataSvcRHTrade/getRTMSDataSvcRHTrade",

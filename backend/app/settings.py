@@ -74,8 +74,14 @@ def save_raw_responses() -> bool:
 
 
 def require_device_id() -> bool:
-    """`X-Device-Id` 헤더를 필수로 할지. 기본 꺼짐(옛 앱 호환)."""
-    return env_flag("REQUIRE_DEVICE_ID")
+    """`X-Device-Id` 헤더를 필수로 할지. **기본 켜짐**(2026-10-30 보안).
+
+    예전 기본은 꺼짐이었다 — 헤더 없는 옛 앱(8/14 빌드)이 함께 쓰는 공용 칸(`legacy-device`)을 열어 두려고.
+    그 칸은 앱 키만 있으면 누구나 목록을 읽고 지울 수 있었다. 지금 앱은 모든 요청에 헤더를 싣는다(2026-10-22).
+    옛 앱을 잠깐 다시 살려야 할 때만 `REQUIRE_DEVICE_ID=0`.
+    """
+    raw = env_str("REQUIRE_DEVICE_ID")
+    return raw.lower() in _TRUTHY if raw else True
 
 
 def app_key() -> str:
@@ -127,6 +133,11 @@ def rate_limit_chat_global_per_day() -> int:
     return env_int("RATE_LIMIT_CHAT_GLOBAL_PER_DAY", 3000)
 
 
+def data_secret_set() -> bool:
+    """저장 데이터 잠금 열쇠(`DATA_SECRET`)가 있나 — 값은 `services/sealing.py`만 읽는다."""
+    return bool(env_str("DATA_SECRET"))
+
+
 def docs_disabled() -> bool:
     """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
     return env_flag("DISABLE_DOCS")
@@ -134,6 +145,17 @@ def docs_disabled() -> bool:
 
 #: 분석·대조 1회에 올릴 수 있는 사진 장수 상한. 앱은 10장까지 보내므로 넉넉하다.
 MAX_PHOTOS_PER_REQUEST = 20
+
+#: 사진 한 장의 최대 용량. 앱이 보내는 JPEG는 장당 1~3MB다.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+#: 요청 하나의 최대 본문 크기 — 앱은 한 번에 최대 10장 × 장당 1~3MB를 보낸다(넉넉히 두 배). 넘으면 다 받기 **전에** 413.
+#: 예전엔 본문을 끝까지 받아 메모리에 올린 뒤에 용량을 봤다 → 3GB 파일 하나로 서버가 죽을 수 있었다(2026-10-30 보안).
+MAX_REQUEST_BYTES = 60 * 1024 * 1024
+
+#: 사진 한 장의 최대 화소 수 — 앱 사진은 약 500만 화소. 이보다 크면 압축 폭탄으로 보고 읽지 않는다
+#: (668KB짜리 13000×13000 PNG 한 장이 메모리 830MB를 쓰는 것을 확인했다).
+MAX_IMAGE_PIXELS = 40_000_000
 
 
 #: 토스페이먼츠 개발자 문서에 **공개된 테스트용** 결제위젯 시크릿 키 (2026-10-22, P2-1).

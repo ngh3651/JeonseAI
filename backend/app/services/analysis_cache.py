@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import sqlite3
 import threading
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -109,8 +108,7 @@ def make_key(images: list[tuple[str, bytes]], *, deposit: int, market_price: int
 def _execute(sql: str, params: tuple = ()) -> list[tuple]:
     path = store.db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with _lock, closing(sqlite3.connect(path, timeout=10)) as conn, conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+    with _lock, closing(store.connect(path)) as conn, conn:
         conn.execute(_SCHEMA)
         return conn.execute(sql, params).fetchall()
 

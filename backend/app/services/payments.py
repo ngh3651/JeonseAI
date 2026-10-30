@@ -22,7 +22,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import sqlite3
 import threading
 from contextlib import closing
 from dataclasses import dataclass
@@ -231,8 +230,7 @@ _db_lock = threading.Lock()
 def _execute(sql: str, params: tuple = ()) -> list[tuple]:
     path = store.db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with _db_lock, closing(sqlite3.connect(path, timeout=10)) as conn, conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+    with _db_lock, closing(store.connect(path)) as conn, conn:
         conn.execute(_SCHEMA)
         return conn.execute(sql, params).fetchall()
 

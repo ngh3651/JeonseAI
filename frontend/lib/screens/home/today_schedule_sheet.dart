@@ -142,17 +142,22 @@ class TodayBellButton extends StatelessWidget {
     required this.hasToday,
     required this.onPressed,
     this.open = false,
+    this.count = 0,
   });
 
-  /// 아직 안 본 오늘 일정이 있나 — 빨간 점 (시트를 열어 보면 꺼진다, [TodayBellSeen])
+  /// 아직 안 본 오늘 일정이 있나 — 빨간 숫자 (시트를 열어 보면 꺼진다, [TodayBellSeen])
   final bool hasToday;
   final VoidCallback onPressed;
 
-  /// 시트가 열려 있나 — 진한 바탕 + 흰 종
+  /// 시트가 열려 있나 — 진한 원 + 흰 종
   final bool open;
+
+  /// 오늘 일정 수 — 빨간 동그라미 안 숫자 (0이면 점만)
+  final int count;
 
   @override
   Widget build(BuildContext context) {
+    // 2026-10-30 홈 리뉴얼(종 C): 테두리 원 없이 채운 종 + 빨간 숫자. 인사 줄 오른쪽에 붙는다.
     return Semantics(
       button: true,
       label: hasToday ? '오늘 중요한 일정 있음' : '오늘 중요한 일정',
@@ -164,12 +169,8 @@ class TodayBellButton extends StatelessWidget {
           children: [
             Material(
               key: const ValueKey('home-bell'),
-              color: open ? AppColorsNext.textStrong : AppColors.surface,
-              shape: CircleBorder(
-                side: BorderSide(
-                  color: open ? AppColorsNext.textStrong : AppColors.line,
-                ),
-              ),
+              color: open ? AppColorsNext.textStrong : Colors.transparent,
+              shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: onPressed,
@@ -177,27 +178,47 @@ class TodayBellButton extends StatelessWidget {
                   width: 48,
                   height: 48,
                   child: Icon(
-                    Icons.notifications_none,
-                    size: 24,
-                    color: open ? AppColors.onInverse : AppColorsNext.textStrong,
+                    Icons.notifications_rounded,
+                    size: 26,
+                    color: open
+                        ? AppColors.onInverse
+                        : AppColorsNext.textStrong,
                   ),
                 ),
               ),
             ),
             if (hasToday && !open)
               Positioned(
-                right: 4,
-                top: 4,
+                right: 2,
+                top: 3,
                 child: IgnorePointer(
                   child: Container(
                     key: const ValueKey('home-bell-dot'),
-                    width: 9 + 4, // 점 9 + 흰 테두리 2×2
-                    height: 9 + 4,
+                    constraints: BoxConstraints(
+                      minWidth: count > 0 ? 24 : 13,
+                      minHeight: count > 0 ? 24 : 13,
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: count > 0 ? 5 : 0,
+                    ),
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: AppColors.danger,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.surface, width: 2),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppColors.background, width: 2),
                     ),
+                    child: count > 0
+                        ? AppText(
+                            count > 9 ? '9+' : '$count',
+                            maxLines: 1,
+                            style: AppTypographyNext.caption.copyWith(
+                              fontSize: 13,
+                              height: 1.2,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          )
+                        : null,
                   ),
                 ),
               ),

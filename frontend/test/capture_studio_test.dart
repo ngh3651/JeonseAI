@@ -322,9 +322,7 @@ void main() {
     await tester.tap(find.koText('완료 · 1장'));
     await tester.pumpAndSettle();
 
-    // 시세 행을 펼친다
-    await tester.tap(find.koText('매매 시세'));
-    await tester.pumpAndSettle();
+    // 시세 행은 처음부터 펼쳐져 있다 (2026-10-30 — 접혀 있으면 대부분 건너뛴다)
 
     expect(find.byType(AmberHint), findsOneWidget);
     // 2026-08-14(D3): 예전에는 "모든 집에서 되지는 않아요 — 안 되면 알려드릴게요"까지

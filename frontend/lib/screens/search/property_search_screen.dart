@@ -15,6 +15,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../common/analyze_gate.dart' show AnalyzeStart;
 import '../../design_system/components/amber_hint.dart';
 import '../../design_system/components/mascot_safe.dart';
 import '../../design_system/components/photo_tray.dart';
@@ -54,11 +55,16 @@ class PropertySearchScreen extends StatefulWidget {
   const PropertySearchScreen({
     super.key,
     this.prefill,
+    this.startWith,
     this.captureOne = defaultCaptureOne,
     this.pickMany = defaultPickMany,
   });
 
   final PropertySearchPrefill? prefill;
+
+  /// 들어오자마자 열 것 — 카메라(촬영 루프) 또는 갤러리 (2026-10-30 홈 리뉴얼).
+  /// 고른 쪽에서 한 장도 안 가져오고 돌아오면 이 화면도 닫고 출발한 곳으로 돌아간다(첫 안내 화면을 거치지 않는다).
+  final AnalyzeStart? startWith;
 
   /// 카메라·갤러리 주입 지점 — 위젯이 `image_picker` 타입에 직접 매달리지 않게
   /// 함수로 뺐다(테스트에서 카메라 없이 촬영 루프를 돌리기 위해).
@@ -83,8 +89,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   final TextEditingController _priceCtrl = TextEditingController();
   final TextEditingController _aliasCtrl = TextEditingController();
 
-  bool _priceOpen = false;
-  bool _aliasOpen = false;
+  // 처음부터 펼쳐 둔다 — 접혀 있으면 대부분 건너뛴다(2026-10-30 규혁). 접기는 그대로 된다.
+  bool _priceOpen = true;
+  bool _aliasOpen = true;
   bool _hintsOn = false;
 
   /// 시세 칸에 지금 들어 있는 값의 출처. 사용자가 손대면 곧바로 manual이 된다 —
@@ -109,6 +116,23 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         _aliasCtrl.text = p.alias!;
       }
     }
+    final AnalyzeStart? start = widget.startWith;
+    if (start != null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _startRightAway(start),
+      );
+    }
+  }
+
+  /// 고른 쪽을 바로 연다. 한 장도 안 가져왔으면 이 화면을 닫는다(갤러리 권한 안내가 떴으면 그대로 둔다).
+  Future<void> _startRightAway(AnalyzeStart start) async {
+    if (!mounted) return;
+    final bool gotPermissionSheet = switch (start) {
+      AnalyzeStart.camera => await _openCaptureLoop().then((_) => false),
+      AnalyzeStart.gallery => await _pickFromGallery(),
+    };
+    if (!mounted || gotPermissionSheet || _photos.isNotEmpty) return;
+    Navigator.of(context).maybePop();
   }
 
   @override
@@ -160,21 +184,24 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     if (result.hitLimit) _toast('사진은 최대 $_maxImages장까지 올릴 수 있어요');
   }
 
-  Future<void> _pickFromGallery() async {
+  /// 갤러리에서 고르기. 권한 안내 시트를 띄웠으면 true.
+  Future<bool> _pickFromGallery() async {
     if (_photos.length >= _maxImages) {
       _toast('사진은 최대 $_maxImages장까지 올릴 수 있어요');
-      return;
+      return false;
     }
     try {
       final List<String> picked = await widget.pickMany();
-      if (!mounted || picked.isEmpty) return;
+      if (!mounted || picked.isEmpty) return false;
       final int room = _maxImages - _photos.length;
       setState(() => _photos.addAll(picked.take(room)));
       if (picked.length > room) {
         _toast('사진은 최대 $_maxImages장까지 올릴 수 있어요');
       }
+      return false;
     } catch (_) {
       if (mounted) _showPermissionSheet();
+      return true;
     }
   }
 
@@ -182,7 +209,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     final PhotoViewerResult? result = await Navigator.of(context).push(
       MaterialPageRoute<PhotoViewerResult>(
         fullscreenDialog: true,
-        builder: (_) => PhotoViewerRoute(paths: List.of(_photos), initialIndex: index),
+        builder: (_) =>
+            PhotoViewerRoute(paths: List.of(_photos), initialIndex: index),
       ),
     );
     if (!mounted || result == null) return;
@@ -224,7 +252,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   }
 
   /// 문제인 장 하나를 다시 찍어 **그 자리에** 바꿔 끼운다. 나머지 장·입력값은 그대로다.
-  Future<void> _retakePage(CapturePageIssue page) => _replacePhotoAt(page.index, tip: page.tip);
+  Future<void> _retakePage(CapturePageIssue page) =>
+      _replacePhotoAt(page.index, tip: page.tip);
 
   /// [index]번째 장을 다시 찍어 그 자리에 바꿔 끼운다 — 거절 안내의 [그 장만 다시 찍기]와
   /// 크게 보기의 [이 장 다시 찍기]가 같은 흐름을 쓴다. 서버가 그 장에 이유를 줬으면 함께 보여 준다.
@@ -274,7 +303,10 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: AppText(message, style: AppTypography.body.copyWith(color: Colors.white)),
+          content: AppText(
+            message,
+            style: AppTypography.body.copyWith(color: Colors.white),
+          ),
           backgroundColor: AppColors.primaryDeep,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(milliseconds: 2600),
@@ -303,7 +335,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       backgroundColor: AppColors.surface,
       barrierColor: AppColors.viewerSheetScrim,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.sheet),
+        ),
       ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
@@ -352,7 +386,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
 
   void _showGuideSheet() => _showSheet(
     title: '등기부등본 발급 방법',
-    body: '인터넷등기소에서 열람용으로 700원에 뗄 수 있어요. '
+    body:
+        '인터넷등기소에서 열람용으로 700원에 뗄 수 있어요. '
         '화면을 캡처하거나 출력해서 찍으면 돼요.',
     cta: '발급 방법 보기',
     onCta: () => context.push('/guide'),
@@ -364,7 +399,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
 
   void _showPermissionSheet() => _showSheet(
     title: '카메라·사진 권한이 필요해요',
-    body: '등기부등본을 찍거나 가져오려면 카메라·사진 권한이 필요해요. '
+    body:
+        '등기부등본을 찍거나 가져오려면 카메라·사진 권한이 필요해요. '
         '${RegistryPhotoStore.retentionNotice}',
     cta: '확인',
     onCta: () {},
@@ -418,13 +454,18 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
         resizeToAvoidBottomInset: true,
         backgroundColor: empty ? AppColors.primaryDeep : AppColors.background,
         appBar: AppBar(
-          backgroundColor: empty ? AppColors.primaryDeep : AppColors.viewerBackdrop,
+          backgroundColor: empty
+              ? AppColors.primaryDeep
+              : AppColors.viewerBackdrop,
           foregroundColor: empty ? Colors.white : AppColors.textStrong,
           elevation: 0,
           scrolledUnderElevation: 0,
-          title: AppText('등기부등본 촬영', style: AppTypography.bodyStrong.copyWith(
-            color: empty ? Colors.white : AppColors.textStrong,
-          )),
+          title: AppText(
+            '등기부등본 촬영',
+            style: AppTypography.bodyStrong.copyWith(
+              color: empty ? Colors.white : AppColors.textStrong,
+            ),
+          ),
           centerTitle: true,
           actions: [
             Semantics(
@@ -497,7 +538,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                       // 이 자리에서 알려야 할 것은 **어떻게 이어 찍는가** 하나뿐이다.
                       TextSpan(
                         text: '다음 장 찍기',
-                        style: AppTypography.bodyStrong.copyWith(color: Colors.white),
+                        style: AppTypography.bodyStrong.copyWith(
+                          color: Colors.white,
+                        ),
                       ),
                       const TextSpan(text: '를 눌러 이어서 찍을 수 있어요.'),
                     ],
@@ -598,7 +641,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
             borderRadius: BorderRadius.circular(AppRadius.thumb),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: strongShadow ? 0.30 : 0.28),
+                color: Colors.black.withValues(
+                  alpha: strongShadow ? 0.30 : 0.28,
+                ),
                 blurRadius: strongShadow ? 22 : 18,
                 offset: Offset(0, strongShadow ? 8 : 6),
               ),
@@ -648,7 +693,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 onReorder: _reorder,
                 // 서버가 문제라고 한 장(아직 안 바꾼 장)에 한 단어 표시 — "어느 장"이 눈에 바로 보이게
                 issueLabels: {
-                  for (final p in _rejection?.check.pages ?? const <CapturePageIssue>[])
+                  for (final p
+                      in _rejection?.check.pages ?? const <CapturePageIssue>[])
                     if (!_replaced.contains(p.index)) p.index: p.shortLabel,
                 },
               ),
@@ -664,10 +710,10 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 ),
               if (_hintsOn)
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                  child: AmberHint(
-                    text: '탭하면 크게 · 끌면 순서 바꾸기',
+                  padding: EdgeInsets.symmetric(
+                    horizontal: AppSpacing.screenPadding,
                   ),
+                  child: AmberHint(text: '탭하면 크게 · 끌면 순서 바꾸기'),
                 ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -706,7 +752,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       return CaptureIssuePanel(
         check: CaptureCheck(ok: false, pages: pages),
         title: '바꿔 찍었어요 — 아래 [분석하기]로 다시 보내 주세요',
-        message: '바꾼 장: ${(_replaced.toList()..sort()).map((i) => '${i + 1}쪽').join(', ')}'
+        message:
+            '바꾼 장: ${(_replaced.toList()..sort()).map((i) => '${i + 1}쪽').join(', ')}'
             '${pages.isEmpty ? '' : ' · 아래 장은 그대로 보내도 돼요 $kSoftIssueNote'}',
         onRetake: _retakePage,
         retakeParticle: '도',
@@ -715,12 +762,13 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     final String done = _replaced.isEmpty
         ? ''
         : '\n바꾼 장: ${(_replaced.toList()..sort()).map((i) => '${i + 1}쪽').join(', ')}'
-            ' · 다시 찍을 장 ${remaining.length}장 남았어요';
+              ' · 다시 찍을 장 ${remaining.length}장 남았어요';
     return CaptureIssuePanel(
       check: CaptureCheck(ok: false, pages: pages),
       title: '사진을 다시 찍어야 분석할 수 있어요',
       // '크레딧' 같은 내부 말은 빼고 지금 상태와 할 일만(지수 리뷰 #4)
-      message: '${rejection.message}\n아직 분석하지 않았어요. '
+      message:
+          '${rejection.message}\n아직 분석하지 않았어요. '
           '문제인 장만 다시 찍으면 나머지 사진은 그대로 써요.$done',
       onRetake: _retakePage,
       retakeParticle: '만',
@@ -728,7 +776,8 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
   }
 
   Widget _card({required Widget child, EdgeInsets? padding}) => Container(
-    padding: padding ??
+    padding:
+        padding ??
         const EdgeInsets.symmetric(
           horizontal: AppSpacing.cardPadH,
           vertical: AppSpacing.cardPadV,
@@ -807,7 +856,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               children: [
                 _moneyField(
                   controller: _priceCtrl,
-                  hint: '',  // 예시값 금지 — 위 보증금 칸과 같은 이유
+                  hint: '', // 예시값 금지 — 위 보증금 칸과 같은 이유
                   active: _manwonToWon(_priceCtrl.text) != null,
                   onChanged: (_) => setState(() {
                     // 사용자가 손대는 순간 '직접 입력'이 된다 — 자동 조회값을 고쳤는데
@@ -831,7 +880,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           _expandRow(
             icon: Icons.label,
             label: '매물 별칭',
-            summary: _aliasCtrl.text.trim().isEmpty ? '주소로 자동' : _aliasCtrl.text.trim(),
+            summary: _aliasCtrl.text.trim().isEmpty
+                ? '주소로 자동'
+                : _aliasCtrl.text.trim(),
             open: _aliasOpen,
             onTap: () => setState(() => _aliasOpen = !_aliasOpen),
             body: SizedBox(
@@ -919,7 +970,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
           onTap: onTap,
           child: Container(
             constraints: const BoxConstraints(minHeight: 52),
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.cardPadH),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.cardPadH,
+            ),
             child: Row(
               children: [
                 Icon(icon, size: AppSize.iconSm, color: AppColors.textMuted),
@@ -963,7 +1016,10 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
 
   // ── 입력 필드 ─────────────────────────────────────────────────────────────
 
-  InputDecoration _fieldDecoration({required String hint, required bool active}) {
+  InputDecoration _fieldDecoration({
+    required String hint,
+    required bool active,
+  }) {
     OutlineInputBorder border(Color color, double width) => OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppRadius.input),
       borderSide: BorderSide(color: color, width: width),

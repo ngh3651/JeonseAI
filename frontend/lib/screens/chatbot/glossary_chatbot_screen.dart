@@ -58,7 +58,8 @@ const int kChatMaxChars = 300;
 const double kBubbleWidthFactor = 0.75;
 
 /// 평소 입력칸 힌트
-const String kChatHint = '궁금한 걸 물어보세요';
+/// 홈 '궁금한 건 바로 물어보세요' 입력칸과 같은 글 · 같은 ✦ (2026-10-30 — 미리보기와 본 화면을 맞춤)
+const String kChatHint = '전세 계약, 무엇이든 물어보세요';
 
 /// 빈 화면 추천 질문 — 누르면 그 문장을 바로 보낸다 (리디자인 2026-10-24: 단어 칩 → 질문 문장 4개)
 const List<String> kSuggestedQuestions = [
@@ -179,7 +180,33 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     _fillReportFocus();
     // 다른 화면에서 꾹 눌러 [챗봇에 묻기]로 넘긴 글 (2026-10-26) — 인용 띠로 받아 이어 묻게 한다
     ChatHandoff.pending.addListener(_takeHandoff);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _takeHandoff());
+    ChatHandoff.question.addListener(_takeQuestion);
+    ChatHandoff.focusInput.addListener(_takeFocus);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _takeHandoff();
+      _takeQuestion();
+      _takeFocus();
+    });
+  }
+
+  /// 홈 질문 칩 — 바로 보낸다. 답을 기다리는 중이면 입력칸에 넣어 둔다.
+  void _takeQuestion() {
+    final text = ChatHandoff.question.value;
+    if (text == null || !mounted) return;
+    ChatHandoff.question.value = null;
+    if (_sending) {
+      _inputCtrl.text = text;
+      _inputFocus.requestFocus();
+      return;
+    }
+    _ask(text);
+  }
+
+  /// 홈 입력칸 — 커서를 두고 키보드를 연다.
+  void _takeFocus() {
+    if (!ChatHandoff.focusInput.value || !mounted) return;
+    ChatHandoff.focusInput.value = false;
+    _inputFocus.requestFocus();
   }
 
   void _takeHandoff() {
@@ -219,6 +246,8 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
   @override
   void dispose() {
     ChatHandoff.pending.removeListener(_takeHandoff);
+    ChatHandoff.question.removeListener(_takeQuestion);
+    ChatHandoff.focusInput.removeListener(_takeFocus);
     _flashTimer?.cancel();
     _toastTimer?.cancel();
     _inputCtrl.dispose();
@@ -1004,80 +1033,109 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
                 QuoteBand(quote: quoting.text, onCancel: _cancelQuote),
                 const SizedBox(height: AppSpacing.sm),
               ],
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _inputCtrl,
-                      focusNode: _inputFocus,
-                      // 엔터 = 줄바꿈. 보내기는 오른쪽 ↑ 버튼으로만.
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.newline,
-                      maxLength: kChatMaxChars,
-                      minLines: 1,
-                      maxLines: 4,
-                      style: AppTypographyNext.body,
-                      decoration: InputDecoration(
-                        hintText: quoting != null ? kQuoteHint : kChatHint,
-                        hintStyle: AppTypographyNext.body.copyWith(
-                          color: AppColorsNext.textMuted,
-                        ),
-                        counterText: '',
-                        filled: true,
-                        fillColor: AppColors.surface,
-                        isDense: true,
-                        constraints: const BoxConstraints(minHeight: 52),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.xl,
-                          vertical: AppSpacing.md,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.pill),
-                          borderSide: enabledSide,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.pill),
-                          borderSide: BorderSide(
-                            color: AppColors.primary,
-                            width: 2,
-                          ),
-                        ),
+              // 흰 상자 하나에 ✦ · 입력 · ↑ (홈 입력칸과 같은 모양, 2026-10-30)
+              ListenableBuilder(
+                listenable: _inputFocus,
+                builder: (context, _) {
+                  final bool strong = quoting != null || _inputFocus.hasFocus;
+                  return Container(
+                    key: const ValueKey('chat-input-box'),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: strong ? AppColors.primary : enabledSide.color,
+                        width: strong ? 2 : 1.5,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  // 입력칸이 한 줄일 때 세로 가운데에 오도록 아래 2 (52 - 48)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Semantics(
-                      button: true,
-                      enabled: !_sending,
-                      label: _sending ? '답을 기다리는 중' : '질문 보내기',
-                      child: Material(
-                        color: _sending ? AppColors.line : AppColors.primary,
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          onTap: _sending
-                              ? null
-                              : () => _ask(_inputCtrl.text, quote: _quoting),
-                          customBorder: const CircleBorder(),
-                          child: SizedBox(
-                            width: AppSize.minTouchTarget,
-                            height: AppSize.minTouchTarget,
-                            child: Icon(
-                              Icons.arrow_upward,
-                              size: AppSize.iconMd,
-                              color: _sending
-                                  ? AppColorsNext.textMuted
-                                  : AppColors.surface,
+                    padding: EdgeInsets.fromLTRB(
+                      strong ? 15.5 : 16,
+                      0,
+                      strong ? 5.5 : 6,
+                      0,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Icon(
+                            Icons.auto_awesome_outlined,
+                            size: 20,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _inputCtrl,
+                            focusNode: _inputFocus,
+                            // 엔터 = 줄바꿈. 보내기는 오른쪽 ↑ 버튼으로만.
+                            keyboardType: TextInputType.multiline,
+                            textInputAction: TextInputAction.newline,
+                            maxLength: kChatMaxChars,
+                            minLines: 1,
+                            maxLines: 4,
+                            style: AppTypographyNext.body,
+                            decoration: InputDecoration(
+                              hintText: quoting != null
+                                  ? kQuoteHint
+                                  : kChatHint,
+                              hintStyle: AppTypographyNext.body.copyWith(
+                                color: AppColorsNext.textMuted,
+                              ),
+                              hintMaxLines: 1,
+                              counterText: '',
+                              filled: false,
+                              isDense: true,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 14,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Semantics(
+                            button: true,
+                            enabled: !_sending,
+                            label: _sending ? '답을 기다리는 중' : '질문 보내기',
+                            child: Material(
+                              color: _sending
+                                  ? AppColors.line
+                                  : AppColors.primary,
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                onTap: _sending
+                                    ? null
+                                    : () => _ask(
+                                        _inputCtrl.text,
+                                        quote: _quoting,
+                                      ),
+                                customBorder: const CircleBorder(),
+                                child: SizedBox(
+                                  width: 44,
+                                  height: 44,
+                                  child: Icon(
+                                    Icons.arrow_upward,
+                                    size: 24,
+                                    color: _sending
+                                        ? AppColorsNext.textMuted
+                                        : AppColors.onPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             ],
           ),

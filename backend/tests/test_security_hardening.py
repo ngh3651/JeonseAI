@@ -325,3 +325,75 @@ def test_로그에는_오류_문장_대신_종류와_위치만():
     assert "홍길동" not in text and "600101" not in text
     assert "ValueError" in text
     assert "test_security_hardening.py" in text
+
+
+def test_요청_횟수를_세던_IP는_요청이_끊겨도_2시간_안에_버린다():
+    """처리방침의 약속(접속 IP는 2시간 안에 버려요)을 지킨다 — 예전엔 칸이 2만 개를 넘을 때만 치웠다."""
+    from starlette.requests import Request
+
+    dependencies.reset_rate_limit()
+    req = Request({"type": "http", "headers": [(b"x-forwarded-for", b"203.0.113.7")], "client": ("10.0.0.1", 1)})
+    dependencies.limit_requester(req, "dev-a")
+    assert any("203.0.113.7" in key for key in dependencies._hits)
+
+    # 마지막 호출 1시간 뒤 + 청소 간격(10분) — 뒤쪽 스레드가 부르는 청소 한 번이면 IP 칸이 사라진다
+    later = max(b[-1] for b in dependencies._hits.values()) + dependencies._WINDOW_SECONDS + 1
+    assert dependencies._WINDOW_SECONDS + dependencies._CLEANUP_EVERY_SECONDS <= 2 * 3600
+    dependencies.sweep_rate_limits(now=later)
+    assert not any("203.0.113.7" in key for key in dependencies._hits)
+    dependencies.reset_rate_limit()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 보관 기간을 서버가 스스로 지킨다 (2026-10-30 — 처리방침 "로그인 없이 쓴 기록 1년", "해시값 24시간")
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_로그인_없이_쓴_기록은_마지막으로_쓴_지_1년이_지나면_지우고_계정과_최근_칸은_남긴다():
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import payments
+    from tests.test_compare import _report
+
+    old_guest, paid_guest, new_guest = "dv-old-guest", "dv-paid-guest", "dv-new-guest"
+    account = accounts.ACCOUNT_PREFIX + "0" * 32
+    for owner, rid in ((old_guest, "r-old"), (paid_guest, "r-paid"), (new_guest, "r-new"), (account, "r-acct")):
+        store.add(_report(rid), device_id=owner)
+    long_ago = (datetime.now(timezone.utc) - timedelta(days=400)).isoformat(timespec="milliseconds")
+    store._db().execute(
+        "UPDATE reports SET created_at = ? WHERE device_id IN (?, ?, ?)", (long_ago, old_guest, paid_guest, account)
+    )
+    # 오래전에 분석했어도 최근에 결제했으면 '쓴 날'이 최근이다 → 남긴다
+    payments.add_pass(
+        owner_key=accounts.pass_owner_key(paid_guest), order_id="order-recent", plan_id="pass",
+        payment_key="pk", amount=1000, method="카드", approved_at=None, test_mode=True,
+    )
+
+    assert accounts.sweep_inactive_guests(days=0) == 0  # 끄면 아무것도 지우지 않는다
+    assert accounts.sweep_inactive_guests(days=365) == 1
+    assert store.list_reports(device_id=old_guest) == []
+    assert [r.id for r in store.list_reports(device_id=paid_guest)] == ["r-paid"]
+    assert [r.id for r in store.list_reports(device_id=new_guest)] == ["r-new"]
+    assert [r.id for r in store.list_reports(device_id=account)] == ["r-acct"]  # 계정은 탈퇴로만 지운다
+    assert accounts.sweep_inactive_guests(days=365) == 0  # 두 번째는 지울 것이 없다
+
+
+def test_기간_지난_같은_사진_쪽지는_다른_기기_것까지_모두_지운다(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import analysis_cache
+
+    now = datetime.now(timezone.utc)
+    stale = (now - timedelta(hours=25)).isoformat(timespec="milliseconds")
+    fresh = (now - timedelta(hours=1)).isoformat(timespec="milliseconds")
+    analysis_cache._execute(
+        "INSERT INTO analysis_cache (device_id, cache_key, report_id, created_at) VALUES (?, ?, ?, ?)",
+        ("dv-gone", "k1", "r1", stale),
+    )
+    analysis_cache._execute(
+        "INSERT INTO analysis_cache (device_id, cache_key, report_id, created_at) VALUES (?, ?, ?, ?)",
+        ("dv-here", "k2", "r2", fresh),
+    )
+    assert analysis_cache.purge_expired(now=now) == 1
+    left = analysis_cache._execute("SELECT device_id FROM analysis_cache")
+    assert left == [("dv-here",)]

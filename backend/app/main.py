@@ -85,9 +85,45 @@ async def _lifespan(_app: FastAPI):
             logger.info(f"[판례 업데이트] ⚠ 알람시계를 띄우지 못함 ({type(e).__name__})")
         # 판례 검색 준비를 미리 (2026-10-26) — 첫 '판례 보기'가 색인 읽기까지 기다리지 않게. 뒤에서만 돈다.
         threading.Thread(target=_warm_precedents, name="precedent-warmup", daemon=True).start()
+        # 오래된 기록 정리 (2026-10-30 보안) — 처리방침의 보관 기간을 서버가 스스로 지킨다
+        _start_housekeeping()
     # 평문으로 남은 옛 기록을 잠근다(2026-10-30 보안) — 열쇠(DATA_SECRET)가 있을 때만, 뒤에서 한 번
     threading.Thread(target=_seal_existing, name="seal-existing", daemon=True).start()
+    # 요청 횟수를 세던 IP를 요청이 끊긴 동안에도 2시간 안에 버린다(2026-10-30 보안, 처리방침과 같은 약속)
+    from .dependencies import start_rate_limit_sweeper
+
+    start_rate_limit_sweeper()
     yield
+
+
+_housekeeping_started = False
+
+
+def _start_housekeeping() -> None:
+    """[_housekeeping] 스레드를 프로세스에 **한 번만** 띄운다."""
+    global _housekeeping_started
+    if _housekeeping_started:
+        return
+    _housekeeping_started = True
+    threading.Thread(target=_housekeeping, name="housekeeping", daemon=True).start()
+
+
+def _housekeeping(first_delay: float = 60.0, every: float = 6 * 3600.0) -> None:
+    """하루 네 번 — ① 마지막으로 쓴 지 1년(`GUEST_RECORD_DAYS`)이 지난 기기 칸의 기록 ② 기간 지난 캐시 쪽지를 지운다.
+
+    처리방침의 약속("로그인 없이 쓴 기록은 1년", "같은 사진 확인 값은 24시간")을 사람 손 없이 지키는 곳.
+    실패해도 서버는 돈다 — 다음 차례에 다시 한다. 로그에는 지운 수와 오류 종류만 남는다.
+    """
+    time.sleep(first_delay)
+    while True:
+        try:
+            from .services import accounts, analysis_cache
+
+            accounts.sweep_inactive_guests()
+            analysis_cache.purge_expired()
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[정리] ⚠ 오래된 기록 정리 실패 ({type(e).__name__})")
+        time.sleep(every)
 
 
 def _seal_existing() -> None:

@@ -139,8 +139,16 @@ def data_secret_set() -> bool:
 
 
 def docs_disabled() -> bool:
-    """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
-    return env_flag("DISABLE_DOCS")
+    """`/docs`·`/openapi.json`을 끌지(공개 배포에서 API 지도를 숨긴다). `DISABLE_DOCS=1`이면 끈다.
+
+    **Railway에서 돌면 기본으로 끈다**(2026-10-30 보안) — 변수를 깜빡해도 공개 주소에 API 지도가 드러나지 않게.
+    Railway가 모든 서비스에 넣어 주는 `RAILWAY_ENVIRONMENT_NAME`·`RAILWAY_PROJECT_ID`로 안다.
+    배포 서버에서 잠깐 켜야 하면 `DISABLE_DOCS=0`. 로컬 개발(변수 없음)은 그대로 켜져 있다.
+    """
+    raw = env_str("DISABLE_DOCS")
+    if raw:
+        return raw.lower() in _TRUTHY
+    return bool(env_str("RAILWAY_ENVIRONMENT_NAME") or env_str("RAILWAY_PROJECT_ID"))
 
 
 #: 분석·대조 1회에 올릴 수 있는 사진 장수 상한. 앱은 10장까지 보내므로 넉넉하다.
@@ -238,6 +246,15 @@ def account_hash_secret() -> str:
 def kakao_login_ready() -> bool:
     """카카오 로그인을 받을 준비가 됐는가 — 앱 ID + 충분히 긴 계정 키 비밀."""
     return bool(kakao_app_id()) and len(account_hash_secret()) >= ACCOUNT_HASH_SECRET_MIN_LENGTH
+
+
+def guest_record_days() -> int:
+    """로그인 없이 쓴 기록(기기 칸)을 지우는 때 — 마지막 분석·결제 뒤 이 날수가 지나면. `GUEST_RECORD_DAYS`(기본 365).
+
+    2026-10-30 보안: 앱을 지우면 기기 번호도 사라져 사용자가 서버 기록을 지울 길이 없다 → 오래 쓰지 않은 기기 칸은
+    서버가 치운다(처리방침 "마지막으로 쓴 날부터 1년"). 0 이하면 끈다. 운영 설정이지 위험 판정 수치가 아니다.
+    """
+    return env_int("GUEST_RECORD_DAYS", 365)
 
 
 def session_days() -> int:

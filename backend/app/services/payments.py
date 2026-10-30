@@ -301,6 +301,12 @@ def move_owner(from_key: str, to_key: str) -> int:
     return int(moved)
 
 
+def last_pass_by_owner() -> dict[str, str]:
+    """주인 키 → 그 주인의 가장 최근 결제 기록 시각(ISO). 오래 쓰지 않은 기기 칸을 찾는 데 쓴다(2026-10-30)."""
+    rows = _execute("SELECT owner_key, MAX(created_at) FROM passes GROUP BY owner_key")
+    return {key: created for key, created in rows if key and created}
+
+
 def delete_owner(owner_key: str) -> int:
     """회원 탈퇴 — 그 계정의 패스(결제 기록)를 전부 지운다. 지운 건수."""
     if not owner_key:

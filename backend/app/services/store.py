@@ -485,6 +485,12 @@ def move_owner(from_owner: str, to_owner: str) -> int:
     return int(moved)
 
 
+def last_report_by_owner() -> dict[str, str]:
+    """주인 → 그 주인의 가장 최근 리포트를 만든 시각(ISO). 오래 쓰지 않은 기기 칸을 찾는 데 쓴다(2026-10-30)."""
+    rows = _db().execute("SELECT device_id, MAX(created_at) FROM reports GROUP BY device_id")
+    return {owner: created for owner, created in rows if owner and created}
+
+
 def delete_owner(owner: str) -> int:
     """`owner`의 리포트·대조 기준·판례 캐시를 **전부** 지운다(회원 탈퇴). 지운 리포트 수를 돌려준다."""
     if not owner:

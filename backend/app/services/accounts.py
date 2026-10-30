@@ -378,6 +378,49 @@ def delete_account(owner: str) -> None:
     _log.info(f"[탈퇴] 계정의 기록을 모두 지움 — 리포트 {reports}건 · 패스 {passes}건 · 세션 전부")
 
 
+def sweep_inactive_guests(*, days: int | None = None, now: datetime | None = None) -> int:
+    """로그인하지 않은 주인(기기 칸) 중 마지막 분석·결제가 `days`일보다 오래된 칸의 기록을 **모두** 지운다 → 지운 칸 수.
+
+    2026-10-30 보안: 앱을 지우면 기기 번호가 사라져 사용자가 서버 기록을 지울 길이 없다. 처리방침
+    "로그인 없이 쓴 기록은 마지막으로 쓴 날부터 1년이 지나면 지워요"를 지키는 곳. 계정 칸(`acct-`)은 건드리지 않는다
+    (탈퇴로 지운다). 기본 날수는 `GUEST_RECORD_DAYS`(365), 0 이하면 아무것도 지우지 않는다.
+    """
+    keep_days = settings.guest_record_days() if days is None else days
+    if keep_days <= 0:
+        return 0
+    cutoff = (now or _now()) - timedelta(days=keep_days)
+
+    def _when(text: str) -> datetime | None:
+        try:
+            moment = datetime.fromisoformat(text)
+        except (TypeError, ValueError):
+            return None  # 읽을 수 없는 시각 = 지우지 않는다(보수적으로 남긴다)
+        return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+    last: dict[str, datetime | None] = {}
+    for owner, created in store.last_report_by_owner().items():
+        if not is_account_owner(owner):
+            last[owner] = _when(created)
+    device_prefix = pass_owner_key("")  # "device:" — 모양은 pass_owner_key 한 곳에서만 정한다
+    for key, created in payments.last_pass_by_owner().items():
+        if key.startswith(device_prefix):
+            owner = key[len(device_prefix):]
+            moment = _when(created)
+            prev = last.get(owner, moment)
+            last[owner] = None if moment is None or prev is None else max(prev, moment)
+    removed = 0
+    for owner, moment in last.items():
+        if not owner or moment is None or moment >= cutoff:
+            continue
+        store.delete_owner(owner)
+        analysis_cache.delete_owner(owner)
+        payments.delete_owner(pass_owner_key(owner))
+        removed += 1
+    if removed:
+        _log.info(f"[정리] {keep_days}일 넘게 쓰지 않은 기기 칸 {removed}개의 기록을 지웠어요")
+    return removed
+
+
 def sessions_for_test() -> list[tuple]:
     """테스트용 — 표에 실제로 무엇이 남았는지(토큰 원문·회원번호가 없는지) 본다."""
     return _execute("SELECT * FROM sessions")

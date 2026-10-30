@@ -147,6 +147,11 @@ _MSG_CHAT_DAY = "오늘은 챗봇 질문을 다 썼어요. 내일 다시 물어�
 
 _hits: dict[tuple, deque[float]] = {}
 _hits_lock = threading.Lock()
+#: 조용해진 칸(기기 id·IP가 든 칸)을 이 간격마다 치운다 — IP를 메모리에 오래 두지 않는다(2026-10-30 보안).
+#: 예전엔 칸이 2만 개를 넘을 때만 치워, 한 번 온 IP가 서버를 다시 켤 때까지 남을 수 있었다.
+#: 이제 마지막 호출 뒤 1시간(_WINDOW_SECONDS) + 최대 10분이면 버린다 → 처리방침 "2시간 안에 버려요".
+_CLEANUP_EVERY_SECONDS = 600.0
+_last_cleanup = 0.0
 
 
 def client_ip(request: Request) -> str:
@@ -163,8 +168,10 @@ def client_ip(request: Request) -> str:
 
 def reset_rate_limit() -> None:
     """테스트용 — 쌓인 호출 기록을 비운다."""
+    global _last_cleanup
     with _hits_lock:
         _hits.clear()
+        _last_cleanup = 0.0
 
 
 def _trim(bucket: deque[float], now: float, window: float = _WINDOW_SECONDS) -> None:
@@ -258,5 +265,44 @@ def _count(limits: list, *, day_key: tuple, day_env: str) -> None:
                     raise HTTPException(status_code=429, detail=msg)
         for key, _, _, _ in limits:
             _hits.setdefault(key, deque()).append(now)
-        if len(_hits) > _MAX_BUCKETS:
-            _cleanup(now)
+        _maybe_cleanup(now)
+
+
+def _maybe_cleanup(now: float) -> None:
+    """칸이 너무 많거나, 마지막으로 치운 지 10분이 지났으면 치운다. ⚠ `_hits_lock`을 쥔 채로 부른다."""
+    global _last_cleanup
+    if len(_hits) > _MAX_BUCKETS or now - _last_cleanup >= _CLEANUP_EVERY_SECONDS:
+        _cleanup(now)
+        _last_cleanup = now
+
+
+def sweep_rate_limits(now: float | None = None) -> int:
+    """조용해진 칸을 지금 치운다 → 남은 칸 수. 요청이 끊긴 동안에도 IP가 남지 않게 뒤쪽 스레드가 부른다."""
+    global _last_cleanup
+    at = time.monotonic() if now is None else now
+    with _hits_lock:
+        _cleanup(at)
+        _last_cleanup = at
+        return len(_hits)
+
+
+_sweeper_started = False
+
+
+def start_rate_limit_sweeper() -> None:
+    """10분마다 [sweep_rate_limits]를 부르는 뒤쪽 스레드를 **한 번만** 띄운다(서버 시작 때)."""
+    global _sweeper_started
+    with _hits_lock:
+        if _sweeper_started:
+            return
+        _sweeper_started = True
+
+    def _loop() -> None:
+        while True:
+            time.sleep(_CLEANUP_EVERY_SECONDS)
+            try:
+                sweep_rate_limits()
+            except Exception:  # noqa: BLE001 — 청소가 실패해도 서버는 돈다
+                pass
+
+    threading.Thread(target=_loop, name="rate-limit-sweeper", daemon=True).start()

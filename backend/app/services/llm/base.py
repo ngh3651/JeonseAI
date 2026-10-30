@@ -146,6 +146,20 @@ class LlmProvider(ABC):
             payload["response_format"] = {"type": "json_object"}
         return payload
 
+    def _send(
+        self, messages: list[dict], max_tokens: int, json_mode: bool, temperature: float, timeout: float
+    ) -> requests.Response:
+        """HTTP 한 번. provider가 모델 바꾸기 같은 일을 하려면 이것만 덮는다(2026-10-31 Solar)."""
+        return requests.post(
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self._key}",
+                "Content-Type": "application/json",
+            },
+            json=self._payload(messages, max_tokens, json_mode, temperature),
+            timeout=timeout,
+        )
+
     def chat(
         self,
         system: str,
@@ -176,14 +190,8 @@ class LlmProvider(ABC):
         for attempt in range(1, MAX_ATTEMPTS + 1):
             t0 = time.perf_counter()
             try:
-                resp = requests.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self._key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=self._payload(messages, max_tokens, json_mode, temperature),
-                    timeout=timeout or REQUEST_TIMEOUT_SECONDS,
+                resp = self._send(
+                    messages, max_tokens, json_mode, temperature, timeout or REQUEST_TIMEOUT_SECONDS
                 )
             except requests.exceptions.RequestException as e:
                 raise LlmError(f"{self.name}: 연결 실패 {type(e).__name__}") from e

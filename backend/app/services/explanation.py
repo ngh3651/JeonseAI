@@ -43,7 +43,7 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 # [decisions.md 2026-07-07 Solar Pro 연동 스펙 — 공식 쿡북(UpstageAI/cookbook) 원문 근거]
 SOLAR_BASE_URL = "https://api.upstage.ai/v1/solar"  # OpenAI 호환 base_url
-SOLAR_MODEL = "solar-pro2"  # 모델 교체(solar-pro3 등)는 이 상수만 변경
+SOLAR_MODEL = "solar-pro2"  # 첫 모델의 기본 이름. 실제 호출은 llm/solar_models.py가 고른다(끝난 모델이면 solar-pro4로 — 2026-10-31)
 REQUEST_TIMEOUT_SECONDS = 60  # 인프라 수치(판정 아님)
 MAX_ATTEMPTS = 2  # 최초 1회 + 재시도 1회
 

@@ -24,16 +24,11 @@ import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .. import text_guard  # 2026-08-05: 금지어 목록 → 패턴(E-2와 **같은** 검증 공유)
-from ..explanation import (  # E-2와 동일 정책 공유 (모델·키 로드)
-    _load_api_key,
-    SOLAR_BASE_URL,
-    SOLAR_MODEL,
-)
+from ..explanation import _load_api_key  # E-2와 동일 정책 공유 (키 로드)
+from ..llm import solar_models
 
-#: 판례 설명도 문장 생성이라 복잡 추론이 필요 없다. 예전에는 `explanation`의 상수를
-#: 빌려 썼는데, 그 상수는 정작 그쪽에서 쓰이지 않는 죽은 값이었다(감사 2026-08-05).
-#: 실제로 쓰는 이 파일이 자기 값을 갖는다.
-REASONING_EFFORT = "low"
+#: 판례 설명도 문장 생성이라 복잡 추론이 필요 없다 — 추론 설정은 모델마다 `solar_models.reasoning_fields`가
+#: 맞춘다(solar-pro2·pro3 = low, pro4 = 끔). 2026-10-31부터 이 파일에 따로 두지 않는다.
 from .models import PrecedentExplanation, RetrievedPrecedent
 
 _log = logging.getLogger("jeonseai")
@@ -108,17 +103,15 @@ _SYSTEM_PROMPT = """당신은 전세 위험 분석 앱의 '판례 통역사'입�
 
 def _call_solar(messages: list[dict], api_key: str) -> str:
     """Solar Pro 호출 — 테스트에서 이 함수를 목으로 대체한다."""
-    resp = requests.post(
-        f"{SOLAR_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "model": SOLAR_MODEL,
+    # 모델·추론 설정은 solar_models가 고른다 — 끝난 모델이면 다음 모델로 바꿔 다시 부른다(2026-10-31)
+    resp, _model = solar_models.post_chat(
+        {
             "messages": messages,
             "temperature": 0.3,
             "max_tokens": 3000,  # 4건 × (요약·공통점·조언) — 2026-10-23 조언까지 쓰면서 늘림
-            "reasoning_effort": REASONING_EFFORT,
             "response_format": {"type": "json_object"},
         },
+        api_key=api_key,
         timeout=_REQUEST_TIMEOUT,
     )
     resp.raise_for_status()

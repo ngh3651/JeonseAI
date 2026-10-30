@@ -2260,3 +2260,14 @@
   - 답 길이 상한 450 → 600자(지시는 보통 250자, 목록·비교는 6줄·500자 안), 생성 상한 700 → 1000토큰.
 - **출처**: 팀 내부 결정 (2026-10-30 규혁 실기기 대화). 판정 수치 변경 없음. 매각가율은 대법원 법원경매정보 용도별 매각통계(2025.11~2026.10, [2026-10-28] 손실 시뮬레이터와 같은 표).
 - **봉인**: `backend/tests/test_chat.py` 맞춤형 27건(참고 자료 · 내 집·보증금 · 등록 순서 · 같은 집 한 곳 · 일정→다음 단계·할 일·D-1 · 옛 앱/일정 없음/집 없음 문구 · 잘못된 일정 칸 · 매각가율 문맥 · 실생활 5% · 집 목록만일 때 기준 대보기 막힘 · 내 집 등급 전달 · 계약 허락 막힘 · 조심 모드 6문장 · 엔드포인트 4건 · 가린 사본만 · 로그에 주소·일정 없음 · 잘못 읽은 미래 열람일), `frontend/test/chat_journeys_test.dart`(같은 집 한 줄·최신 id · 날짜·끝난 단계 · 고른 집 · 실패하면 일정 없이).
+
+
+### [2026-10-31] Solar 모델 — 첫 모델이 '끝난 모델'로 거절되면 solar-pro4로 바꿔 다시 부른다
+- **처음 의도**: 설명·구조화·챗봇·판례·질문 다듬기가 모두 `solar-pro2` 한 이름을 썼다(`UPSTAGE_MODEL`로만 바꿀 수 있음, 바꾸려면 배포 설정을 사람이 고쳐야 함).
+- **바꾼 이유**: Upstage가 solar-pro2·solar-pro3·solar-mini의 서비스 종료일을 2026-10-30(KST)로 알렸고, 지금 채팅 문서에는 `solar-pro4`·`solar-mini4`만 남았다. 10-31 새벽에도 배포 서버 챗봇은 solar-pro2로 답했지만(규혁) 언제 끊길지 모른다 — 결선 부스 도중 끊기면 설명·판례·챗봇이 모두 준비된 문장으로 떨어진다. 그런데 미리 pro4로 바꾸면 실물로 한 번도 못 본 말투·길이로 부스에 선다.
+- **최종 결정**:
+  - 첫 모델은 그대로(`UPSTAGE_MODEL`, 없으면 solar-pro2). 그 모델이 **모델 때문에** 거절되면(404·410, 또는 400·403·422인데 응답에 model·deprecated·end of service 같은 말) 같은 요청을 `UPSTAGE_FALLBACK_MODELS`(기본 solar-pro4)로 한 번 더 보낸다. 바꾼 모델은 서버가 다시 켜질 때까지 쓴다(요청마다 헛걸음 없음). 키(401)·한도(429)·서버 오류(5xx)는 바꾸지 않는다.
+  - 추론 설정: pro2·pro3는 지금처럼 `reasoning_effort: "low"`, pro4·mini4는 값을 빼서 끈 채로(공식 Reasoning 문서 — 빼거나 none/minimal이면 꺼짐, low부터 켜짐).
+  - 다섯 경로(설명·구조화·챗봇은 provider, 판례 설명·질문 다듬기는 직접 호출)가 모두 `llm/solar_models.py` 한 곳을 지난다. 리포트의 설명 모델 표기·챗봇 `model`은 실제로 답한 모델 이름이다. `scripts/check_keys.py`가 모델 목록에 두 이름이 있는지 함께 보여 준다.
+- **출처**: Upstage 채팅 문서(console.upstage.ai/docs/capabilities/generate/chat — solar-pro4·solar-mini4 별칭), Reasoning 문서(…/generate/reasoning — pro4·mini4의 reasoning_effort 값), 종료 공지(2026-10-30 KST). 판정 수치 변경 없음.
+- **봉인**: `backend/tests/test_solar_models.py`(기본 모델 · 끝난 모델이면 바꾸고 유지 · 400 문구 · 키/한도/서버 오류는 그대로 · 모두 끝남 · 환경변수 순서 · provider 표기).

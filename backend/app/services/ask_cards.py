@@ -24,7 +24,6 @@ import time
 from datetime import date
 from pathlib import Path
 
-import requests
 
 from ..schemas.contract import AskCard, AskCards, AskPass, Report
 from . import loss_estimate, text_guard
@@ -298,7 +297,8 @@ def polish(report: Report, bundle: AskCards, *, call=None) -> AskCards:
 
 
 def _polish_call(report: Report, bundle: AskCards, *, call=None) -> dict[str, str] | None:
-    from .explanation import SOLAR_BASE_URL, SOLAR_MODEL, _load_api_key
+    from .explanation import _load_api_key
+    from .llm import solar_models
 
     material = [{"id": c.id, "제목": c.title, "이_집에서_본_것": c.facts, "기본_문장": c.why} for c in bundle.cards]
     allowed = text_guard.collect_allowed(material)
@@ -310,11 +310,11 @@ def _polish_call(report: Report, bundle: AskCards, *, call=None) -> dict[str, st
                 return None
 
             def call(messages):  # noqa: E306
-                resp = requests.post(
-                    f"{SOLAR_BASE_URL}/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json={"model": SOLAR_MODEL, "messages": messages, "temperature": 0.4, "max_tokens": 1500,
-                          "reasoning_effort": "low", "response_format": {"type": "json_object"}},
+                # 모델·추론 설정은 solar_models가 고른다 — 끝난 모델이면 다음 모델로 바꿔 다시(2026-10-31)
+                resp, _model = solar_models.post_chat(
+                    {"messages": messages, "temperature": 0.4, "max_tokens": 1500,
+                     "response_format": {"type": "json_object"}},
+                    api_key=api_key,
                     timeout=45,
                 )
                 resp.raise_for_status()

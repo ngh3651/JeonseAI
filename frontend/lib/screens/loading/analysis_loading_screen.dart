@@ -30,7 +30,6 @@ import '../../services/api_client.dart';
 import '../search/capture_issue_panel.dart' show CaptureRejection;
 import '../../design_system/text/app_text.dart';
 import 'loading_parts.dart';
-import 'loading_tips.dart';
 
 export 'loading_parts.dart' show kAnalysisExpectedSeconds;
 
@@ -99,9 +98,6 @@ class AnalysisLoadingScreen extends StatefulWidget {
 
 class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
     with SingleTickerProviderStateMixin {
-  /// 꿀팁이 바뀌는 간격 — 팁 5개 × 6초 = 30초(예상 시간)에 한 바퀴
-  static const _tipEvery = Duration(seconds: 6);
-
   final Stopwatch _clock = Stopwatch();
   int _ticks = 0; // 250ms 시계가 몇 번 울렸나
 
@@ -357,9 +353,6 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
         ? 1
         : widget.request.imagePaths.length;
     final page = _done ? total : loadingPageAt(elapsed, total);
-    final tipIndex =
-        (elapsed.inMilliseconds ~/ _tipEvery.inMilliseconds) %
-        kLoadingTips.length;
     final scale = MediaQuery.textScalerOf(context).scale(100) / 100;
 
     final content = Column(
@@ -431,7 +424,7 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
         const SizedBox(height: 32),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: LoadingTipCard(index: tipIndex, scale: scale),
+          child: LoadingTipCard(scale: scale, reduceMotion: _reduceMotion),
         ),
         const SizedBox(height: 32),
       ],

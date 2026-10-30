@@ -86,7 +86,7 @@ void main() {
   });
 
   group('기록 0건 = 빈 화면 안내 (예시 리포트 없음)', () {
-    testWidgets('홈 — "아직 분석한 매물이 없어요" + [매물 분석 시작하기]', (tester) async {
+    testWidgets('홈 — 빈 집 카드 "분석한 집이 여기에 모여요" + [촬영하기]', (tester) async {
       _phone(tester);
       final router = GoRouter(
         initialLocation: '/home',
@@ -105,9 +105,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.koText('아직 분석한 매물이 없어요'), findsOneWidget);
-      expect(find.koText('등기부등본 떼는 법'), findsOneWidget);
+      // 2026-10-30 홈 리뉴얼: 집 카드 자리에 같은 높이의 흐린 미리보기 + 안내 두 줄.
+      // 분석 시작은 위 '매물 분석 시작하기' 카드의 [촬영하기][갤러리] · 등기부가 없으면 인터넷등기소 링크.
+      expect(find.koText('분석한 집이 여기에 모여요'), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-houses-empty')), findsOneWidget);
       expect(find.koText('매물 분석 시작하기'), findsWidgets);
+      expect(find.byKey(const ValueKey('analyze-camera')), findsOneWidget);
+      expect(find.byKey(const ValueKey('registry-office-link')), findsOneWidget);
       expect(find.koText('성산동 행복아파트'), findsNothing);
     });
 

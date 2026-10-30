@@ -17,6 +17,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/start_screen.dart';
 import '../screens/cases/case_match_screen.dart';
 import '../screens/chatbot/glossary_chatbot_screen.dart';
+import '../screens/common/analyze_gate.dart' show AnalyzeStart;
 import '../screens/compare/compare_screen.dart';
 import '../screens/guide/registry_guide_screen.dart';
 import '../screens/home/home_screen.dart';
@@ -97,8 +98,11 @@ final appRouter = GoRouter(
     //   UI가 값과 **출처 라벨**을 받을 수 있는 구조만 열어 둔 것이다.
     GoRoute(
       path: '/analyze',
-      builder: (_, state) =>
-          PropertySearchScreen(prefill: state.extra as PropertySearchPrefill?),
+      // ?start=camera|gallery — 홈 분석 카드·분석 시작 시트에서 고른 쪽이 바로 열린다(2026-10-30, 첫 안내 화면 없음)
+      builder: (_, state) => PropertySearchScreen(
+        prefill: state.extra as PropertySearchPrefill?,
+        startWith: AnalyzeStart.fromQuery(state.uri.queryParameters['start']),
+      ),
     ),
     GoRoute(
       path: '/loading',

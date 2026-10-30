@@ -73,15 +73,22 @@ def test_판정에_쓰이는_근거_카드는_전부_양호다():
 
 def test_보증보험은_등기부_가입조건을_모두_통과하면_양호():
     """2026-10-31 (규혁 "안전한 집도 보증보험은 늘 확인 필요인가?"): 등기부로 볼 수 있는 HUG 가입요건
-    (권리침해 없음 · 빚 60%·빚+보증금 90% · 전세가율 80% 이하 · 명단 불일치)을 **모두** 통과하면 '양호'.
+    (권리침해 없음 · 빚 60%·빚+보증금 90% · 전세가율 80% 이하 · 명단과 **맞춰 봤고** 불일치)을 **모두** 통과하면 '양호'.
     '가입된다'고 말하지는 않는다 — 보증기관이 집값을 따로 매기고 집주인도 본다(설명 문구).
+    명단을 아직 못 받았으면(이 견본의 기본 상태) '확인 필요' + 무엇을 기다리는지(규칙 감사 2026-10-31).
     """
     report = build_clean_report()
     insurance = next(e for e in report.evidences if e.id == "insurance")
+    assert insurance.grade == "확인 필요"
+    assert "빚·압류 조건은 통과" in (insurance.detailText or "") and "명단과 아직 맞춰 보지 못해" in insurance.detailText
+    assert report.grade == "양호"  # 보증보험의 '확인 필요'는 종합 계산에서 빠진다(2026-07-06)
 
-    assert insurance.grade == "양호"
-    assert "가입 조건을 모두 통과" in (insurance.detailText or "")
-    assert report.grade == "양호"
+    # 명단을 받아 두었고 같은 이름이 없으면 '양호'
+    extract = RegistryExtract.from_raw(CLEAN_REGISTRY)
+    verdict = rule_engine.evaluate(extract, deposit=CLEAN_DEPOSIT, market_price=CLEAN_MARKET_PRICE,
+                                   blacklist_entries=[{"name": "이영희"}])
+    ins = next(e for e in verdict.evidences if e.id == "insurance")
+    assert ins.grade is Grade.GOOD and "가입 조건을 모두 통과" in ins.detail_text
 
 
 def test_악성임대인_카드는_명단_미구축_상태다():

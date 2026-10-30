@@ -221,7 +221,8 @@ def _build(
                 detailText=ev.detail_text,  # [판정]
                 sourceText=ev.source_text,  # [판정]
                 actionLabel=t["action_label"],  # [UI]
-                termGlossary=t["term_glossary"],  # [설명]
+                # [설명] 설명 속 용어 + '이 집에서 할 일' 속 용어(말소·특약 등 — 2026-10-31 페르소나 리뷰: 할 일에 풀이가 없었다)
+                termGlossary=_merge_glossary(t["term_glossary"], terms.attach("\n".join(view["todo"]))),
                 # [설명 출처 · D26] 이 카드의 문장을 모델이 썼는지 준비된 문구인지.
                 # 카드마다 다를 수 있다(설명 폴백은 필드 단위다 — explanation.py 참고).
                 explanationSource=explanation_result.evidence_sources.get(ev.id),
@@ -443,6 +444,25 @@ def _add_house_type_to_address_mark(report: Report) -> None:
                     h.plan = [plan, *h.plan]
     except Exception:  # noqa: BLE001 — 표시 한 줄 때문에 리포트를 잃지 않는다
         _log.error("[매칭] ⚠ 주소 표시에 용도를 붙이지 못했습니다", exc_info=True)
+
+
+def _merge_glossary(base: dict[str, str], extra: dict[str, str]) -> dict[str, str]:
+    """용어 풀이 합치기 — 이미 있는 표기와 겹치는(한쪽이 다른 쪽을 품는) 표기는 더하지 않는다(앱이 긴 표기를 반으로 자르지 않게)."""
+    out = dict(base)
+    for k, v in extra.items():
+        if k in out or any(k in b or b in k for b in out):
+            continue
+        out[k] = v
+    return out
+
+
+def _attach_mark_glossary(report: Report) -> None:
+    """사진 표시마다 '이 집 맞춤 할 일'·기본 확인에 나온 용어 풀이 (2026-10-31 페르소나 리뷰). 표시 전용."""
+    try:
+        for h in report.highlights:
+            h.termGlossary = terms.attach("\n".join([*h.plan, h.body or "", h.caution or ""]))
+    except Exception:  # noqa: BLE001 — 풀이 밑줄 때문에 리포트를 잃지 않는다
+        _log.error("[매칭] ⚠ 표시 용어 풀이를 붙이지 못했습니다", exc_info=True)
 
 
 def _add_blacklist_to_owner_mark(report: Report) -> None:
@@ -812,7 +832,10 @@ def analyze(
 
     # 잔금 당일 빈틈 (2026-10-31) — 등기부에 '신청사건 처리중'이 찍혀 있으면 규칙 엔진이 '확인 필요' 카드를 더한다.
     # 사진 위 표시(OCR 글자 규칙)와 **같은 근거**로 켠다 — 화면의 형광펜과 카드가 어긋나지 않게.
-    extract.pending_application = has_pending_application(highlight_result.highlights)
+    # 형광펜을 못 칠했어도(상자 계산 실패·표시 단계 예외) 글자가 있으면 판정 재료로 켠다 — 카드가 조용히 빠지지 않게(감사 경고 5)
+    extract.pending_application = has_pending_application(highlight_result.highlights) or highlight.pending_text_found(
+        ocr_result
+    )
 
     _raise_if_cancelled(cancelled, "설명 생성(Solar)")
     report, explain = _build(
@@ -851,6 +874,7 @@ def analyze(
         _log.error("[손실예상] ⚠ 용도 후보를 정하지 못했습니다", exc_info=True)
     _add_house_type_to_address_mark(report)
     _add_blacklist_to_owner_mark(report)
+    _attach_mark_glossary(report)
     if doc_check is not None:
         # 두 번째 기준(쪽 머리 주소) · 빠진 쪽 · 장마다 쪽 번호 — 표시·묶기 전용
         report.propertyAddress = doc_check.header_address

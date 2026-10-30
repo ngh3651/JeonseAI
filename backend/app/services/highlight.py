@@ -299,7 +299,7 @@ _SPECS: dict[str, MarkSpec] = {
             "무슨 신청인지 확인될 때까지 계약금·잔금을 보내지 마세요.\n"
             "이 등기부를 뗀 날, 등기소에 접수돼 아직 처리 중인 신청이 있었어요(신청사건). "
             "새 빚(근저당)일 수도, 빚을 지우는 말소일 수도 있어요. 그 내용은 아직 이 종이에 없어요.\n"
-            "처리가 끝나면 그 내용이 **접수한 때로 거슬러** 효력이 생겨요. 중개사에게 무슨 신청인지 묻고, "
+            "처리가 늦게 끝나도 그 내용은 **접수한 때 생긴 걸로** 쳐요. 중개사에게 무슨 신청인지 묻고, "
             "처리가 끝난 등기부를 다시 떼어 이 앱으로 대조하세요."
         ),
         source=_SRC_PENDING,
@@ -859,6 +859,20 @@ class HighlightResult:
     # 반대로 "근저당 2건은 모두 말소된 것으로 확인해 표시하지 않았어요" 한 줄이 들어가면
     # 같은 화면이 "을구를 읽었고, 읽은 결과 뺐구나"라는 **가장 강한 신뢰 장치**가 된다.
     checked_notes: list[str] = field(default_factory=list)
+
+
+def pending_text_found(ocr: OcrResult | None) -> bool:
+    """사진 글자 어디에든 '신청사건'이 있나 — **형광펜 자리를 못 만들어도** 판정 재료는 놓치지 않는다 (2026-10-31 규칙 감사).
+
+    표시(`build_highlights`)는 상자 좌표 계산·말소 거르기를 거쳐 실패할 수 있지만, 이 글자는 표지·매 장 음영에 찍히는
+    고정 문구라 말소와 무관하다(`_match_text_rule` 참고). 그래서 판정 쪽은 글자만 본다 — 보수 편향(못 칠해도 카드는 생긴다).
+    예외를 던지지 않는다.
+    """
+    try:
+        rule = next(r for r in _TEXT_RULES if r.kind == "pending_application")
+        return any(rule.pattern.search(line.squeezed) for page in (ocr.pages if ocr else []) for line in page.lines)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def build_highlights(

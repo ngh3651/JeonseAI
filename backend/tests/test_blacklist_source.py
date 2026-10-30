@@ -60,7 +60,8 @@ def test_받아서_가린_채로_저장하고_매주_다시(data_dir, monkeypatc
 
 def test_받기가_실패하면_전에_받은_명단_그대로(data_dir, monkeypatch):
     monkeypatch.setenv("BLACKLIST_SOURCE_URL", "https://example.invalid/api")
-    (data_dir / B.STORE_FILE).write_text(json.dumps({"entries": [{"h": "x", "m": "김○○"}]}), encoding="utf-8")
+    (data_dir / B.STORE_FILE).write_text(
+        json.dumps({"saltId": B.salt_id(SALT), "entries": [{"h": "x", "m": "김○○"}]}), encoding="utf-8")
 
     def boom(*a, **k):
         raise RuntimeError("down")
@@ -92,8 +93,24 @@ def test_규칙엔진이_가린_명단으로_맞춰_본다(data_dir):
 
 def test_서버가_받은_명단이_있으면_그것을_쓴다(data_dir):
     entries = B.to_entries([{"성명": "김철수"}], salt=SALT)
-    (data_dir / B.STORE_FILE).write_text(json.dumps({"entries": entries}), encoding="utf-8")
+    (data_dir / B.STORE_FILE).write_text(json.dumps({"saltId": B.salt_id(SALT), "entries": entries}), encoding="utf-8")
     assert rule_engine.load_blacklist() == entries
+
+
+def test_소금이_바뀌면_옛_명단은_대조_안_됨으로_보고_다시_받는다(data_dir, monkeypatch):
+    """기록 DB를 새로 만들어 소금이 바뀌면 옛 열쇠는 다 빗나간다 — '같은 이름 없음(양호)'로 새지 않게 (규칙 감사 경고 6)."""
+    monkeypatch.setenv("BLACKLIST_SOURCE_URL", "https://example.invalid/api")
+    entries = B.to_entries([{"성명": "김철수"}], salt=b"old-salt-0000000")
+    (data_dir / B.STORE_FILE).write_text(
+        json.dumps({"saltId": B.salt_id(b"old-salt-0000000"), "entries": entries}), encoding="utf-8")
+    (data_dir / B.STATUS_FILE).write_text(json.dumps({"checkedAt": "2099-01-01"}), encoding="utf-8")
+    assert B.load() == [] and rule_engine.load_blacklist() == []
+    assert B.due()  # 주간 갱신을 기다리지 않는다
+    ex = _extract(address="서울특별시 서초구 서초동 1 제3층 제301호")
+    ex.current_owners = [Owner(name="김철수")]
+    v = rule_engine.evaluate(ex, deposit=100_000_000, market_price=300_000_000)
+    bl = next(e for e in v.evidences if e.id == "blacklist")
+    assert bl.status_label == rule_engine.BLACKLIST_PENDING_LABEL
 
 
 def _owner_report(card):

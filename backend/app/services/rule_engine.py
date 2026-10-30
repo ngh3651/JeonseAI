@@ -258,6 +258,8 @@ def _judge_jeonse_ratio(
             "jeonse_ratio_pct": pct,
             "deposit": deposit,
             "market_price": market_price,
+            # 원값 비교 결과(표시값 pct로 다시 견주지 않게 — 2026-10-31 감사). 판정은 위 grade가 이미 냈다.
+            "over_caution": ratio_raw > T.JEONSE_RATIO_CAUTION_PCT,
             # 2026-08-05: **판정에 실제로 쓰인 기준선**을 설명 재료로 함께 넘긴다.
             # "안전선은 80%인데 이 집은 60%" 같은 문장을 쓰려면 LLM이 80을 알아야 한다.
             # 값은 thresholds.py 상수 그대로이며 여기서 판정에 다시 쓰이지 않는다.
@@ -360,6 +362,10 @@ def _judge_senior_debt(
             "unknown_amount_count": unknown_count,
             "senior_ratio_pct": senior_pct,
             "combined_ratio_pct": combined_pct,
+            # 2026-10-31 감사: 위 두 값은 **반올림한 표시값**이라 기준과 다시 견주면 60.3%가 '60% 이하'로 보인다.
+            #   판정에 쓴 원값 비교 결과를 그대로 옮겨 둔다(화면의 ✓·색이 이 값을 쓴다). 판정은 위에서 이미 끝났다.
+            "senior_over_limit": None if senior_raw is None else senior_raw > T.SENIOR_DEBT_RATIO_DANGER_PCT,
+            "combined_over_limit": None if combined_raw is None else combined_raw > T.COMBINED_RATIO_DANGER_PCT,
             # ── 2026-08-05 설명 재료 (판정에 쓰이지 않음) ──────────────────────
             "thresholds": {
                 "senior_danger_over_pct": T.SENIOR_DEBT_RATIO_DANGER_PCT,
@@ -448,8 +454,10 @@ def _judge_insurance(
       ① 권리침해 없음(신탁·압류·가압류·가처분·경매·임차권등기)  ② 빚 ≤ 시세의 60%·빚+보증금 ≤ 90%
          (= 빚 카드 '양호', 금액 못 읽은 빚 없음)  ③ 전세가율 80% 이하(= 전세가율 카드 '양호' — 시세를 알고,
          단독·다가구 아님. HUG 90%보다 한 칸 보수적: 보증기관이 매기는 집값은 우리 시세와 다를 수 있다)
-      ④ 악성임대인 공개 명단과 일치하지 않음.
-    하나라도 모르면(시세 없음 등) 예전처럼 '확인 필요'. 사진이 빠졌으면 문서 게이트가 다시 '확인 필요'로 올린다.
+      ④ 악성임대인 공개 명단과 **맞춰 봤고** 같은 이름이 없음(= 명단 카드 '양호'. 명단을 아직 못 받았으면 모르는 것이다)
+      ⑤ 처리 중인 등기 신청(신청사건) 없음 — 있으면 아직 안 적힌 빚이 있을 수 있다.
+    하나라도 모르면(시세 없음·명단 대조 전 등) 예전처럼 '확인 필요'. ①②③만 통과했으면 무엇을 기다리는지(waiting_for) 밝힌다.
+    사진이 빠졌으면 문서 게이트가 다시 '확인 필요'로 올린다. (규칙 감사 2026-10-31 — ④⑤ 보강)
     '양호'여도 "가입된다"고 말하지 않는다 — 보증기관이 집값을 따로 매기고 집주인도 본다(설명 문구).
 
     supplementary: 추가 서류(전입세대열람 등) 확인 로직이 붙을 자리 — 팀 미결, 사용하지 않는다.
@@ -477,16 +485,20 @@ def _judge_insurance(
             source_text=_SRC_INSURANCE,
             facts={"disqualify_signals": disqualify},
         )
-    passed = (
+    registry_ok = (
         ev_jeonse is not None
         and ev_jeonse.grade is Grade.GOOD
         and ev_senior is not None
         and ev_senior.grade is Grade.GOOD
         and ev_senior.facts.get("senior_ratio_pct") is not None
         and not ev_senior.facts.get("unknown_amount_count")
-        and not (ev_blacklist is not None and ev_blacklist.facts.get("matched"))
     )
-    if passed:
+    # ④ 명단: **맞춰 봤고 같은 이름이 없을 때만**(명단 카드 '양호') 통과다. 명단을 아직 못 받았거나·집주인 이름을 못 읽었거나·
+    #    같은 이름이 있으면 '모른다'다 — 규칙 감사(2026-10-31): 예전 줄은 '일치가 안 나옴'만 봐서 명단이 없을 때도 통과로 셌다.
+    blacklist_ok = ev_blacklist is not None and ev_blacklist.grade is Grade.GOOD
+    # 처리 중인 등기 신청이 있으면 아직 안 적힌 빚이 있을 수 있다 — 끝난 등기부로 다시 볼 때까지 확정하지 않는다(감사 경고 3).
+    pending = bool(getattr(extract, "pending_application", False))
+    if registry_ok and blacklist_ok and not pending:
         senior_pct = ev_senior.facts.get("senior_ratio_pct")
         combined_pct = ev_senior.facts.get("combined_ratio_pct")
         ratio_pct = ev_jeonse.facts.get("jeonse_ratio_pct")
@@ -506,6 +518,43 @@ def _judge_insurance(
                 "senior_ratio_pct": senior_pct,
                 "combined_ratio_pct": combined_pct,
                 "jeonse_ratio_pct": ratio_pct,
+            },
+        )
+    if registry_ok:
+        # 등기부 조건(①②③)은 통과했지만 ④ 명단 또는 처리 중인 신청 때문에 확정하지 않는다 — 무엇을 기다리는지 밝힌다
+        waiting: list[str] = []
+        reasons: list[str] = []
+        if pending:
+            waiting.append("pending")
+            reasons.append("처리 중인 등기 신청이 있어 끝난 등기부로 다시 볼 때까지 확정하지 않았어요")
+        if not blacklist_ok:
+            waiting.append("blacklist")
+            label = ev_blacklist.status_label if ev_blacklist is not None else None
+            if label == BLACKLIST_PENDING_LABEL:
+                reasons.append("악성임대인 공개 명단과 아직 맞춰 보지 못해 확정하지 않았어요")
+            elif ev_blacklist is not None and str(label or "").startswith("명단 일치"):
+                reasons.append("공개 명단에 같은 이름이 있어 확정하지 않았어요")
+            else:
+                reasons.append("집주인 이름을 못 읽어 공개 명단과 맞춰 보지 못해 확정하지 않았어요")
+        return EvidenceVerdict(
+            id="insurance",
+            grade=Grade.CAUTION,
+            status_label="확인 필요",
+            detail_text=(
+                "등기부로 볼 수 있는 빚·압류 조건은 통과했어요 · "
+                f"빚은 시세의 {ev_senior.facts.get('senior_ratio_pct')}% · "
+                f"빚과 보증금을 더하면 {ev_senior.facts.get('combined_ratio_pct')}% · "
+                f"보증금은 시세의 {ev_jeonse.facts.get('jeonse_ratio_pct')}% · "
+                + " · ".join(reasons)
+            ),
+            source_text=_SRC_INSURANCE,
+            facts={
+                "disqualify_signals": [],
+                "registry_conditions_passed": False,
+                "waiting_for": waiting,
+                "senior_ratio_pct": ev_senior.facts.get("senior_ratio_pct"),
+                "combined_ratio_pct": ev_senior.facts.get("combined_ratio_pct"),
+                "jeonse_ratio_pct": ev_jeonse.facts.get("jeonse_ratio_pct"),
             },
         )
     return EvidenceVerdict(

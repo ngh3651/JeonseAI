@@ -62,9 +62,33 @@ def build(extract: RegistryExtract) -> list[RiskFact]:
                     holder=_holder_kind(raw.get(holder_key)) if holder_key else None,
                 )
             )
-            if len(facts) >= MAX_FACTS:
-                return facts
-    return facts
+    return _trim(facts)
+
+
+def _trim(facts: list[RiskFact]) -> list[RiskFact]:
+    """MAX_FACTS를 넘으면 자른다 — 단, **최우선변제 계산이 기대는 사실은 꼭 남긴다** (2026-10-31 규칙 감사 경고 7).
+
+    종류 순서대로만 자르면 압류류가 30건을 넘을 때 경매개시결정('경매 중이면 0원')이나 가장 먼저 잡힌 담보(어느 해 표를
+    쓸지), 날짜를 못 읽은 담보('표를 못 고름')가 잘려 덜 보수적인 계산이 될 수 있다. 남은 자리는 원래 순서대로 채운다.
+    """
+    if len(facts) <= MAX_FACTS:
+        return facts
+    from .priority_repayment import AUCTION_KIND, BASE_KINDS  # 늦게 가져온다(서로 가져오기 방지)
+
+    must: list[RiskFact] = []
+    auction = [f for f in facts if f.kind == AUCTION_KIND]
+    base = [f for f in facts if f.kind in BASE_KINDS]
+    undated = [f for f in base if norm_date(f.receiptDate) is None]
+    dated = sorted((f for f in base if norm_date(f.receiptDate)), key=lambda f: norm_date(f.receiptDate) or "")
+    for group in (auction, undated, dated):
+        if group:
+            must.append(group[0])
+    keep = {id(f) for f in must}
+    for f in facts:
+        if len(keep) >= MAX_FACTS:
+            break
+        keep.add(id(f))
+    return [f for f in facts if id(f) in keep]
 
 
 # ── 집주인 쪽 사실 (2026-10-29, 4장 질문 고르기 재료) ─────────────────────────

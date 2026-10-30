@@ -18,10 +18,10 @@ from .registry_facts import norm_date
 
 #: 종류 → (권리자 칸, 금액 이름)
 _HOLDER = {
-    "mortgage": ("mortgagee", "채권최고액"),
+    "mortgage": ("mortgagee", "빚 최대 한도"),  # 등기부 낱말은 '채권최고액' — 칩은 풀어 쓴다(용어 풀이와 같은 말)
     "jeonse": ("holder", "전세금"),
     "lease_registration": ("holder", "보증금"),
-    "provisional_seizure": ("claimant", "청구금액"),
+    "provisional_seizure": ("claimant", "청구한 돈"),
     "seizure": ("claimant", None),
     "auction": ("claimant", None),
     "trust": ("trustee", None),
@@ -62,25 +62,25 @@ def ranked(kind: str, entry: Any, amount: int | None, rank: str | None) -> tuple
     plan: list[str]
     if kind == "mortgage":
         plan = [
-            f"잔금 날 이 빚{f'({money})' if money else ''}을 갚고 **말소**하는지 중개사에게 묻고, 특약으로 남기세요",
+            f"잔금 날 이 빚{f'({money})' if money else ''}을 갚고 등기부에서 **지우는지(말소)** 중개사에게 묻고, 답을 계약서 **특약**에 적으세요",
             "지금 남은 빚은 집주인 **대출 잔액 확인서(부채증명원)**로 확인하세요",
         ]
         if holder == "개인":
-            plan.append("돈을 빌려준 쪽이 **개인**이에요. 갚았다는 말만 믿지 말고 말소된 등기부로 확인하세요")
+            plan.append("돈을 빌려준 쪽이 **개인**이에요. 갚았다는 말만 믿지 말고 이 빚이 지워진 등기부로 확인하세요")
     elif kind == "jeonse":
         plan = [
-            f"이 전세권{f'({money})' if money else ''}이 언제 없어지는지 중개사에게 확인하세요",
-            "없어진 등기부를 다시 떼어 이 앱으로 대조한 뒤 계약하세요",
+            f"이 전세권{f'({money})' if money else ''}이 언제 지워지는지 중개사에게 확인하세요",
+            "전세권이 지워진 등기부를 다시 떼어 이 앱으로 대조한 뒤 계약하세요",
         ]
     elif kind == "lease_registration":
         plan = [
             f"전 세입자 보증금{f'({money})' if money else ''}이 정리됐는지 중개사에게 확인하세요",
-            "**말소된 등기부**를 받은 뒤에 계약하세요",
+            "**임차권등기가 지워진 등기부**를 받은 뒤에 계약하세요",
         ]
     elif kind == "provisional_seizure":
         plan = [
             f"{when}가압류{f'({money})' if money else ''}가 언제 풀리는지 중개사에게 확인하세요",
-            "풀린 등기부를 직접 확인하기 전에는 **계약금을 보내지 마세요**",
+            "가압류가 풀린 등기부를 직접 확인하기 전에는 **계약금을 보내지 마세요**",
         ]
     elif kind == "seizure":
         plan = [
@@ -90,7 +90,7 @@ def ranked(kind: str, entry: Any, amount: int | None, rank: str | None) -> tuple
     elif kind == "auction":
         plan = [
             "이 집은 **계약금을 보내지 마세요**",
-            f"{when}시작된 경매가 어떻게 정리되는지 중개사에게 묻고, 답이 분명하지 않으면 넘기세요",
+            f"{when}시작된 경매가 어떻게 정리되는지 중개사에게 묻고, 답이 분명하지 않으면 이 집은 계약하지 마세요",
         ]
     elif kind == "trust":
         plan = [
@@ -112,7 +112,7 @@ def owner(owner_count: int, corporate: bool) -> tuple[list[str], list[str]]:
     if owner_count > 1:
         plan.append(f"{owner_count}명 **모두의 서명**이나, 안 나온 사람의 **위임장과 인감증명서**를 받으세요")
     if corporate:
-        plan.append("회사가 집주인이면 회사 이름으로 된 **납세증명서**를 받으세요")
+        plan.append("집주인이 **회사(법인)**예요. 회사 이름으로 된 **납세증명서**를 받으세요")
     plan.append("보증금은 **이 이름의 계좌**로만 보내세요")
     return facts, plan
 

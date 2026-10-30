@@ -48,6 +48,7 @@ from . import (
     store,
     terms,
 )
+from . import evidence_view, mark_plans, text_guard
 from .formatting import format_won, short_address
 from .patterns import tags_from_verdict as issue_tags_from_verdict
 
@@ -204,9 +205,11 @@ def _build(
         verdict.evidences,
         key=lambda e: (_SEVERITY_ORDER[e.grade], _CANONICAL_ORDER.index(e.id)),
     )
+    risk_facts = registry_facts.build(extract)
     evidences = []
     for ev in ordered:
         t = texts["evidences"][ev.id]
+        view = evidence_view.build(ev, verdict, risk_facts)  # [UI — 규칙 값만] 펼침의 숫자 줄·막대·할 일
         evidences.append(
             Evidence(
                 id=ev.id,
@@ -214,7 +217,7 @@ def _build(
                 termSubtitle=t["term_subtitle"],
                 grade=ev.grade.value,  # [판정] — RuleVerdict에서만
                 statusLabel=ev.status_label,  # [판정]
-                easyExplanation=t["easy_explanation"],  # [설명]
+                easyExplanation=text_guard.soften_dashes(t["easy_explanation"]),  # [설명] 줄표 없이(2026-10-31)
                 detailText=ev.detail_text,  # [판정]
                 sourceText=ev.source_text,  # [판정]
                 actionLabel=t["action_label"],  # [UI]
@@ -222,6 +225,9 @@ def _build(
                 # [설명 출처 · D26] 이 카드의 문장을 모델이 썼는지 준비된 문구인지.
                 # 카드마다 다를 수 있다(설명 폴백은 필드 단위다 — explanation.py 참고).
                 explanationSource=explanation_result.evidence_sources.get(ev.id),
+                points=view["points"],
+                meter=view["meter"],
+                todo=view["todo"],
             )
         )
 
@@ -232,7 +238,7 @@ def _build(
         analyzedAt=now.isoformat(),
         grade=verdict.grade.value,  # [판정]
         gaugeProgress=verdict.gauge_progress,  # [메타 — 판정 파생 공식]
-        headline=texts["headline"],  # [설명]
+        headline=text_guard.soften_dashes(texts["headline"]),  # [설명]
         nextAction=texts["next_action"],  # [설명 — 결정적 템플릿 유지 (decisions.md 2026-07-07)]
         topRiskSummary=texts["top_risk_summary"],  # [설명]
         deposit=verdict.deposit,  # [판정]
@@ -263,7 +269,7 @@ def _build(
         highlightNotice=highlight_notice,  # [표시 전용] 사진 묶음 안내 (없으면 None)
         checkedNotes=checked_notes or [],  # [표시 전용] 무엇을 찾아봤는지 요약
         registryViewedAt=registry_viewed_at,  # [표시 전용] 등기부 열람일시 (없으면 None)
-        riskFacts=registry_facts.build(extract),  # [판례 설명 재료] 판정·화면에 쓰지 않음, 이름 없음
+        riskFacts=risk_facts,  # [판례 설명 재료] 판정·화면에 쓰지 않음, 이름 없음
         ownerFacts=registry_facts.owner_facts(extract),  # [4장 질문 재료] 판정·화면에 쓰지 않음, 이름 없음
         riskTags=issue_tags_from_verdict(verdict),  # [판례·질문 재료] 이 집에 실제로 걸린 문제 — 판정에 쓰지 않음
     )
@@ -419,6 +425,24 @@ _KEEP_ON_REJUDGE = (
     "propertyId", "propertyAddress", "missingPages", "pageNumbers", "houseTypes", "comparable",
     "changeFromPrevious",
 )
+
+
+def _add_house_type_to_address_mark(report: Report) -> None:
+    """주소 표시에 '이 집을 어느 지역·용도로 계산했나'를 붙인다 (2026-10-31 — 이 집 맞춤 할 일). 표시 전용."""
+    try:
+        uses = [u for u in report.houseTypes if u]
+        if not uses:
+            return
+        region = loss_estimate.sido_of(report.propertyAddress) or loss_estimate.sido_of(report.address)
+        fact, plan = mark_plans.house_type_line(region, uses[0], len(uses) > 1)
+        for h in report.highlights:
+            if h.kind == "address":
+                if fact:
+                    h.facts = [*h.facts, fact]
+                if plan:
+                    h.plan = [plan, *h.plan]
+    except Exception:  # noqa: BLE001 — 표시 한 줄 때문에 리포트를 잃지 않는다
+        _log.error("[매칭] ⚠ 주소 표시에 용도를 붙이지 못했습니다", exc_info=True)
 
 
 def has_pending_application(highlights: list[Highlight] | None) -> bool:
@@ -803,6 +827,7 @@ def analyze(
         )
     except Exception:  # noqa: BLE001 — 용도를 못 정해도 리포트는 나간다(손실 예상이 세 용도 중 낮은 값을 쓴다)
         _log.error("[손실예상] ⚠ 용도 후보를 정하지 못했습니다", exc_info=True)
+    _add_house_type_to_address_mark(report)
     if doc_check is not None:
         # 두 번째 기준(쪽 머리 주소) · 빠진 쪽 · 장마다 쪽 번호 — 표시·묶기 전용
         report.propertyAddress = doc_check.header_address

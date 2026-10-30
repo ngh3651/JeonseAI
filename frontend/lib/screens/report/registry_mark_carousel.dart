@@ -17,12 +17,15 @@ import 'package:flutter/material.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
+import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
 import '../../design_system/text/app_text.dart';
+import 'registry_findings.dart' show softenDashes;
+import 'registry_mark_sheet.dart' show MarkTonePill;
 
 /// 카드 폭 — 360dp 기준 210, 넓은 화면(≥412dp)에서 240 (시안 "폭 확장").
-const double kCardWidth = 210;
-const double kCardWidthWide = 240;
+const double kCardWidth = 232;
+const double kCardWidthWide = 256;
 const double kWideScreenWidth = 400;
 
 /// 카드 사이 간격 / 목록 좌우 여백
@@ -150,40 +153,43 @@ class _MarkCard extends StatelessWidget {
           children: [
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(13, 11, 13, 0),
+                padding: const EdgeInsets.fromLTRB(13, 12, 13, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // 2026-10-31 개편: [번호] [따져볼 곳/대조할 곳] 칩 → 제목(15 굵게) → 이 집에서 본 것 한 줄(진한 14)
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _CardBadge(number: mark.badge, color: color),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: AppText(
-                            mark.title,
-                            // 제목이 잘리면 금액이 사라진다("집에 잡힌 빚 (근저당권) · 5억원"의
-                            // 뒤쪽이 정보의 핵심이다). 그래서 두 줄까지 허용한다.
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.bodyStrong.copyWith(
-                              fontSize: 13.5,
-                              height: 1.25,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
+                        const SizedBox(width: 6),
+                        MarkTonePill(tone: mark.markKind.tone),
                       ],
+                    ),
+                    const SizedBox(height: 7),
+                    AppText(
+                      mark.title,
+                      // 제목이 잘리면 금액이 사라진다("집에 잡힌 빚 (근저당권) · 5억원"의
+                      // 뒤쪽이 정보의 핵심이다). 그래서 두 줄까지 허용한다.
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypographyNext.bodyStrong.copyWith(
+                        fontSize: 15,
+                        height: 1.3,
+                        fontWeight: FontWeight.w800,
+                        color: AppColorsNext.textStrong,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     AppText(
-                      mark.summary,
-                      maxLines: 2,
+                      // 이 집에서 본 것(순위 · 날짜 · 금액)이 있으면 그것, 없으면 본문 첫 문장
+                      mark.facts.isNotEmpty ? mark.facts.join(' · ') : softenDashes(mark.summary),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.body.copyWith(
-                        fontSize: 12,
-                        height: 1.35,
+                      style: AppTypographyNext.caption.copyWith(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColorsNext.textBody,
                       ),
                     ),
                   ],
@@ -199,12 +205,12 @@ class _MarkCard extends StatelessWidget {
                 width: double.infinity,
                 constraints: const BoxConstraints(minHeight: kDetailTapHeight),
                 alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.fromLTRB(13, 12, 13, 11),
+                padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
                 child: AppText(
                   '자세히 보기 ›',
                   style: AppTypography.label.copyWith(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.markText(mark.markKind.tone),
                   ),
                 ),

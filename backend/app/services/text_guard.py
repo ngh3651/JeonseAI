@@ -443,3 +443,18 @@ def check(
     if bad:
         return f"재료에 없는 수치({', '.join(bad[:3])})"
     return None
+
+
+# ── 줄표 걷기 (2026-10-31 규혁 "대시는 AI 티가 난다") ───────────────────────────────
+_DASH_AFTER_END = re.compile(r"([요다죠까])\s*[—–]\s*")
+_DASH_ANY = re.compile(r"\s*[—–]\s*")
+
+
+def soften_dashes(text: str) -> str:
+    """줄표(—, –)를 문장 끊기로 — 문장이 끝난 자리(…요·…다 뒤)는 마침표, 그 밖은 쉼표. 뜻·숫자는 그대로."""
+    if not text or ("—" not in text and "–" not in text):
+        return text
+    out = _DASH_AFTER_END.sub(lambda m: f"{m.group(1)}. ", text)
+    out = _DASH_ANY.sub(", ", out)
+    return re.sub(r",\s*,", ",", out)
+

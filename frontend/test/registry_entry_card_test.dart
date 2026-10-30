@@ -169,7 +169,7 @@ void main() {
 
     testWidgets('사진이 없으면 스트립 없이 하단 행만 남는다', (tester) async {
       await pumpCard(tester);
-      expect(find.koText('내가 올린 사진에서 보기'), findsOneWidget);
+      expect(find.koText('내 등기부에서 보기'), findsOneWidget);
       expect(find.koText('집주인 이름 1곳과 빚 3건을 사진 위에 표시했어요'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -185,7 +185,7 @@ void main() {
           ),
         ),
       );
-      expect(find.koText('내가 올린 사진에서 보기'), findsOneWidget);
+      expect(find.koText('내 등기부에서 보기'), findsOneWidget);
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -226,7 +226,7 @@ void main() {
           ),
         ),
       );
-      expect(find.koText('내가 올린 사진에서 보기'), findsOneWidget);
+      expect(find.koText('내 등기부에서 보기'), findsOneWidget);
       expect(find.koTextContaining('서버에는 사진도 실명도 남지 않아요'), findsOneWidget);
       // 열 수 없으니 chevron은 없다
       expect(find.byIcon(Icons.chevron_right), findsNothing);

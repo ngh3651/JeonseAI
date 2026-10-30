@@ -12,6 +12,23 @@ from pydantic import BaseModel, Field
 
 
 # ── 근거 카드 (§2.2 Evidence) ──────────────────────────────────────────────
+class EvidencePoint(BaseModel):
+    """근거 카드 펼침의 숫자 한 줄 (2026-10-31) — 이름 · 값 · 색(plain|ok|caution|danger). 규칙 값만."""
+
+    label: str
+    value: str
+    tone: str = "plain"
+
+
+class EvidenceMeter(BaseModel):
+    """근거 카드 펼침의 기준 막대 (2026-10-31) — 이 집 비율(%)과 기준선(thresholds.py 상수 그대로)."""
+
+    label: str
+    value: int
+    marks: list[int] = Field(default_factory=list)
+    tone: str = "plain"
+
+
 class Evidence(BaseModel):
     id: str  # jeonse_ratio | senior_debt | ownership | insurance | blacklist
     title: str
@@ -30,6 +47,10 @@ class Evidence(BaseModel):
     # ⚠ **판정 출처가 아니다.** 판정은 언제나 규칙 엔진이고 그 출처는 `sourceText`다.
     #   이 값은 설명 계층에만 해당하며, 카드마다 다를 수 있다(필드 단위 폴백).
     explanationSource: Optional[str] = None
+    # 2026-10-31 펼침 개편 — 이 집 숫자 줄 · 기준 막대 · 이 집에서 할 일(규칙 문장, `evidence_view.py`). 옛 리포트면 비어 있다.
+    points: list[EvidencePoint] = Field(default_factory=list)
+    meter: Optional[EvidenceMeter] = None
+    todo: list[str] = Field(default_factory=list)
 
 
 # ── 원본 사진 하이라이트 (§2.7 — 2026-07-27 추가, **선택적**) ──────────────
@@ -65,6 +86,10 @@ class Highlight(BaseModel):
     title: str
     body: str
     caution: Optional[str] = None
+    # 2026-10-31 자세히 보기 개편 — 이 집에서 본 것(날짜·금액·순위·권리자 종류)과 이 집 맞춤 할 일(규칙 문장, `mark_plans.py`).
+    # 옛 서버·옛 리포트면 비어 있다(앱은 기본 확인만 그린다). 사람 이름은 없다.
+    facts: list[str] = Field(default_factory=list)
+    plan: list[str] = Field(default_factory=list)
     # 이 문장이 어디서 왔는지 (근거 카드의 sourceText와 같은 역할 — 없으면 '앱이 그냥 하는 말'로 읽힌다)
     source: Optional[str] = None
 

@@ -511,6 +511,7 @@ class _ReportScreenState extends State<ReportScreen> {
     final preview = previewMarkOf(marks);
 
     return RegistryEntryCard(
+      markCount: marks.length,
       // 등기부 날짜는 리포트 맨 위로 옮겼다(리포트 전체가 그 날짜 기준) · 이름 가림 안내는 마이에서 (2026-10-28)
       subtitle: hasPhotos
           ? null

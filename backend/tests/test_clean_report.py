@@ -71,19 +71,17 @@ def test_판정에_쓰이는_근거_카드는_전부_양호다():
         assert by_id[eid].grade == "양호", f"{eid}가 양호가 아니면 종합도 양호가 될 수 없다"
 
 
-def test_보증보험은_구조적으로_양호가_될_수_없다():
-    """**이 카드는 어떤 입력으로도 '양호'가 되지 않는다.**
-
-    등기부만으로는 보증보험 가입 가능을 단정할 수 없어서다(`_judge_insurance`).
-    그래서 규칙 엔진은 이 '확인 필요'를 **worst-of 계산에서 제외**한다(위험일 때만 반영) —
-    카드는 화면에 남고 종합 등급은 양호가 된다. 견본에서 이 카드를 양호로
-    보이게 하려면 판정 로직을 고쳐야 하는데, 그것은 보수적 편향을 거스르는 일이다.
+def test_보증보험은_등기부_가입조건을_모두_통과하면_양호():
+    """2026-10-31 (규혁 "안전한 집도 보증보험은 늘 확인 필요인가?"): 등기부로 볼 수 있는 HUG 가입요건
+    (권리침해 없음 · 빚 60%·빚+보증금 90% · 전세가율 80% 이하 · 명단 불일치)을 **모두** 통과하면 '양호'.
+    '가입된다'고 말하지는 않는다 — 보증기관이 집값을 따로 매기고 집주인도 본다(설명 문구).
     """
     report = build_clean_report()
     insurance = next(e for e in report.evidences if e.id == "insurance")
 
-    assert insurance.grade == "확인 필요"
-    assert report.grade == "양호", "보증보험 '확인 필요'는 종합 등급을 끌어내리지 않는다"
+    assert insurance.grade == "양호"
+    assert "가입 조건을 모두 통과" in (insurance.detailText or "")
+    assert report.grade == "양호"
 
 
 def test_악성임대인_카드는_명단_미구축_상태다():

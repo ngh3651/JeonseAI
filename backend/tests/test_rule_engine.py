@@ -96,17 +96,24 @@ def test_clean_house_overall_good():
 
 def test_insurance_caution_excluded_from_overall_but_still_shown():
     """insurance '확인 필요'는 종합 강등 계산에서 제외하되, 카드로는 항상 존재해야 한다."""
-    v = run_fixture("clean_house")
+    v = run_fixture("messy_amounts")  # 금액 못 읽은 빚 → 가입 조건을 다 볼 수 없다
     ins = evidence(v, "insurance")
-    assert ins.grade is Grade.CAUTION  # 등기부만으론 양호 불가(구조적)
-    assert v.grade is Grade.GOOD  # 그래도 종합은 양호
+    assert ins.grade is Grade.CAUTION
     assert len(v.evidences) == 5  # 표시에서 숨기지 않는다
 
 
-def test_insurance_never_good_in_any_fixture():
+def test_insurance_good_only_when_every_registry_condition_passes():
+    """2026-10-31: 깨끗한 집(빚·권리침해 없음, 전세가율 양호)이면 '양호', 시세를 모르면 '확인 필요'."""
+    v = run_fixture("clean_house")
+    assert evidence(v, "insurance").grade is Grade.GOOD
+    assert v.grade is Grade.GOOD
     for name in FIXTURE_NAMES:
         v = run_fixture(name)
-        assert evidence(v, "insurance").grade is not Grade.GOOD, name
+        ins = evidence(v, "insurance")
+        if ins.grade is Grade.GOOD:
+            assert evidence(v, "jeonse_ratio").grade is Grade.GOOD, name
+            assert evidence(v, "senior_debt").grade is Grade.GOOD, name
+            assert evidence(v, "ownership").grade is Grade.GOOD, name
 
 
 def test_mortgage_heavy_danger():

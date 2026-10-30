@@ -760,6 +760,11 @@ class _ReportScreenState extends State<ReportScreen> {
         context,
         _priorDepositRequest(report),
       ),
+      // 잔금 당일 빈틈(2026-10-31): 처리 중인 등기 신청 — 무슨 신청인지 묻는 문자를 공유 창으로
+      '무슨 신청인지 묻기' => () => shareWithFeedback(
+        context,
+        pendingApplicationRequest(report),
+      ),
       _ => null,
     };
     if (onPressed == null) return null;
@@ -820,4 +825,15 @@ class _ReportScreenState extends State<ReportScreen> {
       ),
     );
   }
+}
+
+/// 처리 중인 등기 신청을 묻는 문자 (2026-10-31 잔금 당일 빈틈) — 4장 질문 카드와 같은 말.
+String pendingApplicationRequest(AnalysisReport report) {
+  final address = report.address.trim();
+  final viewed = report.registryViewedAt;
+  return [
+    '안녕하세요. ${viewed != null ? '$viewed에 뗀 ' : ''}등기부에 \'신청사건 처리중\'이 보여요.',
+    if (address.isNotEmpty) '집: $address',
+    '무슨 신청인지(근저당·말소 등) 알려 주시고, 처리가 끝난 등기부를 잔금 전에 보여 주실 수 있을까요?',
+  ].join('\n');
 }

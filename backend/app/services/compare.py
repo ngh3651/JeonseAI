@@ -151,6 +151,8 @@ class RegistrySnapshot:
     #: 꼬리말 쪽 번호(N/M)로 본 **빠진 쪽** (2026-10-27). 하나라도 있으면 대조하지 않는다 —
     #: 빠진 쪽의 항목은 '없어졌다'로, 빠진 쪽의 말소 줄 때문에 살아 있는 것처럼 보인 항목은 '새로 생겼다'로 잘못 잡힌다.
     missing_pages: tuple[int, ...] = ()
+    #: 등기부에 '신청사건 처리중'이 찍혀 있었나 (2026-10-31 잔금 당일 빈틈). 옛 스냅샷엔 없다 → False.
+    pending_application: bool = False
 
 
 def _name_key(name: str | None, salt: bytes | None = None) -> str:
@@ -255,6 +257,7 @@ def build_snapshot(
         missing_fields=tuple(extract.missing_fields),
         page_count=page_count,
         missing_pages=tuple(report.missingPages or ()),
+        pending_application=bool(getattr(extract, "pending_application", False)),
     )
 
 
@@ -683,6 +686,45 @@ def different_property_result(
     )
 
 
+#: 처리 중인 등기 신청 줄 (2026-10-31) — 등기예규 제1815호: 처리 결과는 **접수 시로 소급**해 등기기록을 바꿀 수 있다.
+PENDING_TITLE = "처리 중인 등기 신청이 있어요"
+PENDING_SUBTITLE = "아직 등기부에 적히지 않은 변화예요. 무엇인지 확인될 때까지 잔금을 보내지 마세요"
+PENDING_DETAIL = "신청사건 처리중 · 끝나면 접수한 때로 거슬러 효력이 생겨요"
+
+
+def _pending_rows(base: RegistrySnapshot, cur: RegistrySnapshot) -> list[CompareRow]:
+    """신청사건 줄 — **이번 서류에 찍혀 있으면** 무조건 맨 위 경고(빈틈은 잔금 당일에 생긴다).
+
+    두 서류의 차이가 아니라 이번 서류의 상태라서, 다른 줄이 모두 '그대로'여도 이 줄은 나온다 —
+    "달라진 것 없어요"만 보고 잔금을 보내게 두지 않는다.
+    """
+    if cur.pending_application:
+        return [
+            CompareRow(
+                group="pending",
+                kind="changed",
+                tone="danger",
+                marker="!",
+                title=PENDING_TITLE,
+                subtitle=PENDING_SUBTITLE,
+                detail=PENDING_DETAIL,
+            )
+        ]
+    if base.pending_application:
+        return [
+            CompareRow(
+                group="pending",
+                kind="same",
+                tone="neutral",
+                marker="=",
+                title="처리 중이던 등기 신청은 끝났어요",
+                subtitle="그 결과는 위 줄들에 들어 있어요",
+                detail="기준 서류의 신청사건 처리중 표시가 이번 서류에는 없어요",
+            )
+        ]
+    return []
+
+
 def compare(base: RegistrySnapshot, cur: RegistrySnapshot) -> CompareResult:
     """두 스냅샷을 맞춰본다. **여기서 새 판정이 생기지 않는다.**"""
     relation, basis = identity(base, cur)
@@ -698,8 +740,8 @@ def compare(base: RegistrySnapshot, cur: RegistrySnapshot) -> CompareResult:
     owner_row = owner_row.model_copy(update={"group": "owner"})
     grade_row = grade_row.model_copy(update={"group": "grade"})
 
-    rows = [owner_row, *group_rows, grade_row]
-    total = 2 + len(GROUPS)  # 집주인 + 묶음들 + 안전도
+    rows = [*_pending_rows(base, cur), owner_row, *group_rows, grade_row]
+    total = 2 + len(GROUPS)  # 집주인 + 묶음들 + 안전도 (신청사건 줄은 대조 항목이 아니라 상태라 세지 않는다)
     compared = int(owner_ok) + group_compared + int(grade_ok)
     unknown_count = total - compared
 
@@ -715,8 +757,9 @@ def compare(base: RegistrySnapshot, cur: RegistrySnapshot) -> CompareResult:
         notices.append("같은 집인지 소재지로 확인했어요 (고유번호는 두 서류에서 읽지 못했어요)")
 
     # 심각한 것부터 — 못 본 것은 '그대로'보다 앞에 온다(침묵이 안심으로 읽히지 않게).
+    # 처리 중인 등기 신청은 늘 맨 위(2026-10-31) — 무엇이 접수됐는지 모르는 채로 다른 줄을 읽게 하지 않는다.
     order = {"added": 0, "changed": 1, "removed": 2, "grade": 3, "unknown": 4, "same": 5}
-    rows.sort(key=lambda r: order.get(r.kind, 9))
+    rows.sort(key=lambda r: (0 if (r.group == "pending" and r.tone == "danger") else 1, order.get(r.kind, 9)))
 
     changed_count = sum(1 for r in rows if r.kind in ("added", "removed", "changed", "grade"))
     days = _days_between(base, cur)
@@ -734,6 +777,11 @@ def compare(base: RegistrySnapshot, cur: RegistrySnapshot) -> CompareResult:
         result = "partial"
         headline = "일부는 대조하지 못했어요"
         subline = f"{total}가지 중 {compared}가지만 맞춰봤어요"
+    elif cur.pending_application and changed_count == 1:
+        # 달라진 것은 없지만 처리 중인 신청이 있다 — '변동 없음'으로 말하지 않는다
+        result = "changed"
+        headline = PENDING_TITLE
+        subline = f"{total}가지를 모두 맞춰봤고 그대로예요 · 처리 중인 신청이 끝난 뒤 다시 떼서 대조하세요"
     elif changed_count:
         result = "changed"
         headline = f"달라진 점이 {changed_count}가지 있어요"

@@ -40,6 +40,7 @@ _SRC_OWNERSHIP = "HUG 가입요건(권리침해) · 법제처 생활법령정보
 _SRC_LEASE = "주택임대차보호법 제3조의3"
 _SRC_INSURANCE = "HUG 가입요건 — 등기부만으로 최종 확인 불가"
 _SRC_BLACKLIST = "HUG 안심전세포털 공개 명단"
+_SRC_PENDING = "등기예규 제1815호 · 신청사건 처리중 표시"
 
 _DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
@@ -97,6 +98,10 @@ def evaluate(
     )
 
     evidences = [ev_jeonse, ev_senior, ev_ownership, ev_insurance, ev_blacklist]
+    # 잔금 당일 빈틈 (2026-10-31) — '신청사건 처리중'이 찍힌 등기부. 있을 때만 카드가 생긴다.
+    ev_pending = _judge_pending(extract)
+    if ev_pending is not None:
+        evidences.append(ev_pending)
 
     # 문서 신뢰도 게이트: 불완전하면 어떤 항목도 '양호'가 될 수 없다 (단일 강제 지점)
     doc_flags = _doc_flags(extract)
@@ -123,6 +128,9 @@ def evaluate(
         pool.append(ev_blacklist.grade)
     if ev_insurance.grade is Grade.DANGER:
         pool.append(ev_insurance.grade)
+    # 처리 중인 신청은 이 집의 지금 상태다 — 무엇인지 확인될 때까지 종합도 '양호'가 될 수 없다(확인 필요).
+    if ev_pending is not None:
+        pool.append(ev_pending.grade)
     overall = worst(pool)
 
     return RuleVerdict(
@@ -503,6 +511,32 @@ def _judge_blacklist(extract: RegistryExtract, entries: list[dict]) -> EvidenceV
         ),
         source_text=_SRC_BLACKLIST,
         facts={"matched": [], "list_size": len(entries)},
+    )
+
+
+def _judge_pending(extract: RegistryExtract) -> EvidenceVerdict | None:
+    """'신청사건 처리중' — 등기소에 접수됐지만 아직 등기부에 적히지 않은 신청이 있다 (2026-10-31).
+
+    출처: 등기예규 제1815호(부동산등기사항증명서 발급처리지침) 2.다.1) — 신청사건이 처리 중인 등기기록은
+    첫 면 상단에 신청사건 정보를, 매 장에 '신청사건처리중'을 음영으로 표시하고, 마지막 장에 "처리 결과에 따라
+    등기기록의 내용이 **접수 시로 소급해서** 변경될 수 있다"는 뜻을 적어 발급한다. 9.나.4) 열람도 같다.
+
+    왜 '확인 필요'인가(위험도 양호도 아니다): 신청 내용이 새 근저당일 수도, 빚을 지우는 말소일 수도 있다.
+    무엇인지 모르는 변화가 접수 시점부터 효력을 갖게 되므로, 확인될 때까지 돈을 보내면 안 된다 — 잔금 당일의 빈틈.
+    """
+    if not extract.pending_application:
+        return None
+    return EvidenceVerdict(
+        id="pending",
+        grade=Grade.CAUTION,
+        status_label="확인 필요",
+        detail_text=(
+            "이 등기부를 뗀 날 등기소에서 처리 중인 신청이 있었어요(신청사건 처리중). "
+            "그 내용은 아직 이 서류에 적혀 있지 않아요"
+        ),
+        source_text=_SRC_PENDING,
+        action_label="무슨 신청인지 묻기",
+        facts={"pending_application": True, "known_kind": None},
     )
 
 

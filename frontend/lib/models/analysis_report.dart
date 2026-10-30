@@ -694,6 +694,8 @@ class AnalysisReport {
           if (count(d, '경매개시결정') > 0) labels.add('경매');
         case 'insurance':
           if (e.grade == RiskGrade.danger) labels.add('보증보험');
+        case 'pending':
+          labels.add('신청사건');
       }
     }
     return labels.toSet().toList();

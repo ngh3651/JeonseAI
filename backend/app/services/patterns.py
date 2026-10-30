@@ -52,6 +52,8 @@ TAG_TRUST = "신탁등기"
 TAG_SEIZURE = "압류·가압류"
 TAG_AUCTION = "경매"
 TAG_INSURANCE = "보증보험"
+#: 등기부에 '신청사건 처리중' — 아직 적히지 않은 등기 신청 (2026-10-31)
+TAG_PENDING = "신청사건"
 
 
 def tags_from_verdict(verdict: RuleVerdict) -> list[str]:
@@ -93,6 +95,8 @@ def tags_from_verdict(verdict: RuleVerdict) -> list[str]:
                 tags.append(TAG_AUCTION)
         elif ev.id == "insurance" and ev.grade == Grade.DANGER:
             tags.append(TAG_INSURANCE)
+        elif ev.id == "pending":
+            tags.append(TAG_PENDING)
     return list(dict.fromkeys(tags))  # 순서 보존 dedup
 
 
@@ -135,6 +139,8 @@ def tags_from_report(report: Report) -> list[str]:
                 tags.append(TAG_AUCTION)
         elif ev.id == "insurance" and ev.grade == "위험":
             tags.append(TAG_INSURANCE)
+        elif ev.id == "pending":
+            tags.append(TAG_PENDING)
     return list(dict.fromkeys(tags))
 
 

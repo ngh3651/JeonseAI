@@ -197,6 +197,10 @@ class RegistryExtract(BaseModel):
     # 왜 불완전한가 한 줄 (2026-10-29 QA) — "1·5쪽이 빠졌어요" · "2쪽이 잘 안 읽혔어요".
     # 게이트가 '확인 필요'로 올린 카드가 **그 이유**를 말하게 하는 설명 재료다. 판정에 쓰지 않는다.
     pages_incomplete_reason: Optional[str] = None
+    # 등기부에 '신청사건 처리중' 표시가 있다 (2026-10-31 잔금 당일 빈틈) — IE가 아니라 분석 조립이 OCR 글자로 켠다.
+    # 등기소에 접수돼 아직 기록되지 않은 신청이 있다는 뜻이다(등기예규 제1815호 2.다.1). 켜지면 규칙 엔진이
+    # '확인 필요' 카드 하나를 더한다 — 무엇인지 모르는 변화라 위험도 양호도 아니다(보수적 편향 §2-3).
+    pending_application: bool = False
 
     LIST_KEYS: ClassVar[tuple[str, ...]] = _LIST_KEYS
 

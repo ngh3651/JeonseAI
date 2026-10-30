@@ -307,8 +307,10 @@ def test_공동담보목록과_신청사건_처리중을_찾는다():
 
 
 def test_텍스트_감지_3종은_판정에_쓰이지_않는다():
-    """인터뷰 §R4는 이 3종을 '확인 필요' 룰로 올리라고 권고하지만, 등급을 바꾸려면
-    권위 출처 + decisions.md 선기록이 필요하다(2026-07-28 보류). 표시만 한다."""
+    """표시 계층(build_highlights)은 판정을 바꾸지 않는다. 토지 별도등기·공동담보는 지금도 표시만 한다
+    (2026-07-28 보류). 신청사건은 2026-10-31부터 **분석 조립이** 이 표시로 `pending_application`을 켜고
+    규칙 엔진이 '확인 필요' 카드를 더한다(등기예규 제1815호 — tests/test_settlement_gap.py). 여기서는
+    표시를 만드는 것만으로 등급이 움직이지 않는다는 경계를 지킨다."""
     from app.services import rule_engine
 
     extract = extract_with(current_owners=[Owner(name="홍길동")])

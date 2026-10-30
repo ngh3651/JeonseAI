@@ -87,10 +87,9 @@ bool get kakaoLoginAvailable => kakaoNativeAppKey.isNotEmpty;
 /// '로딩 화면 미리보기' 같은 개발용 버튼이 보인다(서버를 부르지 않아 크레딧 0원). 시연용 APK·테스트에선 늘 꺼져 있다.
 const bool kDevTools = bool.fromEnvironment('DEV_TOOLS');
 
-/// 개인정보 처리방침의 **서버 국가** — Railway 서버 지역(2026-10-30 규혁: 싱가포르로 둔다).
-/// ⚠ Railway → 서비스 → Settings → Region이 실제로 싱가포르(asia-southeast1)인지 확인한다(NOW.md 사람 할 일).
-/// 다른 지역이면 이 값만 바꾼다. 비우면 국외 이전 줄에서 나라 이름이 빠진다.
-const String kServerRegion = '싱가포르';
+/// 개인정보 처리방침의 **서버 국가** — Railway 서버 지역. 2026-10-30 Railway → Settings → Regions에서 확인한 값
+/// (US East, Virginia). 볼륨이 붙어 있어 지역을 옮기면 기록도 옮겨야 하니, 결선 전에는 옮기지 않는다. 바뀌면 이 값만 고친다.
+const String kServerRegion = '미국(버지니아)';
 
 /// 개인정보 보호책임자 — 팀 이름으로 둔다(2026-10-30 규혁)
 const String kPrivacyOfficer = '팀 동크크';

@@ -140,7 +140,7 @@ LegalDoc privacyPolicyDoc({
         ),
         LegalRows([
           ('받는 곳', 'Railway Corp.\n미국 샌프란시스코, privacy@railway.com'),
-          ('보관하는 나라', region.isEmpty ? '접속 기록은 미국' : '$region. 접속 기록은 미국'),
+          ('보관하는 나라', region.isEmpty ? '접속 기록은 미국' : (region.startsWith('미국') ? '$region. 접속 기록도 미국' : '$region. 접속 기록은 미국')),
           (
             '옮기는 정보',
             '이름을 가린 분석 기록, 기기 번호와 카카오 회원번호를 바꾼 값, 표시 이름, 결제 기록, 접속 IP 주소가 담긴 접속 기록. '

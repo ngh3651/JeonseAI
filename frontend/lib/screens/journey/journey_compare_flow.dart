@@ -416,9 +416,25 @@ int rowItemCount(CompareRow row) {
   return counts.isEmpty ? 1 : counts.fold(0, (a, b) => a + b);
 }
 
+/// 처리 중인 등기 신청 줄 (2026-10-31 잔금 당일 빈틈) — 서버가 이번 서류에 '신청사건 처리중'이 있으면 맨 위에 싣는다.
+/// 두 서류의 차이가 아니라 이번 서류의 상태라서 갑구·을구 줄과 따로 센다. 없으면 null.
+CompareRow? pendingRowOf(CompareResult result) {
+  for (final r in result.rows) {
+    if (r.group == 'pending' && r.tone == CompareTone.danger) return r;
+  }
+  return null;
+}
+
 /// 결과 → 한 건에 한 줄 항목들 (갑구·을구 순서, 새로 생김 → 없어짐은 상자가 나눈다).
 /// 서버가 항목을 안 실은 줄(옛 서버·집주인 줄)은 제목·상세 첫 줄로 한 건을 만든다.
+/// 처리 중인 등기 신청이 있으면 맨 앞에 한 건 — 변동 기록에도 남는다(2026-10-31).
 List<CompareLogItem> compareLogItems(CompareResult result) => [
+  if (pendingRowOf(result) case final CompareRow p)
+    CompareLogItem(
+      kind: CompareLogItemKind.changed,
+      label: '신청사건 처리중',
+      note: p.title,
+    ),
   for (final line in summarizeCompare(result))
     for (final r in line.rows)
       if (r.items.isNotEmpty)
@@ -712,7 +728,9 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
   List<Widget> _resultView(CompareResult result) {
     final lines = summarizeCompare(result);
     final int count = lines.fold(0, (s, l) => s + l.count);
-    final bool changed = count > 0;
+    // 처리 중인 등기 신청(2026-10-31) — 다른 줄이 모두 그대로여도 '달라진 것 없어요'라고 말하지 않는다
+    final CompareRow? pending = pendingRowOf(result);
+    final bool changed = count > 0 || pending != null;
     final String from = viewedLabel(result.baseline.viewedAt, fallback: '지난');
     final String to = viewedLabel(result.current.viewedAt, fallback: '새');
     final String? newId = result.newReportId;
@@ -739,7 +757,9 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
       ),
       const SizedBox(height: 12),
       AppText(
-        changed ? '달라진 게 $count건 있어요' : '달라진 것 없어요',
+        count > 0
+            ? '달라진 게 $count건 있어요'
+            : (pending != null ? pending.title : '달라진 것 없어요'),
         key: const ValueKey('compare-result-title'),
         textAlign: TextAlign.center,
         style: AppTypographyNext.headline,
@@ -751,6 +771,10 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
         style: AppTypographyNext.caption,
       ),
       const SizedBox(height: 16),
+      if (pending != null) ...[
+        PendingApplicationBanner(row: pending),
+        const SizedBox(height: 12),
+      ],
       for (int i = 0; i < lines.length; i++) ...[
         if (i > 0)
           Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
@@ -866,4 +890,54 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
       ),
     );
   }
+}
+
+/// 처리 중인 등기 신청 띠 (2026-10-31 잔금 당일 빈틈) — 대조 결과 맨 위. 빨강 바탕 · 멈춤 아이콘 · 서버 문장 그대로.
+class PendingApplicationBanner extends StatelessWidget {
+  const PendingApplicationBanner({super.key, required this.row});
+
+  final CompareRow row;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('compare-pending-banner'),
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    decoration: BoxDecoration(
+      color: AppColors.dangerSoft,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.pan_tool_rounded, size: 22, color: AppColorsNext.dangerText),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppText(
+                row.title,
+                style: AppTypographyNext.bodyStrong.copyWith(
+                  color: AppColorsNext.dangerText,
+                ),
+              ),
+              if (row.subtitle != null) ...[
+                const SizedBox(height: 4),
+                AppText(
+                  row.subtitle!,
+                  style: AppTypographyNext.body.copyWith(
+                    color: AppColorsNext.textStrong,
+                  ),
+                ),
+              ],
+              if (row.detail != null) ...[
+                const SizedBox(height: 6),
+                AppText(row.detail!, style: AppTypographyNext.caption),
+              ],
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }

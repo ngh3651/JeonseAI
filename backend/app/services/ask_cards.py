@@ -28,7 +28,7 @@ from pathlib import Path
 from ..schemas.contract import AskCard, AskCards, AskPass, Report
 from . import loss_estimate, text_guard
 from .formatting import format_won, round_half_up
-from .patterns import TAG_AUCTION, TAG_LEASE, TAG_SEIZURE, TAG_TRUST, tags_from_report
+from .patterns import TAG_AUCTION, TAG_LEASE, TAG_PENDING, TAG_SEIZURE, TAG_TRUST, tags_from_report
 from .price_normalize import is_whole_building
 from .registry_facts import norm_date
 
@@ -123,6 +123,13 @@ def build(report: Report) -> AskCards:
     }
     leads: list[AskCard] = []
     others: list[AskCard] = []
+
+    # ── 처리 중인 등기 신청 — 잔금 당일 빈틈 (2026-10-31). 무엇인지 모르면 돈을 보내면 안 돼서 맨 앞 ──
+    if TAG_PENDING in tags:
+        fs = [f"{_dot(report.registryViewedAt) or '이 등기부를 뗀 날'} · 신청사건 처리중"]
+        leads.append(_card("pending", T["pending"], values, facts=fs, why=T["pending"]["why"],
+                           pass_line=AskPass(text="무슨 신청인지 확인 · 잔금 전에",
+                                             sub="처리가 끝난 등기부로 다시 대조하세요")))
 
     # ── 임차권등기 — 전 세입자가 보증금을 못 받고 나간 기록 ──
     leases = facts_by.get("임차권등기", [])

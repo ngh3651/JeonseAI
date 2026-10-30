@@ -127,6 +127,10 @@ PreviewCrop previewCropFor({
 ///   두 축을 분리하는 것이 요점이다.
 RegistryHighlight? previewMarkOf(List<RegistryHighlight> marks) {
   if (marks.isEmpty) return null;
+  // 잔금 당일 빈틈(2026-10-31): '신청사건 처리중'이 찍힌 등기부면 그 줄부터 보여 준다 — 돈을 보내기 전에 봐야 할 첫 번째다.
+  for (final m in marks) {
+    if (m.markKind == MarkKind.pendingApplication) return m;
+  }
   final risky = marks.where((m) => m.markKind.isRisk).toList();
   final pool = risky.isNotEmpty ? risky : marks;
   return pool.reduce((a, b) => b.markKind.weight > a.markKind.weight ? b : a);

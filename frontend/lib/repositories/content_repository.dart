@@ -303,6 +303,11 @@ class DummyContentRepository implements ContentRepository {
           where: '인터넷등기소 · 열람 700원',
         ),
         JourneyItem(
+          text: '\'신청사건\' 표시 보기',
+          why: '등기가 아직 처리 중이면 등기부에 **신청사건 처리중**이 찍혀요. 새 빚일 수 있어 무엇인지 확인될 때까지 보내지 마세요',
+          where: '이 앱이 사진에서 찾아 줘요 · 인터넷등기소',
+        ),
+        JourneyItem(
           text: '계좌 주인 = 집주인',
           why: '집주인 이름처럼 꾸민 **모임통장 사기**가 있어요. 이름 뒤에 괄호나 다른 글자가 붙어 있으면 멈추세요',
         ),

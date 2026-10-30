@@ -72,7 +72,8 @@ def _raise_if_cancelled(cancelled: "Callable[[], bool] | None", where: str) -> N
         raise AnalysisCancelled(where)
 
 
-_CANONICAL_ORDER = ["jeonse_ratio", "senior_debt", "ownership", "insurance", "blacklist"]
+# pending(신청사건 처리중, 2026-10-31)은 같은 등급 안에서 맨 앞 — "돈을 보내지 마세요"가 가장 먼저 읽혀야 한다
+_CANONICAL_ORDER = ["pending", "jeonse_ratio", "senior_debt", "ownership", "insurance", "blacklist"]
 _SEVERITY_ORDER = {Grade.DANGER: 0, Grade.CAUTION: 1, Grade.GOOD: 2}
 
 
@@ -420,6 +421,11 @@ _KEEP_ON_REJUDGE = (
 )
 
 
+def has_pending_application(highlights: list[Highlight] | None) -> bool:
+    """사진 위 표시에 '신청사건 처리중'이 있나 — 판정에 넣는 단 하나의 기준(2026-10-31)."""
+    return any(h.kind == "pending_application" for h in (highlights or []))
+
+
 def rejudge_kit(extract: RegistryExtract, report: Report) -> dict:
     """다시 판정 재료 — IE가 읽은 등기부(사람 이름은 가린 사본) + 실명이 필요했던 명단 대조 결과."""
     names = name_privacy.person_names(extract) or list(report.personNames)
@@ -454,6 +460,8 @@ def rejudge(
     시세는 분석 때와 같은 방식으로 다시 고른다 — 넣은 값이 있으면 그 값, 없으면 자동 조회(시세 DB·공공데이터, AI 아님).
     """
     extract = RegistryExtract.model_validate(kit["extract"])
+    # 옛 재료(2026-10-31 전)엔 이 칸이 없다 — 같은 리포트의 사진 표시로 다시 켠다
+    extract.pending_application = extract.pending_application or has_pending_application(old.highlights)
     blacklist = EvidenceVerdict.model_validate(kit["blacklist"]) if kit.get("blacklist") else None
     try:
         price_info = price_lookup.collect(
@@ -755,6 +763,10 @@ def analyze(
         capture_after = capture_check.add_unread_amount_pages(
             capture_after, recovery.unread_pages, len(images)
         )
+
+    # 잔금 당일 빈틈 (2026-10-31) — 등기부에 '신청사건 처리중'이 찍혀 있으면 규칙 엔진이 '확인 필요' 카드를 더한다.
+    # 사진 위 표시(OCR 글자 규칙)와 **같은 근거**로 켠다 — 화면의 형광펜과 카드가 어긋나지 않게.
+    extract.pending_application = has_pending_application(highlight_result.highlights)
 
     _raise_if_cancelled(cancelled, "설명 생성(Solar)")
     report, explain = _build(

@@ -132,7 +132,7 @@ class _MarkCard extends StatelessWidget {
           ),
           borderRadius: BorderRadius.circular(AppRadius.viewerCard),
           boxShadow: selected
-              ? const [
+              ? [
                   BoxShadow(
                     color: AppColors.viewerShadowInk,
                     blurRadius: 12,

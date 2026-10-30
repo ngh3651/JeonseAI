@@ -41,6 +41,21 @@ abstract final class CasePrefetch {
     return future;
   }
 
+  /// 리포트를 보여 주기 **전에** 판례를 기다린다(2026-10-30 — 판례가 리포트 3장이 되어 뒤에서 늦게 뜨면 안 된다).
+  ///
+  /// 실패·빈 목록·[timeout] 초과면 그냥 넘어간다(리포트는 보여야 한다 — 판례 장이 그때 다시 받는다).
+  static Future<void> ready(
+    ContentRepository repo,
+    String reportId, {
+    Duration timeout = const Duration(seconds: 40),
+  }) async {
+    try {
+      await get(repo, reportId).timeout(timeout);
+    } catch (_) {
+      // 판례 없이도 리포트는 연다
+    }
+  }
+
   /// 테스트용 — 기억을 비운다
   static void clear() => _byReport.clear();
 }

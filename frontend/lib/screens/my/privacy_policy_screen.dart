@@ -28,6 +28,15 @@ class PolicySection {
   final List<String> lines;
 }
 
+/// '사진 속 이름 가리기'(마이 → 설정)가 **실제로 가리는 범위** — 테스트가 문장을 함께 본다.
+///
+/// 2026-10-22: 사진의 이름·주민번호 칸(서버 `privacyMasks`)에 더해 **리포트 글자 속 사람 이름**(`personNames`)도 가린다.
+/// 기본은 꺼짐 — 내 폰의 내 등기부에서는 실명을 계약 상대와 대조하는 것이 목적이다.
+/// 2026-10-30: 마이에는 스위치만 두고 이 설명은 여기로 옮겼다(규혁: 설명이 너무 길다).
+const String kHideNamesSwitchDescription =
+    "'사진 속 이름 가리기'를 켜면 분석한 등기부 사진과 리포트 글자 속 사람 이름을 가려요(주민번호 칸 포함). "
+    '회사·은행 이름은 그대로예요. 찍는 중이거나 분석 전인 사진은 아직 가리지 못해요.';
+
 /// 화면에 그릴 내용 — 위젯 없이 테스트할 수 있게 함수로 뺐다. [serverRegion]·[contact]가 비면 그 줄이 없다.
 List<PolicySection> privacyPolicySections({
   String serverRegion = kServerRegion,
@@ -47,6 +56,7 @@ List<PolicySection> privacyPolicySections({
       RegistryPhotoStore.retentionNotice,
       '사진은 글자를 읽으려고 국내 AI(Upstage)에만 보내요. 다른 곳에는 보내지 않아요.',
       kUpstageRetentionNote,
+      kHideNamesSwitchDescription,
     ]),
     const PolicySection('보관과 삭제', [
       '기록은 직접 지우거나 탈퇴하기 전까지 보관해요.',

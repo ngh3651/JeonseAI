@@ -23,19 +23,22 @@ import 'package:provider/provider.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_typography.dart';
 import '../../state/app_session.dart';
+import '../../design_system/tokens/app_colors.dart';
 import 'kakao_login_button.dart';
 
 /// 시작 화면 색 — 이 화면에서만 쓴다(시안 A). 카카오 색은 [kKakaoYellow] 등 카카오 가이드 값 그대로.
 abstract final class StartColors {
-  static const Color bg = Color(0xFFF6F4EC); // 화면 배경
-  static const Color sheet = Color(0xFFFFFFFF); // 하단 시트
-  static const Color arch = Color(0xFFE3EEE6); // 세이프 뒤 아치
+  static bool get _d => AppColors.isDark;
+  static Color get bg => _d ? const Color(0xFF0D1210) : const Color(0xFFF6F4EC); // 화면 배경
+  static Color get sheet => _d ? const Color(0xFF171F1B) : const Color(0xFFFFFFFF); // 하단 시트
+  static Color get arch => _d ? const Color(0xFF173328) : const Color(0xFFE3EEE6); // 세이프 뒤 아치
   static const Color goldLine = Color(0xFFD2AE62); // 아치 안쪽 금색 선 · 반짝이
-  static const Color nameGreen = Color(0xFF135C3E); // 앱 이름 '전세' '프'
-  static const Color sub = Color(0xFF4F5E56); // 한 줄 소개
-  static const Color primary = Color(0xFF14724B); // 메인 버튼 · 링크 · 보조 버튼 글자
-  static const Color outline = Color(0xFFB9D3C2); // 보조 버튼 테두리
-  static const Color shadow = Color(0xFF13422E); // 발 그림자 12% · 시트 그림자 6%
+  static Color get nameGreen => _d ? const Color(0xFF6FD6A4) : const Color(0xFF135C3E); // 앱 이름 '전세' '프'
+  static Color get sub => _d ? const Color(0xFFA9B7AF) : const Color(0xFF4F5E56); // 한 줄 소개
+  static Color get primary => _d ? const Color(0xFF3DB580) : const Color(0xFF14724B); // 메인 버튼 · 링크 · 보조 버튼 글자
+  static Color get onPrimary => _d ? const Color(0xFF04170E) : const Color(0xFFFFFFFF); // 메인 버튼 글자
+  static Color get outline => _d ? const Color(0xFF2B4A3B) : const Color(0xFFB9D3C2); // 보조 버튼 테두리
+  static Color get shadow => _d ? const Color(0xFF000000) : const Color(0xFF13422E); // 발 그림자 12% · 시트 그림자 6%
   static const Color aiGoldTop = Color(0xFFC99A3E); // 금색 "AI" 위
   static const Color aiGoldBottom = Color(0xFFA87A22); // 금색 "AI" 아래
 }
@@ -535,7 +538,7 @@ class _Header extends StatelessWidget {
 class AppNameTitle extends StatelessWidget {
   const AppNameTitle({super.key});
 
-  static const TextStyle style = TextStyle(
+  static TextStyle get style => TextStyle(
     fontFamily: 'Jua',
     fontSize: 40,
     height: 48 / 40,
@@ -626,7 +629,7 @@ class _Arch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: StartColors.arch,
         borderRadius: BorderRadius.vertical(top: Radius.circular(118)),
@@ -765,7 +768,7 @@ class _GuestButton extends StatelessWidget {
       style: AppTypography.button.copyWith(
         fontSize: 16,
         fontWeight: FontWeight.w600,
-        color: filled ? Colors.white : StartColors.primary,
+        color: filled ? StartColors.onPrimary : StartColors.primary,
       ),
     );
     return SizedBox(
@@ -776,7 +779,7 @@ class _GuestButton extends StatelessWidget {
               onPressed: onPressed,
               style: FilledButton.styleFrom(
                 backgroundColor: StartColors.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: StartColors.onPrimary,
                 disabledBackgroundColor: StartColors.primary,
                 shape: shape,
               ),
@@ -785,9 +788,9 @@ class _GuestButton extends StatelessWidget {
           : OutlinedButton(
               onPressed: onPressed,
               style: OutlinedButton.styleFrom(
-                backgroundColor: Colors.white,
+                backgroundColor: StartColors.sheet,
                 foregroundColor: StartColors.primary,
-                side: const BorderSide(color: StartColors.outline, width: 1.5),
+                side: BorderSide(color: StartColors.outline, width: 1.5),
                 shape: shape,
               ),
               child: text,

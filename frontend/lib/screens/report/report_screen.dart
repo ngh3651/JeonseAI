@@ -38,7 +38,7 @@ import '../../state/registry_photo_store.dart';
 import '../../state/report_focus.dart';
 import '../../utils/money_format.dart';
 import '../common/share_feedback.dart';
-import '../journey/journey_actions.dart' show startRegistryCompare;
+import '../../utils/korean_date.dart';
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
 import 'retake_notice_card.dart';
@@ -111,7 +111,22 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   void initState() {
     super.initState();
-    _reportFuture = context.read<AnalysisRepository>().getReport(reportId);
+    // 판례까지 받은 뒤에 리포트를 그린다 — 판례가 리포트 3장이라 뒤늦게 뜨면 화면이 밀린다(2026-10-30).
+    // 분석 직후엔 로딩 화면이 이미 받아 두어 바로 열린다.
+    ContentRepository? content;
+    try {
+      content = context.read<ContentRepository>();
+    } catch (_) {
+      content = null; // 판례 저장소가 없는 화면(테스트 등) — 판례 장이 그때 받는다
+    }
+    _reportFuture = context.read<AnalysisRepository>().getReport(reportId).then(
+      (r) async {
+        if (r != null && content != null) {
+          await CasePrefetch.ready(content, reportId);
+        }
+        return r;
+      },
+    );
     context.read<AnalysisRepository>().getHistory().then((h) {
       if (mounted) setState(() => _history = h);
     }, onError: (_) {});
@@ -119,12 +134,6 @@ class _ReportScreenState extends State<ReportScreen> {
     _reportFuture.then((r) {
       if (r != null) ReportFocus.current.value = ReportRef(r.id, r.alias);
     }, onError: (_) {});
-    // 판례를 뒤에서 미리 받아 둔다 — 리포트를 읽는 동안 준비돼 '판례 보기'가 바로 뜬다(2026-10-26)
-    try {
-      CasePrefetch.warm(context.read<ContentRepository>(), reportId);
-    } catch (_) {
-      // 판례 저장소가 없는 화면(테스트 등) — 판례 화면이 그때 받는다
-    }
   }
 
   /// 입력값을 고쳤으면 그 자리에서 새 리포트로 바꿔 그린다(같은 id — 화면을 다시 열지 않는다).
@@ -172,7 +181,7 @@ class _ReportScreenState extends State<ReportScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const AppText('이 리포트를 불러올 수 없어요', style: AppTypography.body),
+                  AppText('이 리포트를 불러올 수 없어요', style: AppTypography.body),
                   const SizedBox(height: AppSpacing.lg),
                   AppCompactButton(
                     label: '홈으로',
@@ -206,7 +215,7 @@ class _ReportScreenState extends State<ReportScreen> {
               IconButton(
                 key: const ValueKey('report-edit-button'),
                 icon: const Icon(Icons.edit_outlined),
-                tooltip: '보증금·시세·별칭 고치기',
+                tooltip: '정보 수정',
                 onPressed: () => _editInputs(context, report),
               ),
               // 이 리포트를 PDF로 저장 — 폰 안에서 만들고 이름은 기본으로 가린다(report_pdf.dart)
@@ -229,7 +238,6 @@ class _ReportScreenState extends State<ReportScreen> {
                     onLatest: () =>
                         context.pushReplacement('/report/${versions.first.id}'),
                   ),
-                if (_isStale(report)) _staleBanner(context, report),
                 _conclusionHeader(report),
                 const SizedBox(height: AppSpacing.xl),
                 // 촬영 검사에서 '확인 필요'가 나온 장 (P1-1, 2026-10-22) — 판정은 그대로, 사진만 권한다.
@@ -249,7 +257,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 // 판정이 아닌 **정보**라서 근거 카드 대열 밖, 바로 아래에 붙인다.
                 ?_priceGapCard(report),
                 const SizedBox(height: AppSpacing.xl),
-                const AppText('다음 행동', style: AppTypography.title),
+                AppText('다음 행동', style: AppTypography.title),
                 const SizedBox(height: AppSpacing.md),
                 ..._actionArea(context, report),
                 const SizedBox(height: AppSpacing.xxl),
@@ -446,7 +454,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.auto_awesome,
                       size: 14,
                       color: AppColors.primary,
@@ -480,8 +488,8 @@ class _ReportScreenState extends State<ReportScreen> {
           FindingsCard(
             items: findings,
             actionFor: (e) => _evidenceAction(context, report, e),
-            // 가장 심각한 1개는 처음부터 펼친다 (서연 리뷰 반영 — 정렬했으니 맨 위)
-            expandedIndex: findings.isEmpty ? null : 0,
+            // 처음엔 모두 접어 둔다 — 요약 한 줄 + 제목 목록이 먼저 보이게 (2026-10-30 규혁)
+            expandedIndex: null,
           ),
         ],
       ),
@@ -503,7 +511,7 @@ class _ReportScreenState extends State<ReportScreen> {
       // 등기부 날짜는 리포트 맨 위로 옮겼다(리포트 전체가 그 날짜 기준) · 이름 가림 안내는 마이에서 (2026-10-28)
       subtitle: hasPhotos
           ? null
-          : '${RegistryPhotoStore.retentionNotice} 다시 보려면 새로 분석해 주세요.',
+          : '이 폰에 사진이 없어요',
       onTap: hasPhotos ? () => context.push('/registry/${report.id}') : null,
       preview: preview == null
           ? null
@@ -530,17 +538,14 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  /// 진입 카드 부제 — **등기부를 언제 뗐는지**. 못 읽었으면 null(줄 자체가 사라진다).
+  /// 등기부를 뗀 지 며칠 됐나 — 리포트는 **분석한 날이 아니라 등기부를 뗀 날** 기준이다(2026-10-30 규혁).
   ///
-  /// 왜 개수가 아니라 날짜인가: 등기부는 열람 시점의 스냅샷이다. 그 뒤에 근저당이
-  /// 새로 잡혔을 수 있고, **계약 직전 근저당 설정은 실제 전세사기 수법**이다. 이 샘플은
-  /// 열람 7/9 · 분석 7/27로 18일 차이가 나는데 화면 어디에도 그 사실이 없었다.
-  /// ⚠ [AnalysisReport.analyzedAt](분석일)로 대체하지 않는다 — 리포트 상단의
-  ///   "2026.07.27 분석"과 다른 날짜이고, 분석일을 넣으면 오히려 "오늘 서류"라고
-  ///   믿게 만들어 지금보다 나빠진다.
-  String? _registryViewedLine(AnalysisReport report) {
-    final viewed = report.registryViewedAt;
-    return viewed == null ? null : '※ $viewed 기준 등기부등본';
+  /// 예전엔 '분석한 지 하루 지났다'는 노란 배너를 맨 위에 끼웠다 — 분석일은 중요하지 않고 구조만 흐트렸다.
+  /// 계약 직전 근저당 설정은 실제 전세사기 수법이라 **오래된 등기부**인 것만 결론 아래 한 줄로 말한다.
+  /// 새로 떼서 대조하는 길은 계약 여정에 있다.
+  int? _registryAgeDays(AnalysisReport report) {
+    final viewed = parseRegistryViewedAt(report.registryViewedAt);
+    return viewed == null ? null : daysSince(viewed);
   }
 
   /// 무엇이 표시됐는지 **종류별 개수로** — `집주인 이름 1곳과 빚 3건을 사진 위에 표시했어요`.
@@ -555,71 +560,12 @@ class _ReportScreenState extends State<ReportScreen> {
     return '$phrase${MarkLegend.eul(phrase)} 사진 위에 표시했어요';
   }
 
-  bool _isStale(AnalysisReport report) =>
-      DateTime.now().difference(report.analyzedAt).inDays >= 1;
-
   /// 등급 → 마스코트 상태 (양호=safe, 확인필요=caution, 위험=danger)
   MascotState _mascotForGrade(RiskGrade grade) => switch (grade) {
     RiskGrade.danger => MascotState.danger,
     RiskGrade.caution => MascotState.caution,
     RiskGrade.ok => MascotState.safe,
   };
-
-  /// 오래된 분석 배너 — 컴팩트 (결론을 밀어내지 않게, 서연 리뷰 반영).
-  ///
-  /// [다시 떼서 대조] = 여정의 대조 흐름 그대로(`startRegistryCompare`) — 오늘 뗀 등기부를 이 리포트와 맞춰본다.
-  /// (예전 [재분석]은 "곧 제공" 가짜 버튼이었다 — 서연 리뷰 #4.) 글자는 진한 본문색, 앰버는 아이콘에만(대비 — D8).
-  Widget _staleBanner(BuildContext context, AnalysisReport report) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.sm,
-        AppSpacing.sm,
-        AppSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.cautionSoft,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(
-                Icons.history,
-                size: AppSize.iconSm,
-                color: AppColors.caution,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: AppText(
-                  '${formatDaysAgo(report.analyzedAt)} 결과예요 — 계약 직전엔 최신 등기부등본으로 재확인하세요',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.textBody,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => startRegistryCompare(context, report),
-              style: TextButton.styleFrom(
-                minimumSize: const Size(0, AppSize.minTouchTarget),
-                textStyle: AppTypography.buttonSmall,
-              ),
-              icon: const Icon(Icons.compare_arrows, size: AppSize.iconSm),
-              label: const AppText('다시 떼서 대조'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// 결론 헤더 — 등급 크게 + 의사결정 한 줄 + 보증금 (IA §0 + 서연 리뷰 반영)
   Widget _conclusionHeader(AnalysisReport report) {
@@ -634,7 +580,10 @@ class _ReportScreenState extends State<ReportScreen> {
         SafetyGauge(
           grade: report.grade,
           progress: report.gaugeProgress,
-          caption: '${formatDate(report.analyzedAt)} 분석',
+          // 리포트 전체가 이 등기부 기준이다 — 분석한 날보다 등기부를 뗀 날이 중요하다(2026-10-30)
+          caption: report.registryViewedAt != null
+              ? '${report.registryViewedAt} 등기부 기준'
+              : '${formatDate(report.analyzedAt)} 분석',
           size: 190,
         ),
         const SizedBox(height: AppSpacing.md),
@@ -676,13 +625,16 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
           textAlign: TextAlign.center,
         ),
-        // 등기부를 언제 뗐는지 — 리포트 전체가 이 날짜 기준이다 (2026-10-28, 사진 카드에서 옮김)
-        if (_registryViewedLine(report) case final String viewed) ...[
+        // 오래된 등기부만 한 줄로 — 날짜는 게이지 아래에 있다 (2026-10-30)
+        if (_registryAgeDays(report) case final int days when days >= 1) ...[
           const SizedBox(height: AppSpacing.xs),
           AppText(
-            viewed,
+            '$days일 전에 뗀 등기부예요',
             key: const ValueKey('report-registry-date'),
-            style: AppTypography.caption,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.caution,
+              fontWeight: FontWeight.w600,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -745,19 +697,15 @@ class _ReportScreenState extends State<ReportScreen> {
     if (gap >= inflated) {
       tone = CalloutTone.caution;
       title = '실제 거래값이 공시 기준보다 $gap% 높아요';
-      text =
-          '값을 부풀려 신고한 뒤 그 값을 근거로 보증금을 높게 받는 수법이 있어요. '
-          '중개사에게 이 가격이 어떻게 정해졌는지 꼭 물어보세요.';
+      text = '값을 부풀린 뒤 보증금을 높게 받는 수법이 있어요. 가격이 어떻게 정해졌는지 물어보세요.';
     } else if (gap <= depressed) {
       tone = CalloutTone.caution;
-      title = '공시 기준이 실제 거래값보다 높아요';
-      text =
-          '실거래가가 정부 공시 기준보다 ${gap.abs()}% 낮아요. 최근 시세가 내려가고 있을 수 있어요 — '
-          '계약 시점의 시세를 한 번 더 확인하세요.';
+      title = '실거래가가 공시 기준보다 ${gap.abs()}% 낮아요';
+      text = '시세가 내려가고 있을 수 있어요. 계약 때 시세를 한 번 더 확인하세요.';
     } else {
       tone = CalloutTone.info;
       title = '실제 거래값과 공시 기준이 비슷해요';
-      text = '두 값의 차이는 $gap%예요. 시세가 특별히 부풀려졌다고 볼 신호는 없어요.';
+      text = '차이는 $gap%예요.';
     }
 
     return Padding(
@@ -767,7 +715,7 @@ class _ReportScreenState extends State<ReportScreen> {
         icon: Icons.balance,
         title: title,
         // 이 카드는 '정보'라는 것을 문장으로도 못 박는다 — 등급이 바뀐 줄 알면 안 된다.
-        text: '$text\n\n※ 이 비교는 참고 정보예요. 위험 등급 계산에는 들어가지 않아요.',
+        text: '$text\n※ 참고 정보예요 — 등급 계산에는 넣지 않아요.',
       ),
     );
   }
@@ -847,16 +795,16 @@ class _ReportScreenState extends State<ReportScreen> {
         ),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.fact_check_outlined,
               color: AppColors.primary,
               size: AppSize.iconLg,
             ),
             const SizedBox(width: AppSpacing.md),
-            const Expanded(
+            Expanded(
               child: AppText('계약 여정', style: AppTypography.bodyStrong),
             ),
-            const Icon(Icons.chevron_right, color: AppColors.primary),
+            Icon(Icons.chevron_right, color: AppColors.primary),
           ],
         ),
       ),
@@ -884,17 +832,13 @@ class _ReportScreenState extends State<ReportScreen> {
         children: [
           if (blacklistPending) ...[
             AppText(
-              '※ 악성임대인 공개 명단은 아직 저희가 데이터를 확보하지 못해 '
-              '이번 분석에서는 판단하지 않았어요. 명단에 없다는 뜻이 아닙니다 — '
-              'HUG 안심전세포털에서 집주인 이름을 직접 확인해 주세요.',
+              '※ 악성임대인 명단은 이번에 대조하지 못했어요 — HUG 안심전세포털에서 집주인 이름을 직접 확인하세요.',
               style: AppTypography.caption.copyWith(color: AppColors.textBody),
             ),
             const SizedBox(height: AppSpacing.sm),
           ],
           AppText(
-            '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
-            '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
-            '확인과 전문가 상담을 통해 이루어져야 합니다.',
+            '참고용 분석이에요. 계약의 안전을 보증하지 않아요 — 최종 판단은 공식 서류와 전문가 상담으로 하세요.',
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),
         ],

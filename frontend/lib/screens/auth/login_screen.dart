@@ -56,16 +56,9 @@ class LoginScreen extends StatelessWidget {
           const SizedBox(height: AppSpacing.xl),
           const Center(child: MascotSafe(size: 96, state: MascotState.home)),
           const SizedBox(height: AppSpacing.xl),
-          const AppText(
+          AppText(
             '카카오로 로그인하면\n기록이 계정에 남아요',
             style: AppTypography.headline,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          AppText(
-            '폰을 바꾸거나 앱을 다시 깔아도 카카오로 로그인하면 분석 기록과 '
-            '계약 지킴이 패스를 다시 볼 수 있어요. 지금 이 폰에 있는 기록도 계정으로 옮겨져요.',
-            style: AppTypography.body,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.xxl),

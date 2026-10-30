@@ -308,7 +308,7 @@ class CompareResultView extends StatelessWidget {
                       Row(
                         children: [
                           RiskBadge(grade: row.gradeBefore!),
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.symmetric(
                               horizontal: AppSpacing.sm,
                             ),
@@ -427,7 +427,7 @@ class CompareResultView extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
+              Icon(
                 Icons.warning_amber,
                 size: AppSize.iconSm,
                 color: AppColors.caution,
@@ -587,7 +587,7 @@ class CompareResultView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                const AppPill(
+                AppPill(
                   label: '기준 없음',
                   color: AppColors.textMuted,
                   background: AppColors.background,
@@ -637,7 +637,7 @@ class CompareResultView extends StatelessWidget {
           width: 24,
           height: 24,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.primarySoft,
             shape: BoxShape.circle,
           ),
@@ -724,7 +724,7 @@ class CompareResultView extends StatelessWidget {
               ),
               _sideLabel('이번', AppColors.caution),
               const SizedBox(height: 6),
-              const AppText('확인되지 않은 다른 집', style: AppTypography.title),
+              AppText('확인되지 않은 다른 집', style: AppTypography.title),
               const SizedBox(height: 6),
               AppText(_currentUnknownLine, style: AppTypography.caption),
             ],

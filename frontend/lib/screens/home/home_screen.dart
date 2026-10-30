@@ -147,13 +147,13 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
         children: [
-          const Icon(
+          Icon(
             Icons.wifi_off,
             color: AppColors.textMuted,
             size: AppSize.iconMd,
           ),
           const SizedBox(height: AppSpacing.md),
-          const AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
+          AppText('분석 이력을 불러오지 못했어요', style: AppTypography.bodyStrong),
           const SizedBox(height: AppSpacing.xs),
           AppText(
             apiErrorHint(error, fallback: '서버 연결을 확인해 주세요'),
@@ -187,14 +187,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 인사 한 줄만 — 부제("오늘도 … 도와드릴게요")는 뺐다(2026-10-30 군더더기 정리)
               AppText(hello, style: AppTypography.headline),
-              const SizedBox(height: AppSpacing.xs),
-              AppText(
-                '오늘도 안전한 전세 계약을 도와드릴게요',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.textMuted,
-                ),
-              ),
             ],
           ),
         ),
@@ -256,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: AppSpacing.md),
           RiskBadge(grade: report.grade),
           const SizedBox(width: AppSpacing.xs),
-          const Icon(Icons.chevron_right, color: AppColors.textMuted),
+          Icon(Icons.chevron_right, color: AppColors.textMuted),
         ],
       ),
     );
@@ -272,13 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // 겹쳐 오독되어(페르소나 2인·design-reviewer) 순한 tip(전구) 톤으로.
           const MascotSafe(size: 64, state: MascotState.tip),
           const SizedBox(height: AppSpacing.lg),
-          const AppText('아직 분석한 매물이 없어요', style: AppTypography.title),
-          const SizedBox(height: AppSpacing.xs),
-          AppText(
-            '등기부등본 사진만 있으면 바로 시작할 수 있어요',
-            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
-            textAlign: TextAlign.center,
-          ),
+          AppText('아직 분석한 매물이 없어요', style: AppTypography.title),
           const SizedBox(height: AppSpacing.lg),
           // 빈 상태 명세: [분석 시작] + [발급 가이드] (user-scenario.md §6)
           AppPrimaryButton(
@@ -287,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: AppSpacing.sm),
           AppCompactButton(
-            label: '등기부등본이 없어요 — 발급 가이드',
+            label: '등기부등본 떼는 법',
             onPressed: () => context.push('/guide'),
           ),
         ],

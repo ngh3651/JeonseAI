@@ -33,24 +33,24 @@ class ComponentGalleryScreen extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
           _section('색상 팔레트'),
-          _colorRow('브랜드', const [
+          _colorRow('브랜드', [
             ('primary', AppColors.primary),
             ('primaryDeep', AppColors.primaryDeep),
             ('primaryBright', AppColors.primaryBright),
             ('primarySoft', AppColors.primarySoft),
           ]),
-          _colorRow('등급 (시맨틱)', const [
+          _colorRow('등급 (시맨틱)', [
             ('위험', AppColors.danger),
             ('확인 필요', AppColors.caution),
             ('양호', AppColors.ok),
           ]),
           _section('타이포 (Pretendard)'),
-          const AppText('결론 34 Bold', style: AppTypography.conclusion),
-          const AppText('숫자 28 Bold — 3,200만원', style: AppTypography.numberLarge),
-          const AppText('화면 제목 22', style: AppTypography.headline),
-          const AppText('카드 제목 17', style: AppTypography.title),
-          const AppText('본문 15 — 등기부등본을 쉽게 읽어드려요.', style: AppTypography.body),
-          const AppText(
+          AppText('결론 34 Bold', style: AppTypography.conclusion),
+          AppText('숫자 28 Bold — 3,200만원', style: AppTypography.numberLarge),
+          AppText('화면 제목 22', style: AppTypography.headline),
+          AppText('카드 제목 17', style: AppTypography.title),
+          AppText('본문 15 — 등기부등본을 쉽게 읽어드려요.', style: AppTypography.body),
+          AppText(
             '캡션 13 — 출처: HUG 전세보증 기준 (예시)',
             style: AppTypography.caption,
           ),
@@ -193,7 +193,7 @@ class ComponentGalleryScreen extends StatelessWidget {
             onTap: () {},
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

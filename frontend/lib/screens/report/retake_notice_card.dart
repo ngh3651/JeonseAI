@@ -145,11 +145,11 @@ class RetakeNoticeCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.photo_camera_outlined,
                   size: 22,
                   color: AppColors.caution,
@@ -205,7 +205,7 @@ class _Pill extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 32),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(999),
       ),
       child: AppText.rich(
@@ -301,14 +301,14 @@ class _Buttons extends StatelessWidget {
     required bool filled,
     required VoidCallback onTap,
   }) {
-    final Color fg = filled ? Colors.white : AppColors.caution;
+    final Color fg = filled ? AppColors.onPrimary : AppColors.caution;
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48),
       child: TextButton(
         key: key,
         onPressed: onTap,
         style: TextButton.styleFrom(
-          backgroundColor: filled ? AppColors.caution : Colors.white,
+          backgroundColor: filled ? AppColors.caution : AppColors.surface,
           foregroundColor: fg,
           padding: const EdgeInsets.symmetric(horizontal: _sidePad),
           shape: RoundedRectangleBorder(

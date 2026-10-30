@@ -106,7 +106,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.koText('아직 분석한 매물이 없어요'), findsOneWidget);
-      expect(find.koText('등기부등본 사진만 있으면 바로 시작할 수 있어요'), findsOneWidget);
+      expect(find.koText('등기부등본 떼는 법'), findsOneWidget);
       expect(find.koText('매물 분석 시작하기'), findsWidgets);
       expect(find.koText('성산동 행복아파트'), findsNothing);
     });

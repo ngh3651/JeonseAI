@@ -403,12 +403,12 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     final bool empty = _photos.isEmpty;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: empty
-          ? const SystemUiOverlayStyle(
+          ? SystemUiOverlayStyle(
               statusBarColor: AppColors.primaryDeep,
               statusBarIconBrightness: Brightness.light,
               statusBarBrightness: Brightness.dark,
             )
-          : const SystemUiOverlayStyle(
+          : SystemUiOverlayStyle(
               statusBarColor: AppColors.viewerBackdrop,
               statusBarIconBrightness: Brightness.dark,
               statusBarBrightness: Brightness.light,
@@ -509,8 +509,9 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                   child: FilledButton.icon(
                     onPressed: _openCaptureLoop,
                     style: FilledButton.styleFrom(
+                      // 이 화면은 밝게·어둡게 모두 진초록 바탕 — 흰 버튼 그대로
                       backgroundColor: Colors.white,
-                      foregroundColor: AppColors.primaryDeep,
+                      foregroundColor: const Color(0xFF0B3D2A),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(AppRadius.button),
                       ),
@@ -665,7 +666,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
                   child: AmberHint(
-                    text: '사진을 탭하면 크게 볼 수 있어요 · 끌어서 순서를 바꿀 수 있어요',
+                    text: '탭하면 크게 · 끌면 순서 바꾸기',
                   ),
                 ),
               Padding(
@@ -820,7 +821,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
               ],
             ),
           ),
-          const Divider(
+          Divider(
             height: 1,
             thickness: 1,
             color: AppColors.line,
@@ -879,7 +880,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       // "안 되면 알려드릴게요"는 지웠다 — 못 구하면 리포트가 '시세를 못 구했어요'로
       //   이미 말한다(report_screen.dart의 결론 헤더). 같은 말을 두 번 하지 않는다.
       return const AmberHint(
-        text: '비우면 국토부 실거래가·공시가격으로 찾아요',
+        text: '비우면 실거래가·공시가격으로 찾아요',
         // 이 칸을 비우면 **무엇으로** 찾아오는지가 핵심이다 — 출처를 굵게 세운다.
         // (굵기는 줄 수를 바꾸지 않는다 — AmberHint.emphasis 주석 참고)
         emphasis: '실거래가·공시가격',
@@ -1022,7 +1023,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
     //   Scaffold가 이미 뺀 값을 또 더하는 셈이라 화면 밖으로 밀려나며 오버플로가 났다
     //   (위젯 테스트가 키보드 300dp에서 164px 넘침으로 잡았다).
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
         border: Border(top: BorderSide(color: AppColors.line)),
       ),
@@ -1059,7 +1060,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
                 onPressed: _canAnalyze ? _analyze : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onPrimary,
                   disabledBackgroundColor: AppColors.buttonDisabledBg,
                   disabledForegroundColor: AppColors.buttonDisabledFg,
                   shape: RoundedRectangleBorder(
@@ -1083,7 +1084,7 @@ class _PropertySearchScreenState extends State<PropertySearchScreen> {
       key: const ValueKey('retake-left-check'),
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.photo_camera_outlined, size: 17, color: AppColors.caution),
+        Icon(Icons.photo_camera_outlined, size: 17, color: AppColors.caution),
         const SizedBox(width: 5),
         AppText(
           '다시 찍을 장 $count장',

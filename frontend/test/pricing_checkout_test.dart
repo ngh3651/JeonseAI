@@ -217,7 +217,7 @@ void main() {
 
       // 맨 위 첫 줄 = 지금은 무료로 다 된다(돈을 내야 안전한 것처럼 읽히지 않게)
       expect(find.koText(kPricingFreeNowLine), findsOneWidget);
-      expect(find.koText('가격은 아직 정하지 않은 예시예요 · 결제는 테스트 결제(실제 청구 없음)'), findsOneWidget);
+      expect(find.koText(kPricingExampleLine), findsOneWidget);
       expect(find.koText('무료'), findsOneWidget);
       expect(find.koText('계약 지킴이 패스'), findsOneWidget);
       // '예시'는 한 번씩만 — 돈을 받는 패스에만 짧은 꼬리표, 0원에는 없다. 내부 말('팀 확정 전'·'결선 시연 기간')은 없다

@@ -149,7 +149,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
             key: const ValueKey('ask-share'),
             onPressed: () => shareWithFeedback(context, data.shareText),
             icon: const Icon(Icons.send_rounded),
-            label: AppText('중개사에게 미리 보내기', style: AppTypographyNext.button.copyWith(color: Colors.white)),
+            label: AppText('중개사에게 미리 보내기', style: AppTypographyNext.button.copyWith(color: AppColors.onPrimary)),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.primary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -228,7 +228,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
 
   static (String, Color, Color)? _pill(AskAnswer? a) => switch (a) {
     AskAnswer.written => ('글로 받음', AppColors.okSoft, AppColors.ok),
-    AskAnswer.verbal => ('말로만', AppColors.cautionSoft, const Color(0xFF7A4A05)),
+    AskAnswer.verbal => ('말로만', AppColors.cautionSoft, AppColors.cautionStrong),
     AskAnswer.refused => ('거절', AppColors.dangerSoft, AppColorsNext.dangerText),
     null => null,
   };
@@ -264,7 +264,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                       textScaler: TextScaler.noScaling,
                       style: AppTypographyNext.caption.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: open ? Colors.white : const Color(0xFF3C4842),
+                        color: open ? AppColors.onPrimary : AppColors.chipFg,
                       ),
                     ),
                   ),
@@ -284,7 +284,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                   AnimatedRotation(
                     turns: open ? 0.5 : 0,
                     duration: const Duration(milliseconds: 150),
-                    child: const Icon(Icons.expand_more, color: AppColorsNext.textMuted),
+                    child: Icon(Icons.expand_more, color: AppColorsNext.textMuted),
                   ),
                 ],
               ),
@@ -310,13 +310,13 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (c.legal) ...[
-            const Align(
+            Align(
               alignment: Alignment.centerLeft,
               child: AskChip(
                 icon: Icons.task_outlined,
                 label: '법이 정한 서류 · 집주인이 보여 줘야 해요',
-                bg: Color(0xFFECEFED),
-                fg: Color(0xFF3C4842),
+                bg: AppColors.chipBg,
+                fg: AppColors.chipFg,
               ),
             ),
             const SizedBox(height: 14),
@@ -336,7 +336,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        border: k == 0 ? null : const Border(top: BorderSide(color: AppColorsNext.divider)),
+                        border: k == 0 ? null : Border(top: BorderSide(color: AppColorsNext.divider)),
                       ),
                       child: AppText(c.facts[k], style: AppTypographyNext.bodyStrong),
                     ),
@@ -351,7 +351,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(top: 5),
                   child: Icon(Icons.auto_awesome, size: 15, color: AppColors.primary),
                 ),
@@ -382,7 +382,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.track_changes_rounded, size: 18, color: AppColors.primary),
+                    Icon(Icons.track_changes_rounded, size: 18, color: AppColors.primary),
                     const SizedBox(width: 6),
                     _label('합격선'),
                   ],
@@ -431,13 +431,13 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                       border: Border.all(color: AppColors.line),
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: AppText(d, style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w600, color: const Color(0xFF3C4842))),
+                    child: AppText(d, style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w600, color: AppColors.chipFg)),
                   ),
               ],
             ),
           ],
           const SizedBox(height: 16),
-          const Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
+          Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
           const SizedBox(height: 14),
           _label('중개사 답은?'),
           const SizedBox(height: 8),
@@ -468,7 +468,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                 children: [
                   AppText(
                     '말은 나중에 증거가 안 돼요 — 이 특약을 넣어 달라고 하세요',
-                    style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFF7A4A05)),
+                    style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w700, color: AppColors.cautionStrong),
                   ),
                   const SizedBox(height: 8),
                   Container(
@@ -483,10 +483,10 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                       await Clipboard.setData(ClipboardData(text: c.clause));
                       if (mounted) setState(() => _copied = c.id);
                     },
-                    icon: const Icon(Icons.copy_rounded, size: 18, color: Color(0xFF7A4A05)),
+                    icon: Icon(Icons.copy_rounded, size: 18, color: AppColors.cautionStrong),
                     label: AppText(
                       _copied == c.id ? '복사했어요' : '특약 복사',
-                      style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFF7A4A05)),
+                      style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w700, color: AppColors.cautionStrong),
                     ),
                   ),
                 ],
@@ -503,7 +503,7 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                 children: [
                   AppText('가계약금 보내기 전에 멈추세요', style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w700, color: AppColorsNext.dangerText)),
                   const SizedBox(height: 4),
-                  AppText(c.stopSub, style: AppTypographyNext.caption.copyWith(color: const Color(0xFF3C4842))),
+                  AppText(c.stopSub, style: AppTypographyNext.caption.copyWith(color: AppColors.chipFg)),
                 ],
               ),
             ),
@@ -562,10 +562,10 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
 
   Widget _answerChip(AskCard c, AskAnswer v, String label, bool selected) {
     final (Color bg, Color fg, Color bd) = !selected
-        ? (AppColors.surface, const Color(0xFF3C4842), AppColors.line)
+        ? (AppColors.surface, AppColors.chipFg, AppColors.line)
         : switch (v) {
             AskAnswer.written => (AppColors.okSoft, AppColors.ok, AppColors.ok),
-            AskAnswer.verbal => (AppColors.cautionSoft, const Color(0xFF7A4A05), AppColors.caution),
+            AskAnswer.verbal => (AppColors.cautionSoft, AppColors.cautionStrong, AppColors.caution),
             AskAnswer.refused => (AppColors.dangerSoft, AppColorsNext.dangerText, AppColorsNext.dangerText),
           };
     return InkWell(

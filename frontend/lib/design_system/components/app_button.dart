@@ -30,12 +30,12 @@ class AppPrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Widget child = loading
-        ? const SizedBox(
+        ? SizedBox(
             width: 22,
             height: 22,
             child: CircularProgressIndicator(
               strokeWidth: 2.5,
-              color: Colors.white,
+              color: AppColors.onPrimary,
             ),
           )
         : AppText(label);

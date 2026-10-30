@@ -59,7 +59,7 @@ class CaseRiskBox extends StatelessWidget {
     final rows = <Widget>[];
     for (int i = 0; i < labels.length; i += 2) {
       if (i > 0) {
-        rows.add(const Divider(height: 1, thickness: 1, color: AppColorsNext.divider));
+        rows.add(Divider(height: 1, thickness: 1, color: AppColorsNext.divider));
       }
       rows.add(
         IntrinsicHeight(
@@ -67,7 +67,7 @@ class CaseRiskBox extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: _RiskCell(label: labels[i], left: true)),
-              const VerticalDivider(width: 1, thickness: 1, color: AppColorsNext.divider),
+              VerticalDivider(width: 1, thickness: 1, color: AppColorsNext.divider),
               Expanded(
                 child: i + 1 < labels.length
                     ? _RiskCell(label: labels[i + 1], left: false)
@@ -122,7 +122,7 @@ class _RiskCell extends StatelessWidget {
         padding: EdgeInsets.only(left: left ? 0 : 16, right: left ? 12 : 0, top: 10, bottom: 10),
         child: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, size: 18, color: AppColorsNext.dangerText),
+            Icon(Icons.warning_amber_rounded, size: 18, color: AppColorsNext.dangerText),
             const SizedBox(width: 8),
             Expanded(
               child: AppText(
@@ -160,8 +160,8 @@ class CaseEmptyBox extends StatelessWidget {
           Container(
             width: 56,
             height: 56,
-            decoration: const BoxDecoration(color: AppColors.background, shape: BoxShape.circle),
-            child: const Icon(Icons.search, size: 28, color: AppColors.caution),
+            decoration: BoxDecoration(color: AppColors.background, shape: BoxShape.circle),
+            child: Icon(Icons.search, size: 28, color: AppColors.caution),
           ),
           const SizedBox(height: 16),
           AppText(
@@ -258,7 +258,7 @@ class _CaseCardState extends State<CaseCard> with AutomaticKeepAliveClientMixin 
           const SizedBox(height: 4),
           _sourceRow(),
           if (_expanded) ...[
-            const Divider(height: 17, thickness: 1, color: AppColorsNext.divider),
+            Divider(height: 17, thickness: 1, color: AppColorsNext.divider),
             _BubbleHeader(
               label: '우리 매물과 공통점',
               icon: Icons.home_outlined,
@@ -318,7 +318,7 @@ class _CaseCardState extends State<CaseCard> with AutomaticKeepAliveClientMixin 
     final source = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.account_balance_outlined, size: 18, color: AppColorsNext.textMuted),
+        Icon(Icons.account_balance_outlined, size: 18, color: AppColorsNext.textMuted),
         const SizedBox(width: 6),
         Flexible(
           child: AppText(
@@ -330,7 +330,7 @@ class _CaseCardState extends State<CaseCard> with AutomaticKeepAliveClientMixin 
         ),
         if (hasUrl) ...[
           const SizedBox(width: 6),
-          const Icon(Icons.north_east, size: 18, color: AppColors.primary),
+          Icon(Icons.north_east, size: 18, color: AppColors.primary),
         ],
       ],
     );
@@ -445,7 +445,7 @@ class _BubbleHeader extends StatelessWidget {
       width: 28,
       height: 28,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      child: Icon(icon, size: 16, color: Colors.white),
+      child: Icon(icon, size: 16, color: AppColors.onPrimary),
     );
     final text = AppText(
       label,
@@ -552,7 +552,7 @@ class _WhiteBox extends StatelessWidget {
 ///
 /// 구절은 어절마다 따로 칠한다 — 한 덩어리로 묶으면 긴 구절이 줄 끝에서 넘치기 때문이다.
 InlineSpan _highlightedResult(String text, List<String> phrases) {
-  const base = AppTypographyNext.title;
+  final base = AppTypographyNext.title;
   final mark = _markRanges(text, phrases);
   final children = <InlineSpan>[];
   int i = 0;
@@ -602,7 +602,7 @@ class _Highlighter extends StatelessWidget {
             child: FractionallySizedBox(
               heightFactor: 0.4,
               widthFactor: 1,
-              child: const ColoredBox(color: AppColors.dangerSoft),
+              child: ColoredBox(color: AppColors.dangerSoft),
             ),
           ),
         ),
@@ -767,7 +767,7 @@ Future<void> showCaseTermSheet(
         children: [
           Row(
             children: [
-              const Icon(Icons.article_outlined, size: 18, color: AppColors.primary),
+              Icon(Icons.article_outlined, size: 18, color: AppColors.primary),
               const SizedBox(width: 6),
               AppText(
                 '어려운 말 풀이',
@@ -793,7 +793,7 @@ Future<void> showCaseTermSheet(
               onPressed: () => Navigator.of(sheetContext).pop(),
               child: AppText(
                 '알겠어요',
-                style: AppTypographyNext.button.copyWith(color: Colors.white),
+                style: AppTypographyNext.button.copyWith(color: AppColors.onPrimary),
               ),
             ),
           ),

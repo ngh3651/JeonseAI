@@ -46,7 +46,7 @@ class AppBottomNav extends StatelessWidget {
     return Container(
       height: AppSize.bottomNavHeight + bottomInset,
       padding: EdgeInsets.only(bottom: bottomInset),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.line)),
       ),
@@ -110,12 +110,12 @@ class AppBottomNav extends StatelessWidget {
               child: InkWell(
                 onTap: onAnalyzePressed,
                 customBorder: const CircleBorder(),
-                child: const SizedBox(
+                child: SizedBox(
                   width: AppSize.analyzeButton,
                   height: AppSize.analyzeButton,
                   child: Icon(
                     Icons.add,
-                    color: Colors.white,
+                    color: AppColors.onPrimary,
                     size: AppSize.iconLg,
                   ),
                 ),

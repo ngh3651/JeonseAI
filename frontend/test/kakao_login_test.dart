@@ -134,7 +134,9 @@ Widget _app(AppSession session, {String initial = '/start'}) {
       GoRoute(
         path: '/my',
         builder: (_, _) => const Scaffold(
-          body: SingleChildScrollView(child: AccountSection()),
+          body: SingleChildScrollView(
+            child: Column(children: [AccountSection(), AccountSettingsRows()]),
+          ),
         ),
       ),
       GoRoute(
@@ -657,12 +659,12 @@ void main() {
       await session.signInWithKakao();
       await tester.pumpWidget(_app(session, initial: '/my'));
       await tester.pumpAndSettle();
-      await tester.tap(find.koText('이름 정하기'));
+      await tester.tap(find.byTooltip('이름 정하기'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '동크크 2');
       await tester.tap(find.koText('저장'));
       await tester.pumpAndSettle();
-      expect(find.koText('이름 · 동크크 2'), findsOneWidget);
+      expect(find.koText('동크크 2님'), findsOneWidget);
       expect(session.displayName, '동크크 2');
     });
   });

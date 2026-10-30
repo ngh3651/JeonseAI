@@ -47,7 +47,7 @@ class MascotSafe extends StatelessWidget {
         filterQuality: FilterQuality.medium,
         // 에셋 누락 시에도 앱이 죽지 않게 — 기존 원형 플레이스홀더로 폴백
         errorBuilder: (context, error, stack) => Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.primarySoft,
             shape: BoxShape.circle,
           ),

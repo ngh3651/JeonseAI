@@ -66,7 +66,7 @@ class QuoteBand extends StatelessWidget {
             IconButton(
               tooltip: '인용 취소',
               constraints: const BoxConstraints(minWidth: AppSize.minTouchTarget, minHeight: AppSize.minTouchTarget),
-              icon: const Icon(Icons.close, size: AppSize.iconSm, color: AppColorsNext.textMuted),
+              icon: Icon(Icons.close, size: AppSize.iconSm, color: AppColorsNext.textMuted),
               onPressed: onCancel,
             ),
           ],
@@ -104,7 +104,7 @@ class QuoteChip extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.subdirectory_arrow_right, size: AppSize.iconXs, color: AppColors.primarySoft),
+                  Icon(Icons.subdirectory_arrow_right, size: AppSize.iconXs, color: AppColors.primarySoft),
                   const SizedBox(width: AppSpacing.xs),
                   Flexible(
                     child: Text(
@@ -153,7 +153,7 @@ class CopiedToast extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.check_circle, size: AppSize.iconSm, color: AppColors.primaryBright),
+                  Icon(Icons.check_circle, size: AppSize.iconSm, color: AppColors.primaryBright),
                   const SizedBox(width: AppSpacing.sm),
                   Flexible(
                     child: AppText(kCopiedMessage, style: AppTypographyNext.caption.copyWith(color: AppColors.surface)),

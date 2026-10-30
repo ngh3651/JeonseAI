@@ -26,13 +26,13 @@ class RegistryGuideScreen extends StatelessWidget {
   const RegistryGuideScreen({super.key});
 
   static const _steps = [
-    _Step('인터넷등기소에 접속해요', '회원가입 없이도 이용할 수 있어요. (대법원 인터넷등기소)'),
+    _Step('인터넷등기소에 접속해요', '회원가입 없이 돼요'),
     _Step(
       '주소를 넣고 ‘열람’을 골라요',
-      '‘발급’ 대신 ‘열람’이면 분석에 충분해요. 열람 수수료는 700원이에요 (예시 — 실제 금액은 사이트에서 확인).',
+      '열람이면 충분해요 · 수수료 700원',
     ),
-    _Step('결제한 뒤 화면을 캡처하거나 출력물을 찍어요', '여러 페이지면 한 장씩 나눠서 준비해 주세요.'),
-    _Step('앱에 사진을 올리면 끝이에요', '표제부·갑구·을구 페이지를 모두 올리면 더 정확해요.'),
+    _Step('결제한 뒤 화면을 캡처하거나 출력물을 찍어요', '여러 쪽이면 한 장씩'),
+    _Step('앱에 사진을 올리면 끝이에요', '모든 쪽을 올려 주세요'),
   ];
 
   @override
@@ -69,13 +69,13 @@ class RegistryGuideScreen extends StatelessWidget {
             width: 28,
             height: 28,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.primary,
               shape: BoxShape.circle,
             ),
             child: AppText(
               '$number',
-              style: AppTypography.label.copyWith(color: Colors.white),
+              style: AppTypography.label.copyWith(color: AppColors.onPrimary),
             ),
           ),
           const SizedBox(width: AppSpacing.md),

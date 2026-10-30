@@ -560,7 +560,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
             Container(
               width: 112,
               height: 112,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppColors.primarySoft,
                 shape: BoxShape.circle,
               ),
@@ -589,7 +589,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
                 ),
                 child: AppText(
                   '먼저 분석하기',
-                  style: AppTypographyNext.button.copyWith(color: Colors.white),
+                  style: AppTypographyNext.button.copyWith(color: AppColors.onPrimary),
                 ),
               ),
             ),
@@ -631,7 +631,7 @@ class _JourneyScreenState extends State<JourneyScreen> {
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(0, 48),
               foregroundColor: AppColors.primary,
-              side: const BorderSide(color: AppColors.primary, width: 1.5),
+              side: BorderSide(color: AppColors.primary, width: 1.5),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(kRadiusMd),
               ),

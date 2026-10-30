@@ -164,7 +164,7 @@ class _SafeFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    return DecoratedBox(
       decoration: BoxDecoration(color: AppColors.primarySoft, shape: BoxShape.circle),
       child: Icon(Icons.pets, color: AppColors.primary),
     );

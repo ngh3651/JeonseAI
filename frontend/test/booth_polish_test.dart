@@ -1,7 +1,7 @@
 /// 결선 부스 다듬기 (2026-10-23) — 리뷰 3개(디자인·지수·서연)에서 나온 "고장/가짜처럼 보이는 것".
 ///
 ///   ① 리포트 PDF로 저장 (2026-10-29, 글자 요약 공유를 대신함 — 이름은 기본으로 가림, 사진은 넣지 않음)
-///   ② 오래된 리포트의 [재분석] → [다시 떼서 대조]
+///   ② 오래된 리포트 — 맨 위 배너 없이 '뗀 지 N일' 한 줄 (2026-10-30)
 ///   ③ 근거 카드의 [시세 입력하기]는 숫자를 고칠 수 있을 때만 (서버 재료 또는 폰 사진 — 누를 수 없는 버튼을 두지 않는다)
 ///   ④ 앱 어디에도 "곧 제공되는 기능" 문구가 없다
 ///   ⑤ 부스 모드 — 앱 버전 줄 7번 연속 탭으로 켜고 끔, 켜면 로그아웃·회원 탈퇴·기록 지우기를 숨긴다
@@ -186,7 +186,7 @@ void main() {
       expect(raw, isNot(contains('/Subtype/Image')));
     });
 
-    testWidgets('PDF 버튼 → 시트(이름 가리기 켬) → [PDF 만들기] → 인쇄 창으로 PDF가 나간다', (
+    testWidgets('PDF 버튼 → 바로 만들어 인쇄 창으로 PDF가 나간다 (설명 시트 없음)', (
       tester,
     ) async {
       final saved = <(Uint8List, String)>[];
@@ -195,16 +195,8 @@ void main() {
       );
       await _pumpReport(tester, 'dummy-danger');
 
-      await tester.tap(find.byTooltip('PDF로 저장'));
-      await tester.pumpAndSettle();
-      expect(find.koText('PDF로 저장'), findsOneWidget);
-      expect(find.koText('이 리포트를 PDF 파일로 만들어요. 사진은 넣지 않아요.'), findsOneWidget);
-      final Switch toggle = tester.widget(find.byType(Switch));
-      expect(toggle.value, isTrue, reason: '이름 가리기는 기본으로 켠다');
-      expect(find.koText('리포트 요약 보내기'), findsNothing);
-
       await tester.runAsync(() async {
-        await tester.tap(find.koText('PDF 만들기'));
+        await tester.tap(find.byTooltip('PDF로 저장'));
         // 글꼴 읽기·PDF 만들기는 진짜 시간이 든다
         for (var i = 0; i < 100 && saved.isEmpty; i++) {
           await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -215,7 +207,8 @@ void main() {
       expect(String.fromCharCodes(saved.single.$1.take(5)), '%PDF-');
       expect(saved.single.$2, startsWith('전세AI프_리포트_역삼동_오피스텔_'));
       expect(saved.single.$2, endsWith('.pdf'));
-      expect(find.koText('PDF 만들기'), findsNothing, reason: '시트는 닫힌다');
+      expect(find.byType(Switch), findsNothing, reason: '이름 가리기 스위치는 없다(항상 가림)');
+      expect(find.byKey(const ValueKey('report-pdf-making')), findsNothing, reason: '만드는 중 창은 닫힌다');
       expect(
         find.byType(SnackBar),
         findsNothing,
@@ -233,10 +226,8 @@ void main() {
         },
       );
       await _pumpReport(tester, 'dummy-danger');
-      await tester.tap(find.byTooltip('PDF로 저장'));
-      await tester.pumpAndSettle();
       await tester.runAsync(() async {
-        await tester.tap(find.koText('PDF 만들기'));
+        await tester.tap(find.byTooltip('PDF로 저장'));
         for (var i = 0; i < 100 && shared == 0; i++) {
           await Future<void>.delayed(const Duration(milliseconds: 50));
         }
@@ -245,39 +236,21 @@ void main() {
       expect(shared, 1);
       expect(find.koTextContaining('열지 못했어요'), findsOneWidget);
     });
-
-    testWidgets("'사진 속 이름 가리기'가 켜져 있으면 스위치가 켜진 채 잠긴다", (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      await PrivacySettings.instance.setHideNamesInPhotos(true);
-      await _pumpReport(tester, 'dummy-danger');
-      await tester.tap(find.byTooltip('PDF로 저장'));
-      await tester.pumpAndSettle();
-      final Switch toggle = tester.widget(find.byType(Switch));
-      expect(toggle.value, isTrue);
-      expect(toggle.onChanged, isNull);
-    });
   });
 
-  testWidgets('② 오래된 리포트 배너의 버튼은 [다시 떼서 대조] (가짜 [재분석]이 아니다)', (tester) async {
-    await _pumpReport(tester, 'dummy-danger'); // 7일 전 분석
-    expect(find.koText('다시 떼서 대조'), findsOneWidget);
+  testWidgets('② 오래된 리포트에 맨 위 배너를 끼우지 않는다 — 등기부를 뗀 지 며칠인지만 한 줄로', (tester) async {
+    await _pumpReport(tester, 'dummy-danger'); // 7일 전 분석 · 등기부 2026.07.09
+    expect(find.koText('다시 떼서 대조'), findsNothing);
     expect(find.koText('재분석'), findsNothing);
-    // TextButton.icon은 TextButton의 하위 타입이라 byType으로는 안 잡힌다 — `is`로 찾는다
-    final Size size = tester.getSize(
-      find
-          .ancestor(
-            of: find.koText('다시 떼서 대조'),
-            matching: find.byWidgetPredicate((w) => w is TextButton),
-          )
-          .first,
-    );
-    expect(size.height, greaterThanOrEqualTo(48));
+    expect(find.koTextContaining('결과예요'), findsNothing);
+    expect(find.byKey(const ValueKey('report-registry-date')), findsOneWidget);
+    expect(find.koTextContaining('일 전에 뗀 등기부예요'), findsOneWidget);
   });
 
   testWidgets('③ [시세 입력하기]는 사진이 이 폰에 있을 때만 그린다 (누를 수 없는 버튼을 두지 않는다)', (
     tester,
   ) async {
-    // 시세 카드 하나뿐인 리포트 — 가장 심각한 카드라 처음부터 펼쳐져 있다
+    // 시세 카드 하나뿐인 리포트
     final report = AnalysisReport(
       id: 'r-price',
       alias: '샘플빌라',
@@ -332,6 +305,9 @@ void main() {
     RegistryPhotoStore.instance.register(report.id, [photo]);
     await tester.pumpWidget(const SizedBox.shrink());
     await pump();
+    // 근거는 처음에 접혀 있다(2026-10-30) — 눌러 펼친다
+    await tester.tap(find.koText('보증금이 집값에 비해 높지 않나요?'));
+    await tester.pumpAndSettle();
     final button = find.koText('시세 입력하기', skipOffstage: false);
     expect(button, findsOneWidget);
 
@@ -344,13 +320,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.koText('시세 입력하기'));
     await tester.pumpAndSettle();
-    expect(find.koText('보증금·시세·별칭 고치기'), findsOneWidget);
+    expect(find.koText('정보 수정'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey('inputs-price-field')),
       '30000',
     );
     await tester.pumpAndSettle();
-    expect(find.koText('저장하고 다시 판정하기'), findsOneWidget);
+    expect(find.koText('저장하고 다시 판정'), findsOneWidget);
     Navigator.of(tester.element(find.byType(ReportInputsSheet))).pop();
     await tester.pumpAndSettle();
   });
@@ -441,7 +417,11 @@ void main() {
             theme: buildAppTheme(),
             home: Scaffold(
               body: ListView(
-                children: const [AccountSection(), AppVersionLine()],
+                children: const [
+                  AccountSection(),
+                  AccountSettingsRows(),
+                  AppVersionLine(),
+                ],
               ),
             ),
           ),
@@ -465,7 +445,6 @@ void main() {
       expect(find.koText(kBoothModeOnMessage), findsOneWidget);
       expect(find.koText('로그아웃'), findsNothing);
       expect(find.koText('회원 탈퇴'), findsNothing);
-      expect(find.koText('부스 모드라 로그아웃·회원 탈퇴는 숨겼어요'), findsOneWidget);
       expect(find.koText('앱 버전 1.0.0 (빌드 42) · 부스 모드'), findsOneWidget);
       // 그 밖의 동작은 그대로 — 처리방침은 그대로 열 수 있다
       expect(find.koText('개인정보 처리방침'), findsOneWidget);

@@ -175,8 +175,10 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
   late final TextEditingController _deposit = TextEditingController(
     text: _manwonText(widget.report.deposit),
   );
+  // 시세 칸은 **지금 리포트의 시세**로 채운다(자동으로 찾은 값이든 직접 넣은 값이든 — 2026-10-30 규혁: 수정이면 칸이 채워져 있어야).
+  // 안 건드리면 출처도 그대로(자동은 자동), 바꾸면 직접 넣은 값, 비우면 다시 자동으로 찾는다.
   late final TextEditingController _price = TextEditingController(
-    text: _manwonText(manualMarketPriceOf(widget.report)),
+    text: _manwonText(widget.report.marketPrice),
   );
   late final TextEditingController _alias = TextEditingController(
     text: widget.report.alias,
@@ -211,6 +213,9 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
     super.dispose();
   }
 
+  /// 시세 칸을 건드렸나 — 채워 둔 값과 다르면(비운 것 포함) 바꾼 것이다
+  bool get _priceChanged => _won(_price.text) != widget.report.marketPrice;
+
   ReportInputs? get _result {
     final deposit = _won(_deposit.text);
     if (deposit == null) return null;
@@ -218,25 +223,16 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
     return ReportInputs(
       alias: alias.isEmpty ? widget.report.alias : alias,
       deposit: deposit,
-      marketPrice: _won(_price.text),
+      // 안 건드렸으면 원래 출처 그대로(자동 → null), 바꿨으면 넣은 값(비우면 null = 다시 자동으로 찾기)
+      marketPrice: _priceChanged
+          ? _won(_price.text)
+          : manualMarketPriceOf(widget.report),
     );
   }
 
   bool get _numbersChanged {
     final r = _result;
-    return r != null &&
-        (r.deposit != widget.report.deposit ||
-            r.marketPrice != manualMarketPriceOf(widget.report));
-  }
-
-  /// 시세 칸 아래 안내 — 비우면 무엇을 쓰는지 (잠긴 칸이면 이유)
-  String get _priceHint {
-    if (!widget.numbersEditable) return '사진이 이 폰에 없어 못 고쳐요';
-    final report = widget.report;
-    if (report.marketPrice != null && report.marketPriceSource.isAuto) {
-      return '비우면 자동으로 찾은 값(${formatWon(report.marketPrice!)})을 써요';
-    }
-    return '비우면 자동으로 찾아요';
+    return r != null && (r.deposit != widget.report.deposit || _priceChanged);
   }
 
   Future<void> _submit() async {
@@ -263,22 +259,26 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
     }
   }
 
-  InputDecoration _moneyDecoration(String label, String helper) =>
-      InputDecoration(
-        labelText: label,
-        suffixText: '만원',
-        helperText: helper,
-        helperMaxLines: 2,
-        suffixIcon: widget.numbersEditable
-            ? null
-            : const Icon(Icons.lock_outline),
-      );
+  /// 금액 칸 — 칸 아래엔 넣은 값을 '1억 2,000만원'처럼 읽어 주기만 한다(0을 하나 더 넣어도 바로 보이게).
+  /// 설명 문장은 두지 않는다(2026-10-30 규혁: 말이 많다).
+  InputDecoration _moneyDecoration(String label, TextEditingController c) {
+    final won = _won(c.text);
+    return InputDecoration(
+      labelText: label,
+      suffixText: '만원',
+      helperText: !widget.numbersEditable
+          ? '사진이 없어 못 고쳐요'
+          : (won == null ? null : formatWon(won)),
+      suffixIcon: widget.numbersEditable
+          ? null
+          : const Icon(Icons.lock_outline),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final result = _result;
     final bool editable = widget.numbersEditable && !_saving;
-    final int? depositWon = _won(_deposit.text);
     final money = [
       FilteringTextInputFormatter.digitsOnly,
       LengthLimitingTextInputFormatter(8),
@@ -303,40 +303,15 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const AppText('보증금·시세·별칭 고치기', style: AppTypography.title),
-                    const SizedBox(height: AppSpacing.xs),
-                    AppText(
-                      widget.numbersEditable
-                          ? '보증금이나 시세를 바꾸면 같은 등기부로 판정을 다시 해요. 사진은 다시 찍지 않아도 돼요.'
-                          : '이 리포트는 사진이 이 폰에 없어 이름만 바꿀 수 있어요. 숫자를 바꾸려면 등기부를 새로 분석해 주세요.',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textMuted,
-                      ),
-                    ),
+                    AppText('정보 수정', style: AppTypography.title),
                     const SizedBox(height: AppSpacing.lg),
-                    // 보증금 — 화면에서 가장 큰 숫자(입력 화면과 같은 교훈: 0을 하나 더 넣어도 눈에 띄게)
-                    AppText(
-                      depositWon != null ? formatWon(depositWon) : '얼마를 맡기시나요?',
-                      key: const ValueKey('inputs-deposit-won'),
-                      style: AppTypography.numberLarge.copyWith(
-                        color: depositWon != null
-                            ? AppColors.textStrong
-                            : AppColors.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
                     TextField(
                       key: const ValueKey('inputs-deposit-field'),
                       controller: _deposit,
                       enabled: editable,
                       keyboardType: TextInputType.number,
                       inputFormatters: money,
-                      decoration: _moneyDecoration(
-                        '예정 전세보증금',
-                        widget.numbersEditable
-                            ? '만원 단위로 넣어요'
-                            : '사진이 이 폰에 없어 못 고쳐요',
-                      ),
+                      decoration: _moneyDecoration('전세보증금', _deposit),
                       onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: AppSpacing.md),
@@ -347,12 +322,7 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
                       autofocus: widget.focusPrice && widget.numbersEditable,
                       keyboardType: TextInputType.number,
                       inputFormatters: money,
-                      decoration: _moneyDecoration(
-                        '매매 시세 (선택)',
-                        _won(_price.text) == null
-                            ? _priceHint
-                            : formatWon(_won(_price.text)!),
-                      ),
+                      decoration: _moneyDecoration('매매 시세', _price),
                       onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: AppSpacing.md),
@@ -362,7 +332,7 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
                       enabled: !_saving,
                       maxLength: 40,
                       decoration: const InputDecoration(
-                        labelText: '매물 별칭 (선택)',
+                        labelText: '별칭',
                         counterText: '',
                       ),
                       onChanged: (_) => setState(() {}),
@@ -385,20 +355,10 @@ class _ReportInputsSheetState extends State<ReportInputsSheet> {
             // 저장 버튼은 스크롤 밖 — 키보드가 올라와도 바로 위에 보인다
             AppPrimaryButton(
               key: const ValueKey('inputs-save-button'),
-              label: _numbersChanged ? '저장하고 다시 판정하기' : '저장',
+              label: _numbersChanged ? '저장하고 다시 판정' : '저장',
               loading: _saving,
               onPressed: result == null || _saving ? null : _submit,
             ),
-            if (_saving && _numbersChanged) ...[
-              const SizedBox(height: AppSpacing.xs),
-              AppText(
-                '설명을 새로 쓰느라 몇 초 걸려요',
-                textAlign: TextAlign.center,
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.textMuted,
-                ),
-              ),
-            ],
           ],
         ),
       ),

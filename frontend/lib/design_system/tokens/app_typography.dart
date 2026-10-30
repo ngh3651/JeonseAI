@@ -12,7 +12,7 @@ abstract final class AppTypography {
   static const String fontFamily = 'Pretendard';
 
   /// 결론 헤더의 등급 표기 — 화면에서 가장 큰 글자 (S-07 결론 크게)
-  static const TextStyle conclusion = TextStyle(
+  static TextStyle get conclusion => TextStyle(
     fontFamily: fontFamily,
     fontSize: 34,
     height: 1.2,
@@ -21,7 +21,7 @@ abstract final class AppTypography {
   );
 
   /// 큰 숫자 — 게이지 중앙, 손실 시뮬레이터 금액
-  static const TextStyle numberLarge = TextStyle(
+  static TextStyle get numberLarge => TextStyle(
     fontFamily: fontFamily,
     fontSize: 28,
     height: 1.2,
@@ -30,7 +30,7 @@ abstract final class AppTypography {
   );
 
   /// 화면 제목
-  static const TextStyle headline = TextStyle(
+  static TextStyle get headline => TextStyle(
     fontFamily: fontFamily,
     fontSize: 22,
     height: 1.3,
@@ -39,7 +39,7 @@ abstract final class AppTypography {
   );
 
   /// 섹션·카드 제목
-  static const TextStyle title = TextStyle(
+  static TextStyle get title => TextStyle(
     fontFamily: fontFamily,
     fontSize: 17,
     height: 1.4,
@@ -48,7 +48,7 @@ abstract final class AppTypography {
   );
 
   /// 본문
-  static const TextStyle body = TextStyle(
+  static TextStyle get body => TextStyle(
     fontFamily: fontFamily,
     fontSize: 15,
     height: 1.55,
@@ -57,7 +57,7 @@ abstract final class AppTypography {
   );
 
   /// 본문 강조
-  static const TextStyle bodyStrong = TextStyle(
+  static TextStyle get bodyStrong => TextStyle(
     fontFamily: fontFamily,
     fontSize: 15,
     height: 1.55,
@@ -66,7 +66,7 @@ abstract final class AppTypography {
   );
 
   /// 보조 설명·캡션 (전문용어 부제, 출처 표기)
-  static const TextStyle caption = TextStyle(
+  static TextStyle get caption => TextStyle(
     fontFamily: fontFamily,
     fontSize: 13,
     height: 1.45,
@@ -75,7 +75,7 @@ abstract final class AppTypography {
   );
 
   /// 버튼 라벨
-  static const TextStyle button = TextStyle(
+  static TextStyle get button => TextStyle(
     fontFamily: fontFamily,
     fontSize: 16,
     height: 1.2,
@@ -83,7 +83,7 @@ abstract final class AppTypography {
   );
 
   /// 소형(컴팩트) 버튼 라벨
-  static const TextStyle buttonSmall = TextStyle(
+  static TextStyle get buttonSmall => TextStyle(
     fontFamily: fontFamily,
     fontSize: 14,
     height: 1.2,
@@ -91,7 +91,7 @@ abstract final class AppTypography {
   );
 
   /// 뱃지·칩 라벨
-  static const TextStyle label = TextStyle(
+  static TextStyle get label => TextStyle(
     fontFamily: fontFamily,
     fontSize: 12,
     height: 1.2,

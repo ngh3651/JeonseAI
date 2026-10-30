@@ -245,7 +245,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         const SizedBox(height: AppSpacing.lg),
         if (!_testKey)
           // 실제 키(live_)로 빌드된 앱 — 결선은 테스트 결제만 한다
-          const AppText(
+          AppText(
             '이 앱은 테스트 결제만 지원해요. 실제 결제 키로는 결제를 열지 않아요',
             style: AppTypography.bodyStrong,
           )
@@ -268,7 +268,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             onPressed: () => _confirm(_pendingConfirm!),
           ),
           const SizedBox(height: AppSpacing.xs),
-          const AppText(
+          AppText(
             '결제창에서 결제를 마쳤다면 다시 확인하기를 눌러 주세요. 같은 결제가 두 번 승인되지 않아요',
             style: AppTypography.caption,
           ),
@@ -327,7 +327,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         const SizedBox(height: AppSpacing.lg),
         Row(
           children: [
-            const Icon(
+            Icon(
               Icons.verified_user,
               size: AppSize.iconLg,
               color: AppColors.primary,
@@ -362,7 +362,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
         const SizedBox(height: AppSpacing.lg),
         // 무엇을 산 것인지 한 줄로(서연 #7) — 요금제 파일의 패스 기능과 같은 말
-        const AppText(kPassIncludesLine, style: AppTypography.body),
+        AppText(kPassIncludesLine, style: AppTypography.body),
         const SizedBox(height: AppSpacing.xl),
         AppPrimaryButton(
           label: '계약 여정으로 가기',
@@ -414,7 +414,7 @@ class TestPaymentNotice extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.science_outlined,
             size: AppSize.iconSm,
             color: AppColors.caution,
@@ -433,7 +433,7 @@ class TestPaymentNotice extends StatelessWidget {
                 ),
                 // 지수 #9: '카드 정보를 넣어도'는 진짜 카드를 넣으라는 말로 읽혔다. 진짜 번호 없이 끝내는 방법은
                 // 토스 공식 문서로 확인하지 못해 적지 않는다(NOW.md 사람 할 일 — 실기기에서 확인).
-                const AppText(kTestPaymentPracticeLine, style: AppTypography.caption),
+                AppText(kTestPaymentPracticeLine, style: AppTypography.caption),
               ],
             ),
           ),

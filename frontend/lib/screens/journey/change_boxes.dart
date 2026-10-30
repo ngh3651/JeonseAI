@@ -131,11 +131,11 @@ class _Box extends StatelessWidget {
                 child: AppText(
                   sign,
                   textScaler: TextScaler.noScaling,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     height: 1,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: AppColors.onPrimary,
                   ),
                 ),
               ),
@@ -156,8 +156,8 @@ class _Box extends StatelessWidget {
             Container(
               decoration: i == 0
                   ? null
-                  : const BoxDecoration(
-                      border: Border(top: BorderSide(color: Colors.white)),
+                  : BoxDecoration(
+                      border: Border(top: BorderSide(color: AppColors.surface)),
                     ),
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: ChangeItemRow(item: items[i]),

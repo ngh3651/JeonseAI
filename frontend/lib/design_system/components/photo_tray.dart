@@ -111,7 +111,7 @@ class PhotoTray extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(AppRadius.thumb),
                     border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
                         color: AppColors.thumbShadow, // rgba(16,24,20,.22)
                         blurRadius: 6,
@@ -125,7 +125,7 @@ class PhotoTray extends StatelessWidget {
                       File(paths[i]),
                       fit: BoxFit.cover,
                       // 파일이 사라졌을 때 앱이 죽지 않게 — 회색 자리로 남긴다.
-                      errorBuilder: (_, _, _) => const ColoredBox(
+                      errorBuilder: (_, _, _) => ColoredBox(
                         color: AppColors.line,
                         child: Center(
                           child: Icon(
@@ -147,7 +147,7 @@ class PhotoTray extends StatelessWidget {
                   width: 20,
                   height: 20,
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.primary,
                     shape: BoxShape.circle,
                     boxShadow: [
@@ -177,7 +177,7 @@ class PhotoTray extends StatelessWidget {
                   bottom: 0,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 2),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColors.caution,
                       borderRadius: BorderRadius.vertical(
                         bottom: Radius.circular(AppRadius.thumb),
@@ -245,7 +245,7 @@ class PhotoTray extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.add_a_photo,
                 size: AppSize.iconMd,
                 color: AppColors.primary,

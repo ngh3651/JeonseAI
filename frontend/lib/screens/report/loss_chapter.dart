@@ -19,11 +19,11 @@ import '../../repositories/analysis_repository.dart';
 import '../../utils/money_format.dart';
 
 /// 회색 칩 색 — 공공 데이터 표시
-const Color _kDataChipBg = Color(0xFFECEFED);
-const Color _kDataChipFg = Color(0xFF3C4842);
+Color get _kDataChipBg => AppColors.chipBg;
+Color get _kDataChipFg => AppColors.chipFg;
 
 /// 계산 못 했을 때 막대
-const Color _kBarIdle = Color(0xFFE3E7E5);
+Color get _kBarIdle => AppColors.barIdle;
 
 class LossChapter extends StatefulWidget {
   const LossChapter({super.key, required this.reportId});
@@ -70,7 +70,7 @@ class _LossChapterState extends State<LossChapter> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.bar_chart_rounded,
                     size: 15,
                     color: _kDataChipFg,
@@ -114,7 +114,7 @@ class _LossChapterState extends State<LossChapter> {
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
                     child: loading ? _loading() : _body(snap.data),
                   ),
-                  const Divider(
+                  Divider(
                     height: 1,
                     thickness: 1,
                     indent: 20,
@@ -137,7 +137,7 @@ class _LossChapterState extends State<LossChapter> {
                               ),
                             ),
                           ),
-                          const Icon(
+                          Icon(
                             Icons.chevron_right,
                             color: AppColors.primary,
                           ),
@@ -235,7 +235,7 @@ class _LossChapterState extends State<LossChapter> {
             height: 16,
             child: priced
                 ? _bar(back, loss)
-                : const ColoredBox(color: _kBarIdle),
+                : ColoredBox(color: _kBarIdle),
           ),
         ),
         if (priced) ...[
@@ -291,13 +291,13 @@ class _LossChapterState extends State<LossChapter> {
         if (backFlex > 0)
           Expanded(
             flex: backFlex,
-            child: const ColoredBox(color: AppColors.ok),
+            child: ColoredBox(color: AppColors.ok),
           ),
         if (backFlex > 0 && lossFlex > 0) const SizedBox(width: 2),
         if (lossFlex > 0)
           Expanded(
             flex: lossFlex,
-            child: const ColoredBox(color: AppColorsNext.dangerText),
+            child: ColoredBox(color: AppColorsNext.dangerText),
           ),
       ],
     );

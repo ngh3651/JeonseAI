@@ -179,7 +179,7 @@ class TodayBellButton extends StatelessWidget {
                   child: Icon(
                     Icons.notifications_none,
                     size: 24,
-                    color: open ? Colors.white : AppColorsNext.textStrong,
+                    color: open ? AppColors.onInverse : AppColorsNext.textStrong,
                   ),
                 ),
               ),
@@ -196,7 +196,7 @@ class TodayBellButton extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: AppColors.danger,
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
+                      border: Border.all(color: AppColors.surface, width: 2),
                     ),
                   ),
                 ),
@@ -324,11 +324,11 @@ class TodayEventTile extends StatelessWidget {
                 Container(
                   width: 40,
                   height: 40,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.warning_amber_rounded,
                     size: 22,
                     color: AppColors.caution,
@@ -367,7 +367,7 @@ class TodayEventTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: AppColors.caution),
+                Icon(Icons.chevron_right, color: AppColors.caution),
               ],
             ),
           ),

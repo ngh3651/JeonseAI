@@ -57,9 +57,9 @@ class RegistryPhotoStore {
   /// 사진은 이 폰에만** 최근 [keepRecentReports]건 남는다([keepOriginalsOnPhone]).
   /// 스위치·건수가 바뀌면 문구도 저절로 따라간다 — 문구와 동작이 다시 갈라지지 않게.
   static const String retentionNotice = keepOriginalsOnPhone
-      ? '사진은 국내 AI(Upstage)가 글자를 읽는 데만 써요. 우리 서버에는 사진도 실명도 남지 않아요. '
+      ? '사진은 국내 AI(Upstage)가 글자를 읽는 데만 써요. 저희 서버에는 사진도 실명도 남지 않아요. '
             '실명이 보이는 원본 리포트와 사진은 이 휴대폰에만 최근 $keepRecentReports건 남아요.'
-      : '사진은 국내 AI(Upstage)가 글자를 읽는 데만 써요. 우리 서버에는 사진도 실명도 남지 않아요. '
+      : '사진은 국내 AI(Upstage)가 글자를 읽는 데만 써요. 저희 서버에는 사진도 실명도 남지 않아요. '
             '이 휴대폰에도 남기지 않아요.';
 
   static const String _prefsKey = 'registry_photos_v1';

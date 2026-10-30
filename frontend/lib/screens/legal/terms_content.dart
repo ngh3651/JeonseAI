@@ -21,19 +21,19 @@ LegalDoc termsDoc({String contact = kPrivacyContact}) => LegalDoc(
   highlights: const [
     LegalHighlight(Icons.insights_outlined, '등기부를 분석해 위험 신호와 근거를 보여 드려요'),
     LegalHighlight(Icons.rule_rounded, '위험 등급은 공개된 기준을 옮긴 규칙이 정해요'),
-    LegalHighlight(Icons.savings_outlined, '지금은 모든 기능이 무료예요'),
+    LegalHighlight(Icons.shield_outlined, "정보가 부족하면 '양호' 대신 '확인 필요'로 알려요"),
   ],
   sections: const [
     LegalSection('이 약관은', [
       LegalParagraph(
-        '전세AI프(이하 서비스)를 쓰는 조건과 절차, 이용자와 운영자인 팀 동크크(이하 운영자)의 권리와 책임을 정해요.',
+        '이 약관은 전세AI프 서비스를 쓰는 조건과 절차, 그리고 이용자와 운영자인 팀 동크크의 권리와 책임을 정해요.',
       ),
       LegalParagraph('시작 화면에서 이 약관에 동의하면 이용 계약이 맺어져요. 만 14세 이상만 쓸 수 있어요.'),
     ]),
     LegalSection('서비스가 하는 일', [
       LegalBullets([
         '등기부등본 사진을 읽어 깡통전세와 전세사기 위험 신호를 찾고, 등급과 근거를 보여 드려요.',
-        '경매로 넘어가면 보증금을 얼마나 돌려받을 수 있는지 계산해요.',
+        '경매로 넘어가면 보증금을 얼마나 돌려받을지 실제 경매 통계로 어림해 드려요.',
         '이 집과 비슷한 판례, 중개사에게 물어볼 질문을 골라 드려요.',
         '계약 일정 알림과 다시 뗀 등기부 대조로 입주 다음 날까지 함께해요.',
         '어려운 부동산 용어는 챗봇이 풀어 드려요.',
@@ -41,7 +41,8 @@ LegalDoc termsDoc({String contact = kPrivacyContact}) => LegalDoc(
     ]),
     LegalSection('AI를 쓰는 방식', [
       LegalParagraph('이 서비스는 생성형 AI를 써요. 등기부 글자 읽기, 쉬운 설명, 챗봇 답은 국내 AI 업스테이지(Upstage)가 만들어요.'),
-      LegalParagraph('리포트에서 AI가 맡은 부분에는 ✦ AI 표시를 붙여요. 위험 등급은 AI가 아니라 공개된 기준을 옮긴 규칙이 정해요.'),
+      LegalParagraph("리포트에서 AI가 맡은 부분에는 'AI' 표시를 붙여요. 위험 등급은 AI가 아니라 공개된 기준을 옮긴 규칙이 정해요."),
+      LegalParagraph('AI 문장이 등급과 반대로 말하면, 그 칸은 미리 준비한 문장으로 바꿔요.'),
     ]),
     LegalSection('리포트를 볼 때', [
       LegalBullets([
@@ -70,8 +71,8 @@ LegalDoc termsDoc({String contact = kPrivacyContact}) => LegalDoc(
       LegalParagraph('기록은 마이에서 언제든 지울 수 있고, 회원 탈퇴하면 모두 지워져요.'),
     ]),
     LegalSection('요금', [
-      LegalParagraph('지금은 모든 기능을 무료로 쓸 수 있어요.'),
-      LegalParagraph('계약 지킴이 패스 결제는 시험용 결제라 실제로 돈이 나가지 않아요.'),
+      LegalParagraph('지금은 모든 기능이 무료예요. 패스에 들어갈 알림과 다시 대조도 무료로 쓸 수 있어요.'),
+      LegalParagraph('계약 지킴이 패스는 토스페이먼츠 시험 결제로 열어 뒀어요. 실제로 돈은 나가지 않아요.'),
       LegalParagraph('유료로 바꿀 때는 가격과 환불 조건을 미리 알리고, 동의한 분께만 받아요.'),
     ]),
     LegalSection('서비스 변경과 중단', [
@@ -90,7 +91,7 @@ LegalDoc termsDoc({String contact = kPrivacyContact}) => LegalDoc(
     LegalSection('권리', [
       LegalParagraph('이용자가 올린 사진과 입력한 내용은 이용자의 것이에요. 운영자는 서비스를 제공하는 데만 써요.'),
       LegalParagraph('앱의 디자인과 마스코트 세이프, 앱에 쓴 글과 그림의 권리는 팀 동크크에 있어요.'),
-      LegalParagraph('공공 데이터와 판례는 각 기관의 이용 조건을 따라요. 마이 → 데이터 출처에서 볼 수 있어요.'),
+      LegalParagraph('공공 데이터와 판례는 각 기관의 이용 조건을 따라요. 마이의 데이터 출처에서 볼 수 있어요.'),
     ]),
     LegalSection('개인정보', [
       LegalParagraph('개인정보는 개인정보 처리방침에 따라 다뤄요.'),

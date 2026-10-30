@@ -14,7 +14,7 @@ LegalDoc dataSourcesDoc() => const LegalDoc(
   effectiveDate: kPrivacyEffectiveDate,
   intro: '전세AI프 리포트는 공식 서류와 공공기관이 공개한 데이터를 바탕으로 만들어요.',
   highlights: [
-    LegalHighlight(Icons.description_outlined, '등기부등본은 사용자가 올린 사진에서 읽어요'),
+    LegalHighlight(Icons.description_outlined, '등기부등본은 이용자가 올린 사진에서 읽어요'),
     LegalHighlight(Icons.account_balance_outlined, '시세·판례·경매 통계는 공공기관 자료예요'),
     LegalHighlight(Icons.rule_rounded, '위험 등급은 공개된 보증 기준으로 계산해요'),
   ],
@@ -36,16 +36,14 @@ LegalDoc dataSourcesDoc() => const LegalDoc(
       LegalParagraph('공공 데이터는 각 기관이 정한 이용 조건(공공누리 등)에 따라 출처를 밝혀 써요.'),
     ]),
     LegalSection('위험 등급 기준', [
-      LegalParagraph(
-        '빚과 보증금이 집값에서 차지하는 비율은 주택도시보증공사(HUG) 전세보증금반환보증 가입 요건과 '
-        '한국부동산원 공표 기준으로 봐요.',
-      ),
+      LegalParagraph('빚과 보증금이 집값에서 차지하는 비율은 주택도시보증공사(HUG) 전세보증금반환보증 가입 요건으로 봐요.'),
+      LegalParagraph("전세가율 80% 주의 선은 한국부동산원이 '80%를 넘는 곳'을 따로 공표하는 선을 따라요."),
       LegalParagraph('기준과 그 출처는 모두 기록해 두고, 출처가 없는 숫자는 쓰지 않아요.'),
     ]),
     LegalSection('AI', [
       LegalParagraph(
         '국내 AI 업스테이지(Upstage)의 Document OCR·Information Extract로 등기부 글자를 읽고, '
-        'Solar Pro 2로 쉬운 설명과 챗봇 답을 써요.',
+        'Solar Pro 2로 쉬운 설명과 챗봇 답을 써요. 비슷한 판례는 Embedding으로 찾아요.',
       ),
       LegalParagraph('위험 등급은 AI가 아니라 정해진 규칙이 계산해요. AI는 설명만 써요.'),
     ]),
@@ -54,7 +52,7 @@ LegalDoc dataSourcesDoc() => const LegalDoc(
         ('Pretendard', '길형진, SIL Open Font License 1.1'),
         ('주아체', '배달의민족(The Jua Project Authors), SIL Open Font License 1.1'),
       ]),
-      LegalParagraph('라이선스 전문은 마이 → 오픈소스 라이선스에서 볼 수 있어요.'),
+      LegalParagraph('라이선스 전문은 마이의 오픈소스 라이선스에서 볼 수 있어요.'),
     ]),
   ],
 );

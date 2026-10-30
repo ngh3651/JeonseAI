@@ -61,14 +61,15 @@ class SettingsRow extends StatelessWidget {
   /// 회원 탈퇴처럼 되돌릴 수 없는 줄 — 빨간 글자
   final bool danger;
 
-  /// 개인정보 처리방침 — 다른 줄과 구별되게 굵은 초록(개인정보위 처리방침 작성지침)
+  /// 개인정보 처리방침 — 다른 줄과 구별되게 굵은 초록 글자·초록 아이콘(표준 개인정보 보호지침 제20조).
+  /// 진초록(primaryStrong)은 밝게 모드에서 검은 글자와 거의 같아 보여 **primary**를 쓴다(2026-10-30 디자인 리뷰).
   final bool strong;
 
   @override
   Widget build(BuildContext context) {
     final Color fg = danger
         ? AppColors.danger
-        : (strong ? AppColors.primaryStrong : AppColorsNext.textStrong);
+        : (strong ? AppColors.primary : AppColorsNext.textStrong);
     return InkWell(
       onTap: onTap,
       child: ConstrainedBox(
@@ -80,7 +81,9 @@ class SettingsRow extends StatelessWidget {
               Icon(
                 icon,
                 size: 22,
-                color: danger ? AppColors.danger : AppColorsNext.textMuted,
+                color: danger
+                    ? AppColors.danger
+                    : (strong ? AppColors.primary : AppColorsNext.textMuted),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -88,7 +91,7 @@ class SettingsRow extends StatelessWidget {
                   title,
                   style: AppTypographyNext.body.copyWith(
                     color: fg,
-                    fontWeight: strong ? FontWeight.w800 : FontWeight.w600,
+                    fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
                   ),
                 ),
               ),

@@ -29,11 +29,12 @@ Future<bool> ensureConsent(BuildContext context, {ConsentStore? store}) async {
   final agreed = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     showDragHandle: false,
-    barrierColor: Colors.black.withValues(alpha: 0.5),
+    barrierColor: AppColors.dim,
     backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
     ),
     builder: (_) => const ConsentSheet(),
   );
@@ -84,86 +85,103 @@ class _ConsentSheetState extends State<ConsentSheet> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenPadding,
-          12,
-          AppSpacing.screenPadding,
-          16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.line,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 내용은 스크롤 — 작은 폰·큰 글씨에서 넘치면 여기만 줄어든다
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding,
+                12,
+                AppSpacing.screenPadding,
+                0,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.line,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.primarySoft,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const MascotSafe(size: 42, state: MascotState.home),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: AppText(
+                          '시작하기 전에\n확인해 주세요',
+                          key: const ValueKey('consent-title'),
+                          style: AppTypographyNext.headline,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _PrivacyNotice(onOpen: () => _openDoc(privacyPolicyDoc())),
+                  const SizedBox(height: 16),
+                  _AllRow(checked: _all, onTap: _toggleAll),
+                  const SizedBox(height: 4),
+                  for (final item in ConsentItem.values)
+                    _ItemRow(
+                      item: item,
+                      checked: _checked.contains(item),
+                      onTap: () => _toggle(item),
+                      onOpen: item == ConsentItem.terms ? () => _openDoc(termsDoc()) : null,
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySoft,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const MascotSafe(size: 42, state: MascotState.home),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: AppText(
-                    '시작하기 전에\n확인해 주세요',
-                    key: const ValueKey('consent-title'),
-                    style: AppTypographyNext.headline,
-                  ),
-                ),
-              ],
+          ),
+          // 버튼은 늘 화면 아래 — 시작 화면의 메인 버튼과 같은 모양(높이 52 · 반경 12)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding,
+              12,
+              AppSpacing.screenPadding,
+              16,
             ),
-            const SizedBox(height: 20),
-            _PrivacyNotice(onOpen: () => _openDoc(privacyPolicyDoc())),
-            const SizedBox(height: 16),
-            _AllRow(checked: _all, onTap: _toggleAll),
-            const SizedBox(height: 4),
-            for (final item in ConsentItem.values)
-              _ItemRow(
-                item: item,
-                checked: _checked.contains(item),
-                onTap: () => _toggle(item),
-                onOpen: item == ConsentItem.terms ? () => _openDoc(termsDoc()) : null,
-              ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 56,
+            child: SizedBox(
+              height: 52,
               child: FilledButton(
                 key: const ValueKey('consent-agree'),
                 onPressed: _all ? () => Navigator.of(context).pop(true) : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  disabledBackgroundColor: AppColors.chipBg,
-                  disabledForegroundColor: AppColorsNext.textMuted,
+                  disabledBackgroundColor: AppColors.buttonDisabledBg,
+                  disabledForegroundColor: AppColors.buttonDisabledFg,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                 ),
                 child: AppText(
                   '동의하고 시작하기',
                   style: AppTypographyNext.button.copyWith(
-                    color: _all ? AppColors.onPrimary : AppColorsNext.textMuted,
+                    color: _all ? AppColors.onPrimary : AppColors.buttonDisabledFg,
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -188,7 +206,7 @@ class _PrivacyNotice extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: AppText(
               '개인정보는 이렇게 지켜요',
               style: AppTypographyNext.caption.copyWith(
@@ -199,22 +217,29 @@ class _PrivacyNotice extends StatelessWidget {
           ),
           for (final h in kPrivacyAtAGlance)
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 1),
-                    child: Icon(h.icon, size: 20, color: AppColors.primary),
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySoft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(h.icon, size: 16, color: AppColors.primary),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: AppText(
-                      h.text,
-                      style: AppTypographyNext.body.copyWith(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColorsNext.textBody,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: AppText(
+                        noOrphan(h.text),
+                        style: AppTypographyNext.caption.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: AppColorsNext.textBody,
+                        ),
                       ),
                     ),
                   ),
@@ -274,14 +299,14 @@ class _CheckCircle extends StatelessWidget {
         color: checked ? AppColors.primary : Colors.transparent,
         shape: BoxShape.circle,
         border: Border.all(
-          color: checked ? AppColors.primary : AppColors.line,
+          color: checked ? AppColors.primary : AppColorsNext.textMuted,
           width: 2,
         ),
       ),
       child: Icon(
         Icons.check_rounded,
         size: size * 0.66,
-        color: checked ? AppColors.onPrimary : AppColors.line,
+        color: checked ? AppColors.onPrimary : AppColorsNext.textMuted,
       ),
     );
   }
@@ -299,7 +324,7 @@ class _AllRow extends StatelessWidget {
       checked: checked,
       button: true,
       child: Material(
-        color: checked ? AppColors.primarySoft : AppColors.background,
+        color: checked ? AppColors.primarySoft : AppColors.chipBg,
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           key: const ValueKey('consent-all'),
@@ -360,13 +385,12 @@ class _ItemRow extends StatelessWidget {
                       Icon(
                         Icons.check_rounded,
                         size: 22,
-                        color: checked ? AppColors.primary : AppColors.line,
+                        color: checked ? AppColors.primary : AppColorsNext.textMuted,
                       ),
                       const SizedBox(width: 12),
                       AppText(
                         '필수',
                         style: AppTypographyNext.caption.copyWith(
-                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                           color: AppColors.primary,
                         ),

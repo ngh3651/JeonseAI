@@ -13,6 +13,31 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 
+/// 줄바꿈 없는 공백 (U+00A0) — 이 공백에서는 줄이 바뀌지 않는다.
+const String _nbsp = '\u00A0';
+
+/// 문단 **끝의 짧은 어절 묶음**을 줄바꿈 없는 공백으로 잇는다 — 마지막 한 낱말('있어요.')만
+/// 다음 줄로 떨어지거나 '쓸 / 수 있어요'처럼 말 묶음이 갈리지 않게 (2026-10-30 디자인 리뷰).
+/// 끝에서부터 세 어절까지, 합쳐 10자 이하일 때만 잇는다(좁은 화면에서 잘려 나가지 않게). 줄(`\n`)마다 따로 본다.
+String noOrphan(String text) => text.split('\n').map(_tieTail).join('\n');
+
+String _tieTail(String line) {
+  final words = line.split(' ');
+  if (words.length < 2) return line;
+  var take = 1;
+  var length = words.last.runes.length;
+  while (take < 3 && take < words.length) {
+    final next = words[words.length - take - 1];
+    if (next.isEmpty || length + 1 + next.runes.length > 10) break;
+    length += 1 + next.runes.length;
+    take++;
+  }
+  if (take < 2) return line;
+  final head = words.sublist(0, words.length - take).join(' ');
+  final tail = words.sublist(words.length - take).join(_nbsp);
+  return head.isEmpty ? tail : '$head $tail';
+}
+
 /// 문서 하나
 class LegalDoc {
   const LegalDoc({
@@ -118,7 +143,7 @@ class LegalDocScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: AppText(
-                  doc.intro!,
+                  noOrphan(doc.intro!),
                   style: AppTypographyNext.body.copyWith(
                     color: AppColorsNext.textMuted,
                     fontSize: 16,
@@ -168,7 +193,7 @@ class _HighlightsCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 6),
       decoration: BoxDecoration(
         color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,7 +226,7 @@ class _HighlightsCard extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 5),
                       child: AppText(
-                        h.text,
+                        noOrphan(h.text),
                         style: AppTypographyNext.body.copyWith(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -236,7 +261,7 @@ class _SectionCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,19 +270,17 @@ class _SectionCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 24,
-                height: 24,
+                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 alignment: Alignment.center,
-                margin: const EdgeInsets.only(top: 2),
+                margin: const EdgeInsets.only(top: 1),
                 decoration: BoxDecoration(
                   color: AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: AppText(
                   '$number',
-                  textScaler: TextScaler.noScaling,
                   style: AppTypographyNext.caption.copyWith(
-                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.primaryStrong,
                     height: 1,
@@ -274,7 +297,7 @@ class _SectionCard extends StatelessWidget {
           for (int i = 0; i < section.blocks.length; i++) ...[
             if (i > 0) const SizedBox(height: 10),
             switch (section.blocks[i]) {
-              LegalParagraph(:final text) => AppText(text, style: body),
+              LegalParagraph(:final text) => AppText(noOrphan(text), style: body),
               LegalBullets(:final items) => Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -293,7 +316,7 @@ class _SectionCard extends StatelessWidget {
                               shape: BoxShape.circle,
                             ),
                           ),
-                          Expanded(child: AppText(item, style: body)),
+                          Expanded(child: AppText(noOrphan(item), style: body)),
                         ],
                       ),
                     ),
@@ -302,7 +325,7 @@ class _SectionCard extends StatelessWidget {
               LegalRows(:final rows) => Container(
                 decoration: BoxDecoration(
                   color: AppColors.background,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
                 child: Column(
                   children: [
@@ -323,13 +346,12 @@ class _SectionCard extends StatelessWidget {
                             AppText(
                               rows[r].$1,
                               style: AppTypographyNext.caption.copyWith(
-                                fontSize: 14,
                                 fontWeight: FontWeight.w700,
                                 color: AppColorsNext.textMuted,
                               ),
                             ),
                             const SizedBox(height: 2),
-                            AppText(rows[r].$2, style: body),
+                            AppText(noOrphan(rows[r].$2), style: body),
                           ],
                         ),
                       ),

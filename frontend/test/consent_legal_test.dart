@@ -213,7 +213,7 @@ void main() {
 
     test('처리방침 — 동의 대신 근거를 밝히고, 필수 동의 문구는 쓰지 않는다', () {
       final text = privacyPolicyDoc().plainText;
-      expect(text, contains('따로 동의를 받지 않고 처리해요(개인정보 보호법 제15조 제1항 제4호)'));
+      expect(text, contains('동의를 따로 받는 대신 이렇게 알려 드려요(개인정보 보호법 제15조 제1항 제4호)'));
       expect(text, contains('제15조 제1항 제6호'), reason: '등기부 속 다른 사람의 정보');
       expect(text, isNot(contains('동의하지 않으면 분석을 시작할 수 없어요')));
       expect(text, isNot(contains('다시 동의를 받아요')));
@@ -222,7 +222,8 @@ void main() {
     test('처리방침 — 보관 기간은 서버가 지키는 숫자와 같다(1년·24시간·2시간·30일·5건)', () {
       final text = privacyPolicyDoc().plainText;
       expect(text, contains('마지막으로 분석하거나 결제한 날부터 1년이 지나면 지워요'));
-      expect(text, contains('해시값만 24시간'));
+      expect(text, contains('해시값을 24시간 써요'));
+      expect(text, contains('Railway의 접속 기록에는 90일'), reason: 'Railway 가장자리 접속 기록(IP)은 끌 수 없다 — 숨기지 않는다');
       expect(text, contains('2시간 안에 버려요'));
       expect(text, contains('30일 뒤 끝나요'));
       expect(text, contains('최근 5건'));
@@ -246,6 +247,16 @@ void main() {
       expect(text, contains('만 14세 이상만 쓸 수 있어요'));
       expect(text, contains('7일 전'));
       expect(text, contains('30일 전'));
+    });
+
+    test('문단 끝 낱말 묶기 — 마지막 한 낱말이 혼자 떨어지지 않게, 긴 묶음은 잇지 않는다', () {
+      expect(noOrphan('쓸 수 있어요.'), '쓸\u00A0수\u00A0있어요.');
+      expect(noOrphan('서버에는 남기지 않아요.'), '서버에는 남기지\u00A0않아요.');
+      expect(noOrphan('한낱말'), '한낱말');
+      // 두 줄짜리는 줄마다 따로
+      expect(noOrphan('가 나다\n라 마바'), '가\u00A0나다\n라\u00A0마바');
+      // 합쳐 10자를 넘는 꼬리는 잇지 않는다(좁은 화면에서 잘려 나가지 않게)
+      expect(noOrphan('아주아주긴낱말입니다 그리고또긴낱말'), '아주아주긴낱말입니다 그리고또긴낱말');
     });
 
     test('리포트 한 줄 — 근거·할 일·전문가, 약점처럼 들리는 말은 없다', () {

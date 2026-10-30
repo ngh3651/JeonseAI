@@ -254,30 +254,34 @@ class _StartScreenState extends State<StartScreen>
     required bool kakao,
     required bool busy,
   }) {
-    // 이용약관 · 개인정보 처리방침 — 처리방침은 굵게(다른 링크와 구별되게 보이라는 개인정보위 지침)
-    Widget linkButton(String label, String path, {required bool strong}) => TextButton(
-      onPressed: busy ? null : () => context.push(path),
-      style: TextButton.styleFrom(
-        foregroundColor: StartColors.primary,
-        minimumSize: const Size(0, 44),
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-      ),
-      child: AppText(
-        label,
-        style: AppTypography.body.copyWith(
-          fontSize: 13,
-          fontWeight: strong ? FontWeight.w700 : FontWeight.w500,
-          color: StartColors.primary,
-          decoration: TextDecoration.none,
+    // 이용약관 · 개인정보 처리방침 — 처리방침만 굵은 초록, 약관은 흐린 글자(다른 고지와 구별 · 표준 개인정보 보호지침 제20조).
+    // 글자 15 · 누르는 높이 48 (2026-10-30 디자인 리뷰 — 15 미만 글자 없음, 터치 48).
+    Widget linkButton(String label, String path, {required bool strong}) {
+      final color = strong ? StartColors.primary : StartColors.sub;
+      return TextButton(
+        onPressed: busy ? null : () => context.push(path),
+        style: TextButton.styleFrom(
+          foregroundColor: color,
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
         ),
-      ),
-    );
+        child: AppText(
+          label,
+          style: AppTypography.body.copyWith(
+            fontSize: 15,
+            fontWeight: strong ? FontWeight.w700 : FontWeight.w500,
+            color: color,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      );
+    }
     final link = _rise(
       _beatLink,
       _Dimmed(
         dim: busy,
         child: SizedBox(
-          height: 44,
+          height: 48,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -285,7 +289,7 @@ class _StartScreenState extends State<StartScreen>
               AppText(
                 '·',
                 style: AppTypography.body.copyWith(
-                  fontSize: 13,
+                  fontSize: 15,
                   color: StartColors.sub,
                 ),
               ),

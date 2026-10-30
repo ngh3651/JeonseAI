@@ -610,7 +610,8 @@ void main() {
     test('서버 나라·문의처가 비어 있으면 그 줄을 뺀다 (지어내지 않는다)', () {
       final emptyDoc = privacyPolicyDoc(serverRegion: '', contact: '');
       final empty = emptyDoc.plainText;
-      expect(empty, isNot(contains('보관하는 나라')));
+      expect(empty, isNot(contains('싱가포르')));
+      expect(empty, contains('보관하는 나라 접속 기록은 미국'), reason: '나라 칸은 빠지지 않는다(국외 이전 필수 항목)');
       expect(emptyDoc.contact, isNull);
       expect(empty, isNot(contains('문의 ')));
       // 나라를 모를 때도 받는 회사(미국)와 연락처는 남는다 — 국외 이전 필수 항목

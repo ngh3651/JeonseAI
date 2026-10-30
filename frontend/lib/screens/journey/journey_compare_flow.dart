@@ -855,7 +855,7 @@ class _CompareProgressSheetState extends State<CompareProgressSheet>
           if (added > 0 && removed > 0)
             TextSpan(
               text: '  ·  ',
-              style: base.copyWith(color: AppColors.line),
+              style: base.copyWith(color: AppColorsNext.textMuted),
             ),
           if (removed > 0)
             TextSpan(

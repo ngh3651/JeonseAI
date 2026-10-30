@@ -114,6 +114,21 @@ void main() {
     expect(AppColors.gradeColor(RiskGrade.ok), d.ok);
   });
 
+  test('⑤ 어둡게 글자 대비 점검(2026-10-30) — 연초록·진초록 바탕 위 글자도 4.5:1 이상', () {
+    const d = AppPalette.dark;
+    // 여정 원 안 D-1 · 단계 번호 (연초록 원 위 초록 글자)
+    expect(_contrast(d.primaryStrong, d.primarySoft), greaterThanOrEqualTo(4.5));
+    // 챗봇 굵은 글자 · 검색 강조 (카드 위 초록 글자)
+    expect(_contrast(d.primaryStrong, d.surface), greaterThanOrEqualTo(4.5));
+    // 인용 칩 (진초록 바탕 위 글자)
+    AppColors.apply(Brightness.dark);
+    addTearDown(() => AppColors.apply(Brightness.light));
+    expect(_contrast(AppColors.onPrimaryDeep, d.primaryDeep), greaterThanOrEqualTo(4.5));
+    // 밝은 초록·빨강·노랑 바탕 위 숫자·글자 (사진 번호 · 흐림 띠 · 종 숫자)
+    expect(_contrast(d.onPrimary, d.caution), greaterThanOrEqualTo(4.5));
+    expect(_contrast(d.onPrimary, d.danger), greaterThanOrEqualTo(4.5));
+  });
+
   test('④ 종이 사진 위 표시는 모드와 상관없이 같다', () {
     final light = [
       AppColors.markRedaction,

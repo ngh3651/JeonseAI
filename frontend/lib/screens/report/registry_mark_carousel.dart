@@ -205,7 +205,7 @@ class _MarkCard extends StatelessWidget {
                   style: AppTypography.label.copyWith(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
-                    color: color,
+                    color: AppColors.markText(mark.markKind.tone),
                   ),
                 ),
               ),

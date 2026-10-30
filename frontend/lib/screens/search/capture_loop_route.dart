@@ -399,7 +399,7 @@ class _CaptureLoopRouteState extends State<CaptureLoopRoute> {
         onPressed: onPressed,
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: AppColors.onPrimary,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
           ),

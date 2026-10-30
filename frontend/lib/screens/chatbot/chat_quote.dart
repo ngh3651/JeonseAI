@@ -76,7 +76,7 @@ class QuoteBand extends StatelessWidget {
   }
 }
 
-/// 인용 칩 — 보낸 내 말풍선 맨 위. 바탕 primaryDeep · 글자·화살표 primarySoft · radius 12 · 안쪽 8/12.
+/// 인용 칩 — 보낸 내 말풍선 맨 위. 바탕 primaryDeep · 글자·화살표 onPrimaryDeep(밝게 연초록 · 어둡게 밝은 초록) · radius 12 · 안쪽 8/12.
 /// 누르면 원래 답으로 스크롤. 누를 곳이라 높이는 최소 48(터치 기준).
 class QuoteChip extends StatelessWidget {
   const QuoteChip({super.key, required this.quote, required this.onTap});
@@ -104,14 +104,14 @@ class QuoteChip extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.subdirectory_arrow_right, size: AppSize.iconXs, color: AppColors.primarySoft),
+                  Icon(Icons.subdirectory_arrow_right, size: AppSize.iconXs, color: AppColors.onPrimaryDeep),
                   const SizedBox(width: AppSpacing.xs),
                   Flexible(
                     child: Text(
                       line,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypographyNext.caption.copyWith(color: AppColors.primarySoft),
+                      style: AppTypographyNext.caption.copyWith(color: AppColors.onPrimaryDeep),
                     ),
                   ),
                 ],

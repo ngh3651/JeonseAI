@@ -161,7 +161,7 @@ class PhotoTray extends StatelessWidget {
                   child: AppText(
                     '${i + 1}',
                     style: AppTypography.label.copyWith(
-                      color: Colors.white,
+                      color: AppColors.onPrimary,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                     ),
@@ -187,7 +187,7 @@ class PhotoTray extends StatelessWidget {
                       issueLabels[i]!,
                       textAlign: TextAlign.center,
                       style: AppTypography.label.copyWith(
-                        color: Colors.white,
+                        color: AppColors.onPrimary,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),

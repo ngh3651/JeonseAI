@@ -445,6 +445,28 @@ def _add_house_type_to_address_mark(report: Report) -> None:
         _log.error("[매칭] ⚠ 주소 표시에 용도를 붙이지 못했습니다", exc_info=True)
 
 
+def _add_blacklist_to_owner_mark(report: Report) -> None:
+    """소유자 표시에 '공개 명단과 맞춰 본 결과'를 붙인다 (2026-10-31 — 사진에서 보기에서도 보이게). 표시 전용.
+
+    카드(규칙 엔진)의 결과를 옮길 뿐 새로 판단하지 않는다. 가린 이름도 넣지 않는다 — 사진에 이미 그 이름이 있다.
+    다시 판정은 옛 표시를 그대로 쓰므로(명단 결과도 옛 것 그대로) 두 번 붙지 않게 확인한다.
+    """
+    try:
+        card = next((e for e in report.evidences if e.id == "blacklist"), None)
+        if card is None:
+            return
+        fact, plan = mark_plans.blacklist_line(card.statusLabel, card.grade)
+        for h in report.highlights:
+            if h.kind != "owner":
+                continue
+            if fact and fact not in h.facts:
+                h.facts = [*h.facts, fact]
+            if plan and plan not in h.plan:
+                h.plan = [plan, *h.plan]
+    except Exception:  # noqa: BLE001 — 표시 한 줄 때문에 리포트를 잃지 않는다
+        _log.error("[매칭] ⚠ 소유자 표시에 명단 결과를 붙이지 못했습니다", exc_info=True)
+
+
 def has_pending_application(highlights: list[Highlight] | None) -> bool:
     """사진 위 표시에 '신청사건 처리중'이 있나 — 판정에 넣는 단 하나의 기준(2026-10-31)."""
     return any(h.kind == "pending_application" for h in (highlights or []))
@@ -828,6 +850,7 @@ def analyze(
     except Exception:  # noqa: BLE001 — 용도를 못 정해도 리포트는 나간다(손실 예상이 세 용도 중 낮은 값을 쓴다)
         _log.error("[손실예상] ⚠ 용도 후보를 정하지 못했습니다", exc_info=True)
     _add_house_type_to_address_mark(report)
+    _add_blacklist_to_owner_mark(report)
     if doc_check is not None:
         # 두 번째 기준(쪽 머리 주소) · 빠진 쪽 · 장마다 쪽 번호 — 표시·묶기 전용
         report.propertyAddress = doc_check.header_address

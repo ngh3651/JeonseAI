@@ -94,3 +94,34 @@ def test_서버가_받은_명단이_있으면_그것을_쓴다(data_dir):
     entries = B.to_entries([{"성명": "김철수"}], salt=SALT)
     (data_dir / B.STORE_FILE).write_text(json.dumps({"entries": entries}), encoding="utf-8")
     assert rule_engine.load_blacklist() == entries
+
+
+def _owner_report(card):
+    from app.schemas.contract import Evidence, Highlight, HighlightBox
+    from tests.test_ask_cards import _report
+
+    mark = Highlight(id="owner-0", page=0, kind="owner", badge=1, box=HighlightBox(x=0.1, y=0.1, w=0.2, h=0.02),
+                     title="지금 소유자", body="b", facts=["지금 소유자 1명"], plan=["보증금은 **이 이름의 계좌**로만 보내세요"])
+    ev = [Evidence(id="blacklist", title="t", termSubtitle="s", easyExplanation="e", **card)] if card else []
+    return _report(evidences=ev, highlights=[mark])
+
+
+def test_사진에서_보기_소유자_표시에_명단_결과가_붙는다():
+    from app.services import report_builder as RB
+
+    r = _owner_report({"grade": "확인 필요", "statusLabel": "명단 일치 · 직접 확인 필요"})
+    RB._add_blacklist_to_owner_mark(r)
+    RB._add_blacklist_to_owner_mark(r)  # 다시 판정처럼 두 번 불려도 한 번만
+    h = r.highlights[0]
+    assert h.facts == ["지금 소유자 1명", "공개 명단에 같은 이름"]
+    assert h.plan[0].startswith("**안심전세포털 악성임대인 명단**") and len(h.plan) == 2
+    assert "○" not in " ".join(h.plan)  # 가린 이름도 넣지 않는다(사진에 이미 있다)
+
+    r = _owner_report({"grade": "양호", "statusLabel": None})
+    RB._add_blacklist_to_owner_mark(r)
+    assert r.highlights[0].facts[-1] == "공개 명단에 같은 이름 없음" and len(r.highlights[0].plan) == 1
+
+    # 명단을 아직 못 받았으면(카드 숨김) 아무것도 붙이지 않는다
+    r = _owner_report({"grade": "확인 필요", "statusLabel": rule_engine.BLACKLIST_PENDING_LABEL})
+    RB._add_blacklist_to_owner_mark(r)
+    assert r.highlights[0].facts == ["지금 소유자 1명"]

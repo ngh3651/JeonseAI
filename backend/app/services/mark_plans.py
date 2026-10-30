@@ -117,6 +117,23 @@ def owner(owner_count: int, corporate: bool) -> tuple[list[str], list[str]]:
     return facts, plan
 
 
+BLACKLIST_MATCHED_FACT = "공개 명단에 같은 이름"
+BLACKLIST_CLEAR_FACT = "공개 명단에 같은 이름 없음"
+
+
+def blacklist_line(status_label: str | None, grade: str | None) -> tuple[str | None, str | None]:
+    """소유자 표시에 붙일 '악성임대인 공개 명단과 맞춰 본 결과' (사실, 할 일). 판정은 규칙 엔진 카드 그대로 옮길 뿐이다.
+
+    명단을 아직 못 받았으면(카드 숨김) 아무것도 붙이지 않는다. 일치해도 단정하지 않는다(동명이인).
+    """
+    if (status_label or "").startswith("명단 일치"):
+        return (BLACKLIST_MATCHED_FACT,
+                "**안심전세포털 악성임대인 명단**에서 이름과 나이를 직접 맞춰 보세요. 이름만 같은 다른 사람일 수도 있어요")
+    if grade == "양호":
+        return BLACKLIST_CLEAR_FACT, None
+    return None, None
+
+
 def document(kind: str, *, viewed_at: str | None = None, area: float | None = None) -> tuple[list[str], list[str]]:
     """주소·면적·서류 종류·뗀 날."""
     if kind == "address":

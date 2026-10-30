@@ -26,6 +26,7 @@ import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/chat_history.dart';
+import '../../models/content_models.dart' show ChatJourney;
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/chat_history_repository.dart';
 import '../../repositories/content_repository.dart';
@@ -35,6 +36,7 @@ import '../../state/report_focus.dart';
 import 'chat_answer_parser.dart';
 import 'chat_history_drawer.dart';
 import 'chat_history_logic.dart';
+import 'chat_journeys.dart';
 import 'chat_mascot.dart';
 import 'chat_quote.dart';
 import 'chat_selection.dart';
@@ -216,6 +218,17 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     _startQuote('', text);
   }
 
+  /// 이 폰의 계약 일정 (2026-10-30) — 못 모으면 null(일정 없이 묻는다).
+  Future<List<ChatJourney>?> _journeysForChat(ContentRepository content) async {
+    final AnalysisRepository analysis;
+    try {
+      analysis = context.read<AnalysisRepository>();
+    } catch (_) {
+      return null; // 기록 저장소가 없는 화면(위젯 테스트 등)
+    }
+    return collectChatJourneys(analysis: analysis, content: content);
+  }
+
   /// 리포트를 아직 안 열었으면 **가장 최근 리포트**를 챗봇이 알게 한다 (2026-10-26). 실패하면 리포트 없이 답한다.
   Future<void> _fillReportFocus() async {
     if (ReportFocus.current.value != null) return;
@@ -294,10 +307,15 @@ class _GlossaryChatbotScreenState extends State<GlossaryChatbotScreen> {
     late final _Msg reply;
     var ok = false;
     try {
+      final content = context.read<ContentRepository>();
+      final turns = buildChatTurns(_entries);
+      // 이 폰의 계약 일정도 함께 — "다음에 뭐 해?"에 내 단계로 답한다(2026-10-30, 서버는 저장 안 함)
+      final journeys = await _journeysForChat(content);
       // 지금 보는(또는 가장 최근) 리포트를 함께 보낸다 — 서버가 그 리포트를 알고 답한다(판정은 바꾸지 않음)
-      final answer = await context.read<ContentRepository>().chat(
-        buildChatTurns(_entries),
+      final answer = await content.chat(
+        turns,
         reportId: ReportFocus.current.value?.id,
+        journeys: journeys,
       );
       reply = _Msg.bot(_newId(), answer.answer);
       ok = true;

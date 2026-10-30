@@ -353,6 +353,22 @@ class ChatMessage(BaseModel):
     content: str = Field(max_length=2000)
 
 
+class ChatJourney(BaseModel):
+    """이 폰의 계약 일정 한 집 (2026-10-30, §3.21) — 챗봇이 '다음 할 일'을 알게 질문과 함께 보낸다.
+
+    **서버는 저장하지 않는다**(대화와 같다 — 이번 답에만 쓰고 로그에도 남기지 않는다). 날짜의 집은 여전히 폰이다.
+    """
+
+    # 그 집의 최신 리포트 id — 서버가 이 사용자의 '내 집' 묶음에서 같은 집을 찾는다(남의 id면 그냥 무시된다)
+    reportId: str = Field(max_length=100)
+    # downPayment | contract | balance | moveIn → 'YYYY-MM-DD'. 넣지 않은 날은 빠진다(이사 다음 날은 서버가 계산)
+    dates: dict[str, str] = Field(default_factory=dict, max_length=8)
+    # 끝난 마지막 단계 번호(0 = 분석만) — 앱 여정 계산(`JourneyProgress.doneThrough`) 그대로 보낸다
+    doneThrough: int = Field(default=0, ge=-1, le=30)
+    # 계약 여정에서 고른 집인가
+    selected: bool = False
+
+
 class ChatRequest(BaseModel):
     """`POST /api/chat` — 마지막 줄이 이번 질문(`user`)이어야 한다. 앞의 것은 맥락."""
 
@@ -360,6 +376,8 @@ class ChatRequest(BaseModel):
     # 사용자가 보던 리포트 id (2026-10-26, 선택) — 있으면 챗봇이 그 리포트(이 사용자 것만)를 알고 답한다.
     # 없거나 남의 것·없는 id면 그냥 리포트 없이 답한다(에러 아님).
     reportId: Optional[str] = Field(default=None, max_length=100)
+    # 이 폰의 계약 일정 (2026-10-30, 선택). **없음(null) = 옛 앱**이라 일정을 모른다 · [] = 넣은 일정이 없다.
+    journeys: Optional[list[ChatJourney]] = Field(default=None, max_length=50)
 
 
 class ChatResponse(BaseModel):

@@ -487,6 +487,15 @@ def _add_blacklist_to_owner_mark(report: Report) -> None:
         _log.error("[매칭] ⚠ 소유자 표시에 명단 결과를 붙이지 못했습니다", exc_info=True)
 
 
+OCR_UNREAD_REASON = "사진 글자를 따로 읽지 못해 빠진 쪽이나 처리 중인 등기 신청이 없는지 확인하지 못했어요"
+
+
+def ocr_unread(images, ocr_result) -> bool:
+    """사진을 올렸는데 OCR이 글자를 한 장도 못 읽었나 — 그러면 신청사건·빠진 쪽을 볼 수 없다(판정 재료가 비었다)."""
+    pages = list(getattr(ocr_result, "pages", None) or [])
+    return bool(images) and not any(getattr(p, "words", None) for p in pages)
+
+
 def has_pending_application(highlights: list[Highlight] | None) -> bool:
     """사진 위 표시에 '신청사건 처리중'이 있나 — 판정에 넣는 단 하나의 기준(2026-10-31)."""
     return any(h.kind == "pending_application" for h in (highlights or []))
@@ -499,6 +508,11 @@ def rejudge_kit(extract: RegistryExtract, report: Report) -> dict:
     blacklist = next((e for e in report.evidences if e.id == "blacklist"), None)
     kit: dict = {"version": 1, "extract": masked}
     if blacklist is not None:
+        facts: dict = {"matched": [], "list_size": None, "from_original_analysis": True}
+        # 원래 '맞춰 봤고 같은 이름 없음'이었는데 사진이 불완전해 '확인 필요'로 올라간 카드 — 그 사실을 남긴다
+        # (없으면 다시 판정이 '집주인 이름을 못 읽어'라고 잘못 말한다 · 규칙 재감사 2026-10-31). 사진 문제는 재료의 게이트가 다시 막는다.
+        if blacklist.grade == "확인 필요" and "같은 이름은 없었어요" in (blacklist.detailText or ""):
+            facts["capped_reason"] = extract.pages_incomplete_reason or "사진이 불완전했어요"
         kit["blacklist"] = {
             "id": "blacklist",
             "grade": blacklist.grade,
@@ -507,7 +521,7 @@ def rejudge_kit(extract: RegistryExtract, report: Report) -> dict:
             "source_text": blacklist.sourceText,
             "action_label": None,
             # 명단 대조 사실(일치 이름은 원래 가린 꼴) — 설명 재료
-            "facts": {"matched": [], "list_size": None, "from_original_analysis": True},
+            "facts": facts,
         }
     return kit
 
@@ -529,6 +543,16 @@ def rejudge(
     # 옛 재료(2026-10-31 전)엔 이 칸이 없다 — 같은 리포트의 사진 표시로 다시 켠다
     extract.pending_application = extract.pending_application or has_pending_application(old.highlights)
     blacklist = EvidenceVerdict.model_validate(kit["blacklist"]) if kit.get("blacklist") else None
+    if blacklist is None:
+        # 재료에 명단 결과가 없으면 가린 이름(김○○)으로 다시 맞추지 않는다 — 다 빗나가 '같은 이름 없음'이 된다(재감사 경고 2)
+        blacklist = EvidenceVerdict(
+            id="blacklist",
+            grade=Grade.CAUTION,
+            status_label=rule_engine.BLACKLIST_PENDING_LABEL,
+            detail_text="다시 판정에서는 명단과 다시 맞춰 보지 않았어요(이름을 가린 재료라서)",
+            source_text=None,
+            facts={"matched": [], "list_size": None},
+        )
     try:
         price_info = price_lookup.collect(
             address=extract.address, area_sqm=extract.exclusive_area_sqm, manual_price_won=market_price
@@ -836,6 +860,12 @@ def analyze(
     extract.pending_application = has_pending_application(highlight_result.highlights) or highlight.pending_text_found(
         ocr_result
     )
+    # 사진 글자(OCR)를 **한 장도** 못 읽었으면(OCR 장애 등) 빠진 쪽·처리 중인 신청이 있는지 모른다 — 모르면 '양호' 금지
+    # (규칙 재감사 2026-10-31: 신청사건을 못 본 채 보증보험·종합이 '양호'로 새던 길). 문서 게이트가 모든 '양호'를 막는다.
+    if ocr_unread(images, ocr_result):
+        extract.pages_incomplete = True
+        extract.pages_incomplete_reason = extract.pages_incomplete_reason or OCR_UNREAD_REASON
+        _log.info("[판정] 사진 글자를 한 장도 못 읽음 — 빠진 쪽·신청사건을 확인 못 해 '양호' 금지")
 
     _raise_if_cancelled(cancelled, "설명 생성(Solar)")
     report, explain = _build(

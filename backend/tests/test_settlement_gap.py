@@ -11,6 +11,7 @@ from app.schemas.internal import Grade, Owner, RegistryExtract
 from app.services import ask_cards, compare, fallback_texts, report_builder, rule_engine
 from app.services.patterns import TAG_PENDING, tags_from_report, tags_from_verdict
 from tests.test_compare import _extract, _snapshot
+from tests.test_analyze_smoke import no_network  # noqa: F401 — pytest 픽스처 재사용
 
 
 def _clean_extract(**kw) -> RegistryExtract:
@@ -226,3 +227,23 @@ def test_명단_카드_펼침은_카드_결과를_따른다():
     bl = next(e for e in v.evidences if e.id == "blacklist")
     pt = evidence_view.build(bl, v)["points"][0]
     assert "이름이 같은 사람" in pt.value and "나이" not in pt.value
+
+
+def test_사진_글자를_한_장도_못_읽으면_양호가_없다(monkeypatch, no_network):
+    """OCR이 통째로 실패하면 신청사건·빠진 쪽을 볼 수 없다 — 모르면 '양호' 금지(규칙 재감사 2026-10-31 위반 1)."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.services import ocr
+    from tests.test_analyze_smoke import PAGE_H, PAGE_W, blank_image, post_analyze, registry_raw
+
+    assert report_builder.ocr_unread([("a.jpg", b"x")], ocr.OcrResult(pages=[], elapsed=0.0)) is True
+    assert report_builder.ocr_unread([], ocr.OcrResult(pages=[], elapsed=0.0)) is False
+
+    no_network(registry_raw(), [])
+    monkeypatch.setattr(ocr, "run_ocr", lambda images, **kw: ocr.OcrResult(pages=[], elapsed=0.0))
+    resp = post_analyze(TestClient(app), [blank_image(PAGE_W, PAGE_H)], deposit=60_000_000)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "양호" not in {e["grade"] for e in body["evidences"]} and body["grade"] != "양호"
+    assert any(report_builder.OCR_UNREAD_REASON in (e.get("detailText") or "") for e in body["evidences"])

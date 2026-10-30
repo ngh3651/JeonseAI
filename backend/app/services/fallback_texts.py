@@ -284,7 +284,10 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
             if "pending" in waiting:
                 why.append("처리 중인 등기 신청이 끝난 등기부로 다시 봐야 해서")
             if "blacklist" in waiting:
-                why.append("집주인을 악성임대인 공개 명단과 아직 맞춰 보지 못해서")
+                why.append({
+                    "matched": "공개 명단에 집주인과 같은 이름이 있어서",
+                    "unread": "집주인 이름을 못 읽어 공개 명단과 맞춰 보지 못해서",
+                }.get(f.get("blacklist_state"), "집주인을 악성임대인 공개 명단과 아직 맞춰 보지 못해서"))
             return (
                 "등기부로 볼 수 있는 빚 비율과 압류·경매 조건은 통과했어요. "
                 f"다만 {' 그리고 '.join(why)} 아직 '확인 필요'로 뒀어요. "
@@ -295,7 +298,8 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
             "가입 요건은 보증기관에서 직접 확인이 필요해요."
         )
     if ev.id == "blacklist":
-        if ev.facts.get("matched"):
+        # 다시 판정 재료의 카드는 matched가 비어 있다 — 상태 글자로도 본다(일치를 '대조 못 함'으로 약하게 말하지 않게)
+        if ev.facts.get("matched") or str(ev.status_label or "").startswith("명단 일치"):
             return (
                 "공개 명단에서 같은 이름이 발견됐어요. 동명이인일 수 있으니 "
                 "안심전세포털에서 직접 확인하고, 중개사에게도 꼭 물어보세요."

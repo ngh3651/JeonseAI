@@ -495,7 +495,11 @@ def _judge_insurance(
     )
     # ④ 명단: **맞춰 봤고 같은 이름이 없을 때만**(명단 카드 '양호') 통과다. 명단을 아직 못 받았거나·집주인 이름을 못 읽었거나·
     #    같은 이름이 있으면 '모른다'다 — 규칙 감사(2026-10-31): 예전 줄은 '일치가 안 나옴'만 봐서 명단이 없을 때도 통과로 셌다.
-    blacklist_ok = ev_blacklist is not None and ev_blacklist.grade is Grade.GOOD
+    #    다시 판정의 재료에서 온 카드(capped_reason)는 원래 분석에서 '맞춰 봤고 같은 이름 없음'이었다가 사진 때문에 올라간 것 —
+    #    대조 자체는 됐다. 사진 문제는 아래 문서 게이트가 다시 막는다(그 재료의 pages_incomplete가 그대로라서).
+    blacklist_ok = ev_blacklist is not None and (
+        ev_blacklist.grade is Grade.GOOD or bool(ev_blacklist.facts.get("capped_reason"))
+    )
     # 처리 중인 등기 신청이 있으면 아직 안 적힌 빚이 있을 수 있다 — 끝난 등기부로 다시 볼 때까지 확정하지 않는다(감사 경고 3).
     pending = bool(getattr(extract, "pending_application", False))
     if registry_ok and blacklist_ok and not pending:
@@ -527,14 +531,18 @@ def _judge_insurance(
         if pending:
             waiting.append("pending")
             reasons.append("처리 중인 등기 신청이 있어 끝난 등기부로 다시 볼 때까지 확정하지 않았어요")
+        blacklist_state = None
         if not blacklist_ok:
             waiting.append("blacklist")
             label = ev_blacklist.status_label if ev_blacklist is not None else None
-            if label == BLACKLIST_PENDING_LABEL:
+            if ev_blacklist is None or label == BLACKLIST_PENDING_LABEL:
+                blacklist_state = "pending"
                 reasons.append("악성임대인 공개 명단과 아직 맞춰 보지 못해 확정하지 않았어요")
-            elif ev_blacklist is not None and str(label or "").startswith("명단 일치"):
+            elif str(label or "").startswith("명단 일치"):
+                blacklist_state = "matched"
                 reasons.append("공개 명단에 같은 이름이 있어 확정하지 않았어요")
             else:
+                blacklist_state = "unread"
                 reasons.append("집주인 이름을 못 읽어 공개 명단과 맞춰 보지 못해 확정하지 않았어요")
         return EvidenceVerdict(
             id="insurance",
@@ -552,6 +560,7 @@ def _judge_insurance(
                 "disqualify_signals": [],
                 "registry_conditions_passed": False,
                 "waiting_for": waiting,
+                "blacklist_state": blacklist_state,  # pending | matched | unread | None — 설명 문구가 이유를 바르게 말하게
                 "senior_ratio_pct": ev_senior.facts.get("senior_ratio_pct"),
                 "combined_ratio_pct": ev_senior.facts.get("combined_ratio_pct"),
                 "jeonse_ratio_pct": ev_jeonse.facts.get("jeonse_ratio_pct"),

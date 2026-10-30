@@ -42,6 +42,7 @@ import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
 import 'journey_chapter.dart';
 import 'retake_notice_card.dart';
+import '../legal/notices.dart';
 import 'report_inputs_sheet.dart';
 import 'registry_entry_card.dart';
 import 'registry_findings.dart';
@@ -792,25 +793,28 @@ class _ReportScreenState extends State<ReportScreen> {
   /// (textBody) — 회색으로 묻히면 고지의 목적을 잃는다.
   Widget _disclaimer(AnalysisReport report) {
     final bool blacklistPending = report.evidences.any(_isPendingBlacklist);
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
+    // 꼭 필요한 한두 줄만, 카드 없이 조용히 (2026-10-30 규혁 — 자세한 내용은 이용약관)
+    return Padding(
+      key: const ValueKey('report-notice'),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (blacklistPending) ...[
             AppText(
-              '※ 악성임대인 명단은 이번에 대조하지 못했어요 — HUG 안심전세포털에서 집주인 이름을 직접 확인하세요.',
-              style: AppTypography.caption.copyWith(color: AppColors.textBody),
+              kBlacklistCheckNotice,
+              style: AppTypographyNext.caption.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColorsNext.textBody,
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
           ],
           AppText(
-            '참고용 분석이에요. 계약의 안전을 보증하지 않아요 — 최종 판단은 공식 서류와 전문가 상담으로 하세요.',
-            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+            kReportNotice,
+            style: AppTypographyNext.caption.copyWith(
+              color: AppColorsNext.textMuted,
+            ),
           ),
         ],
       ),

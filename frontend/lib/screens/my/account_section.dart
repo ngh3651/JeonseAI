@@ -14,13 +14,15 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../state/app_session.dart';
 import '../../state/booth_mode.dart';
+import '../../repositories/chat_history_repository.dart';
+import '../../services/phone_wipe.dart';
 import '../auth/kakao_login_button.dart';
 import 'my_settings.dart';
 
 /// 탈퇴 확인 대화상자의 설명 — **실제로 지우는 것 그대로** (테스트가 문장을 함께 본다).
 const String kWithdrawExplanation =
-    '이 계정의 분석 기록·대조 기준·계약 지킴이 패스를 서버에서 바로 지우고, 카카오와의 연결도 끊어요. '
-    '되돌릴 수 없어요.\n\n이 폰에 남은 사진과 계약 날짜는 앱을 지우면 함께 지워져요.';
+    '서버에 있는 분석 기록과 계약 지킴이 패스, 이 폰에 있는 사진과 계약 일정, 챗봇 대화를 모두 지우고 카카오 연결도 끊어요. '
+    '되돌릴 수 없어요.';
 
 /// 마이 맨 위 **프로필** — 세이프 + 이름 한 줄 (+ 둘러보는 중이면 카카오 로그인 버튼).
 ///
@@ -110,8 +112,8 @@ class AccountSection extends StatelessWidget {
   }
 }
 
-/// 설정 묶음 안의 계정 줄 — 개인정보 처리방침 · 로그아웃 · 회원 탈퇴 (줄 사이 구분선은 스스로 그린다).
-/// **부스 모드**(2026-10-23)에서는 로그아웃·회원 탈퇴를 숨긴다 — 관람객이 시연 계정의 기록을 지우지 않게.
+/// 계정 줄 — 로그아웃 · 회원 탈퇴 (로그인했을 때만, 묶음 카드째 그린다. 아니면 아무것도 그리지 않는다).
+/// **부스 모드**(2026-10-23)에서는 숨긴다 — 관람객이 시연 계정의 기록을 지우지 않게.
 class AccountSettingsRows extends StatelessWidget {
   const AccountSettingsRows({super.key});
 
@@ -128,45 +130,32 @@ class AccountSettingsRows extends StatelessWidget {
     return ListenableBuilder(
       listenable: BoothMode.instance,
       builder: (context, _) {
-        final rows = [
-          SettingsRow(
-            icon: Icons.privacy_tip_outlined,
-            title: '개인정보 처리방침',
-            onTap: () => context.push('/privacy'),
-          ),
-          if (session.isLoggedIn && !BoothMode.instance.on) ...[
-            SettingsRow(
-              key: const ValueKey('account-sign-out'),
-              icon: Icons.logout_rounded,
-              title: '로그아웃',
-              onTap: session.busy ? null : () => _signOut(context),
-              trailing: const SizedBox.shrink(),
-            ),
-            SettingsRow(
-              key: const ValueKey('account-withdraw'),
-              icon: Icons.person_remove_outlined,
-              title: '회원 탈퇴',
-              danger: true,
-              onTap: session.busy
-                  ? null
-                  : () => confirmAndDeleteAccount(context),
-              trailing: const SizedBox.shrink(),
-            ),
-          ],
-        ];
-        return Column(
-          children: [
-            for (int i = 0; i < rows.length; i++) ...[
-              if (i > 0)
-                Divider(
-                  height: 1,
-                  thickness: 1,
-                  indent: 56,
-                  color: AppColorsNext.divider,
-                ),
-              rows[i],
+        if (!session.isLoggedIn || BoothMode.instance.on) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: SettingsGroup(
+            children: [
+              SettingsRow(
+                key: const ValueKey('account-sign-out'),
+                icon: Icons.logout_rounded,
+                title: '로그아웃',
+                onTap: session.busy ? null : () => _signOut(context),
+                trailing: const SizedBox.shrink(),
+              ),
+              SettingsRow(
+                key: const ValueKey('account-withdraw'),
+                icon: Icons.person_remove_outlined,
+                title: '회원 탈퇴',
+                danger: true,
+                onTap: session.busy
+                    ? null
+                    : () => confirmAndDeleteAccount(context),
+                trailing: const SizedBox.shrink(),
+              ),
             ],
-          ],
+          ),
         );
       },
     );
@@ -178,6 +167,12 @@ Future<void> confirmAndDeleteAccount(BuildContext context) async {
   final session = context.read<AppSession>();
   final messenger = ScaffoldMessenger.of(context);
   final router = GoRouter.of(context);
+  ChatHistoryRepository? chats;
+  try {
+    chats = context.read<ChatHistoryRepository>();
+  } catch (_) {
+    chats = null; // 챗봇 저장소가 없는 화면(테스트 등)
+  }
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -204,16 +199,18 @@ Future<void> confirmAndDeleteAccount(BuildContext context) async {
   if (!result.deleted) {
     message = result.message ?? '탈퇴하지 못했어요. 잠시 후 다시 시도해 주세요';
   } else if (result.kakaoUnlinked) {
-    message = '탈퇴했어요. 서버의 기록을 모두 지웠어요';
+    message = '탈퇴했어요. 기록을 모두 지웠어요';
   } else {
-    message = '탈퇴했어요. 서버의 기록은 모두 지웠지만 카카오 연결은 끊지 못했어요 — '
-        '카카오 계정 설정에서 직접 끊을 수 있어요';
+    message = '탈퇴했어요. 기록은 모두 지웠고, 카카오 연결은 카카오 설정에서 끊을 수 있어요';
   }
   // 탈퇴했으면 시작 화면으로 (로그아웃과 같다 — 2026-10-26)
   if (result.deleted) router.go('/start');
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: AppText(message)));
+  // 서버를 지웠으면 이 폰에 남은 것도 지운다(2026-10-30) — 원본 사진·일정·대화·동의 기록.
+  // 화면 전환과 안내를 먼저 하고 지운다(몇 ms). 하나가 실패해도 나머지는 계속 지운다.
+  if (result.deleted) await wipeThisPhone(chats: chats);
 }
 
 /// 이름 정하기 창 — 12자까지, 비우면 이름을 지운다. 결과를 한 줄로 알린다.

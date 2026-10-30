@@ -24,8 +24,18 @@ from app import dependencies, settings
 
 
 def test_헤더가_없으면_공용_기기_id다(monkeypatch):
-    monkeypatch.delenv("REQUIRE_DEVICE_ID", raising=False)
+    """옛 앱 통로를 일부러 열었을 때(`REQUIRE_DEVICE_ID=0`)만."""
+    monkeypatch.setenv("REQUIRE_DEVICE_ID", "0")
     assert dependencies.get_current_user(None) == settings.LEGACY_DEVICE_ID == "legacy-device"
+
+
+def test_기기_id_헤더는_기본으로_필수다(monkeypatch):
+    """2026-10-30 보안 — 값이 없으면(운영 기본) 헤더 없는 요청은 400. 공용 칸이 열려 있지 않다."""
+    monkeypatch.delenv("REQUIRE_DEVICE_ID", raising=False)
+    assert settings.require_device_id() is True
+    with pytest.raises(HTTPException) as e:
+        dependencies.get_current_user(None)
+    assert e.value.status_code == 400
 
 
 def test_헤더_필수로_켜면_헤더_없이는_400이다(monkeypatch):

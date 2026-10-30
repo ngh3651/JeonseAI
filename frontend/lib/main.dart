@@ -9,6 +9,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -27,6 +28,7 @@ import 'repositories/content_repository.dart';
 import 'repositories/payment_repository.dart';
 import 'state/app_session.dart';
 import 'state/booth_mode.dart';
+import 'state/consent_store.dart';
 import 'services/api_client.dart';
 import 'services/device_id.dart';
 import 'services/journey_reminder_service.dart';
@@ -44,6 +46,8 @@ Future<void> main() async {
   // 지난 세션에 이 폰에 남긴 등기부 사진·원본 리포트 목록을 메모리로 올린다.
   // (keepOriginalsOnPhone이 false면 남겨 둔 것까지 지운다 → 메모리 전용 동작)
   await RegistryPhotoStore.instance.restore();
+  // 촬영·변환 때 임시 폴더에 생긴 사진 사본을 지운다(2026-10-30 보안) — 기다리지 않는다
+  unawaited(RegistryPhotoStore.sweepTempCopies());
   // 계약 일정(잔금일 등)은 **이 기기에만** 있다 — 여정 화면과 홈 D-1 배너가 곧바로
   // 그릴 수 있게 먼저 올린다(첫 프레임에 배너가 깜빡이며 나타나지 않도록).
   await JourneyScheduleStore.instance.restore();
@@ -56,6 +60,8 @@ Future<void> main() async {
   await BoothMode.instance.restore();
   // 화면 모드(2026-10-30 다크 모드) — 첫 화면부터 고른 모드로(밝은 화면이 한 번 번쩍이지 않게)
   await ThemeSettings.instance.restore();
+  // 이용약관·개인정보 동의 기록(2026-10-30) — 이 폰에만. 없으면 시작·분석 때 동의 시트가 뜬다
+  await ConsentStore.instance.restore();
   // 기기 id를 미리 만들어 둔다 — 첫 서버 요청이 저장소를 기다리지 않게. 실패해도 요청 때 다시 만든다.
   await DeviceId.instance.get();
   // 카카오 로그인 세션(2026-10-22) — 폰의 보안 저장소에 남긴 세션을 올린다(만료면 지운다).
@@ -81,12 +87,27 @@ Future<void> main() async {
     await PassStore.instance.refresh(ApiPaymentRepository());
     await reminders.resyncAll(JourneyScheduleStore.instance);
   }());
+  // 앱에 넣은 글꼴의 라이선스(OFL)를 '오픈소스 라이선스' 화면에 함께 올린다(2026-10-30)
+  LicenseRegistry.addLicense(_fontLicenses);
   runApp(const JeonseSafeApp());
   // 알림을 눌러 앱이 켜졌으면 첫 화면이 그려진 뒤 그 집의 여정으로 간다.
   if (launchedFrom != null) {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => reminders.openPayload(launchedFrom),
     );
+  }
+}
+
+Stream<LicenseEntry> _fontLicenses() async* {
+  for (final (name, file) in const [
+    ('Pretendard', 'assets/fonts/Pretendard-OFL.txt'),
+    ('주아체 (Jua)', 'assets/fonts/Jua-OFL.txt'),
+  ]) {
+    try {
+      yield LicenseEntryWithLineBreaks([name], await rootBundle.loadString(file));
+    } catch (_) {
+      // 파일을 못 읽어도 앱은 뜬다
+    }
   }
 }
 

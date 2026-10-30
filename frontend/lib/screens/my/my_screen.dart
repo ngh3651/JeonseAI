@@ -187,17 +187,21 @@ class _MyScreenState extends State<MyScreen> {
             _historyList(),
             const SizedBox(height: 28),
             _sectionTitle('설정'),
-            SettingsGroup(
+            const SettingsGroup(
               children: [
-                const SettingsRow(
+                SettingsRow(
                   icon: Icons.contrast_rounded,
                   title: '화면 모드',
                   trailing: ThemeModeSelector(),
                 ),
-                const PrivacySettingsCard(),
-                const AccountSettingsRows(),
+                PrivacySettingsCard(),
               ],
             ),
+            const SizedBox(height: 12),
+            // 이용약관 · 개인정보 처리방침(굵게) · 데이터 출처 · 오픈소스 라이선스 (2026-10-30)
+            const PolicySettingsRows(),
+            // 로그아웃 · 회원 탈퇴 — 로그인했을 때만(부스 모드면 숨김)
+            const AccountSettingsRows(),
             const SizedBox(height: AppSpacing.lg),
             // 앱 버전 — 부스에서 최신 APK인지 확인. 7번 연속 누르면 부스 모드(state/booth_mode.dart)
             const AppVersionLine(),

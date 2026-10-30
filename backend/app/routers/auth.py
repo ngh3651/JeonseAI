@@ -51,7 +51,8 @@ def kakao_login(
     owner = accounts.owner_for(accounts.account_key(member_id, secret=settings.account_hash_secret()))
     del member_id
     token, expires_at = accounts.open_session(owner, provider=accounts.PROVIDER_KAKAO)
-    moved = accounts.claim_device_records(device_id, owner)
+    # 그 기기의 기록 주인 값(가렸으면 `dv-…`)에서 계정으로 옮긴다
+    moved = accounts.claim_device_records(accounts.device_owner(device_id) if device_id else None, owner)
     _log.info(f"[로그인] 카카오 로그인 — 세션 {settings.session_days()}일 · 옮긴 리포트 {moved}건")
     return SessionResponse(
         sessionToken=token, expiresAt=expires_at, customerKey=accounts.customer_key(owner)

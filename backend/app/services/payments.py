@@ -22,7 +22,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import sqlite3
 import threading
 from contextlib import closing
 from dataclasses import dataclass
@@ -231,8 +230,7 @@ _db_lock = threading.Lock()
 def _execute(sql: str, params: tuple = ()) -> list[tuple]:
     path = store.db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with _db_lock, closing(sqlite3.connect(path, timeout=10)) as conn, conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+    with _db_lock, closing(store.connect(path)) as conn, conn:
         conn.execute(_SCHEMA)
         return conn.execute(sql, params).fetchall()
 
@@ -301,6 +299,23 @@ def move_owner(from_key: str, to_key: str) -> int:
     moved = _execute("SELECT COUNT(*) FROM passes WHERE owner_key = ?", (from_key,))[0][0]
     _execute("UPDATE passes SET owner_key = ? WHERE owner_key = ?", (to_key, from_key))
     return int(moved)
+
+
+def last_pass_by_owner() -> dict[str, str]:
+    """주인 키 → 그 주인의 가장 최근 결제 기록 시각(ISO). 오래 쓰지 않은 기기 칸을 찾는 데 쓴다(2026-10-30)."""
+    rows = _execute("SELECT owner_key, MAX(created_at) FROM passes GROUP BY owner_key")
+    return {key: created for key, created in rows if key and created}
+
+
+def last_pass_at(owner_key: str) -> str | None:
+    """그 주인의 가장 최근 결제 기록 시각(ISO) — 지우기 직전에 다시 확인할 때."""
+    rows = _execute("SELECT MAX(created_at) FROM passes WHERE owner_key = ?", (owner_key,))
+    return rows[0][0] if rows and rows[0][0] else None
+
+
+def owner_keys() -> list[str]:
+    """결제 기록의 주인 키 전부 — 원문 기기 주인 값을 가린 값으로 옮길 때."""
+    return [key for (key,) in _execute("SELECT DISTINCT owner_key FROM passes") if key]
 
 
 def delete_owner(owner_key: str) -> int:

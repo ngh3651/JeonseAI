@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import sqlite3
 import threading
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -109,8 +108,7 @@ def make_key(images: list[tuple[str, bytes]], *, deposit: int, market_price: int
 def _execute(sql: str, params: tuple = ()) -> list[tuple]:
     path = store.db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with _lock, closing(sqlite3.connect(path, timeout=10)) as conn, conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+    with _lock, closing(store.connect(path)) as conn, conn:
         conn.execute(_SCHEMA)
         return conn.execute(sql, params).fetchall()
 
@@ -196,12 +194,28 @@ def remember(key: str, report: Report, *, device_id: str) -> None:
             " VALUES (?, ?, ?, ?)",
             (device_id, key, report_id, _iso(now)),
         )
-        _execute(
-            "DELETE FROM analysis_cache WHERE device_id = ? AND created_at < ?",
-            (device_id, _iso(now - timedelta(hours=ttl))),
-        )
+        # 기간 지난 쪽지는 **모든 기기**에서 치운다(2026-10-30 — 예전엔 이 기기 것만 치워, 다시 오지 않는 기기의
+        # 쪽지가 24시간을 넘겨 남았다. 처리방침 "해시값만 24시간").
+        purge_expired(now=now)
     except Exception:  # noqa: BLE001 — 쪽지를 못 남기면 다음에 다시 분석할 뿐이다
         _log.error("[캐시] ⚠ 캐시를 남기지 못함 — 이번 리포트는 그대로 나갑니다", exc_info=True)
+
+
+def purge_expired(*, now: datetime | None = None) -> int:
+    """기간(`ANALYSIS_CACHE_HOURS`)이 지난 쪽지를 **모든 기기에서** 지운다 → 지운 수. 캐시를 끄면(0) 전부 지운다.
+
+    새 쪽지를 남길 때와, 서버의 하루 청소(`main._housekeeping`)가 부른다 — 아무도 분석하지 않는 날에도 남지 않게.
+    """
+    ttl = hours()
+    at = now or _now()
+    if ttl <= 0:
+        rows = _execute("SELECT COUNT(*) FROM analysis_cache")
+        _execute("DELETE FROM analysis_cache")
+        return int(rows[0][0]) if rows else 0
+    cutoff = _iso(at - timedelta(hours=ttl))
+    rows = _execute("SELECT COUNT(*) FROM analysis_cache WHERE created_at < ?", (cutoff,))
+    _execute("DELETE FROM analysis_cache WHERE created_at < ?", (cutoff,))
+    return int(rows[0][0]) if rows else 0
 
 
 def with_alias(report: Report, alias: str | None, *, device_id: str) -> Report:
@@ -232,6 +246,11 @@ def move_owner(from_owner: str, to_owner: str) -> None:
         "UPDATE OR REPLACE analysis_cache SET device_id = ? WHERE device_id = ?",
         (to_owner, from_owner),
     )
+
+
+def owners() -> list[str]:
+    """쪽지의 주인 값 전부 — 원문 기기 주인 값을 가린 값으로 옮길 때."""
+    return [o for (o,) in _execute("SELECT DISTINCT device_id FROM analysis_cache") if o]
 
 
 def delete_owner(owner: str) -> None:

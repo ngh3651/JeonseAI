@@ -74,8 +74,14 @@ def save_raw_responses() -> bool:
 
 
 def require_device_id() -> bool:
-    """`X-Device-Id` 헤더를 필수로 할지. 기본 꺼짐(옛 앱 호환)."""
-    return env_flag("REQUIRE_DEVICE_ID")
+    """`X-Device-Id` 헤더를 필수로 할지. **기본 켜짐**(2026-10-30 보안).
+
+    예전 기본은 꺼짐이었다 — 헤더 없는 옛 앱(8/14 빌드)이 함께 쓰는 공용 칸(`legacy-device`)을 열어 두려고.
+    그 칸은 앱 키만 있으면 누구나 목록을 읽고 지울 수 있었다. 지금 앱은 모든 요청에 헤더를 싣는다(2026-10-22).
+    옛 앱을 잠깐 다시 살려야 할 때만 `REQUIRE_DEVICE_ID=0`.
+    """
+    raw = env_str("REQUIRE_DEVICE_ID")
+    return raw.lower() in _TRUTHY if raw else True
 
 
 def app_key() -> str:
@@ -127,13 +133,38 @@ def rate_limit_chat_global_per_day() -> int:
     return env_int("RATE_LIMIT_CHAT_GLOBAL_PER_DAY", 3000)
 
 
+def data_secret_set() -> bool:
+    """저장 데이터 잠금 열쇠(`DATA_SECRET`)가 있나 — 값은 `services/sealing.py`만 읽는다."""
+    return bool(env_str("DATA_SECRET"))
+
+
 def docs_disabled() -> bool:
-    """`DISABLE_DOCS=1`이면 `/docs`·`/openapi.json`을 끈다(공개 배포에서 API 지도를 숨긴다)."""
-    return env_flag("DISABLE_DOCS")
+    """`/docs`·`/openapi.json`을 끌지(공개 배포에서 API 지도를 숨긴다). `DISABLE_DOCS=1`이면 끈다.
+
+    **Railway에서 돌면 기본으로 끈다**(2026-10-30 보안) — 변수를 깜빡해도 공개 주소에 API 지도가 드러나지 않게.
+    Railway가 모든 서비스에 넣어 주는 `RAILWAY_ENVIRONMENT_NAME`·`RAILWAY_PROJECT_ID`로 안다.
+    배포 서버에서 잠깐 켜야 하면 `DISABLE_DOCS=0`. 로컬 개발(변수 없음)은 그대로 켜져 있다.
+    """
+    raw = env_str("DISABLE_DOCS")
+    if raw:
+        return raw.lower() in _TRUTHY
+    return bool(env_str("RAILWAY_ENVIRONMENT_NAME") or env_str("RAILWAY_PROJECT_ID"))
 
 
 #: 분석·대조 1회에 올릴 수 있는 사진 장수 상한. 앱은 10장까지 보내므로 넉넉하다.
 MAX_PHOTOS_PER_REQUEST = 20
+
+#: 사진 한 장의 최대 용량. 앱이 보내는 JPEG는 장당 1~3MB다.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+#: 요청 하나의 최대 본문 크기 — 앱은 한 번에 최대 10장 × 장당 1~3MB를 보낸다(넉넉히 두 배). 넘으면 다 받기 **전에** 413.
+#: 예전엔 본문을 끝까지 받아 메모리에 올린 뒤에 용량을 봤다 → 3GB 파일 하나로 서버가 죽을 수 있었다(2026-10-30 보안).
+MAX_REQUEST_BYTES = 60 * 1024 * 1024
+
+#: 사진 한 장의 최대 화소 수 — 앱 사진은 약 500만 화소(긴 변 2560 안팎, flutter_image_compress 기본 축소).
+#: 이보다 크면 압축 폭탄으로 보고 읽지 않는다(668KB짜리 13000×13000 PNG 한 장이 메모리 830MB를 쓰는 것을 확인했다).
+#: 4천만 → 1,600만(2026-10-30 보안 리뷰): 4천만 화소 PNG 한 장도 촬영 검사에 CPU 0.3초를 써, 20장이면 요청 하나로 6초를 붙잡았다.
+MAX_IMAGE_PIXELS = 16_000_000
 
 
 #: 토스페이먼츠 개발자 문서에 **공개된 테스트용** 결제위젯 시크릿 키 (2026-10-22, P2-1).
@@ -216,6 +247,15 @@ def account_hash_secret() -> str:
 def kakao_login_ready() -> bool:
     """카카오 로그인을 받을 준비가 됐는가 — 앱 ID + 충분히 긴 계정 키 비밀."""
     return bool(kakao_app_id()) and len(account_hash_secret()) >= ACCOUNT_HASH_SECRET_MIN_LENGTH
+
+
+def guest_record_days() -> int:
+    """로그인 없이 쓴 기록(기기 칸)을 지우는 때 — 마지막 분석·결제 뒤 이 날수가 지나면. `GUEST_RECORD_DAYS`(기본 365).
+
+    2026-10-30 보안: 앱을 지우면 기기 번호도 사라져 사용자가 서버 기록을 지울 길이 없다 → 오래 쓰지 않은 기기 칸은
+    서버가 치운다(처리방침 "마지막으로 쓴 날부터 1년"). 0 이하면 끈다. 운영 설정이지 위험 판정 수치가 아니다.
+    """
+    return env_int("GUEST_RECORD_DAYS", 365)
 
 
 def session_days() -> int:

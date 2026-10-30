@@ -321,6 +321,14 @@ class JourneyProgressStore extends ChangeNotifier {
     await _persist();
   }
 
+  /// 모든 집의 기록을 지운다 — 회원 탈퇴 (2026-10-30).
+  Future<void> forgetAll() async {
+    _manual.clear();
+    _logs.clear();
+    notifyListeners();
+    await _persist();
+  }
+
   /// 집을 지우면 그 집의 기록도 지운다.
   Future<void> forget(String propertyKey) async {
     _manual.remove(propertyKey);

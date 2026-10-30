@@ -23,6 +23,7 @@ import re
 import secrets
 import sqlite3
 import threading
+import time
 from contextlib import closing
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -30,7 +31,7 @@ from pathlib import Path
 
 from .. import settings
 from ..schemas.contract import CaseMatch, Report
-from . import name_privacy
+from . import name_privacy, sealing
 from .compare import Fingerprint, RegistrySnapshot
 
 _log = logging.getLogger("jeonseai")
@@ -112,13 +113,23 @@ class _Store:
         self.name_salt = bytes.fromhex(salt)
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, timeout=10)
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
+        return connect(self.path)
 
     def execute(self, sql: str, params: tuple = ()) -> list[tuple]:
         with self._lock, closing(self._connect()) as conn, conn:
             return conn.execute(sql, params).fetchall()
+
+
+def connect(path: Path) -> sqlite3.Connection:
+    """기록 DB 연결 하나 — 이 DB를 여는 모든 모듈(리포트·계정·결제·캐시 쪽지)이 이 함수로 연다.
+
+    `secure_delete` — 지우거나 고친 행의 옛 내용을 파일에서 0으로 덮는다(2026-10-30 보안). SQLite 빌드 기본값에
+    기대지 않는다: 이 설정이 꺼져 있으면 지운 리포트의 주소가 DB 파일 빈칸에 그대로 남는 것을 확인했다.
+    """
+    conn = sqlite3.connect(path, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA secure_delete=ON")
+    return conn
 
 
 _store: _Store | None = None
@@ -145,10 +156,11 @@ def reset() -> None:
 
     테스트가 "서버 재시작"을 흉내 낼 때 쓴다(파일은 그대로 남는다).
     """
-    global _store
+    global _store, _writable_cache
     with _store_lock:
         _store = None
     _cases_cache.clear()
+    _writable_cache = None
 
 
 def clear_all_cases() -> None:
@@ -161,16 +173,28 @@ def name_salt() -> bytes:
     return _db().name_salt
 
 
+_writable_cache: tuple[float, bool] | None = None
+#: 쓰기 확인을 다시 하는 간격(초) — 헬스체크는 누구나 부를 수 있어, 부를 때마다 DB에 쓰지 않는다(2026-10-30 보안 리뷰)
+_WRITABLE_TTL_SECONDS = 60.0
+
+
 def writable() -> bool:
     """기록 DB에 지금 **쓸 수 있는가** — 헬스체크(`historyDb`)용. 예외를 밖으로 내지 않는다.
 
     볼륨이 root 소유로 붙어 못 쓰는 경우(Railway `RAILWAY_RUN_UID=0` 누락)를 바로 보이게 한다.
     """
+    global _writable_cache
+    now = time.monotonic()
+    cached = _writable_cache
+    if cached is not None and now - cached[0] < _WRITABLE_TTL_SECONDS and cached[1]:
+        return True
     try:
         _db().execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('health_probe', ?)", (_now_iso(),))
-        return True
+        ok = True
     except Exception:  # noqa: BLE001 — 헬스체크는 참/거짓만 말한다
-        return False
+        ok = False
+    _writable_cache = (now, ok)
+    return ok
 
 
 # ── 리포트 ───────────────────────────────────────────────────────────────────
@@ -184,7 +208,7 @@ def _parse_reports(rows: list[tuple]) -> list[Report]:
     out: list[Report] = []
     for row in rows:
         try:
-            out.append(Report.model_validate_json(row[0]))
+            out.append(Report.model_validate_json(sealing.unseal(row[0])))
         except Exception as e:  # noqa: BLE001 — 행 하나가 목록 전체를 깨뜨리지 않게
             _log.error(f"[이력] ⚠ 저장된 리포트 1건을 읽지 못해 건너뜀 ({type(e).__name__})")
     return out
@@ -222,7 +246,7 @@ def add(report: Report, *, device_id: str) -> None:
     stored = name_privacy.mask_report_for_storage(report)
     _db().execute(
         "INSERT OR REPLACE INTO reports (device_id, id, created_at, report_json) VALUES (?, ?, ?, ?)",
-        (device_id, report.id, _now_iso(), stored.model_dump_json()),
+        (device_id, report.id, _now_iso(), sealing.seal(stored.model_dump_json())),
     )
 
 
@@ -234,7 +258,7 @@ def update(report: Report, *, device_id: str) -> None:
     stored = name_privacy.mask_report_for_storage(report)
     _db().execute(
         "UPDATE reports SET report_json = ? WHERE device_id = ? AND id = ?",
-        (stored.model_dump_json(), device_id, report.id),
+        (sealing.seal(stored.model_dump_json()), device_id, report.id),
     )
 
 
@@ -312,7 +336,7 @@ def _fill_property_ids(reports: list[Report], *, device_id: str) -> list[Report]
     ids: dict[str, str] = {}
     for report_id, raw in rows:
         try:
-            pid = property_id(json.loads(raw).get("unique_number"))
+            pid = property_id(json.loads(sealing.unseal(raw)).get("unique_number"))
         except Exception:  # noqa: BLE001
             continue
         if pid:
@@ -377,7 +401,7 @@ def put_snapshot(report_id: str, snapshot: RegistrySnapshot, *, device_id: str) 
     _db().execute(
         "INSERT OR REPLACE INTO snapshots (device_id, report_id, created_at, snapshot_json)"
         " VALUES (?, ?, ?, ?)",
-        (device_id, report_id, _now_iso(), snapshot_to_json(snapshot)),
+        (device_id, report_id, _now_iso(), sealing.seal(snapshot_to_json(snapshot))),
     )
 
 
@@ -389,7 +413,7 @@ def get_snapshot(report_id: str, *, device_id: str) -> RegistrySnapshot | None:
     if not rows:
         return None
     try:
-        return snapshot_from_json(rows[0][0])
+        return snapshot_from_json(sealing.unseal(rows[0][0]))
     except Exception as e:  # noqa: BLE001 — 읽지 못하는 기준 = 기준 없음(대조 화면이 그렇게 안내한다)
         _log.error(f"[대조] ⚠ 저장된 기준 스냅샷을 읽지 못함 — 기준 없음으로 처리 ({type(e).__name__})")
         return None
@@ -404,7 +428,7 @@ def get_snapshot(report_id: str, *, device_id: str) -> RegistrySnapshot | None:
 def put_rejudge_kit(report_id: str, kit: dict, *, device_id: str) -> None:
     _db().execute(
         "INSERT OR REPLACE INTO rejudge_kits (device_id, report_id, created_at, kit_json) VALUES (?, ?, ?, ?)",
-        (device_id, report_id, _now_iso(), json.dumps(kit, ensure_ascii=False)),
+        (device_id, report_id, _now_iso(), sealing.seal(json.dumps(kit, ensure_ascii=False))),
     )
 
 
@@ -415,9 +439,9 @@ def get_rejudge_kit(report_id: str, *, device_id: str) -> dict | None:
     if not rows:
         return None
     try:
-        kit = json.loads(rows[0][0])
+        kit = json.loads(sealing.unseal(rows[0][0]))
         return kit if isinstance(kit, dict) else None
-    except ValueError:
+    except (ValueError, sealing.SealedUnavailable):
         _log.error("[다시판정] ⚠ 저장된 재료를 읽지 못함 — 사진으로 다시 분석해야 해요")
         return None
 
@@ -475,6 +499,42 @@ def move_owner(from_owner: str, to_owner: str) -> int:
     return int(moved)
 
 
+def check_key_fingerprint() -> str:
+    """열쇠 지문을 DB와 견준다 → 'off'(열쇠 없음·처음부터) · 'new'(처음 적음) · 'ok' · 'mismatch'(바뀜) · 'missing'(빠짐)."""
+    current = sealing.key_fingerprint()
+    db = _db()
+    rows = db.execute("SELECT value FROM meta WHERE key = 'data_key_fp'")
+    stored = rows[0][0] if rows else None
+    if current is None:
+        return "missing" if stored else "off"
+    if stored is None:
+        db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('data_key_fp', ?)", (current,))
+        return "new"
+    return "ok" if stored == current else "mismatch"
+
+
+def raw_device_owners() -> set[str]:
+    """아직 기기 id **원문**이 주인인 값들 — 가린 값(`dv-`)·계정(`acct-`)이 아닌 것. 서버가 켜질 때 한꺼번에 옮긴다."""
+    owners: set[str] = set()
+    for table, column in (("reports", "device_id"), ("snapshots", "device_id"), ("rejudge_kits", "device_id")):
+        for (owner,) in _db().execute(f"SELECT DISTINCT {column} FROM {table}"):
+            if owner and not owner.startswith((sealing.DEVICE_OWNER_PREFIX, "acct-")):
+                owners.add(owner)
+    return owners
+
+
+def last_report_at(owner: str) -> str | None:
+    """그 주인의 가장 최근 리포트를 만든 시각(ISO) — 지우기 직전에 다시 확인할 때."""
+    rows = _db().execute("SELECT MAX(created_at) FROM reports WHERE device_id = ?", (owner,))
+    return rows[0][0] if rows and rows[0][0] else None
+
+
+def last_report_by_owner() -> dict[str, str]:
+    """주인 → 그 주인의 가장 최근 리포트를 만든 시각(ISO). 오래 쓰지 않은 기기 칸을 찾는 데 쓴다(2026-10-30)."""
+    rows = _db().execute("SELECT device_id, MAX(created_at) FROM reports GROUP BY device_id")
+    return {owner: created for owner, created in rows if owner and created}
+
+
 def delete_owner(owner: str) -> int:
     """`owner`의 리포트·대조 기준·판례 캐시를 **전부** 지운다(회원 탈퇴). 지운 리포트 수를 돌려준다."""
     if not owner:
@@ -487,3 +547,45 @@ def delete_owner(owner: str) -> int:
     for key in [k for k in _cases_cache if k[0] == owner]:
         _cases_cache.pop(key, None)
     return int(deleted)
+
+
+# ── 저장 데이터 잠금 (2026-10-30 보안) ──────────────────────────────────────────
+#: 칸 암호화 대상 — (표, 내용 칸). 주인·id·시각 칸은 찾기·정렬에 쓰여 그대로 둔다(주인 칸은 기기 id 대신 HMAC 값).
+SEALED_COLUMNS = (
+    ("reports", "report_json"),
+    ("snapshots", "snapshot_json"),
+    ("rejudge_kits", "kit_json"),
+)
+
+
+def seal_existing() -> int:
+    """이 기능 전에 평문으로 쓴 행을 잠근다 — 서버가 켜질 때 뒤에서 한 번. 잠근 행 수를 돌려준다.
+
+    열쇠(`DATA_SECRET`)가 없으면 아무것도 안 한다. 다 잠그면 `VACUUM`으로 파일의 빈칸까지 새로 쓴다
+    (지운 평문 조각이 파일에 남지 않게). 여러 번 불러도 같다(이미 잠긴 행은 건너뛴다).
+    """
+    if not sealing.enabled():
+        return 0
+    db = _db()
+    count = 0
+    for table, column in SEALED_COLUMNS:
+        rows = db.execute(f"SELECT rowid, {column} FROM {table} WHERE {column} NOT LIKE ?", (sealing.PREFIX + "%",))
+        for rowid, value in rows:
+            # 읽은 값이 **그대로일 때만** 덮어쓴다 — 그 사이 고치기(PATCH)가 끼었거나 행이 지워지고 rowid가
+            # 다른 행에 다시 쓰였으면 건너뛴다(낡은 값·남의 값으로 덮어쓰지 않게, 2026-10-30 보안 리뷰)
+            changed = db.execute(
+                f"UPDATE {table} SET {column} = ? WHERE rowid = ? AND {column} = ? RETURNING rowid",
+                (sealing.seal(value), rowid, value),
+            )
+            count += len(changed)
+    if count:
+        with db._lock, closing(db._connect()) as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("VACUUM")
+        _log.info(f"[보안] 평문으로 남아 있던 기록 {count}건을 잠갔어요")
+    return count
+
+
+def adopt_owner(from_owner: str, to_owner: str) -> int:
+    """기기 id 원문으로 쌓인 기록을 가린 주인 값으로 옮긴다(2026-10-30). [move_owner]와 같다 — 이름만 뜻을 밝힌다."""
+    return move_owner(from_owner, to_owner)

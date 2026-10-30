@@ -24,6 +24,7 @@ import 'package:jeonse_ai/screens/my/account_section.dart';
 import 'package:jeonse_ai/screens/my/app_version_line.dart';
 import 'package:jeonse_ai/screens/journey/journey_actions.dart';
 import 'package:jeonse_ai/screens/my/my_screen.dart';
+import 'package:jeonse_ai/screens/my/my_settings.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:jeonse_ai/screens/report/report_inputs_sheet.dart';
 import 'package:jeonse_ai/screens/report/report_pdf.dart';
@@ -419,6 +420,7 @@ void main() {
               body: ListView(
                 children: const [
                   AccountSection(),
+                  PolicySettingsRows(),
                   AccountSettingsRows(),
                   AppVersionLine(),
                 ],

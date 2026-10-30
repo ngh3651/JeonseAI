@@ -20,7 +20,6 @@ import 'package:jeonse_ai/design_system/tokens/app_colors.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
 import 'package:jeonse_ai/repositories/analysis_repository.dart';
-import 'package:jeonse_ai/screens/my/my_screen.dart';
 import 'package:jeonse_ai/screens/my/privacy_policy_screen.dart';
 import 'package:jeonse_ai/screens/report/registry_entry_card.dart';
 import 'package:jeonse_ai/screens/report/registry_mark_stripe.dart';
@@ -425,10 +424,7 @@ void main() {
 
   group('스위치 설명 — 실제로 가리는 범위 그대로', () {
     testWidgets('사진과 글자 속 사람 이름 + 회사·은행은 그대로 + 분석 전 사진은 못 가린다 (처리방침에 적는다)', (tester) async {
-      expect(
-        privacyPolicySections().expand((s) => s.lines),
-        contains(kHideNamesSwitchDescription),
-      );
+      expect(privacyPolicyDoc().plainText, contains(kHideNamesSwitchDescription));
       expect(kHideNamesSwitchDescription, contains('주민번호'));
       // 2026-10-22: 사진뿐 아니라 리포트 글자 속 이름도 가린다 — 켜는 때는 남이 볼 때만(기본 꺼짐)
       expect(kHideNamesSwitchDescription, contains('글자 속 사람 이름'));

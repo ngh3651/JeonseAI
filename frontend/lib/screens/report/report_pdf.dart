@@ -13,6 +13,7 @@
 ///   `assets/fonts/pdf/`에 따로 둔다(원본 그대로 — OFL 예약 글꼴 이름이라 변환하지 않는다).
 library;
 
+import '../legal/notices.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -34,16 +35,10 @@ import '../cases/case_card.dart' show stripBoldMarkers;
 import 'report_screen.dart' show kBlacklistPendingLabel;
 
 /// 리포트 맨 아래 면책 문구 — 화면(`ReportScreen._disclaimer`)과 **같은 글자**.
-const String kReportDisclaimer =
-    '위험도 분석 리포트는 공개 데이터와 입력 정보를 기반으로 산출된 참고 지표입니다. '
-    '실제 법적 권리관계 및 계약의 안전성을 보증하지 않으며, 최종 판단은 공식 서류 '
-    '확인과 전문가 상담을 통해 이루어져야 합니다.';
+const String kReportDisclaimer = kReportNotice;
 
 /// 명단 미구축 고지 — 화면과 같은 글자.
-const String kBlacklistPendingNotice =
-    '※ 악성임대인 공개 명단은 아직 저희가 데이터를 확보하지 못해 '
-    '이번 분석에서는 판단하지 않았어요. 명단에 없다는 뜻이 아닙니다 — '
-    'HUG 안심전세포털에서 집주인 이름을 직접 확인해 주세요.';
+const String kBlacklistPendingNotice = kBlacklistCheckNotice;
 
 // ── 1. PDF에 들어갈 글자 (이름 가리기는 여기 한 곳) ─────────────────────────
 

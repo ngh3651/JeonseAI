@@ -355,7 +355,8 @@ def _ocr_then_second_opinion(
             structure_elapsed=time.perf_counter() - t_structure,
         )
     except Exception as e:  # noqa: BLE001 — 두 번째 경로는 어떤 이유로도 분석을 막지 못한다
-        _log.info(f"[LLM:{provider.name}] 구조화 실패 — 교차검증 없이 진행 ({type(e).__name__}: {e})")
+        # 오류 문장은 남기지 않는다 — 등기부 글자(실명)가 섞일 수 있다(2026-10-30 보안). 종류만.
+        _log.info(f"[LLM:{provider.name}] 구조화 실패 — 교차검증 없이 진행 ({type(e).__name__})")
         return OcrPath(
             ocr=ocr_result,
             second_provider=provider.name,
@@ -691,7 +692,7 @@ def analyze(
             canceled_excluded=cancel_result.count,
         )
     except Exception as e:  # noqa: BLE001 — 표시 기능이 분석을 깨뜨리면 안 된다
-        _log.error(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__}: {e})", exc_info=True)
+        _log.error(f"[매칭] 실패 — 좌표 없이 리포트 완성 ({type(e).__name__})")
         highlight_result = highlight.HighlightResult([])
 
     # 사진 속 실명·주민번호 **자리** (2026-10-22, P0-2b) — 표시 전용. 판정과 하이라이트를 건드리지 않는다.

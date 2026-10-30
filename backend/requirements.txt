@@ -7,3 +7,5 @@ img2pdf==0.6.3
 pillow==13.0.0
 pytest==9.1.1
 chromadb==1.5.9
+# 저장 데이터 잠금(2026-10-30, services/sealing.py) — Fernet(AES)
+cryptography==50.0.2

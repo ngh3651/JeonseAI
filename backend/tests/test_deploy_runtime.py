@@ -585,6 +585,22 @@ def test_DISABLE_DOCS면_API_문서가_꺼진다(monkeypatch):
         importlib.reload(main)
 
 
+def test_Railway에서는_변수가_없어도_API_문서가_꺼지고_0이면_켜진다(monkeypatch):
+    """변수를 깜빡해도 공개 주소에 API 지도가 드러나지 않게 (2026-10-30 보안). 로컬(변수 없음)은 켜짐."""
+    from app import settings
+
+    monkeypatch.delenv("DISABLE_DOCS", raising=False)
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+    monkeypatch.delenv("RAILWAY_PROJECT_ID", raising=False)
+    assert settings.docs_disabled() is False  # 로컬 개발
+
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    assert settings.docs_disabled() is True  # Railway — 기본으로 끈다
+
+    monkeypatch.setenv("DISABLE_DOCS", "0")
+    assert settings.docs_disabled() is False  # 일부러 켤 때만
+
+
 def test_판례_미리_준비는_색인이_다_만들어진_뒤에만_검색기를_만든다(monkeypatch, tmp_path):
     """빈 색인으로 검색기를 만들면 재시작 전까지 판례 0건으로 굳는다 — meta.json이 생길 때까지 기다린다 (2026-10-26)."""
     from app import main

@@ -23,12 +23,15 @@ String? renderedText(Widget widget) {
   return null;
 }
 
+/// 비교용 — 어절 줄바꿈 부호를 걷어내고, 줄바꿈 없는 공백(문단 끝 낱말 묶기, 2026-10-30)은 보통 공백으로.
+String _plain(String s) => stripWordJoiner(s).replaceAll('\u00A0', ' ');
+
 extension KoFinders on CommonFinders {
   /// [find.text]와 같되, 어절 줄바꿈 부호를 무시한다.
   Finder koText(String text, {bool skipOffstage = true}) => byWidgetPredicate(
     (w) {
       final s = renderedText(w);
-      return s != null && stripWordJoiner(s) == text;
+      return s != null && _plain(s) == text;
     },
     description: 'text "$text" (어절 줄바꿈 부호 무시)',
     skipOffstage: skipOffstage,
@@ -40,7 +43,7 @@ extension KoFinders on CommonFinders {
         (w) {
           final s = renderedText(w);
           if (s == null) return false;
-          return stripWordJoiner(s).contains(pattern);
+          return _plain(s).contains(pattern);
         },
         description: 'text containing $pattern (어절 줄바꿈 부호 무시)',
         skipOffstage: skipOffstage,

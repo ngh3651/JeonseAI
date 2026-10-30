@@ -190,17 +190,13 @@ class RegistryEntryCard extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.preview,
-    this.title = '내가 올린 사진에서 보기',
+    this.title = '내 등기부에서 보기',
+    this.markCount,
   });
 
   final String title;
 
-  /// 제목 아래 한 줄. null이면 그 줄 자체가 사라진다.
-  ///
-  /// 지금은 **등기부 열람일**이 들어온다 — 등기부는 열람 시점의 스냅샷이고, 그 뒤에
-  /// 잡힌 근저당은 이 서류에 없다. 계약 직전 근저당 설정이 실제 전세사기 수법이라
-  /// "언제 뗀 서류인가"가 개수보다 먼저 알아야 할 사실이다.
-  /// ⚠ 분석일로 대체하지 않는다 — 그러면 "오늘 서류"로 믿게 만들어 더 나빠진다.
+  /// 제목 아래 한 줄. null이면 그 줄 자체가 사라진다(사진이 없을 때 이유를 말한다).
   final String? subtitle;
 
   /// null이면 잠긴 상태 — 카드는 **사라지지 않고** 왜 못 여는지를 말한다.
@@ -210,101 +206,95 @@ class RegistryEntryCard extends StatelessWidget {
   /// null이면 스트립 없이 하단 행만 (사진이 없거나 표시가 하나도 없을 때).
   final RegistryPreviewSource? preview;
 
+  /// 띠에 적을 표시 개수 (null이면 띠 문구에 개수를 넣지 않는다)
+  final int? markCount;
+
+  /// 2026-10-31 개편 — 판례·질문·여정 카드와 같은 틀: 흰 카드(모서리 20) · 진초록 띠("AI가 내 등기부에 형광펜 N곳")
+  /// → 사진 띠(표시 한 곳 확대) → [내 등기부에서 보기 ›](초록 굵게). 테두리·그림자·마스코트는 뺐다(다른 장과 같게).
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(AppRadius.viewerEntryCard),
-      child: Ink(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: Border.all(color: AppColors.viewerEntryBorder, width: 1.5),
-          borderRadius: BorderRadius.circular(AppRadius.viewerEntryCard),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.viewerEntryShadow,
-              blurRadius: 12,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
+    return Container(
+      key: const ValueKey('registry-entry-card'),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(AppRadius.viewerEntryCard),
-          child: ClipRRect(
-            // 스트립이 카드 모서리를 넘지 않게 — 사진이 각진 채 튀어나오면 싸구려로 보인다
-            borderRadius: BorderRadius.circular(
-              AppRadius.viewerEntryCard - 1.5,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (preview != null) _PreviewStrip(source: preview!),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
-                  child: Row(
-                    children: [
-                      _mascot(enabled),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AppText(
-                              title,
-                              // 근거 줄 제목과 같은 크기·굵기 (2026-10-28 1장 다듬기)
-                              style: AppTypographyNext.bodyStrong.copyWith(
-                                color: enabled
-                                    ? AppColorsNext.textStrong
-                                    : AppColorsNext.textMuted,
-                              ),
-                            ),
-                            if (subtitle != null) ...[
-                              const SizedBox(height: 2),
-                              AppText(subtitle!, style: AppTypography.caption),
-                            ],
-                          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                key: const ValueKey('registry-entry-band'),
+                color: const Color(0xFF0B3D2A),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.auto_awesome, size: 18, color: Color(0xFF8FD3AE)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AppText(
+                        markCount != null && markCount! > 0
+                            ? 'AI가 내 등기부에 형광펜 $markCount곳'
+                            : 'AI가 내 등기부를 읽은 자리',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypographyNext.caption.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
                         ),
                       ),
-                      if (enabled)
-                        Padding(
-                          padding: EdgeInsets.only(left: AppSpacing.sm),
-                          child: Icon(
-                            Icons.chevron_right,
-                            size: AppSize.iconMd,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              if (preview != null) _PreviewStrip(source: preview!),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AppText(
+                            title,
+                            style: AppTypographyNext.bodyStrong.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: enabled ? AppColors.primary : AppColorsNext.textMuted,
+                            ),
+                          ),
+                          if (subtitle != null) ...[
+                            const SizedBox(height: 2),
+                            AppText(
+                              subtitle!,
+                              style: AppTypographyNext.caption.copyWith(
+                                color: AppColorsNext.textMuted,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (enabled)
+                      Icon(Icons.chevron_right, color: AppColors.primary)
+                    else
+                      Icon(Icons.lock_outline, size: AppSize.iconMd, color: AppColors.textMuted),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-
-  /// 흰 마스코트가 흰 카드에 묻혀 안 보여서 연초록 동그라미 위에 앉힌다 (2026-10-28 규혁)
-  Widget _mascot(bool enabled) => Container(
-    width: 44,
-    height: 44,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: enabled ? AppColors.primarySoft : AppColors.background,
-      shape: BoxShape.circle,
-    ),
-    child: enabled
-        ? const MascotSafe(size: 36, state: kEntryMascotState)
-        : Icon(
-            Icons.lock_outline,
-            size: AppSize.iconLg,
-            color: AppColors.textMuted,
-          ),
-  );
 }
 
 /// 표시 한 곳을 확대해 보여 주는 띠.

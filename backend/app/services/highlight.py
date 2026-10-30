@@ -53,6 +53,7 @@ from dataclasses import dataclass, field, replace
 from ..schemas.contract import Highlight, HighlightBox
 from ..schemas.internal import MoneyEntry, RegistryEntry, RegistryExtract, parse_amount
 from .cross_check import CrossCheck, to_notes as cross_check_notes
+from . import mark_plans
 from .formatting import eun_neun, format_won, mask_name  # mask_name: 2026-08-05 formatting으로 이관(re-export)
 from .ocr import OcrResult
 from .ocr_layout import (
@@ -825,6 +826,8 @@ class _Candidate:
     amount: int | None = None
     rank: str | None = None
     id_hint: str = ""
+    facts: tuple[str, ...] = ()  # 이 집에서 본 것 (2026-10-31, mark_plans)
+    plan: tuple[str, ...] = ()  # 이 집 맞춤 할 일
 
     @property
     def sort_key(self) -> tuple:
@@ -996,6 +999,8 @@ def build_highlights(
                 order=_SPECS["owner"].order,
                 rank=str(i),
                 id_hint=f"owner-{i}",
+                facts=tuple(mark_plans.owner(owner_count, is_corp)[0]),
+                plan=tuple(mark_plans.owner(owner_count, is_corp)[1]),
             )
         )
 
@@ -1035,6 +1040,7 @@ def build_highlights(
                 continue
             spec = _SPECS[rule.kind]
             amount_text = f" · {format_won(amount)}" if amount is not None else ""
+            facts, plan = mark_plans.ranked(rule.kind, entry, amount, rank)
             candidates.append(
                 _Candidate(
                     kind=rule.kind,
@@ -1048,6 +1054,8 @@ def build_highlights(
                     amount=amount,
                     rank=rank,
                     id_hint=f"{rule.kind}-{i}",
+                    facts=tuple(facts),
+                    plan=tuple(plan),
                 )
             )
 
@@ -1066,6 +1074,7 @@ def build_highlights(
             norm = _normalize(box, pages[page_index], pad_ratio=0.08)
             if norm is None:
                 continue
+            facts, plan = mark_plans.text_rule(text_rule.kind, viewed_at=check.viewed_at)
             candidates.append(
                 _Candidate(
                     kind=text_rule.kind,
@@ -1078,6 +1087,8 @@ def build_highlights(
                     order=spec.order,
                     rank=str(i),
                     id_hint=f"{text_rule.kind}-{i}",
+                    facts=tuple(facts),
+                    plan=tuple(plan),
                 )
             )
 
@@ -1108,6 +1119,8 @@ def build_highlights(
             body=c.body,
             caution=c.caution,
             source=c.source,
+            facts=list(c.facts),
+            plan=list(c.plan),
         )
         for i, c in enumerate(kept)
     ]
@@ -1167,10 +1180,12 @@ def _document_candidates(
             failures.append(f"{kind} — 원본 크기를 몰라 정규화 실패")
             return
         spec = _SPECS[kind]
+        facts, plan = mark_plans.document(kind, viewed_at=viewed_at, area=extract.exclusive_area_sqm)
         out.append(
             _Candidate(
                 kind=kind, page=page_index, box=norm, title=title, body=spec.body,
                 caution=None, source=spec.source, order=spec.order, id_hint=f"{kind}-0",
+                facts=tuple(facts), plan=tuple(plan),
             )
         )
 

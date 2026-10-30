@@ -262,8 +262,15 @@ class _FindingRowState extends State<FindingRow> {
     );
   }
 
+  /// 펼침 (2026-10-31 개편 — 규혁 "가독성 최악, 이 집 맞춤으로 쏠쏠하게"):
+  /// [특별 상태] → 기준 막대 → **이 집 숫자** 줄 → ✦ AI 설명(문단마다 띄움) → **이 집에서 할 일** → 근거 한 줄 → 행동 버튼.
+  /// 숫자·할 일은 서버 규칙 값 그대로(`evidence_view.py`). 옛 리포트(숫자 줄 없음)는 예전 상세 상자를 그린다.
   Widget _details(BuildContext context, EvidenceItem e, Color toneFg) {
     final String? status = e.statusLabel?.trim();
+    final paragraphs = [
+      for (final p in softenDashes(e.easyExplanation).split('\n'))
+        if (p.trim().isNotEmpty) p.trim(),
+    ];
     return Column(
       key: ValueKey('finding-details-${e.id}'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -277,9 +284,16 @@ class _FindingRowState extends State<FindingRow> {
               color: toneFg,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
-        if (e.detailText != null && e.detailText!.trim().isNotEmpty) ...[
+        if (e.meter != null) ...[
+          EvidenceMeterBar(meter: e.meter!),
+          const SizedBox(height: 12),
+        ],
+        if (e.points.isNotEmpty) ...[
+          EvidencePoints(points: e.points),
+          const SizedBox(height: 16),
+        ] else if (e.detailText != null && e.detailText!.trim().isNotEmpty) ...[
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -289,7 +303,7 @@ class _FindingRowState extends State<FindingRow> {
             child: AppText.rich(
               caseRichText(
                 context,
-                text: e.detailText!,
+                text: softenDashes(e.detailText!),
                 base: AppTypographyNext.body.copyWith(
                   color: AppColorsNext.textStrong,
                   fontWeight: FontWeight.w600,
@@ -297,18 +311,41 @@ class _FindingRowState extends State<FindingRow> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
         ],
-        AppText.rich(
-          caseRichText(
-            context,
-            text: e.easyExplanation,
-            base: AppTypographyNext.body.copyWith(
-              color: AppColorsNext.textBody,
+        const _SectionLabel(icon: Icons.auto_awesome, text: 'AI 설명', ai: true),
+        const SizedBox(height: 6),
+        for (int i = 0; i < paragraphs.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          AppText.rich(
+            caseRichText(
+              context,
+              text: paragraphs[i],
+              base: AppTypographyNext.body.copyWith(
+                color: AppColorsNext.textBody,
+                height: 1.55,
+              ),
+              glossary: e.termGlossary,
             ),
-            glossary: e.termGlossary,
           ),
-        ),
+        ],
+        if (e.todo.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const _SectionLabel(icon: Icons.checklist_rounded, text: '이 집에서 할 일'),
+          const SizedBox(height: 8),
+          for (int i = 0; i < e.todo.length; i++)
+            _TodoRow(index: i + 1, text: e.todo[i]),
+        ],
+        if (e.sourceText != null && e.sourceText!.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          AppText(
+            '근거 · ${softenDashes(e.sourceText!)}',
+            key: ValueKey('finding-source-${e.id}'),
+            style: AppTypographyNext.caption.copyWith(
+              color: AppColorsNext.textMuted,
+            ),
+          ),
+        ],
         if (widget.action != null) ...[
           const SizedBox(height: 14),
           Align(alignment: Alignment.centerLeft, child: widget.action!),
@@ -317,3 +354,240 @@ class _FindingRowState extends State<FindingRow> {
     );
   }
 }
+
+/// 줄표(—, –)를 문장 끊기로 바꾼다 (2026-10-31 규혁 "대시는 AI 티가 난다"). 서버·AI 문장 모두 화면에서 한 번 더.
+/// 문장이 끝난 자리(…요·…다 뒤)의 줄표는 마침표로, 그 밖은 쉼표로.
+String softenDashes(String text) => text
+    .replaceAllMapped(RegExp(r'([요다죠까])\s*[—–]\s*'), (m) => '${m[1]}. ')
+    .replaceAll(RegExp(r'\s*[—–]\s*'), ', ')
+    .replaceAll(RegExp(r',\s*,'), ',');
+
+/// 펼침 안 작은 제목 — "✦ AI 설명"(초록) · "이 집에서 할 일"
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.icon, required this.text, this.ai = false});
+
+  final IconData icon;
+  final String text;
+  final bool ai;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = ai ? AppColors.primary : AppColorsNext.textMuted;
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: fg),
+        const SizedBox(width: 5),
+        AppText(
+          text,
+          style: AppTypographyNext.caption.copyWith(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: fg,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Color _pointTone(String tone) => switch (tone) {
+  'danger' => AppColorsNext.dangerText,
+  'caution' => AppColors.caution,
+  'ok' => AppColors.ok,
+  _ => AppColorsNext.textStrong,
+};
+
+/// 이 집 숫자 — 회색 바탕 안에 이름(왼쪽) · 값(오른쪽, 굵게) 줄들
+class EvidencePoints extends StatelessWidget {
+  const EvidencePoints({super.key, required this.points});
+
+  final List<EvidencePoint> points;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('finding-points'),
+    padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+    decoration: BoxDecoration(
+      color: AppColors.background,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Column(
+      children: [
+        for (int i = 0; i < points.length; i++)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: i == points.length - 1
+                ? null
+                : BoxDecoration(
+                    border: Border(bottom: BorderSide(color: AppColorsNext.divider)),
+                  ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: AppText(
+                    points[i].label,
+                    style: AppTypographyNext.caption.copyWith(
+                      fontSize: 14,
+                      color: AppColorsNext.textBody,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 6,
+                  child: AppText(
+                    points[i].value,
+                    textAlign: TextAlign.right,
+                    style: AppTypographyNext.bodyStrong.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: _pointTone(points[i].tone),
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+/// 기준 막대 — 0~100%(넘으면 끝에 붙음), 기준선 눈금, 이 집 값 점
+class EvidenceMeterBar extends StatelessWidget {
+  const EvidenceMeterBar({super.key, required this.meter});
+
+  final EvidenceMeter meter;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = _pointTone(meter.tone);
+    final double v = (meter.value.clamp(0, 100)) / 100;
+    return Column(
+      key: const ValueKey('finding-meter'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: AppText(
+                meter.label,
+                style: AppTypographyNext.caption.copyWith(
+                  fontSize: 14,
+                  color: AppColorsNext.textBody,
+                ),
+              ),
+            ),
+            AppText(
+              '${meter.value}%',
+              style: AppTypographyNext.title.copyWith(
+                fontWeight: FontWeight.w800,
+                color: fg,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        LayoutBuilder(
+          builder: (context, c) {
+            final w = c.maxWidth;
+            return SizedBox(
+              height: 22,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 5,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: SizedBox(
+                        height: 10,
+                        child: Stack(
+                          children: [
+                            Positioned.fill(child: ColoredBox(color: AppColors.barIdle)),
+                            Positioned(
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: w * v,
+                              child: ColoredBox(color: fg),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  for (final m in meter.marks)
+                    Positioned(
+                      left: (w * (m.clamp(0, 100) / 100)) - 1,
+                      top: 0,
+                      bottom: 0,
+                      child: Container(width: 2, color: AppColorsNext.textStrong),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 4),
+        AppText(
+          '기준선 ${meter.marks.map((m) => '$m%').join(' · ')}',
+          style: AppTypographyNext.caption.copyWith(color: AppColorsNext.textMuted),
+        ),
+      ],
+    );
+  }
+}
+
+/// 할 일 한 줄 — 번호 원 + 문장(**굵게** 표시)
+class _TodoRow extends StatelessWidget {
+  const _TodoRow({required this.index, required this.text});
+
+  final int index;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          margin: const EdgeInsets.only(top: 1),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: AppColors.primarySoft, shape: BoxShape.circle),
+          child: AppText(
+            '$index',
+            textScaler: TextScaler.noScaling,
+            style: AppTypographyNext.caption.copyWith(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryStrong,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: AppText.rich(
+            caseRichText(
+              context,
+              text: text,
+              base: AppTypographyNext.body.copyWith(
+                color: AppColorsNext.textStrong,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+

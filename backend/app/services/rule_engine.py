@@ -88,13 +88,16 @@ def evaluate(
     ev_jeonse = _judge_jeonse_ratio(deposit, market_price, whole_building=whole_building)
     ev_senior, senior_total = _judge_senior_debt(extract, deposit, market_price)
     ev_ownership = _judge_ownership(extract)
-    ev_insurance = _judge_insurance(extract, supplementary)
     # 다시 판정(보증금·시세 고치기, 2026-10-29)은 이름을 가린 등기부로 한다 — 실명이 있어야 하는 명단 대조는
     # 분석 때 실명으로 낸 **결과**를 그대로 쓴다(보증금·시세와 무관한 판정이다).
     ev_blacklist = (
         copy.deepcopy(blacklist_override)
         if blacklist_override is not None
         else _judge_blacklist(extract, blacklist_entries)
+    )
+    # 보증보험은 위 세 카드의 결과를 본다(2026-10-31 — 등기부로 볼 수 있는 가입 조건을 모두 통과하면 '양호')
+    ev_insurance = _judge_insurance(
+        extract, supplementary, ev_jeonse=ev_jeonse, ev_senior=ev_senior, ev_blacklist=ev_blacklist
     )
 
     evidences = [ev_jeonse, ev_senior, ev_ownership, ev_insurance, ev_blacklist]
@@ -418,11 +421,29 @@ def _judge_ownership(extract: RegistryExtract) -> EvidenceVerdict:
     )
 
 
-def _judge_insurance(extract: RegistryExtract, supplementary: object | None) -> EvidenceVerdict:
-    """보증보험 — 등기부만으로는 '양호' 판정이 구조적으로 불가능하다.
+_SRC_INSURANCE_OK = "HUG 전세보증금반환보증 가입요건(선순위채권 60% · 담보인정비율 90% · 권리침해 없음)"
 
-    supplementary: 추가 서류(전입세대열람 등) 확인 로직이 붙을 자리.
-    '서비스 한계 명시 vs 추가 서류 업로드'는 팀 미결이라 지금은 사용하지 않는다.
+
+def _judge_insurance(
+    extract: RegistryExtract,
+    supplementary: object | None,
+    *,
+    ev_jeonse: EvidenceVerdict | None = None,
+    ev_senior: EvidenceVerdict | None = None,
+    ev_blacklist: EvidenceVerdict | None = None,
+) -> EvidenceVerdict:
+    """보증보험 — 등기부로 볼 수 있는 HUG 가입요건을 따진다.
+
+    2026-10-31 (규혁 "안전한 집도 보증보험은 늘 확인 필요인가?"): 등기부로 볼 수 있는 가입요건을 **모두** 통과하면
+    '양호'다. 통과 조건(전부 thresholds.py·decisions.md 2026-07-06의 HUG 기준 그대로 — 새 수치 없음):
+      ① 권리침해 없음(신탁·압류·가압류·가처분·경매·임차권등기)  ② 빚 ≤ 시세의 60%·빚+보증금 ≤ 90%
+         (= 빚 카드 '양호', 금액 못 읽은 빚 없음)  ③ 전세가율 80% 이하(= 전세가율 카드 '양호' — 시세를 알고,
+         단독·다가구 아님. HUG 90%보다 한 칸 보수적: 보증기관이 매기는 집값은 우리 시세와 다를 수 있다)
+      ④ 악성임대인 공개 명단과 일치하지 않음.
+    하나라도 모르면(시세 없음 등) 예전처럼 '확인 필요'. 사진이 빠졌으면 문서 게이트가 다시 '확인 필요'로 올린다.
+    '양호'여도 "가입된다"고 말하지 않는다 — 보증기관이 집값을 따로 매기고 집주인도 본다(설명 문구).
+
+    supplementary: 추가 서류(전입세대열람 등) 확인 로직이 붙을 자리 — 팀 미결, 사용하지 않는다.
     """
     disqualify = [
         f"{label} {n}건"
@@ -447,13 +468,44 @@ def _judge_insurance(extract: RegistryExtract, supplementary: object | None) -> 
             source_text=_SRC_INSURANCE,
             facts={"disqualify_signals": disqualify},
         )
+    passed = (
+        ev_jeonse is not None
+        and ev_jeonse.grade is Grade.GOOD
+        and ev_senior is not None
+        and ev_senior.grade is Grade.GOOD
+        and ev_senior.facts.get("senior_ratio_pct") is not None
+        and not ev_senior.facts.get("unknown_amount_count")
+        and not (ev_blacklist is not None and ev_blacklist.facts.get("matched"))
+    )
+    if passed:
+        senior_pct = ev_senior.facts.get("senior_ratio_pct")
+        combined_pct = ev_senior.facts.get("combined_ratio_pct")
+        ratio_pct = ev_jeonse.facts.get("jeonse_ratio_pct")
+        return EvidenceVerdict(
+            id="insurance",
+            grade=Grade.GOOD,
+            detail_text=(
+                "등기부로 볼 수 있는 가입 조건을 모두 통과했어요 · "
+                f"빚은 시세의 {senior_pct}% (기준 {T.SENIOR_DEBT_RATIO_DANGER_PCT}% 이하) · "
+                f"빚과 보증금을 더하면 {combined_pct}% (기준 {T.COMBINED_RATIO_DANGER_PCT}% 이하) · "
+                f"보증금은 시세의 {ratio_pct}% · 압류·가압류·가처분·경매·신탁·임차권등기 없음"
+            ),
+            source_text=_SRC_INSURANCE_OK,
+            facts={
+                "disqualify_signals": [],
+                "registry_conditions_passed": True,
+                "senior_ratio_pct": senior_pct,
+                "combined_ratio_pct": combined_pct,
+                "jeonse_ratio_pct": ratio_pct,
+            },
+        )
     return EvidenceVerdict(
         id="insurance",
         grade=Grade.CAUTION,
         status_label="확인 필요",
         detail_text=(
-            "등기부만으로는 보증보험에 들 수 있는지 알 수 없어요 — "
-            "보증기관에 직접 확인해 주세요 (이 앱으로는 여기까지예요)"
+            "등기부만으로는 보증보험에 들 수 있는지 알 수 없어요. "
+            "보증기관에 직접 확인해 주세요"
         ),
         source_text=_SRC_INSURANCE,
         facts={"disqualify_signals": []},

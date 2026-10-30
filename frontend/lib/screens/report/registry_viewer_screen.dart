@@ -51,6 +51,7 @@ import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import 'registry_document_layout.dart';
 import 'registry_entry_card.dart' show previewMarkOf;
+import 'registry_findings.dart' show softenDashes;
 import 'registry_mark_carousel.dart';
 import 'registry_mark_sheet.dart';
 import 'registry_mark_stripe.dart';
@@ -175,6 +176,12 @@ const List<String> kUnmarkedNoteMarkers = [
 ///
 /// **말소 전용 문구가 아니다.** 위치를 못 찾았을 때·표시를 통째로 보류했을 때도
 /// 같은 자리에 사유만 갈아끼워 나간다. 표시하지 못한 것이 없으면 줄 자체가 사라진다.
+/// [unmarkedNotice]의 문장들을 따로 — 하단 [ⓘ 메모] 시트가 한 줄씩 그린다(2026-10-31). 굵게 표시·줄표는 걷는다.
+List<String> unmarkedNotes(List<String> checkedNotes) => [
+  for (final note in checkedNotes)
+    if (kUnmarkedNoteMarkers.any(note.contains)) softenDashes(note.replaceAll('**', '')),
+];
+
 String? unmarkedNotice(List<String> checkedNotes) {
   final picked = [
     for (final note in checkedNotes)
@@ -267,6 +274,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
     _carousel.dispose();
     _draw.dispose();
     _selected.dispose();
+    _filter.dispose();
     _metrics.dispose();
     _scrollLocked.dispose();
     super.dispose();
@@ -314,6 +322,22 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
   /// 스크롤 콜백은 build 바깥에서 불리므로 어딘가에 담아 둬야 한다.
   RegistryDocumentLayout? _layout;
   List<RegistryHighlight> _marks = const [];
+
+  /// 지금 보고 있는 리포트 — 시트에 같은 이야기를 하는 근거 카드의 AI 설명을 함께 싣는다(2026-10-31)
+  AnalysisReport? _report;
+
+  /// 아래 카드 줄 거르기 — null이면 전부, 아니면 그 톤(따져볼 곳 · 대조할 곳)만 (2026-10-31)
+  final ValueNotifier<MarkTone?> _filter = ValueNotifier<MarkTone?>(null);
+
+  /// 이 표시와 같은 이야기를 하는 근거 카드의 AI 설명 (없으면 null)
+  String? _aiFor(RegistryHighlight m) {
+    final id = evidenceIdForMark(m.kind);
+    if (id == null) return null;
+    for (final e in _report?.evidences ?? const <EvidenceItem>[]) {
+      if (e.id == id && e.easyExplanation.trim().isNotEmpty) return e.easyExplanation;
+    }
+    return null;
+  }
 
   void _publishMetrics() {
     if (!_scroll.hasClients) return;
@@ -493,6 +517,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
         final layout = data.layoutFor(MediaQuery.sizeOf(context).width);
         _layout = layout;
         _marks = marks;
+        _report = report;
 
         return Scaffold(
           backgroundColor: AppColors.surface,
@@ -597,7 +622,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
                     // 고르고, 다시 긋고, 설명까지 연다.
                     onTapHighlight: (h) {
                       _select(h, layout, marks);
-                      showRegistryMarkSheet(context, h);
+                      showRegistryMarkSheet(context, h, aiText: _aiFor(h));
                     },
                     onZoomChanged: (z) => _onZoomChanged(i, z),
                   ),
@@ -631,37 +656,53 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
   // 카드 개수와 리포트가 안 맞는 이유를 댄다. 자세한 높이는
   // test/registry_viewer_layout_test.dart가 360dp 기준으로 재고 상한을 지킨다.
 
+  /// 하단 한 줄 (2026-10-31 개편 — 규혁 "흐린 글씨·긴 줄글 싫다, 트렌디하게"):
+  /// [● 따져볼 곳 N] [● 대조할 곳 N] 거르기 칩 + 오른쪽 [ⓘ 메모 N](누르면 표시하지 않은 것·교차 확인을 시트로).
+  /// 예전의 범례 한 줄 + 회색 두 줄 문장을 칩 한 줄로 줄였다 — 색-의미 대응은 칩의 점이 맡는다.
   Widget _bottomInfo(AnalysisReport report, List<RegistryHighlight> marks) {
-    final unmarked = unmarkedNotice(report.checkedNotes);
-    final legend = MarkLegend.fromKinds(marks.map((m) => m.markKind));
-    if (legend.isEmpty && unmarked == null) return const SizedBox.shrink();
-
+    final notes = unmarkedNotes(report.checkedNotes);
+    final risk = MarkLegend.examineCount(marks.map((m) => m.markKind));
+    final verify = MarkLegend.verifyCount(marks.map((m) => m.markKind));
+    if (risk == 0 && verify == 0 && notes.isEmpty) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
       color: AppColors.surface,
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.xs,
-        AppSpacing.lg,
-        AppSpacing.xs,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (legend.isNotEmpty) _LegendRow(entries: legend),
-          if (unmarked != null) ...[
-            if (legend.isNotEmpty) const SizedBox(height: 2),
-            // 개수가 안 맞는 이유를 대는 줄 — 회색 한 줄로 조용히, 그러나 반드시.
-            // 두 줄을 넘기면 하단이 잠식되므로 자르되, 같은 내용이 리포트에도 있다.
-            AppText(
-              unmarked,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.caption.copyWith(height: 1.35),
+      padding: const EdgeInsets.fromLTRB(kCarouselPadH, 4, kCarouselPadH, 6),
+      child: ValueListenableBuilder<MarkTone?>(
+        valueListenable: _filter,
+        builder: (context, filter, _) => Row(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    if (risk > 0)
+                      ToneFilterChip(
+                        tone: MarkTone.risk,
+                        count: risk,
+                        selected: filter == MarkTone.risk,
+                        onTap: () => _filter.value = filter == MarkTone.risk ? null : MarkTone.risk,
+                      ),
+                    if (risk > 0 && verify > 0) const SizedBox(width: 8),
+                    if (verify > 0)
+                      ToneFilterChip(
+                        tone: MarkTone.verify,
+                        count: verify,
+                        selected: filter == MarkTone.verify,
+                        onTap: () => _filter.value = filter == MarkTone.verify ? null : MarkTone.verify,
+                      ),
+                  ],
+                ),
+              ),
             ),
+            // 메모는 오른쪽에 붙여 둔다 — 칩이 많아 밀려도 늘 보이게
+            if (notes.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              NotesChip(count: notes.length, onTap: () => showViewerNotesSheet(context, notes)),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -670,19 +711,25 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
     RegistryDocumentLayout layout,
     List<RegistryHighlight> marks,
   ) {
-    return ValueListenableBuilder<String?>(
-      valueListenable: _selected,
-      builder: (context, selectedId, _) => RegistryMarkCarousel(
-        marks: marks,
-        selectedId: selectedId,
-        controller: _carousel,
-        // 본문 탭 — 위치만 보여 준다. 시트는 열지 않는다(시안).
-        onTapCard: (m) => _select(m, layout, marks),
-        // '자세히 보기' 탭 — 같은 이동 + **첫 탭에 바로** 시트.
-        onTapDetail: (m) {
-          _select(m, layout, marks);
-          showRegistryMarkSheet(context, m);
-        },
+    return ValueListenableBuilder<MarkTone?>(
+      valueListenable: _filter,
+      builder: (context, filter, _) => ValueListenableBuilder<String?>(
+        valueListenable: _selected,
+        builder: (context, selectedId, _) => RegistryMarkCarousel(
+          marks: [
+            for (final m in marks)
+              if (filter == null || m.markKind.tone == filter) m,
+          ],
+          selectedId: selectedId,
+          controller: _carousel,
+          // 본문 탭 — 위치만 보여 준다. 시트는 열지 않는다(시안).
+          onTapCard: (m) => _select(m, layout, marks),
+          // '자세히 보기' 탭 — 같은 이동 + **첫 탭에 바로** 시트.
+          onTapDetail: (m) {
+            _select(m, layout, marks);
+            showRegistryMarkSheet(context, m, aiText: _aiFor(m));
+          },
+        ),
       ),
     );
   }
@@ -709,7 +756,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
   );
 
   Scaffold _emptyScaffold() => Scaffold(
-    appBar: AppBar(title: const AppText('내가 올린 사진에서 보기')),
+    appBar: AppBar(title: const AppText('내 등기부에서 보기')),
     body: Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
@@ -743,7 +790,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
 /// 알 수 없고, ⑵ 방금 그 문구가 적힌 카드를 눌러 들어왔고 화면에 자기 사진이 깔려 있어
 /// 앱바가 이미 아는 것을 반복하게 된다(2026-07-27 서연 리뷰).
 class _ViewerAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _ViewerAppBar({this.title = '내가 올린 사진에서 보기'});
+  const _ViewerAppBar({this.title = '내 등기부에서 보기'});
 
   final String title;
 
@@ -1564,36 +1611,162 @@ class BadgeCircle extends StatelessWidget {
   }
 }
 
-/// 범례 — **표시에 실제로 있는 종류로만** 만든다(MarkLegend 참조).
-class _LegendRow extends StatelessWidget {
-  const _LegendRow({required this.entries});
+/// 하단 거르기 칩 — 색 점 + "따져볼 곳 3". 고르면 아래 카드 줄이 그 톤만 남는다.
+class ToneFilterChip extends StatelessWidget {
+  const ToneFilterChip({
+    super.key,
+    required this.tone,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
 
-  final List<MarkLegendEntry> entries;
+  final MarkTone tone;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: AppSpacing.md,
-      runSpacing: AppSpacing.xs,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        for (final e in entries)
-          Row(
+    final Color solid = AppColors.markSolid(tone);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${tone.legendVerb} $count곳만 보기',
+      child: InkWell(
+        key: ValueKey('viewer-filter-${tone.name}'),
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          constraints: const BoxConstraints(minHeight: 34),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? solid : AppColors.markHighlight(tone, selected: false),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 20,
-                height: 11,
+                width: 8,
+                height: 8,
                 decoration: BoxDecoration(
-                  color: AppColors.markHighlight(e.tone, selected: false),
-                  borderRadius: kMarkRadius,
+                  color: selected ? AppColors.onPrimary : solid,
+                  shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: AppSpacing.xs),
-              AppText(e.label, style: AppTypography.caption),
+              const SizedBox(width: 6),
+              AppText(
+                '${tone.legendVerb} $count',
+                style: AppTypography.label.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? AppColors.onPrimary : AppColors.markText(tone),
+                ),
+              ),
             ],
           ),
-      ],
+        ),
+      ),
     );
   }
+}
+
+/// 하단 [ⓘ 메모 N] — 사진에 표시하지 않은 것·두 방법으로 읽은 결과. 누르면 시트.
+class NotesChip extends StatelessWidget {
+  const NotesChip({super.key, required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    key: const ValueKey('viewer-notes-chip'),
+    borderRadius: BorderRadius.circular(999),
+    onTap: onTap,
+    child: Container(
+      constraints: const BoxConstraints(minHeight: 34),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textBody),
+          const SizedBox(width: 5),
+          AppText(
+            '메모 $count',
+            style: AppTypography.label.copyWith(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textBody,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// 메모 시트 — "사진에 표시하지 않은 것과 읽은 방법". 한 줄에 한 사실, 진한 글씨.
+Future<void> showViewerNotesSheet(BuildContext context, List<String> notes) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppColors.surface,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+    ),
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(
+          key: const ValueKey('viewer-notes-sheet'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: kSheetHandleWidth,
+                height: kSheetHandleHeight,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.line,
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+              ),
+            ),
+            AppText(
+              '사진에 표시하지 않은 것',
+              style: AppTypography.bodyStrong.copyWith(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            for (final n in notes)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Icon(Icons.check_circle_outline_rounded, size: 17, color: AppColors.primary),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: AppText(
+                        n,
+                        style: AppTypography.body.copyWith(fontSize: 15, height: 1.5, color: AppColors.textStrong),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

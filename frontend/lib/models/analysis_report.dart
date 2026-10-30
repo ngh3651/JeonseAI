@@ -40,6 +40,44 @@ class AnalysisRequest {
 }
 
 /// 근거 카드 한 항목 (S-07 근거 카드 목록의 원소).
+/// 근거 카드 펼침의 숫자 한 줄 (2026-10-31) — 서버 규칙 값 그대로.
+class EvidencePoint {
+  const EvidencePoint({required this.label, required this.value, this.tone = 'plain'});
+
+  final String label;
+  final String value;
+
+  /// plain · ok · caution · danger
+  final String tone;
+
+  factory EvidencePoint.fromJson(Map<String, dynamic> j) => EvidencePoint(
+    label: j['label'] as String? ?? '',
+    value: j['value'] as String? ?? '',
+    tone: j['tone'] as String? ?? 'plain',
+  );
+}
+
+/// 근거 카드 펼침의 기준 막대 (2026-10-31) — 이 집 비율과 기준선(서버 상수 그대로).
+class EvidenceMeter {
+  const EvidenceMeter({required this.label, required this.value, this.marks = const [], this.tone = 'plain'});
+
+  final String label;
+  final int value;
+  final List<int> marks;
+  final String tone;
+
+  static EvidenceMeter? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final m = j.cast<String, dynamic>();
+    return EvidenceMeter(
+      label: m['label'] as String? ?? '',
+      value: (m['value'] as num?)?.toInt() ?? 0,
+      marks: [for (final x in (m['marks'] as List? ?? const [])) (x as num).toInt()],
+      tone: m['tone'] as String? ?? 'plain',
+    );
+  }
+}
+
 class EvidenceItem {
   const EvidenceItem({
     required this.id,
@@ -53,7 +91,19 @@ class EvidenceItem {
     this.actionLabel,
     this.termGlossary = const {},
     this.explanationSource,
+    this.points = const [],
+    this.meter,
+    this.todo = const [],
   });
+
+  /// 펼침의 이 집 숫자 줄 (2026-10-31). 옛 리포트면 비어 있다 — 그땐 [detailText] 상자를 그린다.
+  final List<EvidencePoint> points;
+
+  /// 펼침의 기준 막대 (있을 때만)
+  final EvidenceMeter? meter;
+
+  /// 이 집에서 할 일 (규칙 문장, `**굵게**` 표시 포함)
+  final List<String> todo;
 
   /// 항목 식별자: jeonse_ratio | senior_debt | ownership | insurance | blacklist
   final String id;
@@ -108,6 +158,12 @@ class EvidenceItem {
     termGlossary: (json['termGlossary'] as Map<String, dynamic>? ?? const {})
         .map((k, v) => MapEntry(k, v as String)),
     explanationSource: json['explanationSource'] as String?,
+    points: [
+      for (final p in (json['points'] as List? ?? const []))
+        EvidencePoint.fromJson((p as Map).cast<String, dynamic>()),
+    ],
+    meter: EvidenceMeter.fromJson(json['meter']),
+    todo: [for (final t in (json['todo'] as List? ?? const [])) t as String],
   );
 }
 
@@ -151,7 +207,15 @@ class RegistryHighlight {
     required this.body,
     this.caution,
     this.source,
+    this.facts = const [],
+    this.plan = const [],
   });
+
+  /// 이 집에서 본 것 — 순위·접수일·권리자 종류·금액 (2026-10-31, 서버 규칙 값). 옛 리포트면 비어 있다.
+  final List<String> facts;
+
+  /// 이 집 맞춤 할 일 — 이 집 숫자를 끼운 규칙 문장(`**굵게**` 포함). 옛 리포트면 비어 있다.
+  final List<String> plan;
 
   final String id;
 
@@ -212,6 +276,8 @@ class RegistryHighlight {
     body: body,
     caution: caution,
     source: source,
+    facts: facts,
+    plan: plan,
   );
 
   factory RegistryHighlight.fromJson(Map<String, dynamic> json) =>
@@ -225,6 +291,8 @@ class RegistryHighlight {
         body: json['body'] as String,
         caution: json['caution'] as String?,
         source: json['source'] as String?,
+        facts: [for (final f in (json['facts'] as List? ?? const [])) f as String],
+        plan: [for (final f in (json['plan'] as List? ?? const [])) f as String],
       );
 }
 

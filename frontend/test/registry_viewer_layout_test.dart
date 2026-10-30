@@ -106,14 +106,33 @@ void main() {
     //   (2026-07-28), 문자열을 박으면 **범례를 줄이는 개선이 테스트에 막힌다.**
     expect(find.koTextContaining('대조할 곳'), findsWidgets);
     expect(find.koTextContaining('따져볼 곳'), findsWidgets);
-    // 회색 한 줄 — 리포트엔 근저당 4건인데 카드가 3장인 이유를 대는 자리
+    // 리포트엔 근저당 4건인데 카드가 3장인 이유 — 2026-10-31부터 회색 두 줄 대신 [ⓘ 메모 N] 칩 → 시트
+    expect(find.byKey(const ValueKey('viewer-notes-chip')), findsOneWidget);
+    expect(find.koTextContaining('말소'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('viewer-notes-chip')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('viewer-notes-sheet')), findsOneWidget);
     expect(find.koTextContaining('말소'), findsOneWidget);
+  });
+
+  testWidgets('거르기 칩 — 따져볼 곳만 고르면 카드 줄이 그 톤만 (2026-10-31)', (tester) async {
+    await pumpViewer(tester);
+    final before = tester.widget<RegistryMarkCarousel>(find.byType(RegistryMarkCarousel)).marks.length;
+    await tester.tap(find.byKey(const ValueKey('viewer-filter-risk')));
+    await tester.pump();
+    final after = tester.widget<RegistryMarkCarousel>(find.byType(RegistryMarkCarousel)).marks;
+    expect(after.length, lessThan(before));
+    expect(after.every((m) => m.markKind.isRisk), isTrue);
+    // 한 번 더 누르면 다시 전부
+    await tester.tap(find.byKey(const ValueKey('viewer-filter-risk')));
+    await tester.pump();
+    expect(tester.widget<RegistryMarkCarousel>(find.byType(RegistryMarkCarousel)).marks.length, before);
   });
 
   testWidgets('앱바 제목은 매물 별칭이다 (캡처해 보냈을 때 무슨 집인지 알 수 있게)', (tester) async {
     await pumpViewer(tester);
     expect(find.koText('샘플빌라 제101호'), findsOneWidget);
-    expect(find.koText('내가 올린 사진에서 보기'), findsNothing);
+    expect(find.koText('내 등기부에서 보기'), findsNothing);
   });
 
   testWidgets('디버그 토글은 남아 있지 않다 (실기기 확인 후 제거)', (tester) async {

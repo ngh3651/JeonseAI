@@ -47,12 +47,13 @@ MAX_PAGES = 40
 REFRESH_DAYS = 7
 
 #: 받은 줄에서 이름·나이·출생연도·채무액을 찾을 칸 이름 후보 (API마다 다르다 — 환경변수로 덮을 수 있다)
-_NAME_KEYS = ("성명", "임대인명", "임대인성명", "이름", "임대인", "채무자명", "name", "nm", "lsrNm", "lessorNm", "rprsNm",
+# HUG 빅데이터 개방포털 실제 응답(2026-10-31 배포 로그): list[1980]{STDD_DT, CUST_NM, AGE, ADDR} — 이름 칸 CUST_NM
+_NAME_KEYS = ("CUST_NM", "성명", "임대인명", "임대인성명", "이름", "임대인", "채무자명", "name", "nm", "lsrNm", "lessorNm", "rprsNm",
               "lsr_nm", "lessor_nm", "dbtr_nm", "debtor_nm", "rprs_nm", "flnm")
 _AGE_KEYS = ("나이", "연령", "만나이", "age")
 _BIRTH_KEYS = ("출생연도", "생년", "birthYear", "brthYr", "birth_year", "brth_yr")
 _DEBT_KEYS = ("채무액", "보증금반환채무액", "미반환금액", "구상채무액", "debt", "debtAmt", "amt", "debt_amt", "dbt_amt")
-_DATE_KEYS = ("공개일", "공개일자", "기준일자", "rlsDt", "baseDate")
+_DATE_KEYS = ("STDD_DT", "공개일", "공개일자", "기준일자", "rlsDt", "baseDate")
 
 
 def store_path() -> Path:

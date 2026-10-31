@@ -275,7 +275,12 @@ def due(days: int = REFRESH_DAYS) -> bool:
     if store_path().exists() and not load():
         return True  # 받아 둔 파일이 지금 소금과 안 맞거나(소금이 바뀜) 비었다 — 기다리지 않고 다시 받는다
     try:
-        last = json.loads(status_path().read_text(encoding="utf-8")).get("checkedAt")
+        st = json.loads(status_path().read_text(encoding="utf-8"))
+        if not st.get("ok") or not load():
+            # 지난번에 못 받았으면(키 승인 전·주소 오류 등) 일주일을 기다리지 않고 다음 차례(서버 시작 3분 뒤·6시간마다)에
+            # 다시 받는다 — 2026-10-31 실사고: 키를 넣기 전 실패 기록 때문에 키를 넣고 다시 배포해도 받지 않았다
+            return True
+        last = st.get("checkedAt")
         return (datetime.now(KST) - datetime.strptime(last, "%Y-%m-%d").replace(tzinfo=KST)).days >= days
     except (OSError, ValueError, TypeError):
         return True

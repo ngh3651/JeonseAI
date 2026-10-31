@@ -198,6 +198,24 @@ def _api_error(data: Any) -> str | None:
     return None
 
 
+#: 첫 쪽 응답의 **모양**(칸 이름·줄 수만 — 값은 없다) — 이름 칸을 못 찾았을 때 로그로 칸 이름을 알려 준다(2026-10-31)
+_last_shape: list[str] = [""]
+
+
+def _shape(data: Any, depth: int = 0) -> str:
+    """JSON 모양 요약 — `list[37]{NM,AGE,…}` 처럼 칸 이름과 개수만. 사람 이름 같은 값은 넣지 않는다."""
+    if depth > 3:
+        return "…"
+    if isinstance(data, list):
+        inner = _shape(data[0], depth + 1) if data else ""
+        return f"list[{len(data)}]{inner}"
+    if isinstance(data, dict):
+        parts = [f"{k}:{_shape(v, depth + 1)}" if isinstance(v, (list, dict)) else str(k) for k in list(data)[:15]
+                 for v in [data[k]]]
+        return "{" + ",".join(parts) + "}"
+    return ""
+
+
 def _fetch_all(get: Callable[..., Any]) -> list[dict]:
     url = os.environ["BLACKLIST_SOURCE_URL"].strip()
     key = os.environ.get("BLACKLIST_API_KEY", "").strip()
@@ -215,6 +233,8 @@ def _fetch_all(get: Callable[..., Any]) -> list[dict]:
             got = parse_csv(text)
         else:
             data = json.loads(text)
+            if page == 1:
+                _last_shape[0] = _shape(data)
             err = _api_error(data)
             if err:
                 raise SourceError(err)
@@ -236,11 +256,15 @@ def refresh(*, get: Callable[..., Any] | None = None, salt: bytes | None = None)
     if not configured():
         st["note"] = "받는 곳 설정 없음(BLACKLIST_SOURCE_URL)"
         return _save_status(st)
+    _log.info("[명단] 악성임대인 공개 명단 받는 중…")
     try:
         rows = _fetch_all(get or requests.get)
         entries = to_entries(rows, salt=salt)
         if not entries:
             st["note"] = f"받은 줄 {len(rows)}개에서 이름을 찾지 못함 — BLACKLIST_FIELD_NAME 확인"
+            # 예전엔 여기서 아무 말 없이 끝나 배포 로그에 [명단] 줄이 하나도 없었다(2026-10-31) — 칸 이름을 남긴다(값 없음)
+            _log.info(f"[명단] ⚠ 받은 줄 {len(rows)}개에서 이름 칸을 못 찾음 — 응답 모양 {_last_shape[0][:300]}"
+                      " (이름 칸이 다르면 BLACKLIST_FIELD_NAME)")
             return _save_status(st)
         path = store_path()
         path.parent.mkdir(parents=True, exist_ok=True)

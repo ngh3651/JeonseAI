@@ -198,3 +198,19 @@ def test_공공데이터포털_방식이면_serviceKey():
     os.environ.pop("BLACKLIST_KEY_PARAM", None)
     assert B._key_param("https://apis.data.go.kr/x/y") == "serviceKey"
     assert B._key_param(B.HUG_ENDPOINT) == "API_KEY"
+
+
+def test_이름_칸을_못_찾으면_칸_이름을_로그에_남긴다(data_dir, monkeypatch, caplog):
+    """2026-10-31 — 이름 칸이 달라 0명이면 배포 로그에 아무 말이 없었다. 칸 이름만 남기고 값(사람 이름)은 안 남긴다."""
+    monkeypatch.setenv("BLACKLIST_SOURCE_URL", "https://example.invalid/api")
+
+    def get(url, params=None, timeout=None):
+        body = [{"NMXX": "홍길동", "AGEXX": 45}]
+        return SimpleNamespace(text=json.dumps(body, ensure_ascii=False),
+                               headers={"content-type": "application/json"}, raise_for_status=lambda: None)
+
+    with caplog.at_level("INFO", logger="jeonseai"):
+        st = B.refresh(get=get, salt=SALT)
+    assert st["ok"] is False
+    text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "[명단] ⚠" in text and "NMXX" in text and "홍길동" not in text

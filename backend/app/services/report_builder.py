@@ -41,6 +41,7 @@ from . import (
     ocr,
     ocr_layout,
     price_lookup,
+    price_normalize,
     price_resolver,
     privacy_masks,
     registry_facts,
@@ -501,12 +502,18 @@ def has_pending_application(highlights: list[Highlight] | None) -> bool:
     return any(h.kind == "pending_application" for h in (highlights or []))
 
 
-def rejudge_kit(extract: RegistryExtract, report: Report) -> dict:
-    """다시 판정 재료 — IE가 읽은 등기부(사람 이름은 가린 사본) + 실명이 필요했던 명단 대조 결과."""
+def rejudge_kit(extract: RegistryExtract, report: Report, *, lookup_address: str | None = None) -> dict:
+    """다시 판정 재료 — IE가 읽은 등기부(사람 이름은 가린 사본) + 실명이 필요했던 명단 대조 결과.
+
+    `lookup_address`: 분석 때 시세를 찾은 주소(쪽 머리 주소로 채웠으면 그 주소, 2026-10-31) — 다시 판정도 같은 주소로
+    찾아야 보증금만 고쳤는데 시세가 사라지지 않는다.
+    """
     names = name_privacy.person_names(extract) or list(report.personNames)
     masked = name_privacy._mask_value(extract.model_dump(mode="json"), names)
     blacklist = next((e for e in report.evidences if e.id == "blacklist"), None)
     kit: dict = {"version": 1, "extract": masked}
+    if lookup_address and lookup_address != extract.address:
+        kit["priceAddress"] = lookup_address
     if blacklist is not None:
         facts: dict = {"matched": [], "list_size": None, "from_original_analysis": True}
         # 원래 '맞춰 봤고 같은 이름 없음'이었는데 사진이 불완전해 '확인 필요'로 올라간 카드 — 그 사실을 남긴다
@@ -554,8 +561,11 @@ def rejudge(
             facts={"matched": [], "list_size": None},
         )
     try:
+        # 분석 때 쪽 머리 주소로 시세를 찾았으면 그 주소로(옛 재료엔 없다 → IE 주소, 2026-10-31)
         price_info = price_lookup.collect(
-            address=extract.address, area_sqm=extract.exclusive_area_sqm, manual_price_won=market_price
+            address=kit.get("priceAddress") or extract.address,
+            area_sqm=extract.exclusive_area_sqm,
+            manual_price_won=market_price,
         )
     except Exception:  # noqa: BLE001
         _log.error("[다시판정] ⚠ 시세 다시 고르기 실패 — 넣은 값만 씁니다", exc_info=True)
@@ -578,6 +588,23 @@ def rejudge(
     )
     keep = {k: getattr(old, k) for k in _KEEP_ON_REJUDGE if hasattr(old, k)}
     return fresh.model_copy(update=keep)
+
+
+def price_address(ie_address: str | None, doc_check: "ocr_layout.DocumentCheck | None") -> str | None:
+    """시세 조회에 쓸 주소 (2026-10-31) — IE 주소에 **호수가 없고** 쪽 머리 주소에 있으면 쪽 머리 주소.
+
+    IE의 주소 칸은 표제부 '소재지'라 '제3층 제301호' 없이 지번까지만 오는 일이 많다. 호수가 없으면 시세 조회가
+    통건물(단독·다가구)로 보고 건너뛰어 시세가 비고 → 깨끗한 집도 '확인 필요'가 됐다(실기기: 같은 등기부가 어떤 때는
+    시세가 나오고 어떤 때는 안 나옴). 쪽 머리 '[집합건물] … 제301호'는 **모든 쪽에 찍혀** 있어 더 잘 읽힌다.
+    IE 주소에 호수가 있으면 그대로 쓴다(판정 재료는 IE가 먼저). 머리표가 '[건물]'이면 그대로 넘겨 통건물로 다룬다.
+    """
+    header = doc_check.header_address if doc_check is not None else None
+    if not header or (ie_address and price_normalize.has_unit_designation(ie_address)):
+        return ie_address
+    if not price_normalize.has_unit_designation(header):
+        return ie_address
+    kind = doc_check.header_kind if doc_check is not None else None
+    return f"[{kind}] {header}" if kind else header
 
 
 def _incomplete_reason(
@@ -809,9 +836,13 @@ def analyze(
     #   삼키지만, 그 안에서 예상 못 한 일이 나도 여기서 한 번 더 막는다.
     #   조회가 통째로 죽어도 `price_info`는 사용자 입력값만 담은 결과가 되고,
     #   그것마저 없으면 `price_won=None` — 지금까지와 똑같이 '확인 필요'로 흐른다.
+    lookup_address = extract.address
     try:
+        lookup_address = price_address(extract.address, doc_check)
+        if lookup_address != extract.address:
+            _log.info("[시세] IE 주소에 호수가 없어 쪽 머리 주소(호수 있음)로 조회합니다")
         price_info = price_lookup.collect(
-            address=extract.address,
+            address=lookup_address,
             area_sqm=extract.exclusive_area_sqm,
             manual_price_won=market_price,
             run_id=run_id,
@@ -946,7 +977,9 @@ def analyze(
         _log.error("[대조] ⚠ 기준 스냅샷을 남기지 못했습니다 — 이 리포트는 대조 기준이 될 수 없어요", exc_info=True)
     try:
         # 보증금·시세를 나중에 고치면 사진을 다시 읽지 않고 판정만 다시 한다(2026-10-29) — 그 재료(이름 가린 사본)
-        store.put_rejudge_kit(report.id, rejudge_kit(extract, report), device_id=device_id)
+        store.put_rejudge_kit(
+            report.id, rejudge_kit(extract, report, lookup_address=lookup_address), device_id=device_id
+        )
         report.rejudgeReady = True
     except Exception:  # noqa: BLE001 — 재료를 못 남기면 고치기 때 사진으로 다시 분석한다(앱이 그렇게 안내)
         _log.error("[다시판정] ⚠ 재료를 남기지 못했습니다 — 이 리포트는 사진으로만 다시 분석돼요", exc_info=True)

@@ -210,7 +210,12 @@ class RegistryHighlight {
     this.facts = const [],
     this.plan = const [],
     this.termGlossary = const {},
+    this.factRows = const [],
   });
+
+  /// 이 집에서 본 것을 **표 줄**로 — [이름, 값] (2026-10-31 사진에서 보기 리디자인). 옛 리포트면 비어 있고
+  /// 그때 시트는 [facts]를 칩으로 그린다. 이름이 빈 줄은 값만 한 줄로 쓴다.
+  final List<List<String>> factRows;
 
   /// 이 집에서 본 것 — 순위·접수일·권리자 종류·금액 (2026-10-31, 서버 규칙 값). 옛 리포트면 비어 있다.
   final List<String> facts;
@@ -282,6 +287,8 @@ class RegistryHighlight {
     source: source,
     facts: facts,
     plan: plan,
+    termGlossary: termGlossary,
+    factRows: factRows,
   );
 
   factory RegistryHighlight.fromJson(Map<String, dynamic> json) =>
@@ -297,6 +304,10 @@ class RegistryHighlight {
         source: json['source'] as String?,
         facts: [for (final f in (json['facts'] as List? ?? const [])) f as String],
         plan: [for (final f in (json['plan'] as List? ?? const [])) f as String],
+        factRows: [
+          for (final r in (json['factRows'] as List? ?? const []))
+            if (r is List && r.length == 2) [r[0] as String, r[1] as String],
+        ],
         termGlossary: {
           for (final e in ((json['termGlossary'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}',
         },

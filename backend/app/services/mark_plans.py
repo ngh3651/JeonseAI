@@ -60,42 +60,43 @@ def ranked(kind: str, entry: Any, amount: int | None, rank: str | None) -> tuple
     ) if x]
     when = f"{date} " if date else ""
     plan: list[str]
+    # 2026-10-31 규혁: 짧고 쉽게, 읽은 것은 단정하고 할 일만 제안한다(사용자에게 앱이 읽은 걸 되묻지 않는다).
     if kind == "mortgage":
         plan = [
-            f"잔금 날 이 빚{f'({money})' if money else ''}을 갚고 등기부에서 **지우는지(말소)** 중개사에게 묻고, 답을 계약서 **특약**에 적으세요",
-            "지금 남은 빚은 집주인 **대출 잔액 확인서(부채증명원)**로 확인하세요",
+            f"잔금 날 이 빚{f'({money})' if money else ''}을 갚고 **지우는지(말소)** 중개사에게 묻고, 답을 **특약**에 적으세요",
+            "지금 남은 빚은 **부채증명원**(대출 잔액 확인서)으로 확인하세요",
         ]
         if holder == "개인":
-            plan.append("돈을 빌려준 쪽이 **개인**이에요. 갚았다는 말만 믿지 말고 이 빚이 지워진 등기부로 확인하세요")
+            plan.append("빌려준 곳이 **개인**이에요. 갚았다는 말만 믿지 말고 **지워진 등기부**로 확인하세요")
     elif kind == "jeonse":
         plan = [
-            f"이 전세권{f'({money})' if money else ''}이 언제 지워지는지 중개사에게 확인하세요",
-            "전세권이 지워진 등기부를 다시 떼어 이 앱으로 대조한 뒤 계약하세요",
+            f"이 전세권{f'({money})' if money else ''}이 **언제 지워지는지** 중개사에게 물어보세요",
+            "지워진 등기부를 다시 떼어 이 앱으로 **대조**하세요",
         ]
     elif kind == "lease_registration":
         plan = [
-            f"전 세입자 보증금{f'({money})' if money else ''}이 정리됐는지 중개사에게 확인하세요",
+            f"전 세입자 보증금{f'({money})' if money else ''}이 정리됐는지 중개사에게 물어보세요",
             "**임차권등기가 지워진 등기부**를 받은 뒤에 계약하세요",
         ]
     elif kind == "provisional_seizure":
         plan = [
-            f"{when}가압류{f'({money})' if money else ''}가 언제 풀리는지 중개사에게 확인하세요",
-            "가압류가 풀린 등기부를 직접 확인하기 전에는 **계약금을 보내지 마세요**",
+            f"{when}가압류{f'({money})' if money else ''}가 **언제 풀리는지** 물어보세요",
+            "풀린 등기부를 보기 전엔 **계약금을 보내지 마세요**",
         ]
     elif kind == "seizure":
         plan = [
-            f"{when}압류가 풀린 등기부를 직접 확인한 뒤에 계약하세요",
+            f"{when}압류가 **풀린 등기부**를 본 뒤에 계약하세요",
             "아직 안 풀렸다면 **계약을 미루세요**",
         ]
     elif kind == "auction":
         plan = [
-            "이 집은 **계약금을 보내지 마세요**",
-            f"{when}시작된 경매가 어떻게 정리되는지 중개사에게 묻고, 답이 분명하지 않으면 이 집은 계약하지 마세요",
+            "이 집엔 **계약금을 보내지 마세요**",
+            f"{when}시작된 경매가 어떻게 정리되는지 묻고, 답이 분명하지 않으면 **넘기세요**",
         ]
     elif kind == "trust":
         plan = [
-            "**신탁원부**를 받아 누구와 계약해야 하는지 확인하세요",
-            "신탁회사 **동의서 원본**을 받기 전에는 돈을 보내지 마세요",
+            "**신탁원부**를 받아 누구와 계약하는지 보세요",
+            "신탁회사 **동의서 원본** 전엔 돈을 보내지 마세요",
         ]
     else:
         plan = []
@@ -108,11 +109,11 @@ def owner(owner_count: int, corporate: bool) -> tuple[list[str], list[str]]:
         facts.append("공동명의")
     if corporate:
         facts.append("회사(법인)")
-    plan = ["계약 자리에 나온 사람의 **신분증 이름**이 이 이름과 같은지 맞춰 보세요"]
+    plan = ["계약 자리에서 **신분증 이름**이 이 이름과 같은지 보세요"]
     if owner_count > 1:
-        plan.append(f"{owner_count}명 **모두의 서명**이나, 안 나온 사람의 **위임장과 인감증명서**를 받으세요")
+        plan.append(f"{owner_count}명 **모두의 서명**, 또는 안 나온 사람의 **위임장과 인감증명서**를 받으세요")
     if corporate:
-        plan.append("집주인이 **회사(법인)**예요. 회사 이름으로 된 **납세증명서**를 받으세요")
+        plan.append("집주인이 **회사(법인)**예요. 회사 이름의 **납세증명서**를 받으세요")
     plan.append("보증금은 **이 이름의 계좌**로만 보내세요")
     return facts, plan
 
@@ -134,21 +135,37 @@ def blacklist_line(status_label: str | None, grade: str | None) -> tuple[str | N
     return None, None
 
 
-def document(kind: str, *, viewed_at: str | None = None, area: float | None = None) -> tuple[list[str], list[str]]:
-    """주소·면적·서류 종류·뗀 날."""
+DOC_FULL_FACT = "말소사항 포함 전부증명서"
+DOC_CURRENT_FACT = "현재 유효사항만 나온 서류"
+
+
+def document(
+    kind: str, *, viewed_at: str | None = None, area: float | None = None, doc_text: str | None = None
+) -> tuple[list[str], list[str]]:
+    """주소·면적·서류 종류·뗀 날. [doc_text]는 서류 제목 줄 글자(말소사항 포함인지 단정하려고)."""
     if kind == "address":
         return [], [
-            "계약서 주소·**동·호수**가 이 주소와 글자까지 같은지 맞춰 보세요",
-            "실제로 본 집 현관 호수와 같은지도 확인하세요",
+            "계약서 주소·**동·호수**를 위 주소와 맞춰 보세요",
+            "집에 가면 **현관 호수**도 같은지 보세요",
         ]
     if kind == "area":
-        return ([f"전용면적 {area:g}㎡"] if area else []), ["계약서 면적이 이 **전용면적**과 같은지 확인하세요"]
+        return ([f"전용면적 {area:g}㎡"] if area else []), (
+            [f"계약서 면적이 **{area:g}㎡**인지 보세요"] if area else ["계약서 면적이 이 **전용면적**과 같은지 보세요"]
+        )
     if kind == "doc_title":
-        return [], ["**말소사항 포함** 전부증명서인지 확인하세요. 아니면 다시 떼어 달라고 하세요"]
+        squeezed = "".join((doc_text or "").split())
+        if "말소사항" in squeezed:
+            return [DOC_FULL_FACT], [
+                "줄이 그어진 빚은 이미 끝났어요. **줄 없는 빚**만 따지면 돼요",
+                "다음에 다시 뗄 때도 **말소사항 포함**으로 떼세요",
+            ]
+        if "유효사항" in squeezed or "요약" in squeezed:
+            return [DOC_CURRENT_FACT], ["**말소사항 포함**으로 다시 떼어 이 앱에 올려 주세요"]
+        return [], ["다시 뗄 때는 **말소사항 포함**으로 떼세요"]
     if kind == "viewed_at":
         return ([f"{viewed_at} 뗀 서류"] if viewed_at else []), [
-            "계약서 쓰는 날, 그리고 **잔금 보내는 날 아침**에 다시 떼서 이 앱으로 대조하세요",
-            "잔금 보낸 날 **전입신고·확정일자**까지 마치세요",
+            "**계약하는 날**과 **잔금 날 아침**에 다시 떼서 대조하세요",
+            "잔금 날 **전입신고·확정일자**까지 마치세요",
         ]
     return [], []
 
@@ -157,14 +174,14 @@ def text_rule(kind: str, *, viewed_at: str | None = None) -> tuple[list[str], li
     """OCR 글자로 찾은 3종."""
     if kind == "pending_application":
         return ([f"{viewed_at} 뗀 날 처리 중"] if viewed_at else ["뗀 날 처리 중"]), [
-            "중개사에게 **무슨 신청인지**(근저당·말소 등) 물어보세요",
-            "처리가 끝난 등기부를 다시 떼어 **이 앱으로 대조**하세요",
-            "그 전에는 계약금·잔금을 **보내지 마세요**",
+            "중개사에게 **무슨 신청인지** 물어보세요",
+            "처리가 끝난 등기부를 다시 떼어 **대조**하세요",
+            "그 전엔 **돈을 보내지 마세요**",
         ]
     if kind == "separate_land":
-        return [], ["**토지 등기부**도 보여 달라고 해서 땅에 걸린 빚을 확인하세요"]
+        return [], ["**토지 등기부**도 받아 땅의 빚을 보세요", "금액을 알면 이 앱에 함께 올려 다시 분석하세요"]
     if kind == "joint_collateral":
-        return [], ["**공동담보목록**을 보여 달라고 해서 몇 채가 함께 묶였는지 확인하세요"]
+        return [], ["**공동담보목록**을 받아 몇 채가 묶였는지 보세요"]
     return [], []
 
 
@@ -177,5 +194,71 @@ def house_type_line(region: str | None, use: str | None) -> tuple[str | None, st
     if not use:
         return None, None
     where = f"{region} " if region else ""
-    return (f"{where}{use}로 계산",
-            f"이 집을 **{where}{use}**로 보고 경매 통계를 썼어요. 맞는지 확인하세요")
+    # 2026-10-31 규혁: 읽은 것은 단정한다 — "맞는지 확인하세요"처럼 되묻지 않는다(할 일 없음, 표의 '집 종류' 한 줄로 충분)
+    return f"{where}{use}로 계산", None
+
+
+#: 종류 → 권리자 칸 이름 (자세히 보기 표의 왼쪽 글자)
+_HOLDER_LABEL = {
+    "mortgage": "빌려준 곳",
+    "jeonse": "전세권자",
+    "lease_registration": "세입자",
+    "provisional_seizure": "청구한 쪽",
+    "seizure": "묶은 곳",
+    "auction": "신청한 쪽",
+    "trust": "신탁회사",
+}
+_AMOUNT_NAMES = ("빚 최대 한도", "전세금", "보증금", "청구한 돈")
+
+
+def fact_rows(kind: str, facts: list[str]) -> list[list[str]]:
+    """이 집에서 본 것 → 자세히 보기 표의 [이름, 값] 줄 (2026-10-31 사진에서 보기 리디자인). 표시 전용.
+
+    `facts`(카드 미리보기 한 줄)는 그대로 두고, 같은 사실을 왼쪽 이름이 붙은 표로 다시 쓴다. 모르는 꼴은 이름 없이 값만.
+    """
+    rows: list[list[str]] = []
+    owner_row: list[str] | None = None
+    for f in facts:
+        f = (f or "").strip()
+        if not f:
+            continue
+        if kind == "owner":
+            if f.startswith("지금 소유자"):
+                owner_row = ["지금 집주인", f.replace("지금 소유자", "").strip() or "-"]
+                rows.append(owner_row)
+            elif f in ("공동명의", "회사(법인)") and owner_row is not None:
+                owner_row[1] = f"{owner_row[1]} · {f}"
+            elif f == BLACKLIST_CLEAR_FACT:
+                rows.append(["공개 명단", "같은 이름 없음"])
+            elif f == BLACKLIST_MATCHED_FACT:
+                rows.append(["공개 명단", "같은 이름 있음"])
+            else:
+                rows.append(["", f])
+            continue
+        if kind == "doc_title":
+            if f == DOC_FULL_FACT:
+                rows += [["서류", "등기사항전부증명서 (말소사항 포함)"], ["뜻", "지워진 옛 기록까지 다 나온 **전체본**이에요"]]
+            elif f == DOC_CURRENT_FACT:
+                rows += [["서류", "등기사항전부증명서 (현재 유효사항)"], ["뜻", "지워진 기록이 빠진 **요약본**이에요"]]
+            else:
+                rows.append(["", f])
+            continue
+        if kind == "address":
+            rows.append(["집 종류", f[: -len("로 계산")]] if f.endswith("로 계산") else ["주소", f])
+            continue
+        if f.endswith("순위") and f[:-2].isdigit():
+            rows.append(["순위", f])
+        elif f.endswith(" 접수"):
+            rows.append(["접수", f[: -len(" 접수")]])
+        elif f.endswith(" 뗀 서류"):
+            rows.append(["뗀 날", f[: -len(" 뗀 서류")]])
+        elif f.startswith("전용면적 "):
+            rows.append(["전용면적", f[len("전용면적 "):]])
+        elif any(f.startswith(n + " ") for n in _AMOUNT_NAMES):
+            name = next(n for n in _AMOUNT_NAMES if f.startswith(n + " "))
+            rows.append([name, f[len(name) + 1:]])
+        elif kind in _HOLDER_LABEL:
+            rows.append([_HOLDER_LABEL[kind], f])
+        else:
+            rows.append(["", f])
+    return rows

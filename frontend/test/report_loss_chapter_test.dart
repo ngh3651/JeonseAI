@@ -90,7 +90,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('최우선변제 — 회색 칩 · 이 집에 맞춘 한 줄 (2026-10-31)', (tester) async {
+  testWidgets('최우선변제 — 회색 칩만, 미리보기 한 줄은 없다', (tester) async {
     await _pump(
       tester,
       const LossEstimate(
@@ -114,10 +114,11 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('loss-chip-priority')), findsOneWidget);
-    expect(find.koTextContaining('최우선변제 5,000만원 먼저 받는 계산이에요'), findsOneWidget);
+    // 미리보기에선 최우선변제 이야기를 하지 않는다 — 시뮬레이터에서 (2026-10-31 규혁)
+    expect(find.byKey(const ValueKey('loss-chapter-priority')), findsNothing);
   });
 
-  testWidgets('최우선변제 — 경매가 시작된 집은 못 받는다고 말한다', (tester) async {
+  testWidgets('최우선변제 — 경매가 시작된 집도 미리보기엔 한 줄 없음', (tester) async {
     await _pump(
       tester,
       const LossEstimate(
@@ -132,7 +133,7 @@ void main() {
         priorityStatus: PriorityStatus.blockedAuction,
       ),
     );
-    expect(find.koTextContaining('이미 경매가 시작돼'), findsOneWidget);
+    expect(find.byKey(const ValueKey('loss-chapter-priority')), findsNothing);
   });
 }
 

@@ -15,11 +15,14 @@ import '../../state/chat_handoff.dart';
 import '../chatbot/chat_selection.dart';
 
 class AskSelectionArea extends StatefulWidget {
-  const AskSelectionArea({super.key, required this.child});
+  const AskSelectionArea({super.key, required this.child, this.beforeAsk});
 
   static const String askLabel = '챗봇에 묻기';
 
   final Widget child;
+
+  /// [챗봇에 묻기] 직전에 할 일 — 하단 시트 안에서 쓰면 시트를 닫는다(2026-10-31).
+  final VoidCallback? beforeAsk;
 
   @override
   State<AskSelectionArea> createState() => _AskSelectionAreaState();
@@ -56,8 +59,10 @@ class _AskSelectionAreaState extends State<AskSelectionArea> {
             );
         }),
         onReply: () => _act(region, (t) {
+          final router = GoRouter.of(context);
+          widget.beforeAsk?.call();
           ChatHandoff.send(t);
-          GoRouter.of(context).go('/chatbot');
+          router.go('/chatbot');
         }),
         replyLabel: AskSelectionArea.askLabel,
         replyIcon: Icons.chat_bubble_outline,

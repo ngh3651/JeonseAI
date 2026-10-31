@@ -17,9 +17,6 @@ import 'package:provider/provider.dart';
 // import '../../models/market_price_source.dart' show marketPriceSourceLabel;
 import '../../design_system/components/app_button.dart';
 import '../../design_system/components/app_callout.dart';
-import '../../design_system/components/mascot_safe.dart';
-import '../../design_system/components/risk_badge.dart';
-import '../../design_system/components/safety_gauge.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -27,7 +24,6 @@ import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
 import '../../models/property_reports.dart';
 import '../../models/registry_mark_kind.dart';
-import '../../models/risk_grade.dart';
 import '../../repositories/analysis_repository.dart';
 import '../../repositories/content_repository.dart';
 import '../../state/case_prefetch.dart';
@@ -35,14 +31,13 @@ import '../../state/journey_schedule_store.dart';
 import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import '../../state/report_focus.dart';
-import '../../utils/money_format.dart';
 import '../common/share_feedback.dart';
-import '../../utils/korean_date.dart';
 import '../search/capture_issue_panel.dart';
 import '../search/capture_loop_route.dart';
 import 'journey_chapter.dart';
 import 'retake_notice_card.dart';
 import '../legal/notices.dart';
+import 'report_conclusion_card.dart';
 import 'report_inputs_sheet.dart';
 import 'registry_entry_card.dart';
 import 'registry_findings.dart';
@@ -542,16 +537,6 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  /// 등기부를 뗀 지 며칠 됐나 — 리포트는 **분석한 날이 아니라 등기부를 뗀 날** 기준이다(2026-10-30 규혁).
-  ///
-  /// 예전엔 '분석한 지 하루 지났다'는 노란 배너를 맨 위에 끼웠다 — 분석일은 중요하지 않고 구조만 흐트렸다.
-  /// 계약 직전 근저당 설정은 실제 전세사기 수법이라 **오래된 등기부**인 것만 결론 아래 한 줄로 말한다.
-  /// 새로 떼서 대조하는 길은 계약 여정에 있다.
-  int? _registryAgeDays(AnalysisReport report) {
-    final viewed = parseRegistryViewedAt(report.registryViewedAt);
-    return viewed == null ? null : daysSince(viewed);
-  }
-
   /// 무엇이 표시됐는지 **종류별 개수로** — `집주인 이름 1곳과 빚 3건을 사진 위에 표시했어요`.
   ///
   /// 지금은 진입 카드가 열람일을 쓰느라 화면에 나가지 않지만, 조립 로직은 남겨 둔다
@@ -564,118 +549,11 @@ class _ReportScreenState extends State<ReportScreen> {
     return '$phrase${MarkLegend.eul(phrase)} 사진 위에 표시했어요';
   }
 
-  /// 등급 → 마스코트 상태 (양호=safe, 확인필요=caution, 위험=danger)
-  MascotState _mascotForGrade(RiskGrade grade) => switch (grade) {
-    RiskGrade.danger => MascotState.danger,
-    RiskGrade.caution => MascotState.caution,
-    RiskGrade.ok => MascotState.safe,
-  };
-
-  /// 결론 헤더 — 등급 크게 + 의사결정 한 줄 + 보증금 (IA §0 + 서연 리뷰 반영)
-  Widget _conclusionHeader(AnalysisReport report) {
-    // 2026-08-03: 시세가 자동 조회에서도 올 수 있게 되면서 "(입력값)"이 거짓이 될 수
-    // 있다. 출처를 하드코딩하지 않고 서버가 알려 준 대로 말한다.
-    final String priceText = report.marketPrice != null
-        ? '보증금 ${formatWon(report.deposit)} · 시세 ${formatWon(report.marketPrice!)}'
-        : '보증금 ${formatWon(report.deposit)} · 시세를 못 구했어요';
-
-    return Column(
-      children: [
-        SafetyGauge(
-          grade: report.grade,
-          progress: report.gaugeProgress,
-          // 리포트 전체가 이 등기부 기준이다 — 분석한 날보다 등기부를 뗀 날이 중요하다(2026-10-30)
-          caption: report.registryViewedAt != null
-              ? '${report.registryViewedAt} 등기부 기준'
-              : '${formatDate(report.analyzedAt)} 분석',
-          size: 190,
-        ),
-        const SizedBox(height: AppSpacing.md),
-        AppText(
-          report.headline,
-          style: AppTypography.headline,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        // 진행/보류/회피 의사결정 대응 — 문구는 E-1에서 등급 체계와 함께 확정
-        RiskBadge(
-          grade: report.grade,
-          labelOverride: report.grade.decisionLabel,
-          large: true,
-        ),
-        const SizedBox(height: AppSpacing.md),
-        // 등급별 마스코트 — 게이지(190)·헤드라인·배지 '뒤'에 작게 둔다.
-        // 보수적 편향(decisions.md 2026-07-09): 위험할수록 마스코트를 더 작게 해
-        // 경고(게이지·배지·문구)가 항상 주인공이게 한다 (페르소나 2인 리뷰 반영 —
-        // 서연: 위험일수록 작게 / 지수: 걱정 표정이 경고를 보강하므로 유지).
-        // danger를 가장 작게(경고 우선). 양호(safe)는 반짝이 축하 연출이 강해
-        // '안전 단언' 인상을 줄 수 있어 크게 키우지 않는다(design-reviewer 지적 반영).
-        MascotSafe(
-          size: report.grade == RiskGrade.danger ? 40 : 48,
-          state: _mascotForGrade(report.grade),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        AppText(
-          report.address,
-          style: AppTypography.caption,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        AppText(
-          priceText,
-          style: AppTypography.caption.copyWith(
-            color: AppColors.textBody,
-            fontWeight: FontWeight.w600,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        // 오래된 등기부만 한 줄로 — 날짜는 게이지 아래에 있다 (2026-10-30)
-        if (_registryAgeDays(report) case final int days when days >= 1) ...[
-          const SizedBox(height: AppSpacing.xs),
-          AppText(
-            '$days일 전에 뗀 등기부예요',
-            key: const ValueKey('report-registry-date'),
-            style: AppTypography.caption.copyWith(
-              color: AppColors.caution,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-        // ── [D4 · 2026-08-14] 시세 출처 칩을 화면에서 뺐다 ──────────────────────
-        // 실기기에서 결론 바로 아래 "자동 조회 · 공시가격 기준 (2025.1.1)"이 붙으니,
-        // 등급을 읽어야 할 자리에서 시선이 출처 문자열로 새 나갔다.
-        //
-        // ⚠ **출처 표기 자체를 버린 것이 아니다.** 서버 응답의 marketPriceSource ·
-        //   marketPriceAsOf · marketPriceSampleCount는 그대로 살아 있고
-        //   (analysis_report.dart), 모델·계약도 손대지 않았다. 여기 렌더링만 뺐다.
-        //   되돌리려면 아래 주석을 그대로 살리고 파일 상단의
-        //   `marketPriceSourceLabel` import 주석만 함께 풀면 된다.
-        //
-        // const SizedBox(height: AppSpacing.xs),
-        // Center(
-        //   child: AmberHint(
-        //     tone: report.marketPrice == null
-        //         ? AmberHintTone.amber
-        //         : (report.marketPriceSource.isAuto
-        //               ? AmberHintTone.positive
-        //               : AmberHintTone.neutral),
-        //     icon: report.marketPrice == null
-        //         ? Icons.help_outline
-        //         : (report.marketPriceSource.isAuto
-        //               ? Icons.verified_outlined
-        //               : Icons.edit_outlined),
-        //     text: marketPriceSourceLabel(
-        //       source: report.marketPriceSource,
-        //       asOf: report.marketPriceAsOf,
-        //       sampleCount: report.marketPriceSampleCount,
-        //       hasPrice: report.marketPrice != null,
-        //     ),
-        //   ),
-        // ),
-      ],
-    );
-  }
+  /// 결론 헤더 — 2026-10-31 리디자인: 게이지 대신 결론 카드 하나(report_conclusion_card.dart).
+  ///
+  /// 시세 출처 칩은 [D4 · 2026-08-14]대로 화면에 두지 않는다(서버 응답의 출처 값은 그대로 살아 있다).
+  Widget _conclusionHeader(AnalysisReport report) =>
+      ReportConclusionCard(report: report);
 
   /// 시세 괴리 정보 카드 — 실거래가와 정부 공시 기준이 **둘 다** 있을 때만 나온다.
   ///

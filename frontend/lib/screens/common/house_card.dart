@@ -100,7 +100,7 @@ class HouseCard extends StatelessWidget {
       width: width,
       decoration: BoxDecoration(
         borderRadius: radius,
-        gradient: _TopBandGradient(houseTintColor(grade), AppColors.surface),
+        gradient: TopTintGradient(houseTintColor(grade), AppColors.surface),
         border: selected
             ? Border.all(color: AppColors.primary, width: 2)
             : (outlined ? Border.all(color: AppColors.line, width: 1.5) : null),
@@ -240,8 +240,8 @@ class HouseCard extends StatelessWidget {
 }
 
 /// 카드 높이가 달라도 물듦이 늘 위 64에서 끝나는 그라데이션.
-class _TopBandGradient extends LinearGradient {
-  _TopBandGradient(this.tint, this.surface)
+class TopTintGradient extends LinearGradient {
+  TopTintGradient(this.tint, this.surface, {this.band = 64})
     : super(
         colors: [tint, surface],
         begin: Alignment.topCenter,
@@ -251,11 +251,14 @@ class _TopBandGradient extends LinearGradient {
   final Color tint;
   final Color surface;
 
+  /// 물듦이 끝나는 높이 (집 카드 64 · 리포트 결론 카드 150)
+  final double band;
+
   @override
   Shader createShader(Rect rect, {TextDirection? textDirection}) {
     final double stop = rect.height <= 0
         ? 1
-        : (64 / rect.height).clamp(0.0, 1.0);
+        : (band / rect.height).clamp(0.0, 1.0);
     return LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,

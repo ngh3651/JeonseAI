@@ -244,8 +244,15 @@ void main() {
     expect(find.koText('다시 떼서 대조'), findsNothing);
     expect(find.koText('재분석'), findsNothing);
     expect(find.koTextContaining('결과예요'), findsNothing);
+    // 2026-10-31 결론 카드: "N일 전에 뗀 등기부예요" 줄 대신 홈 집 카드와 같은 시계 칩 "N일 전"
     expect(find.byKey(const ValueKey('report-registry-date')), findsOneWidget);
-    expect(find.koTextContaining('일 전에 뗀 등기부예요'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('report-registry-date')),
+        matching: find.koTextContaining('일 전'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('③ [시세 입력하기]는 사진이 이 폰에 있을 때만 그린다 (누를 수 없는 버튼을 두지 않는다)', (

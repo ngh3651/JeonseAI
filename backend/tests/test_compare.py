@@ -759,3 +759,17 @@ def test_다른_집이나_기준_리포트는_대신하지_않는다():
 
     assert store.get("rg-b", device_id=device) is not None
     assert store.get("rg-a", device_id=device) is not None
+
+
+def test_여정_할_일_속_어려운_말은_풀이가_붙는다():
+    """2026-10-31 인터뷰 반영 — 가계약금 문구 · 확인·설명서 4번 칸 · 전월세 신고. 어려운 말은 초록 밑줄(termGlossary)."""
+    from app.services import journey
+
+    items = {i.text: i for s in journey.load_stages() for i in s.items}
+    back = items["반환 조건 문자로 남기기"]
+    assert "해약금으로 한다" in back.why
+    assert {"계약금", "가계약금", "해약금"} <= set(back.termGlossary)
+    assert "중개대상물 확인·설명서" in items["세금 체납·다른 세입자 보증금 기록 받기"].termGlossary
+    assert "특약" in items["전월세 신고 누가 할지 정하기"].termGlossary
+    # 어디에나 나오는 기본 말은 밑줄을 붙이지 않는다
+    assert all("등기부" not in i.termGlossary and "보증보험" not in i.termGlossary for i in items.values())

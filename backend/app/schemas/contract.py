@@ -422,6 +422,8 @@ class JourneyItem(BaseModel):
     why: str
     # 어디서 하는 일인지 — 장소·전화·비용을 " · "로 (2026-10-26 여정 디자인). 없으면 null(옛 앱은 무시)
     where: Optional[str] = None
+    # why 속 어려운 말 → 풀이 (2026-10-31, 근거 카드 termGlossary와 같은 규칙 — 키가 why에 글자 그대로). 옛 앱은 무시
+    termGlossary: dict[str, str] = Field(default_factory=dict)
 
 
 class JourneyStage(BaseModel):

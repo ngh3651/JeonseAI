@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 import statistics
 from dataclasses import dataclass, field
@@ -61,7 +62,8 @@ _CANCEL_TARGET = re.compile(r"(\d{1,3})번([가-힣]{1,20}?)말소")
 # 여기서 좁힌 것은 "산문 속의 말소"뿐이다.
 _CANCEL_ANY = re.compile(r"등기말소|말소등기|말소$")
 # 페이지 머리말(주소 줄) — 항목 본문이 아니므로 항목에 붙이지 않는다.
-_PAGE_HEADER = re.compile(r"^\s*\[(집합건물|건물|토지)\]")
+# 2026-10-31: 전각 괄호(［ ］)·괄호 안 띄어쓰기('[집합 건물]')도 같은 머리말로 본다(사진 OCR에서 흔하다).
+_PAGE_HEADER = re.compile(r"^\s*[\[［]\s*(집합\s*건물|건물|토지)\s*[\]］]")
 # 문서 머리말·꼬리말 — 표지/발급정보 줄. 어떤 등기 항목에도 속하지 않는다.
 # 이걸 걸러내지 않으면, 앞 페이지에서 열려 있던 항목이 다음 페이지 표지의
 # "등기사항전부증명서(**말소**사항 포함)" 를 삼켜 **엉뚱한 항목이 말소로 보인다**
@@ -92,7 +94,22 @@ RIGHTS_SECTIONS = ("갑구", "을구")
 UNKNOWN_SECTION = "미상"
 
 # 페이지 꼬리말 표식 — 실측(1.png "1/5", 5.png "5/5"). 페이지 순서·누락 판별에 쓴다.
-_PAGE_MARKER = re.compile(r"^(\d{1,3})\s*/\s*(\d{1,3})$")
+#
+# 2026-10-31: 꼬리말이 **띄어 쓴 `2 / 3`**이면 OCR이 `2`·`/`·`3` 세 낱말로 주기도 하고(같은 서류의
+# 다른 쪽은 한 낱말로 줬다), 앞 문장에 붙여 `아닙니다.2/3`으로 주기도 한다. 예전엔 낱말 하나가 통째로
+# `N/M`일 때만 읽어서 그 쪽이 '아래가 잘림' + '빠진 쪽'이 됐고 → 빚 형광펜이 전부 숨고 '양호'가 막혔다
+# (2026-10-31 시연 샘플 스캔본 2쪽). 이제 이웃한 낱말 2~3개를 이어 보고, 낱말 끝에 붙은 표식도 읽는다.
+_SLASH = "/／"
+_PAGE_MARKER = re.compile(rf"^(\d{{1,3}})\s*[{_SLASH}]\s*(\d{{1,3}})$")
+# 앞말에 붙은 표식 — 숫자·소수점 숫자(`38.42/…`)·쉼표 뒤는 아니다
+_MARKER_TAIL = re.compile(rf"(?<![\d,{_SLASH}])(?<!\d\.)(\d{{1,3}})\s*[{_SLASH}]\s*(\d{{1,3}})$")
+_NUM_ONLY = re.compile(r"^(\d{1,3})$")
+_NUM_TAIL = re.compile(rf"(?<![\d,{_SLASH}])(?<!\d\.)(\d{{1,3}})$")
+_NUM_SLASH_TAIL = re.compile(rf"(?<![\d,{_SLASH}])(?<!\d\.)(\d{{1,3}})[{_SLASH}]$")
+_SLASH_NUM = re.compile(rf"^[{_SLASH}](\d{{1,3}})$")
+_SLASH_ONLY = re.compile(rf"^[{_SLASH}]$")
+# 이어 볼 낱말 사이 간격 상한 (× 글자 높이) — 멀리 떨어진 다른 칸 숫자를 이어 붙이지 않게
+_MARKER_JOIN_GAP = 2.0
 # 발급확인번호 — 같은 발급본이면 전 페이지 동일(실측: 1.png·5.png 모두 ABCD-EFGH-0000)
 _ISSUE_NO = re.compile(r"([A-Z]{3,5}[-－][A-Z]{3,5}[-－]\d{3,5})")
 # 열람일시 — **표시 전용**이다. 판정에 쓰지 않는다.
@@ -140,6 +157,13 @@ class Word:
     y0: float
     x1: float
     y1: float
+    # 기울기 보정 좌표(가운데 점) — **줄 묶기·칸 판정 전용** (2026-10-31, `group_lines`가 채운다).
+    # 사진이 비스듬하면 같은 줄 글자도 y가 조금씩 달라 줄이 쪼개진다. 형광펜·가림 상자는 언제나
+    # 위의 원본 좌표(`box`)로 그린다. None = 보정하지 않음(바로 선 사진) = 원본과 같다.
+    lx: float | None = field(default=None, repr=False, compare=False)
+    ly: float | None = field(default=None, repr=False, compare=False)
+    # 기울어진 낱말의 상자는 실제 글자보다 키가 크다(비스듬한 직사각형을 감싼 상자) — 바로 세운 글자 높이.
+    lh: float | None = field(default=None, repr=False, compare=False)
 
     @property
     def cx(self) -> float:
@@ -148,6 +172,27 @@ class Word:
     @property
     def cy(self) -> float:
         return (self.y0 + self.y1) / 2
+
+    # ── 보정 좌표 (줄·칸 판정용) — 보정하지 않았으면 원본 좌표 그대로 ──
+    @property
+    def lcx(self) -> float:
+        return self.cx if self.lx is None else self.lx
+
+    @property
+    def lcy(self) -> float:
+        return self.cy if self.ly is None else self.ly
+
+    @property
+    def lheight(self) -> float:
+        return self.height if self.lh is None else self.lh
+
+    @property
+    def lx0(self) -> float:
+        return self.lcx - (self.x1 - self.x0) / 2
+
+    @property
+    def lx1(self) -> float:
+        return self.lcx + (self.x1 - self.x0) / 2
 
     @property
     def height(self) -> float:
@@ -332,25 +377,204 @@ def parse_words(raw: dict) -> list[Word]:
     return out
 
 
-def group_lines(words: list[Word], tol_ratio: float = 0.6) -> list[Line]:
-    """y중심과 글자높이로 같은 줄을 묶는다 (표 형식이라 같은 y의 다른 칸도 한 줄이 된다)."""
+@dataclass(frozen=True)
+class Skew:
+    """사진 기울기 — 글자 줄의 기울기(dy/dx)를 y에 따라 1차식으로 본다: `slope(y) = slope0 + per_y·(y − yc)`.
+
+    한 각도(종이를 돌려 찍음)면 `per_y = 0`. 폰을 옆으로 비스듬히 들면(원근) 위·아래 줄의 기울기가 달라져
+    `per_y`가 생긴다. **AI가 아니라 OCR 낱말 좌표의 기하 계산**이다(사진 픽셀은 건드리지 않는다).
+    """
+
+    slope0: float
+    per_y: float
+    xc: float
+    yc: float
+    pairs: int
+
+    def slope_at(self, y: float) -> float:
+        return self.slope0 + self.per_y * (y - self.yc)
+
+    @property
+    def degrees(self) -> float:
+        return math.degrees(math.atan(self.slope0))
+
+
+# 기울기 보정 기준 — **사진 기하 기준(위험 임계값 아님)**. 왜: 줄 묶기 허용 오차가 글자 높이의 0.6배라
+# 폭 1,900px 사진에서 1°만 기울어도 줄 양 끝이 33px(글자 높이 25px 안팎) 어긋나 같은 줄이 쪼개진다
+# → 순위번호와 금액이 '다른 줄'이 돼 빚 형광펜이 사라진다(합성 을구로 잰 값: 2°부터 사라짐 — 테스트).
+_SKEW_MIN_PAIRS = 12  # 이웃 낱말 쌍이 이보다 적으면 기울기를 믿지 않는다(보정 안 함)
+_SKEW_MIN_SLOPE = math.tan(math.radians(0.25))  # 이보다 덜 기울면 바로 선 것으로 본다 — 예전과 똑같이 묶는다
+_SKEW_MAX_SLOPE = math.tan(math.radians(25))  # 이보다 더 기울면 보정하지 않는다(옆으로 찍은 사진은 orientation 몫)
+_SKEW_PAIR_GAP = 3.0  # 이웃으로 볼 낱말 사이 x 간격 상한 (× 글자 높이)
+_SKEW_PAIR_DY = 0.9  # 이웃으로 볼 y 차이 상한 (× 글자 높이) — 윗줄·아랫줄 낱말과 짝짓지 않게
+_SKEW_BINS = 8  # 높이를 이만큼 구간으로 나눠 구간마다 가운데 기울기를 본다(원근 사진은 위·아래가 다르다)
+_SKEW_INLIER = math.tan(math.radians(1.5))  # 1차식에서 이만큼 넘게 벗어난 쌍은 버린다(다른 줄과 짝지은 것)
+_SKEW_RESIDUAL = math.tan(math.radians(0.8))  # 다시 맞춘 뒤 이만큼 넘게 벗어난 쌍은 한 번 더 버린다
+_SKEW_SPAN_FOR_TREND = 0.3  # 쌍들이 글자 높이 범위의 이만큼 넘게 퍼져 있어야 위·아래 기울기 차이를 믿는다
+
+
+def _weighted_median(values: list[float], weights: list[float]) -> float:
+    order = sorted(range(len(values)), key=values.__getitem__)
+    half = sum(weights) / 2
+    acc = 0.0
+    for i in order:
+        acc += weights[i]
+        if acc >= half:
+            return values[i]
+    return values[order[-1]]
+
+
+def _fit_slope(pairs: list[tuple[float, float, float]]) -> tuple[float, float, float]:
+    """(기울기, 무게, y) 쌍들 → 가중 최소제곱 1차식 (a, b, ybar): slope(y) = a + b·(y − ybar)."""
+    total = sum(p[1] for p in pairs)
+    ybar = sum(p[1] * p[2] for p in pairs) / total
+    a = sum(p[1] * p[0] for p in pairs) / total
+    syy = sum(p[1] * (p[2] - ybar) ** 2 for p in pairs)
+    b = sum(p[1] * (p[2] - ybar) * (p[0] - a) for p in pairs) / syy if syy > 0 else 0.0
+    return a, b, ybar
+
+
+def _neighbor_pairs(usable: list[Word]) -> list[tuple[float, float, float]]:
+    """낱말마다 **바로 오른쪽 이웃**(간격이 좁고 높이가 비슷한 같은 줄 낱말)과 짝 → (기울기, 가로 거리, 가운데 y)."""
+    by_x0 = sorted(usable, key=lambda w: w.x0)
+    pairs: list[tuple[float, float, float]] = []
+    for i, w in enumerate(by_x0):
+        h = w.height
+        best: tuple[float, Word] | None = None
+        for v in by_x0[i + 1 :]:
+            if v.x0 > w.x1 + _SKEW_PAIR_GAP * h:
+                break  # x0 순으로 줄 세웠으니 여기부터는 전부 더 멀다
+            if v.x0 < w.x1 - 0.5 * h:
+                continue  # 가로로 겹친다 = 윗줄·아랫줄 낱말
+            if not 0.6 <= v.height / h <= 1.67:
+                continue
+            if abs(v.cy - w.cy) > _SKEW_PAIR_DY * max(h, v.height):
+                continue
+            gap = v.x0 - w.x1
+            if best is None or gap < best[0]:
+                best = (gap, v)
+        if best is not None:
+            v = best[1]
+            dx = v.cx - w.cx
+            if dx > 0:
+                pairs.append(((v.cy - w.cy) / dx, dx, (w.cy + v.cy) / 2))
+    return pairs
+
+
+def estimate_skew(words: list[Word]) -> Skew | None:
+    """OCR 낱말 좌표로 사진 기울기를 잰다. 바로 섰거나(0.25° 미만) 믿을 근거가 부족하면 None. 예외 없음.
+
+    ① 이웃 낱말 쌍의 기울기 → ② 높이 구간마다 **가운데 값**(윗줄·아랫줄과 잘못 짝지은 쌍은 가운데 값이 밀어낸다)
+    → ③ 구간 가운데 값들로 y에 따른 1차식 → ④ 그 선에서 벗어난 쌍을 버리고 쌍으로 다시 맞춘다.
+    """
+    usable = [w for w in words if w.text.strip() and w.x1 > w.x0 and w.y1 > w.y0]
+    if len(usable) <= _SKEW_MIN_PAIRS:
+        return None
+    h_med = statistics.median(w.height for w in usable)
+    usable = [w for w in usable if 0.5 * h_med <= w.height <= 2.0 * h_med]
+    pairs = _neighbor_pairs(usable)
+    if len(pairs) < _SKEW_MIN_PAIRS:
+        return None
+
+    y_min, y_max = min(p[2] for p in pairs), max(p[2] for p in pairs)
+    n_bins = max(1, min(_SKEW_BINS, len(pairs) // 6))
+    step = (y_max - y_min) / n_bins or 1.0
+    bins: list[list[tuple[float, float, float]]] = [[] for _ in range(n_bins)]
+    for p in pairs:
+        bins[min(n_bins - 1, int((p[2] - y_min) / step))].append(p)
+    centers = [
+        (
+            _weighted_median([q[0] for q in b], [q[1] for q in b]),
+            sum(q[1] for q in b),
+            sum(q[1] * q[2] for q in b) / sum(q[1] for q in b),
+        )
+        for b in bins
+        if len(b) >= 3
+    ]
+    if not centers:
+        return None
+    a, b, ybar = _fit_slope(centers)
+    inliers = [p for p in pairs if abs(p[0] - (a + b * (p[2] - ybar))) <= _SKEW_INLIER]
+    if len(inliers) < _SKEW_MIN_PAIRS:
+        return None
+    a, b, ybar = _fit_slope(inliers)
+    refit = [p for p in inliers if abs(p[0] - (a + b * (p[2] - ybar))) <= _SKEW_RESIDUAL]
+    if len(refit) >= _SKEW_MIN_PAIRS:
+        inliers = refit
+        a, b, ybar = _fit_slope(inliers)
+
+    ys = [w.cy for w in usable]
+    y_lo, y_hi = min(ys), max(ys)
+    pair_ys = [p[2] for p in inliers]
+    if (max(pair_ys) - min(pair_ys)) < _SKEW_SPAN_FOR_TREND * max(1.0, y_hi - y_lo):
+        b = 0.0  # 쌍이 한쪽에 몰려 있으면 위·아래 차이를 믿지 않는다 — 한 각도로만 본다
+        a = sum(p[1] * p[0] for p in inliers) / sum(p[1] for p in inliers)
+    ends = (a + b * (y_lo - ybar), a + b * (y_hi - ybar))
+    worst = max(abs(e) for e in ends)
+    if worst < _SKEW_MIN_SLOPE or worst > _SKEW_MAX_SLOPE:
+        return None
+    xc = statistics.median(w.cx for w in usable)
+    return Skew(slope0=a, per_y=b, xc=xc, yc=ybar, pairs=len(inliers))
+
+
+def apply_skew(words: list[Word], skew: Skew | None) -> None:
+    """낱말마다 보정 y(`ly`)를 채운다 — **그 높이의 줄 기울기만큼 비스듬한 선을 수평으로 편 값**. None이면 지운다.
+
+    x는 고치지 않는다(`lx = None`): 원근 사진은 가로줄만 기울고 세로 칸은 그대로라, 사진을 통째로 돌리듯 x까지
+    고치면 오히려 칸이 밀린다. 칸이 아래로 갈수록 옆으로 밀리는 것은 `build_items`의 밴드 따라가기가 맡는다.
+    """
+    for w in words:
+        w.lx = None
+        if skew is None:
+            w.ly = w.lh = None
+            continue
+        slope = skew.slope_at(w.cy)
+        w.ly = w.cy - slope * (w.cx - skew.xc)
+        # 너비 W·높이 H 글자가 θ만큼 기울면 상자 높이 = W·sinθ + H·cosθ, 너비 = W·cosθ + H·sinθ → H를 거꾸로 푼다
+        theta = math.atan(abs(slope))
+        c, si = math.cos(theta), math.sin(theta)
+        denom = c * c - si * si
+        box_w, box_h = w.x1 - w.x0, w.y1 - w.y0
+        upright = (box_h * c - box_w * si) / denom if denom > 0.1 else box_h
+        w.lh = min(box_h, max(0.5 * box_h, upright))
+
+
+class _Auto:
+    pass
+
+
+_AUTO = _Auto()
+
+
+def group_lines(
+    words: list[Word], tol_ratio: float = 0.6, *, skew: Skew | None | _Auto = _AUTO
+) -> list[Line]:
+    """y중심과 글자높이로 같은 줄을 묶는다 (표 형식이라 같은 y의 다른 칸도 한 줄이 된다).
+
+    2026-10-31: 사진이 비스듬하면 **기울기만큼 바로잡은 좌표**로 묶는다(`estimate_skew` — 0.25° 미만이면
+    예전과 똑같다). 줄 안의 낱말 순서도 바로잡은 x로. 낱말의 원본 좌표(`box`)는 그대로다.
+    """
     if not words:
         return []
-    ordered = sorted(words, key=lambda w: (w.cy, w.x0))
+    if isinstance(skew, _Auto):
+        skew = estimate_skew(words)
+    apply_skew(words, skew)
+    ordered = sorted(words, key=lambda w: (w.lcy, w.lx0))
     buckets: list[list[Word]] = [[ordered[0]]]
     for w in ordered[1:]:
         cur = buckets[-1]
-        ref_cy = statistics.median([x.cy for x in cur])
+        ref_cy = statistics.median([x.lcy for x in cur])
         ref_h = statistics.median([x.height for x in cur] + [w.height])
-        if abs(w.cy - ref_cy) <= tol_ratio * ref_h:
+        if abs(w.lcy - ref_cy) <= tol_ratio * ref_h:
             cur.append(w)
         else:
             buckets.append([w])
-    return [Line(index=i, words=sorted(b, key=lambda w: w.x0)) for i, b in enumerate(buckets)]
+    return [Line(index=i, words=sorted(b, key=lambda w: w.lx0)) for i, b in enumerate(buckets)]
 
 
 def median_height(words: list[Word]) -> float:
-    return statistics.median([w.height for w in words]) if words else 16.0
+    """글자 높이 가운데 값 — 칸 사이 간격·이름 간격의 잣대. 기울어진 사진이면 바로 세운 높이로(상자 높이는 부풀어 있다)."""
+    return statistics.median([w.lheight for w in words]) if words else 16.0
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -364,7 +588,7 @@ def _group_by_gap(words: list[Word], gap: float) -> list[list[Word]]:
         return []
     groups: list[list[Word]] = [[words[0]]]
     for w in words[1:]:
-        if w.x0 - groups[-1][-1].x1 > gap:
+        if w.lx0 - groups[-1][-1].lx1 > gap:
             groups.append([w])
         else:
             groups[-1].append(w)
@@ -384,11 +608,11 @@ def detect_columns(line: Line, page_name: str, med_h: float) -> ColumnBands | No
     head = "".join(w.text for w in groups[0])
     if head not in _RANK_HEADERS:
         return None
-    rank = (groups[0][0].x0, groups[0][-1].x1)
+    rank = (groups[0][0].lx0, groups[0][-1].lx1)
     if len(groups) >= 3:
-        purpose = (rank[1], groups[2][0].x0)
+        purpose = (rank[1], groups[2][0].lx0)
     elif len(groups) == 2:
-        purpose = (rank[1], groups[1][-1].x1)
+        purpose = (rank[1], groups[1][-1].lx1)
     else:
         purpose = (rank[1], rank[1])
     return ColumnBands(kind=head, rank=rank, purpose=purpose, origin=f"{page_name}:L{line.index}")
@@ -412,16 +636,38 @@ def find_rank(line: Line, bands: ColumnBands | None) -> Word | None:
     lo, hi = bands.rank
     margin = _RANK_BAND_MARGIN * max(1.0, hi - lo)
     for w in line.words:
-        if lo - margin <= w.cx <= hi + margin and _RANK_TEXT.match(w.text.strip()):
+        if lo - margin <= w.lcx <= hi + margin and _RANK_TEXT.match(w.text.strip()):
             return w
     return None
+
+
+def _follow_rank(bands: ColumnBands | None, rank_word: Word) -> ColumnBands | None:
+    """찾은 순위번호 쪽으로 칸 밴드를 옮긴다 (2026-10-31).
+
+    폰을 비스듬히 들고 찍으면(원근) 위가 좁고 아래가 넓어져 **아래 줄로 갈수록 칸이 옆으로 밀린다**.
+    밴드는 표 머리 줄(맨 위)에서 한 번 정하므로, 쪽 아래쪽 순위번호가 밴드 밖으로 나가 항목이 통째로 빠진다.
+    순위번호는 칸 가운데에 찍히므로, 찾을 때마다 밴드 가운데를 그 순위번호에 맞춘다 — 바로 이어지는 다음
+    항목은 거의 같은 자리라 놓치지 않는다. 바로 찍은 사진은 순위번호가 이미 가운데라 거의 안 움직인다.
+    """
+    if bands is None:
+        return None
+    lo, hi = bands.rank
+    delta = rank_word.lcx - (lo + hi) / 2
+    if abs(delta) < 1.0:
+        return bands
+    return ColumnBands(
+        kind=bands.kind,
+        rank=(lo + delta, hi + delta),
+        purpose=(bands.purpose[0] + delta, bands.purpose[1] + delta),
+        origin=bands.origin,
+    )
 
 
 def _purpose_words(line: Line, bands: ColumnBands | None) -> list[Word]:
     if bands is None:
         return []
     lo, hi = bands.purpose
-    return [w for w in line.words if lo <= w.cx <= hi]
+    return [w for w in line.words if lo <= w.lcx <= hi]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -476,7 +722,7 @@ def extract_names(line: Line, page_index: int, med_h: float) -> list[NameHit]:
                 if j < 0:
                     break
                 prev = line.words[j]
-                if prev.x1 < w.x0 - max_gap * back:
+                if prev.lx1 < w.lx0 - max_gap * back:
                     break  # 너무 멀다 → 다른 칸. 억지로 끌어오지 않는다.
                 candidates.append((prev.text.strip(), j))
 
@@ -550,6 +796,7 @@ def build_items(pages: list[OcrPage], tol_ratio: float = 0.6) -> list[RegistryIt
 
             rank_word = find_rank(line, bands)
             if rank_word is not None:
+                bands = _follow_rank(bands, rank_word)
                 current = RegistryItem(
                     section=section or UNKNOWN_SECTION,
                     rank=rank_word.text.strip().replace("－", "-"),
@@ -604,6 +851,8 @@ class DocumentCheck:
     # 쪽 머리의 '[집합건물] …' 주소(띄어쓰기 한 칸으로 정리, 머리표 뗌) — 같은 집 묶기용. 표시·판정에 쓰지 않는다.
     # 모든 쪽 머리에 같은 줄이 찍혀 있어 **어느 쪽을 올렸든** 같은 값이 나온다(호수까지 들어 있다).
     header_address: str | None = None
+    # 그 머리표 — '집합건물' · '건물' · '토지' (2026-10-31). 시세 조회 주소를 쪽 머리로 채울 때 등기 종류를 함께 넘긴다.
+    header_kind: str | None = None
 
 
 def header_address(pages: list[OcrPage]) -> str | None:
@@ -614,6 +863,16 @@ def header_address(pages: list[OcrPage]) -> str | None:
                 text = " ".join(_PAGE_HEADER.sub("", line.display).split())
                 if text:
                     return text
+    return None
+
+
+def header_kind(pages: list[OcrPage]) -> str | None:
+    """쪽 머리의 머리표 '[집합건물]' → '집합건물'(띄어쓰기 없앰). 없으면 None."""
+    for page in pages:
+        for line in page.lines:
+            m = _PAGE_HEADER.match(line.display)
+            if m:
+                return re.sub(r"\s+", "", m.group(1))
     return None
 
 
@@ -640,13 +899,41 @@ def _page_footer_facts(
                 # 말이 안 되는 날짜는 버린다 — 잘못 읽은 값을 화면에 내보내느니 없는 편이 낫다
                 if 2000 <= y <= 2100 and 1 <= mo <= 12 and 1 <= d <= 31:
                     viewed = f"{y}.{mo:02d}.{d:02d}"
-        for w in line.words:
-            m = _PAGE_MARKER.match(w.text.strip())
-            if m:
-                n, total = int(m.group(1)), int(m.group(2))
-                if 1 <= n <= total <= 200:
-                    marker = (n, total)
+        found = _line_page_marker(line)
+        if found is not None:
+            marker = found  # 아래 줄일수록 꼬리말이다 — 마지막에 읽힌 것을 쓴다(예전과 같음)
     return marker, issue, address, viewed
+
+
+def _line_page_marker(line: Line) -> tuple[int, int] | None:
+    """줄 하나에서 쪽 번호 `N/M`을 찾는다 — 한 낱말 · 앞말에 붙은 낱말 · 이웃한 2~3 낱말. 없으면 None."""
+    words = line.words
+    texts = [w.text.strip() for w in words]
+    found: tuple[int, int] | None = None
+
+    def close(i: int, j: int) -> bool:
+        a, b = words[i], words[j]
+        return b.lx0 - a.lx1 <= _MARKER_JOIN_GAP * max(a.height, b.height)
+
+    for i, t in enumerate(texts):
+        m = _PAGE_MARKER.match(t) or _MARKER_TAIL.search(t)
+        pair: tuple[str, str] | None = (m.group(1), m.group(2)) if m else None
+        if pair is None and i + 1 < len(texts) and close(i, i + 1):
+            a, b = _NUM_TAIL.search(t), _SLASH_NUM.match(texts[i + 1])
+            if a and b:
+                pair = (a.group(1), b.group(1))
+            a, b = _NUM_SLASH_TAIL.search(t), _NUM_ONLY.match(texts[i + 1])
+            if pair is None and a and b:
+                pair = (a.group(1), b.group(1))
+        if pair is None and i + 2 < len(texts) and close(i, i + 1) and close(i + 1, i + 2):
+            a, b = _NUM_TAIL.search(t), _NUM_ONLY.match(texts[i + 2])
+            if a and b and _SLASH_ONLY.match(texts[i + 1]):
+                pair = (a.group(1), b.group(1))
+        if pair is not None:
+            n, total = int(pair[0]), int(pair[1])
+            if 1 <= n <= total <= 200:
+                found = (n, total)
+    return found
 
 
 def check_document(pages: list[OcrPage]) -> DocumentCheck:
@@ -670,6 +957,7 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
     # "순서가 달라요"만 나오고 빠진 쪽은 아무 말이 없었다(실기기: 5쪽 중 2·3·4쪽만 올림).
     check.page_numbers = [m[0] if m else None for m, _, _, _ in facts]
     check.header_address = header_address(pages)
+    check.header_kind = header_kind(pages)
     # 쪽 번호를 못 읽은 사진이 있으면 그 사진이 '빠진 쪽'일 수 있다 → 어느 쪽이 빠졌는지 단정하지 않는다
     # (그 사진은 촬영 검사가 '아래가 잘림'으로 따로 알리고, 판정 게이트도 그쪽으로 막힌다).
     if markers and len(markers) == len(pages):

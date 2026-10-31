@@ -32,7 +32,7 @@ from PIL import Image
 
 from . import artifacts, orientation
 from .extraction import _USER_FACING_STATUS, ExtractionError, _load_api_key
-from .ocr_layout import OcrPage, group_lines, parse_words
+from .ocr_layout import OcrPage, estimate_skew, group_lines, parse_words
 
 _log = logging.getLogger("jeonseai")
 
@@ -217,16 +217,23 @@ def run_ocr(
             result.errors.append(f"{filename}: 이미지 크기 확인 실패")
             continue
 
+        # 비스듬히 찍은 사진이면 기울기만큼 바로잡아 줄을 묶는다(2026-10-31, 좌표 계산 — 사진은 그대로)
+        skew = estimate_skew(words)
         _log.info(
             f"[OCR] {i + 1}/{total} {filename} → HTTP 200 ({time.perf_counter() - t1:.1f}초)"
             f" 단어 {len(words)}개, 원본 {width}x{height}px"
+            + (
+                f", 기울기 {skew.degrees:+.1f}° 보정(위·아래 차 {abs(skew.per_y) * height * 57.3:.1f}°)"
+                if skew is not None
+                else ""
+            )
         )
         result.pages.append(
             OcrPage(
                 name=filename,
                 index=i,
                 words=words,
-                lines=group_lines(words),
+                lines=group_lines(words, skew=skew),
                 width=width,
                 height=height,
                 rotation=rotation,

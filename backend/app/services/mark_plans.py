@@ -168,13 +168,14 @@ def text_rule(kind: str, *, viewed_at: str | None = None) -> tuple[list[str], li
     return [], []
 
 
-def house_type_line(region: str | None, use: str | None, guessed: bool) -> tuple[str | None, str | None]:
-    """주소 표시에 붙일 '이 집을 무엇으로 계산했나' (손실 시뮬레이터가 쓴 지역·용도). (사실, 할 일)."""
+def house_type_line(region: str | None, use: str | None) -> tuple[str | None, str | None]:
+    """주소 표시에 붙일 '이 집을 무엇으로 계산했나' (손실 시뮬레이터가 쓴 지역·용도). (사실, 할 일).
+
+    2026-10-31: 용도 후보가 여럿이어도 '용도 확실하지 않음'이라고 하지 않는다 — 계산에 실제로 쓴 용도(가장 낮은
+    매각가율)를 그대로 말하고 확인하게 한다(규혁: '못 알아냈다'는 말은 쓰지 않는다). 등기부 건물내역에서 용도를 읽으면 하나뿐이다.
+    """
     if not use:
         return None, None
     where = f"{region} " if region else ""
-    if guessed:
-        return (f"{where}용도 확실하지 않음",
-                "용도를 확실히 몰라 경매 통계가 가장 낮은 용도로 계산했어요. 아파트·빌라·오피스텔 중 무엇인지 확인하세요")
     return (f"{where}{use}로 계산",
             f"이 집을 **{where}{use}**로 보고 경매 통계를 썼어요. 맞는지 확인하세요")

@@ -430,15 +430,21 @@ _KEEP_ON_REJUDGE = (
 
 
 def _add_house_type_to_address_mark(report: Report) -> None:
-    """주소 표시에 '이 집을 어느 지역·용도로 계산했나'를 붙인다 (2026-10-31 — 이 집 맞춤 할 일). 표시 전용."""
+    """주소 표시에 '읽은 주소'와 '이 집을 어느 지역·용도로 계산했나'를 붙인다 (2026-10-31 — 이 집 맞춤 할 일). 표시 전용.
+
+    첫 줄은 **읽은 주소**(동·호수까지) — 카드에 지역·용도만 보이면 주소를 못 읽은 것처럼 보였다(규혁 실기기).
+    용도는 손실 예상이 실제로 쓴 하나를 말한다(후보가 여럿이어도 '확실하지 않음' 대신 계산에 쓴 용도).
+    """
     try:
+        address = report.propertyAddress or report.address
+        shown = short_address(address) if address else None
         uses = [u for u in report.houseTypes if u]
-        if not uses:
-            return
         region = loss_estimate.sido_of(report.propertyAddress) or loss_estimate.sido_of(report.address)
-        fact, plan = mark_plans.house_type_line(region, uses[0], len(uses) > 1)
+        fact, plan = mark_plans.house_type_line(region, loss_estimate.chosen_use(report) if uses else None)
         for h in report.highlights:
             if h.kind == "address":
+                if shown and shown not in h.facts:
+                    h.facts = [shown, *h.facts]
                 if fact:
                     h.facts = [*h.facts, fact]
                 if plan:
@@ -856,7 +862,16 @@ def analyze(
     # 촬영 검사 + OCR 뒤 발견(쪽 번호 안 보임 = 잘림 의심) — **판정 전에** 모은다 (2026-10-27).
     # 빠진 쪽이나 잘 안 읽힌 장이 있으면 '양호'를 막는다(`RegistryExtract.pages_incomplete` → doc_incomplete 게이트).
     try:
-        capture_after = capture_check.add_ocr_findings(capture, ocr_result.pages, len(images))
+        # 쪽 번호를 아는 장 — 꼬리말을 읽었거나, 잘렸어도 앞뒤 쪽으로 정한 장(2026-10-31)
+        numbered = (
+            {p.index for p, n in zip(ocr_result.pages, doc_check.page_numbers) if n is not None}
+            if doc_check is not None
+            else None
+        )
+        capture_after = capture_check.add_ocr_findings(capture, ocr_result.pages, len(images), numbered=numbered)
+        # 조금 흐리거나 어두워도 글자를 제대로 읽은 장은 '다시 찍기'·'양호 금지'에서 뺀다(결과로 판단)
+        if numbered is not None:
+            capture_after = capture_check.forgive_read_well(capture_after, ocr_result.pages, numbered)
     except Exception:  # noqa: BLE001 — 안내 한 줄 때문에 리포트를 잃지 않는다
         _log.error("[촬영검사] ⚠ OCR 뒤 검사 실패 — 분석 전 검사 결과만 싣습니다", exc_info=True)
         capture_after = capture
@@ -930,6 +945,7 @@ def analyze(
         report.houseTypes = loss_estimate.house_types_from(
             list(price_info.candidates) if price_info else [],
             (doc_check.header_address if doc_check is not None else None) or extract.address,
+            registry_use=ocr_layout.building_use(ocr_result.pages),
         )
     except Exception:  # noqa: BLE001 — 용도를 못 정해도 리포트는 나간다(손실 예상이 세 용도 중 낮은 값을 쓴다)
         _log.error("[손실예상] ⚠ 용도 후보를 정하지 못했습니다", exc_info=True)

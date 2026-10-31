@@ -377,10 +377,14 @@ def rejection_message(check: CaptureCheck) -> str:
     return f"{' · '.join(parts)}{more} — 그 장만 다시 찍어 주세요"
 
 
-def add_ocr_findings(check: CaptureCheck | None, ocr_pages: list, image_count: int) -> CaptureCheck | None:
+def add_ocr_findings(
+    check: CaptureCheck | None, ocr_pages: list, image_count: int, *, numbered: set[int] | None = None
+) -> CaptureCheck | None:
     """OCR 뒤 — 쪽 번호가 안 보이는 장(잘림 의심)과 글자를 못 읽은 장을 더한다. 분석은 이미 끝났다(거절 없음).
 
     `ocr_pages`에는 OCR이 **성공한** 장만 있다 — OCR 호출 자체가 실패한 장은 사진 탓이 아닐 수 있어 말하지 않는다.
+    `numbered`: 쪽 번호를 아는 장(`OcrPage.index` — 쪽 번호가 잘렸어도 앞뒤 쪽으로 정한 장 포함, 2026-10-31). 주면
+    이 장들은 '잘림'으로 보지 않는다(몇 쪽인지 알고 내용도 읽었다).
     """
     if check is None:
         return None
@@ -391,6 +395,9 @@ def add_ocr_findings(check: CaptureCheck | None, ocr_pages: list, image_count: i
         found: list[str] = []
         if not page.words:
             found.append("no_text")
+        elif numbered is not None:
+            if page.index not in numbered:
+                found.append("cut_off")
         else:
             marker, _, _, _ = _page_footer_facts(page)
             if marker is None:
@@ -409,6 +416,40 @@ def add_ocr_findings(check: CaptureCheck | None, ocr_pages: list, image_count: i
             + ", ".join(f"{p.index + 1}쪽 {'/'.join(p.issues)}" for p in pages)
         )
     return CaptureCheck(ok=not pages, pages=pages)
+
+
+#: 사진 품질만의 문제 — 글자를 실제로 잘 읽었으면 다시 찍을 이유가 없다(2026-10-31, `forgive_read_well`)
+PHOTO_ONLY = ("blurry", "too_dark", "too_bright", "low_contrast", "low_resolution")
+#: 잘 읽은 장으로 볼 OCR 낱말 수 하한 — 글자가 거의 없는 마지막 쪽(이하 여백 + 꼬리말)도 20개는 넘는다
+READ_WELL_MIN_WORDS = 20
+
+
+def forgive_read_well(check: CaptureCheck | None, ocr_pages: list, numbered: set[int]) -> CaptureCheck | None:
+    """사진이 조금 흐리거나 어두워도 **글자를 제대로 읽은 장**은 문제 목록에서 뺀다 (2026-10-31 규혁 결정).
+
+    촬영 검사는 사진 픽셀만 본다. 손이 조금 떨려 '흐림'으로 재진 장도 OCR이 쪽 번호까지 다 읽었으면 실제로는
+    읽힌 것이다 — 그런데도 '다시 찍기' 카드가 뜨고 모든 카드가 '양호' 금지가 됐다. 이제 결과로 판단한다:
+    **쪽 번호를 알고(`numbered`) 낱말을 20개 넘게 읽은 장**이면 사진 품질 문제(흐림·어두움·빛 번짐·대비·해상도)를
+    지운다. 글자 없음·잘림·빚 금액 못 읽음은 실제로 못 읽은 것이라 그대로 둔다. 심하게 흐린 사진은 여전히 분석 전에
+    거절된다(`precheck` — 이 함수까지 오지 않는다).
+    """
+    if check is None or not check.pages:
+        return check
+    words = {p.index: len(p.words) for p in ocr_pages}
+    kept: list[CapturePageIssue] = []
+    forgiven: list[str] = []
+    for entry in check.pages:
+        if entry.index in numbered and words.get(entry.index, 0) >= READ_WELL_MIN_WORDS:
+            left = [i for i in entry.issues if i not in PHOTO_ONLY]
+            if len(left) != len(entry.issues):
+                forgiven.append(f"{entry.index + 1}번째 사진 {'/'.join(i for i in entry.issues if i in PHOTO_ONLY)}")
+            if not left:
+                continue
+            entry = entry.model_copy(update={"issues": left, "tip": tip_for(left)})
+        kept.append(entry)
+    if forgiven:
+        _log.info(f"[촬영검사] 글자는 잘 읽음 — 사진 품질 안내 뺌: {', '.join(forgiven)}")
+    return CaptureCheck(ok=not kept, pages=kept)
 
 
 def add_unread_amount_pages(

@@ -346,3 +346,236 @@ def test_시연_샘플_모양_사진이_끝까지_관통한다(client, no_networ
     resp = client.patch(f"/api/reports/{report['id']}", json={"deposit": 150_000_000})
     assert resp.status_code == 200, resp.text
     assert seen[-1] == "[집합건물] 서울특별시 ○○구 ○○동 123-4 제3층 제301호"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑤ 건물 용도 — 등기부 표제부 건물내역에서 (2026-10-31)
+# ══════════════════════════════════════════════════════════════════════════════
+
+from app.schemas.contract import CapturePageIssue, Highlight, HighlightBox, Report  # noqa: E402
+from app.services import loss_estimate  # noqa: E402
+from app.services.ocr_layout import building_use  # noqa: E402
+
+
+def pyojebu_page(index: int, *, use_text: list[str], name: str = "서울특별시 영등포구 신길동 274-1") -> OcrPage:
+    """표제부(1동의 건물의 표시) — 건물내역 칸이 두 줄로 접힌 실제 모양('… 지붕 4' / '층 다세대주택')."""
+    rows = [
+        section_row("표제부", 40),
+        [W("표시번호", 40, 90, 60), W("접", 150, 90, 13), W("수", 170, 90, 13),
+         W("소재지번,", 250, 90, 60), W("건물명칭", 316, 90, 60), W("및", 382, 90, 14), W("번호", 402, 90, 30),
+         W("건", 560, 90, 14), W("물", 580, 90, 14), W("내", 600, 90, 14), W("역", 620, 90, 14)],
+        [W("1", 66, 150, 11), W("2019년11월05일", 117, 150, 98), W(name, 250, 150, 230)]
+        + [W(t, 560 + 70 * k, 150, 64) for k, t in enumerate(use_text[:1])],
+    ]
+    rows += [[W(t, 560, 190 + 40 * k, 64)] for k, t in enumerate(use_text[1:])]
+    rows.append(section_row("갑구", 500))
+    rows.append([W("1", 66, 560, 11), W("소유권보존", 117, 560, 75), W("서울특별시", 516, 560, 70),
+                 W("○○아파트", 590, 560, 70), W("101동", 664, 560, 40)])  # 소유자 주소 속 '아파트'는 갑구라 안 본다
+    return page_of(index, [w for r in rows for w in r])
+
+
+@pytest.mark.parametrize(
+    "use_text, expected",
+    [
+        (["(철근)콘크리트지붕 4", "층 다세대주택"], "연립다세대"),  # 시연 샘플 그대로(두 줄로 접힘)
+        (["콘크리트지붕 15층", "아파트"], "아파트"),
+        (["콘크리트지붕 3층", "연립주택"], "연립다세대"),
+        (["콘크리트지붕 20층", "업무시설(오피스텔)"], "오피스텔"),
+        (["콘크리트지붕 5층", "공동주택(아파트)"], "아파트"),
+        (["콘크리트지붕 4층", "제2종근린생활시설및다세대주택"], "연립다세대"),
+    ],
+)
+def test_표제부_건물내역에서_용도를_읽는다(use_text, expected):
+    assert building_use([pyojebu_page(0, use_text=use_text)]) == expected
+
+
+def test_건물_이름에만_용도가_있으면_그것을_쓴다():
+    page = pyojebu_page(0, use_text=["철근콘크리트조"], name="서울특별시 ○○구 ○○동 1 행복아파트")
+    assert building_use([page]) == "아파트"
+
+
+def test_건물내역이_건물_이름보다_먼저다():
+    """건물 이름이 '○○아파트'여도 건물내역이 '다세대주택'이면 다세대다(옛 빌라 이름에 흔하다)."""
+    page = pyojebu_page(0, use_text=["콘크리트지붕 4층", "다세대주택"], name="서울특별시 ○○구 ○○동 1 행복아파트")
+    assert building_use([page]) == "연립다세대"
+
+
+def test_표제부가_없으면_용도를_정하지_않는다():
+    assert building_use([eul_gu_page()]) is None
+
+
+def test_등기부_용도가_있으면_한_가지로_계산한다():
+    public = price_lookup.R.PriceCandidate(price_won=1, source=price_lookup.R.SOURCE_OFFICIAL_PRICE, source_name="",
+                                           as_of="", house_types=("apt", "row_house"))
+    address = "[집합건물] 서울특별시 영등포구 신길동 274-1 제3층 제301호"
+    assert loss_estimate.house_types_from([public], address) == ["아파트", "연립다세대"]
+    assert loss_estimate.house_types_from([public], address, registry_use="연립다세대") == ["연립다세대"]
+    # 통건물 등기는 등기부 용도와 상관없이 단독·다가구
+    assert loss_estimate.house_types_from([], "[건물] 서울특별시 ○○구 ○○동 1", registry_use="아파트") == ["단독·다가구"]
+
+
+def _report_with_address_mark(**kw) -> Report:
+    mark = Highlight(id="m1", page=0, kind="address", badge=1, box=HighlightBox(x=0, y=0, w=0.1, h=0.1),
+                     title="이 서류가 가리키는 집 (주소·동호수)", body="")
+    return Report(
+        id="r1", alias="a", analyzedAt="2026-10-31", address="서울특별시 영등포구 신길동 274-1",
+        deposit=200_000_000, grade="위험", gaugeProgress=0.2, headline="h", nextAction="n", topRiskSummary="t",
+        seniorDebtAmount=0, evidences=[], highlights=[mark], **kw,
+    )
+
+
+def test_주소_표시는_읽은_주소부터_보여_주고_확실하지_않다고_하지_않는다():
+    report = _report_with_address_mark(
+        propertyAddress="서울특별시 영등포구 신길동 274-1 제3층 제301호", houseTypes=["아파트", "연립다세대", "오피스텔"]
+    )
+    rb._add_house_type_to_address_mark(report)
+    facts = report.highlights[0].facts
+    assert facts[0] == "신길동 274-1 제3층 제301호"
+    assert not any("확실하지" in f for f in facts)
+    assert facts[1].startswith("서울 ") and facts[1].endswith("로 계산")
+    assert facts[1] == f"서울 {loss_estimate.chosen_use(report)}로 계산"
+
+
+def test_주소_표시는_등기부_용도_그대로_말한다():
+    report = _report_with_address_mark(
+        propertyAddress="서울특별시 영등포구 신길동 274-1 제3층 제301호", houseTypes=["연립다세대"]
+    )
+    rb._add_house_type_to_address_mark(report)
+    assert report.highlights[0].facts == ["신길동 274-1 제3층 제301호", "서울 연립다세대로 계산"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑥ 쪽 번호만 잘린 사진 — 앞뒤 쪽으로 몇 쪽인지 정한다 (다시 찍기 줄이기)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _pages_with_footers(footers: list[list[str] | None]) -> list[OcrPage]:
+    """쪽마다 을구 표 + 꼬리말(None이면 꼬리말이 화면 밖으로 잘림)."""
+    out = []
+    for i, f in enumerate(footers):
+        words = list(eul_gu_page(with_cancel_row=False).words) + (footer_words(f) if f else [])
+        out.append(page_of(i, words))
+    return out
+
+
+def test_가운데_쪽_번호가_잘려도_몇_쪽인지_안다():
+    pages = _pages_with_footers([["1/3"], None, ["3/3"]])
+    check = check_document(pages)
+    assert check.page_numbers == [1, 2, 3]
+    assert check.inferred_pages == [1]
+    assert check.missing_pages == []
+    assert check.ok_to_highlight_money is True
+
+
+@pytest.mark.parametrize(
+    "footers, expected",
+    [
+        ([None, ["2/3"], ["3/3"]], [1, 2, 3]),  # 첫 쪽
+        ([["1/3"], ["2/3"], None], [1, 2, 3]),  # 마지막 쪽
+        ([None, ["2/4"], None, ["4/4"]], [1, 2, 3, 4]),  # 두 장
+        ([["1/4"], None, None, ["4/4"]], [1, 2, 3, 4]),  # 이어진 두 장
+    ],
+)
+def test_잘린_쪽이_어디든_한_가지로_정해지면_채운다(footers, expected):
+    assert check_document(_pages_with_footers(footers)).page_numbers == expected
+
+
+@pytest.mark.parametrize(
+    "footers",
+    [
+        [["1/4"], None, ["3/4"]],  # 4쪽인데 3장 — 빠진 쪽이 있다
+        [["3/3"], None, ["1/3"]],  # 순서가 뒤바뀌었다 — 어디에 끼웠는지 모른다
+        [["1/3"], ["2/3"], ["3/3"], None],  # 쪽 수보다 사진이 많다 — 다른 서류가 섞였을 수 있다
+        [["1/3"], None, ["2/3"]],  # 1쪽과 2쪽 사이엔 들어갈 쪽이 없다
+        [None, None, None],  # 쪽 번호를 하나도 못 읽었다 — 전체 쪽수를 모른다
+    ],
+)
+def test_한_가지로_정해지지_않으면_채우지_않는다(footers):
+    check = check_document(_pages_with_footers(footers))
+    assert check.inferred_pages == []
+    assert None in check.page_numbers
+
+
+def test_등기부로_보이지_않는_사진은_쪽을_채우지_않는다():
+    """[2026-07-28] 사고 방어 — 무관한 사진 한 장이 빠진 쪽 자리를 채우면 빠진 쪽(말소 줄)을 놓친다."""
+    pages = _pages_with_footers([["1/3"], None, ["3/3"]])
+    pages[1] = page_of(1, [W("키보드", 100, 100, 60), W("화면", 200, 100, 40)])
+    check = check_document(pages)
+    assert check.inferred_pages == []
+    assert check.page_numbers == [1, None, 3]
+
+
+def test_쪽을_정한_사진은_아래가_잘림으로_보지_않는다():
+    pages = _pages_with_footers([["1/3"], None, ["3/3"]])
+    check = check_document(pages)
+    numbered = {p.index for p, n in zip(pages, check.page_numbers) if n is not None}
+    after = capture_check.add_ocr_findings(CaptureCheck(), pages, 3, numbered=numbered)
+    assert after is not None and after.pages == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑦ 조금 흐려도 글자를 잘 읽었으면 다시 찍으라고 하지 않는다
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_글자를_잘_읽은_장은_흐림_안내를_뺀다():
+    pages = _pages_with_footers([["1/2"], ["2/2"]])
+    before = CaptureCheck(ok=False, pages=[
+        CapturePageIssue(index=0, issues=["blurry"], tip="x"),
+        CapturePageIssue(index=1, issues=["too_dark", "low_contrast"], tip="x"),
+    ])
+    after = capture_check.forgive_read_well(before, pages, {0, 1})
+    assert after is not None and after.ok is True and after.pages == []
+
+
+def test_쪽_번호를_모르는_장은_흐림_안내를_그대로_둔다():
+    pages = _pages_with_footers([["1/2"], None])
+    before = CaptureCheck(ok=False, pages=[CapturePageIssue(index=1, issues=["blurry", "cut_off"], tip="x")])
+    after = capture_check.forgive_read_well(before, pages, {0})
+    assert after is not None and [(p.index, p.issues) for p in after.pages] == [(1, ["blurry", "cut_off"])]
+
+
+def test_빚_금액을_못_읽은_것은_그대로_다시_찍기다():
+    pages = _pages_with_footers([["1/1"]])
+    before = CaptureCheck(ok=False, pages=[CapturePageIssue(index=0, issues=["blurry", "amount_unread"], tip="x")])
+    after = capture_check.forgive_read_well(before, pages, {0})
+    assert after is not None and [p.issues for p in after.pages] == [["amount_unread"]]
+    assert "빚 금액" in after.pages[0].tip
+
+
+def test_글자가_거의_없는_장은_흐림_안내를_그대로_둔다():
+    page = page_of(0, footer_words(["1/1"]) + [W("등기목적", 100, 100, 60)])
+    before = CaptureCheck(ok=False, pages=[CapturePageIssue(index=0, issues=["blurry"], tip="x")])
+    after = capture_check.forgive_read_well(before, [page], {0})
+    assert after is not None and [p.issues for p in after.pages] == [["blurry"]]
+
+
+def test_꼬리말이_잘리고_조금_흐려도_끝까지_관통하면_다시_찍기가_없다(client, no_network, monkeypatch):
+    """실촬영에서 가장 흔한 두 가지(맨 아래 잘림 + 손 떨림)를 한 번에 — 다시 찍기 카드도, '양호' 금지도 없어야 한다."""
+    header = address_row(10, "서울특별시 ○○구 ○○동 123-4 제3층 제301호")
+    p1 = page_of(0, header + list(pyojebu_page(0, use_text=["콘크리트지붕 4층", "다세대주택"]).words)
+                 + footer_words(["1/3"]))
+    p2 = page_of(1, list(eul_gu_page(with_cancel_row=False).words))  # 꼬리말 잘림
+    p3 = page_of(2, header + list(eul_gu_page(with_cancel_row=False).words)[:-8] + footer_words(["3/3"]))
+    no_network(registry_raw(), [raw_ocr_json(p) for p in (p1, p2, p3)])
+    real_precheck = capture_check.precheck
+
+    def mildly_blurry(images):
+        got = real_precheck(images)
+        mild = CapturePageIssue(index=2, issues=["blurry"], severe=False, tip=capture_check.tip_for(["blurry"]))
+        return CaptureCheck(ok=False, pages=[*(got.pages if got else []), mild])
+
+    monkeypatch.setattr(capture_check, "precheck", mildly_blurry)
+    from app.routers import reports as reports_router  # 라우터가 모듈 이름으로 부르는지와 상관없이 막는다
+
+    if hasattr(reports_router, "capture_check"):
+        monkeypatch.setattr(reports_router.capture_check, "precheck", mildly_blurry)
+
+    resp = post_analyze(client, [blank_image(PAGE_W, PAGE_H) for _ in range(3)])
+
+    assert resp.status_code == 200, resp.text
+    report = resp.json()
+    assert report["pageNumbers"] == [1, 2, 3]
+    assert report["missingPages"] == []
+    assert (report.get("captureCheck") or {}).get("pages", []) == []
+    assert report["houseTypes"] == ["연립다세대"]

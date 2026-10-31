@@ -65,6 +65,8 @@ def _risk_label(e: EvidenceVerdict, verdict: RuleVerdict) -> str:
     if e.id == "senior_debt":
         n = (e.facts.get("mortgage_count") or 0) + (e.facts.get("lease_registration_count") or 0)
         return f"{_RISK_SHORT['senior_debt']} {n}건" if n else _RISK_SHORT["senior_debt"]
+    if e.id == "insurance" and e.grade is Grade.DANGER:
+        return "보증보험 가입 어려움"
     return _RISK_SHORT[e.id]
 
 
@@ -76,7 +78,11 @@ def top_risk_summary(verdict: RuleVerdict) -> str:
     서비스 쪽 사정으로 생긴 '확인 필요'(보험 구조적 한계·명단 미구축)와, 시세가 없어
     판정 불가한 전세가율은 이 줄에서 제외한다(매물 고유 위험이 아니거나 '높음' 단정 불가).
     """
-    dangers = [e for e in verdict.evidences if e.grade is Grade.DANGER]
+    # 보증보험 '위험'은 늘 다른 카드의 '위험'(권리침해 → 소유권 · 빚 초과·임차권등기 → 빚)과 함께 온다 — 같은 이유를
+    # 두 번 세지 않고, '보증보험 확인 필요'라는 엇나간 말도 나가지 않게 이 줄에서는 뺀다(2026-11-01 빚 초과 = 위험).
+    dangers = [e for e in verdict.evidences if e.grade is Grade.DANGER and e.id != "insurance"] or [
+        e for e in verdict.evidences if e.grade is Grade.DANGER
+    ]
     if dangers:
         return " · ".join(_risk_label(e, verdict) for e in dangers[:2])
 
@@ -266,12 +272,25 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
         )
     if ev.id == "insurance":
         if ev.grade is Grade.DANGER:
-            kinds = [str(x).split(" ")[0] for x in (f.get("disqualify_signals") or [])]
-            what = "·".join(dict.fromkeys(kinds)) or "등기부의 몇 가지 표시"
-            return (
-                f"{what} 때문에 보증보험 가입이 거절될 수 있어요. "
-                "가입이 안 되는 집은 보증금을 지킬 안전장치가 사라져요."
-            )
+            rights = f.get("rights_signals")
+            if rights is None:  # 옛 판정 — disqualify_signals 전체가 권리침해였다
+                rights = f.get("disqualify_signals") or []
+            kinds = [str(x).split(" ")[0] for x in rights]
+            what = "·".join(dict.fromkeys(kinds))
+            debt = f.get("debt_signals") or []
+            paras = []
+            if debt:
+                paras.append(
+                    "**빚이 HUG 기준을 넘었어요** "
+                    + " · ".join(debt)
+                    + "예요. 그래서 보증보험 가입이 거절될 수 있어요."
+                )
+            if what:
+                paras.append(f"**{what} 기록이 있어요** 이 기록 때문에 보증보험 가입이 거절될 수 있어요.")
+            if not paras:
+                paras.append("**등기부의 몇 가지 표시가 걸려요** 이 때문에 보증보험 가입이 거절될 수 있어요.")
+            paras.append("**가입이 안 되면** 보증금을 대신 돌려줄 곳이 없어 보증금을 지킬 안전장치가 사라져요.")
+            return "\n".join(paras)
         if ev.grade is Grade.GOOD:
             return (
                 "등기부로 볼 수 있는 보증보험 가입 조건은 모두 통과했어요. 빚 비율과 압류·경매 같은 걸림돌을 봤고, "

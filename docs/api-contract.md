@@ -176,6 +176,10 @@
 | `points` | `EvidencePoint[]` | [UI — 규칙 값] | 펼침의 **이 집 숫자** 줄 `{label, value, tone}` — tone = `plain`\|`ok`\|`caution`\|`danger`. 색은 규칙 엔진이 **원값으로 견준 결과**(반올림한 표시값으로 다시 견주지 않는다). 옛 리포트면 `[]`(앱은 예전 상세 상자) (2026-10-31) |
 | `meter` | `EvidenceMeter?` | [UI — 규칙 값] | 기준 막대 `{label, value(%), marks(기준선 %, thresholds.py 그대로), tone}` (2026-10-31) |
 | `todo` | string[] | [UI — 규칙 문장] | **이 집에서 할 일** — 기존 문구에 있던 행동에 이 집 숫자만 끼운 문장(`**굵게**`). AI 아님. 속 용어 풀이는 `termGlossary`에 함께 (2026-10-31) |
+| `points[].sub` · `points[].dot` | string? · int? | [UI — 규칙 값] | 둘째 줄(날짜 · 빌려준 곳 — 사람 이름은 가린 값만)과, 그림(`visual.items`)의 몇 번째 칸과 같은 색 점인지 (2026-11-01) |
+| `hero` | `EvidenceHero?` | [UI — 규칙 값] | 펼침 맨 위 **큰 한 줄** `{text, accent}` — accent는 색칠할 글자(문장 안 그대로). 규칙 값으로만 만든다 (2026-11-01) |
+| `visual` | `EvidenceVisual?` | [UI — 규칙 값] | 펼침의 **그림 하나** `{type, ...}`. `queue`(빚): `items[{label, amount, kind: debt\|mine}]` · `cut{label, amount}`(경매로 팔리는 값 — 손실 계산과 같은 값) · `result{label, sub, value, tone}`(돌려받을 돈). `checks`(보증보험): `items[{ok: true\|false\|null, label, value}]` · `passed` · `total`. `zones`(전세가율): `value(%)` · `zones(기준선 %, thresholds.py 그대로)` · `tone`. 앱이 모르는 type·옛 리포트(`null`)면 `meter`로 그린다 (2026-11-01) |
+| `easyExplanation` 모양 | — | [AI 문장] | 2026-11-01부터 문단마다 `**머리말** 본문`(문단 사이 `\n`). 앱은 머리말을 굵은 한 줄로 따로 세운다. 머리말 없는 문단(옛 리포트·준비된 문구)은 그냥 문단 |
 
 - ⚠ `explanationSource`는 **판정 출처가 아니다.** 판정은 언제나 규칙 엔진이고 그 출처는 `sourceText`다.
   설명 계층에만 해당하며, **카드마다 다를 수 있다** — 설명 폴백이 필드 단위라 한 리포트 안에서

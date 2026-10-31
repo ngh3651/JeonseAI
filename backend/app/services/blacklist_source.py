@@ -8,7 +8,8 @@
 - 서버에도 **실명을 남기지 않는다.** 이름은 HMAC(기록 DB의 소금)으로만 남긴다 — 파일만 새어 나가면 이름을 되찾을 수
   없고, 서버는 등기부의 집주인 이름을 같은 방식으로 바꿔 맞춰 본다. 화면·리포트에는 가린 이름(김○○)만.
 - 출생연도(나이로 거꾸로 셈)가 있으면 함께 남긴다 — 동명이인을 거르는 데 쓸 수 있게(지금 등기부 쪽 출생연도는 못 읽어 이름만 본다).
-- 받는 곳은 환경변수로 정한다(`BLACKLIST_SOURCE_URL` · `BLACKLIST_API_KEY` · `BLACKLIST_KEY_PARAM`). 없으면 아무것도 안 하고
+- 받는 곳은 환경변수로 정한다(`BLACKLIST_SOURCE_URL` · `BLACKLIST_API_KEY` · `BLACKLIST_KEY_PARAM`). HUG 주소면 키 칸 이름은
+  저절로 `API_KEY`(2026-10-31 확인: https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=…, 쪽 나눔 없음). 없으면 아무것도 안 하고
   리포트는 지금처럼 '명단 대조 아직 안 됨'(카드 숨김 + 맨 아래 안내)이다.
 - 판례 알람시계가 매주 다시 받는다(`precedent.updater._loop`). 실패하면 전에 받아 둔 명단을 그대로 쓴다.
 
@@ -46,10 +47,11 @@ MAX_PAGES = 40
 REFRESH_DAYS = 7
 
 #: 받은 줄에서 이름·나이·출생연도·채무액을 찾을 칸 이름 후보 (API마다 다르다 — 환경변수로 덮을 수 있다)
-_NAME_KEYS = ("성명", "임대인명", "임대인성명", "이름", "임대인", "채무자명", "name", "nm", "lsrNm", "lessorNm", "rprsNm")
+_NAME_KEYS = ("성명", "임대인명", "임대인성명", "이름", "임대인", "채무자명", "name", "nm", "lsrNm", "lessorNm", "rprsNm",
+              "lsr_nm", "lessor_nm", "dbtr_nm", "debtor_nm", "rprs_nm", "flnm")
 _AGE_KEYS = ("나이", "연령", "만나이", "age")
-_BIRTH_KEYS = ("출생연도", "생년", "birthYear", "brthYr")
-_DEBT_KEYS = ("채무액", "보증금반환채무액", "미반환금액", "구상채무액", "debt", "debtAmt", "amt")
+_BIRTH_KEYS = ("출생연도", "생년", "birthYear", "brthYr", "birth_year", "brth_yr")
+_DEBT_KEYS = ("채무액", "보증금반환채무액", "미반환금액", "구상채무액", "debt", "debtAmt", "amt", "debt_amt", "dbt_amt")
 _DATE_KEYS = ("공개일", "공개일자", "기준일자", "rlsDt", "baseDate")
 
 
@@ -96,9 +98,12 @@ def _env_keys(var: str, default: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def _pick(row: dict, keys: tuple[str, ...]) -> Any:
+    """칸 이름 후보 중 처음 값이 있는 것 — **대소문자 무시**(HUG API는 `ERROR_MSG`처럼 대문자 칸을 쓴다)."""
+    lowered = {str(k).lower(): v for k, v in row.items()}
     for k in keys:
-        if k in row and row[k] not in (None, ""):
-            return row[k]
+        v = lowered.get(k.lower())
+        if v not in (None, ""):
+            return v
     return None
 
 
@@ -165,11 +170,40 @@ def configured() -> bool:
     return bool(os.environ.get("BLACKLIST_SOURCE_URL", "").strip())
 
 
+#: HUG 빅데이터 개방포털의 실제 주소(2026-10-31 확인 — 공공데이터포털 15161980의 연결처). 인증키 칸 이름이 `API_KEY`다.
+HUG_ENDPOINT = "https://www.khug.or.kr/defaultOnDebitList.do"
+
+
+class SourceError(RuntimeError):
+    """받는 곳이 오류를 돌려줬다(HTTP 200이어도) — 예: HUG `[{"ERROR_CODE": …, "ERROR_MSG": "EXPIRED API_KEY."}]`."""
+
+
+def _key_param(url: str) -> str:
+    """인증키 칸 이름 — 환경변수가 먼저, 없으면 HUG 주소는 `API_KEY`, 그 밖(공공데이터포털 방식)은 `serviceKey`."""
+    explicit = os.environ.get("BLACKLIST_KEY_PARAM", "").strip()
+    if explicit:
+        return explicit
+    return "API_KEY" if "khug.or.kr" in url.lower() else "serviceKey"
+
+
+def _api_error(data: Any) -> str | None:
+    """응답 안의 오류 칸(ERROR_MSG·ERROR_CODE …)을 찾는다. 오류 글은 사람 이름이 아니라서 로그에 남겨도 된다(짧게)."""
+    first = data[0] if isinstance(data, list) and data else data
+    if isinstance(first, dict):
+        msg = _pick(first, ("error_msg", "errmsg", "error_message", "resultmsg"))
+        code = _pick(first, ("error_code", "errcode", "resultcode"))
+        name = _pick(first, _env_keys("BLACKLIST_FIELD_NAME", _NAME_KEYS))
+        if (msg or code) and not name and str(code or "") not in ("0", "00", "000"):
+            return str(msg or code)[:80]
+    return None
+
+
 def _fetch_all(get: Callable[..., Any]) -> list[dict]:
     url = os.environ["BLACKLIST_SOURCE_URL"].strip()
     key = os.environ.get("BLACKLIST_API_KEY", "").strip()
-    key_param = os.environ.get("BLACKLIST_KEY_PARAM", "serviceKey").strip() or "serviceKey"
+    key_param = _key_param(url)
     rows: list[dict] = []
+    previous: list[dict] | None = None
     for page in range(1, MAX_PAGES + 1):
         params: dict[str, Any] = {"pageNo": page, "numOfRows": PAGE_SIZE, "type": "json", "returnType": "json"}
         if key:
@@ -180,8 +214,16 @@ def _fetch_all(get: Callable[..., Any]) -> list[dict]:
         if url.lower().endswith(".csv") or "text/csv" in (resp.headers.get("content-type") or ""):
             got = parse_csv(text)
         else:
-            got = find_rows(json.loads(text))
+            data = json.loads(text)
+            err = _api_error(data)
+            if err:
+                raise SourceError(err)
+            got = find_rows(data)
+        # 쪽 나눔이 없는 API(HUG)는 몇 쪽을 달라 해도 같은 목록을 준다 — 같은 쪽이 또 오면 멈춘다(같은 요청 40번 X)
+        if previous is not None and got == previous:
+            break
         rows += got
+        previous = got
         if len(got) < PAGE_SIZE:
             break
     return rows
@@ -208,6 +250,9 @@ def refresh(*, get: Callable[..., Any] | None = None, salt: bytes | None = None)
         tmp.replace(path)
         st.update(ok=True, count=len(entries), note="받음")
         _log.info(f"[명단] 악성임대인 공개 명단 {len(entries)}명을 이름을 가려 저장했어요")
+    except SourceError as e:  # 받는 곳이 말해 준 오류(키 만료 등) — 그 글을 그대로 남긴다(사람 이름 아님)
+        st["note"] = f"받는 곳 오류: {e}"
+        _log.info(f"[명단] ⚠ 악성임대인 명단 받는 곳 오류 — {e} (BLACKLIST_API_KEY 확인) · 전에 받은 명단 그대로")
     except Exception as e:  # noqa: BLE001 — 실패해도 전에 받은 명단 그대로
         st["note"] = f"받기 실패 ({type(e).__name__})"
         _log.info(f"[명단] ⚠ 악성임대인 명단 받기 실패 ({type(e).__name__}) — 전에 받은 명단 그대로")

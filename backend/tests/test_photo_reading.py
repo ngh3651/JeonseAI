@@ -579,3 +579,13 @@ def test_꼬리말이_잘리고_조금_흐려도_끝까지_관통하면_다시_�
     assert report["missingPages"] == []
     assert (report.get("captureCheck") or {}).get("pages", []) == []
     assert report["houseTypes"] == ["연립다세대"]
+
+
+def test_쪽마다_머리표_모양이_달라도_같은_등기부다():
+    """'[집합건물]'과 '［집합 건물］'로 읽혀도 '주소가 서로 달라요'(빚 표시 전부 숨김)가 되지 않는다."""
+    a = page_of(0, [W("[집합건물]", 33, 10, 74), W("서울특별시", 116, 10, 70), W("제301호", 200, 10, 50)]
+                + list(eul_gu_page(with_cancel_row=False).words) + footer_words(["1/2"]))
+    b = page_of(1, [W("［집합", 33, 10, 40), W("건물］", 76, 10, 40), W("서울특별시", 116, 10, 70), W("제301호", 200, 10, 50)]
+                + footer_words(["2/2"]))
+    check = check_document([a, b])
+    assert check.notice is None and check.ok_to_highlight_money is True

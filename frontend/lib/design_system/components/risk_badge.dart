@@ -44,7 +44,7 @@ class RiskBadge extends StatelessWidget {
         color: soft,
         borderRadius: BorderRadius.circular(large ? AppRadius.md : AppRadius.pill),
       ),
-      // F4: 긴 labelOverride(예: "보류하고 아래 항목을 먼저 확인하세요")도 넘치지 않게 —
+      // F4: 긴 labelOverride(예: "보류하고 아래 항목을 먼저 확인하세요" — 옛 문구)도 넘치지 않게 —
       // large일 땐 여러 줄 허용, 작은 뱃지는 한 줄 말줄임.
       child: AppText(
         labelOverride ?? grade.label,

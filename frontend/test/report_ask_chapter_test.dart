@@ -1,6 +1,6 @@
 /// 리포트 4장 '중개사에게 물어볼 질문' (2026-10-29 확정안) + 상세 대본 화면.
 ///
-/// ① 「4 / 5」 · 띠 "AI가 이 집에서 뽑은 질문 N개" · **질문 2개까지만** · 합격선은 미리보기에 없다
+/// ① 「4 / 5」 · 띠 "이 집에 맞춰 고른 질문 N개" · **질문 2개까지만** · 합격선은 미리보기에 없다
 /// ② 서버가 4장을 모르면(빈 묶음) 장 전체가 빠진다 · 경매 중이면 멈춤 문장
 /// ③ 상세(2026-11-01 리디자인): 처음엔 1번만 펼침 · 여러 개 함께 펼침 · [통과][조심] 탭 · 받을 것 큰 칸 · 체크 없음
 library;
@@ -69,10 +69,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.koText('4 / 5'), findsOneWidget);
-    expect(find.koText('AI가 이 집에서 뽑은 질문 3개'), findsOneWidget);
-    expect(find.koText(kDummyAskCards.cards[0].ask), findsOneWidget);
-    expect(find.koText(kDummyAskCards.cards[1].ask), findsOneWidget);
-    expect(find.koText(kDummyAskCards.cards[2].ask), findsNothing, reason: '미리보기는 2개까지');
+    expect(find.koText('이 집에 맞춰 고른 질문 3개'), findsOneWidget);
+    expect(find.koText('“${kDummyAskCards.cards[0].ask}”'), findsOneWidget);
+    expect(find.koText('“${kDummyAskCards.cards[1].ask}”'), findsOneWidget);
+    expect(find.koText('“${kDummyAskCards.cards[2].ask}”'), findsNothing, reason: '미리보기는 2개까지');
     expect(find.koText('합격선'), findsNothing);
   });
 
@@ -120,14 +120,13 @@ void main() {
     expect(find.koTextContaining('법이 정한 서류'), findsOneWidget);
   });
 
-  testWidgets('카드 안: 본 것 표 · 할 말 · [통과][조심] 탭(처음은 조심) · 받을 것 큰 칸', (tester) async {
+  testWidgets('카드 안: 할 말 · [통과][조심] 탭(처음은 조심) · 받을 것 큰 칸 · 리포트 근거 칩', (tester) async {
     await _pumpDetail(tester, DummyContentRepository());
-    // 본 것 — 날짜 | 내용
-    expect(find.descendant(of: find.byKey(const ValueKey('ask-facts-debt')), matching: find.koText('2026.8.12')), findsNWidgets(2));
-    expect(find.koText('근저당 4,800만원'), findsOneWidget);
+    // '이 집에서 본 것'은 여기 없다 — 리포트·사진에서 보기에 이미 있다(2026-11-01). 대신 리포트 근거로 가는 칩
+    expect(find.koText('이 집에서 본 것'), findsNothing);
+    expect(find.byKey(const ValueKey('ask-to-report-debt')), findsOneWidget);
     // 정해 둔 why면 'AI가 썼어요'를 붙이지 않는다
     expect(find.koTextContaining('AI가 썼어요'), findsNothing);
-    expect(find.koText('✦ AI가 읽었어요'), findsOneWidget);
     // 조심 탭이 먼저 — 이 집 손해 · 핑계 · 받아치기
     final careful = find.byKey(const ValueKey('ask-careful-debt'));
     expect(careful, findsOneWidget);
@@ -176,9 +175,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('본 것 나누기 · 조심 머리 고르기', () {
-    expect(splitAskFact('2022.4.15 · 집주인이 이 집을 삼'), ('2022.4.15', '집주인이 이 집을 삼'));
-    expect(splitAskFact('압류 0건 · 세금은 납세증명서로 확인'), (null, '압류 0건 · 세금은 납세증명서로 확인'));
+  test('질문 → 리포트 근거 짝 · 조심 머리 고르기', () {
+    expect(askEvidenceFor('debt'), 'senior_debt');
+    expect(askEvidenceFor('seizure'), 'ownership');
+    expect(askEvidenceFor('insurance'), 'insurance');
+    expect(askEvidenceFor('tax'), isNull, reason: '밀린 세금은 리포트에 짝 카드가 없다');
     expect(askCarefulLine(kDummyAskCards.cards[0]), '안 되면 경매 때 2,704만원을 못 받는 계산이에요');
     expect(askCarefulLine(kDummyAskCards.cards[2]), kDummyAskCards.cards[2].stopSub);
   });

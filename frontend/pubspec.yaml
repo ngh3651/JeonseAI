@@ -72,13 +72,6 @@ dependencies:
   # 판례 카드의 사건번호 ↗ → 판결문 원문을 폰 브라우저로 연다 (2026-10-24 판례 화면 디자인).
   # 부르는 곳은 screens/cases/case_card.dart 한 곳뿐이다.
   url_launcher: ^6.3.1
-  # 리포트 'PDF로 저장' (2026-10-29) — 폰 안에서 PDF를 만들고(pdf) 안드로이드 인쇄 창의 'PDF로 저장'으로 넘긴다(printing).
-  # AI 기능이 없는 일반 PDF 라이브러리다(국내 AI 규정과 무관). 버전 고정(2026-09-19 배포). 3.13/5.15를 고른 이유:
-  # 3.12는 xml을 7→6으로 내리고, 함께 풀리는 image 4.11과 archive 4.0이 서로 맞지 않아 컴파일이 깨진다.
-  # (3.13/5.15는 Dart 3.12·Flutter 3.41 이상 — CI는 stable이라 맞다.)
-  # 부르는 곳: screens/report/report_pdf.dart(문서 만들기) · services/pdf_save.dart(인쇄 창 — 여기 한 곳뿐).
-  pdf: 3.13.1
-  printing: 5.15.1
 
 dev_dependencies:
   flutter_test:
@@ -113,9 +106,6 @@ flutter:
     - assets/mascot/
     # 챗봇 빈 화면 안내 줄의 Upstage 로고 (원본 색 그대로 — 남의 로고라 토큰으로 바꾸지 않음)
     - assets/brand/
-    # PDF로 저장(screens/report/report_pdf.dart)에만 쓰는 Pretendard 공식 TTF — PDF 라이브러리가 OTF를 못 읽는다.
-    # 앱 화면 글꼴은 그대로 아래 fonts의 OTF다. 라이선스: assets/fonts/Pretendard-OFL.txt
-    - assets/fonts/pdf/
     # 글꼴 라이선스 전문 — 마이 → 오픈소스 라이선스에 함께 보인다(OFL은 글꼴과 함께 라이선스를 내도록 한다, 2026-10-30)
     - assets/fonts/Pretendard-OFL.txt
     - assets/fonts/Jua-OFL.txt

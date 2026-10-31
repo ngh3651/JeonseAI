@@ -26,11 +26,6 @@ Color get _kDataChipFg => AppColors.chipFg;
 const Color kAskBandBg = Color(0xFF0B3D2A);
 const Color kAskBandIcon = Color(0xFF8FD3AE);
 
-/// 내 질문 말풍선
-Color get kAskMineBg => AppColors.primarySoft;
-Color get kAskMineFg =>
-    AppColors.isDark ? const Color(0xFFD5EBDD) : const Color(0xFF1F3529);
-
 /// 미리보기에 보이는 질문 수
 const int kAskPreviewCount = 2;
 
@@ -85,9 +80,10 @@ class _AskChapterState extends State<AskChapter> {
                     bg: _kDataChipBg,
                     fg: _kDataChipFg,
                   ),
+                  // 질문 고르기·문구는 규칙이다 — 'AI'라고 쓰지 않는다(과대 표기 금지, 2026-11-01 디자인 점검)
                   AskChip(
-                    icon: Icons.auto_awesome,
-                    label: 'AI 맞춤',
+                    icon: Icons.home_outlined,
+                    label: '이 집 맞춤',
                     bg: AppColors.primarySoft,
                     fg: AppColors.primary,
                   ),
@@ -151,12 +147,41 @@ class _AskChapterState extends State<AskChapter> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final c in shown) ...[
-                MineBubble(text: c.ask),
-                const SizedBox(height: 10),
-                const BrokerTyping(),
-                const SizedBox(height: 10),
+              // 상세 화면과 같은 모양 — 번호 · 질문 이름 · 내가 할 말 상자(말풍선은 상세에서 뺐다, 2026-11-01 디자인 점검)
+              for (int i = 0; i < shown.length; i++) ...[
+                if (i > 0) const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                      child: AppText(
+                        '${i + 1}',
+                        textScaler: TextScaler.noScaling,
+                        style: AppTypographyNext.caption.copyWith(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.onPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: AppText(
+                        shown[i].title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w700, color: AppColorsNext.textStrong),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                AskQuote(text: shown[i].ask, compact: true),
               ],
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -193,7 +218,7 @@ class _AskChapterState extends State<AskChapter> {
   }
 }
 
-/// 진초록 띠 — "AI가 이 집에서 뽑은 질문 N개" (15 · 한 줄)
+/// 진초록 띠 — "이 집에 맞춰 고른 질문 N개" (15 · 한 줄)
 class AskBand extends StatelessWidget {
   const AskBand({super.key, required this.count});
 
@@ -210,7 +235,7 @@ class AskBand extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: AppText(
-            'AI가 이 집에서 뽑은 질문 $count개',
+            '이 집에 맞춰 고른 질문 $count개',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTypographyNext.caption.copyWith(
@@ -224,100 +249,40 @@ class AskBand extends StatelessWidget {
   );
 }
 
-/// 내 말풍선 (오른쪽)
-class MineBubble extends StatelessWidget {
-  const MineBubble({super.key, required this.text, this.outlined = false});
+/// 내가 할 말 — 큰 글씨, 따옴표, 왼쪽 굵은 초록 줄 (2026-11-01 — 중개사 질문 상세와 4장 미리보기가 같이 쓴다)
+class AskQuote extends StatelessWidget {
+  const AskQuote({super.key, required this.text, this.compact = false});
 
   final String text;
 
-  /// '이렇게 받아치세요' — 흰 바탕 초록 테두리
-  final bool outlined;
+  /// 4장 미리보기 — 한 칸 작게(17)
+  final bool compact;
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerRight,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 288),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: outlined ? AppColors.surface : kAskMineBg,
-          border: outlined ? Border.all(color: AppColors.primary, width: 2) : null,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-            bottomLeft: Radius.circular(20),
-            bottomRight: Radius.circular(6),
-          ),
-        ),
-        child: AppText(
-          text,
-          style: AppTypographyNext.bodyStrong.copyWith(
-            color: outlined ? AppColors.primary : kAskMineFg,
-          ),
-        ),
+  Widget build(BuildContext context) => Container(
+    padding: EdgeInsets.fromLTRB(18, compact ? 12 : 16, 16, compact ? 12 : 16),
+    decoration: BoxDecoration(
+      color: AppColors.primarySoft,
+      borderRadius: BorderRadius.circular(16),
+      border: Border(left: BorderSide(color: AppColors.primary, width: 5)),
+    ),
+    child: AppText(
+      '“$text”',
+      style: AppTypographyNext.title.copyWith(
+        fontSize: compact ? 17 : 19,
+        height: compact ? 26 / 17 : 29 / 19,
+        fontWeight: FontWeight.w700,
+        color: kAskQuoteFg,
       ),
     ),
   );
 }
 
-/// 중개사 얼굴 (회색 원)
-class BrokerAvatar extends StatelessWidget {
-  const BrokerAvatar({super.key});
+/// 할 말 상자 글자색 — 밝게는 진한 초록, 어둡게는 밝은 초록
+Color get kAskQuoteFg =>
+    AppColors.isDark ? AppColors.primaryStrong : const Color(0xFF0E3B27);
 
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 32,
-    height: 32,
-    decoration: BoxDecoration(color: _kDataChipBg, shape: BoxShape.circle),
-    child: Icon(Icons.person_outline, size: 18, color: AppColorsNext.textMuted),
-  );
-}
 
-/// 중개사 '…' 입력 중 (움직이지 않는 점 3개)
-class BrokerTyping extends StatelessWidget {
-  const BrokerTyping({super.key});
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    label: '중개사 답을 기다리는 중',
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        const BrokerAvatar(),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(6),
-              topRight: Radius.circular(20),
-              bottomLeft: Radius.circular(20),
-              bottomRight: Radius.circular(20),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final double o in const [0.45, 0.7, 1.0]) ...[
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF7C8882).withValues(alpha: o),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                if (o != 1.0) const SizedBox(width: 5),
-              ],
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
 
 class AskChip extends StatelessWidget {
   const AskChip({

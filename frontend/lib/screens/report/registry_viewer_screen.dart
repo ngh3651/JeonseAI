@@ -51,7 +51,7 @@ import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import 'registry_document_layout.dart';
 import 'registry_entry_card.dart' show previewMarkOf;
-import 'registry_findings.dart' show softenDashes;
+import 'registry_findings.dart' show markKindsForEvidence, softenDashes;
 import 'registry_mark_carousel.dart';
 import 'registry_mark_sheet.dart';
 import 'registry_mark_stripe.dart';
@@ -195,9 +195,13 @@ String? unmarkedNotice(List<String> checkedNotes) {
 // ══════════════════════════════════════════════════════════════════════════
 
 class RegistryViewerScreen extends StatefulWidget {
-  const RegistryViewerScreen({super.key, required this.reportId});
+  const RegistryViewerScreen({super.key, required this.reportId, this.focusEvidence});
 
   final String reportId;
+
+  /// 리포트 근거 카드의 [등기부에서 위치 보기]에서 왔으면 그 근거 id — 그 근거의 첫 표시(문서 순서)를 골라
+  /// 그 자리로 내려간다 (2026-11-01). 없으면 예전처럼 가장 무거운 표시를 고른다.
+  final String? focusEvidence;
 
   @override
   State<RegistryViewerScreen> createState() => _RegistryViewerScreenState();
@@ -246,6 +250,9 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
   /// setState가 아니라 Notifier인 이유: 문서를 스크롤할 때마다 선택이 따라 바뀌는데,
   /// 그때마다 화면 전체를 다시 만들면 사진이 재디코딩되고 확대 상태가 풀린다.
   final ValueNotifier<String?> _selected = ValueNotifier<String?>(null);
+
+  /// [등기부에서 위치 보기]로 왔을 때 처음 한 번 내려갈 표시
+  RegistryHighlight? _focusMark;
 
   /// 형광펜 그어짐 진행도 (0=아직, 1=다 그음).
   ///
@@ -296,7 +303,16 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
     // 둘 다 초록이라 **위험 등급 리포트에서도 뷰어 첫인상이 초록**이 된다 —
     // 보수적 편향(risk-scoring 3절)과 정면으로 충돌한다(2026-07-28 design-reviewer).
     // 뱃지 번호·문서 스크롤 순서는 읽는 순서 그대로 두고, **선택만** 무게순으로 연다.
-    _selected.value ??= previewMarkOf(data.marks)?.id;
+    final focusKinds = markKindsForEvidence(widget.focusEvidence ?? '');
+    RegistryHighlight? focus;
+    for (final m in data.marks) {
+      if (focusKinds.contains(m.kind)) {
+        focus = m;
+        break;
+      }
+    }
+    _focusMark = focus;
+    _selected.value ??= focus?.id ?? previewMarkOf(data.marks)?.id;
     return data;
   }
 
@@ -508,6 +524,13 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
         final layout = data.layoutFor(MediaQuery.sizeOf(context).width);
         _layout = layout;
         _marks = marks;
+        final focus = _focusMark;
+        if (focus != null) {
+          _focusMark = null;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _select(focus, layout, marks);
+          });
+        }
 
         return Scaffold(
           backgroundColor: AppColors.surface,

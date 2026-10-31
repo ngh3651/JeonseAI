@@ -164,9 +164,14 @@ class _LossSimulatorScreenState extends State<LossSimulatorScreen> {
                   children: [
                     TextSpan(
                       text: formatWon(back),
+                      // 리포트 2장과 같은 크기·색 — 하나도 못 받으면 빨강(2026-11-01 디자인 점검)
                       style: AppTypographyNext.numberLarge.copyWith(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
                         color: loss == 0
                             ? AppColors.ok
+                            : back == 0
+                            ? AppColorsNext.dangerText
                             : AppColorsNext.textStrong,
                       ),
                     ),

@@ -1,7 +1,7 @@
 /// 리포트 1장 '등기부에서 찾은 것' (2026-10-28 리포트 2안 → 1장 다듬기).
 ///
 /// 못 박는 것:
-///   ① 머리: 「1 / 5」 · 「AI 분석」 칩 · 제목 — 예전 '근거 살펴보기' 제목·안내 줄은 없다
+///   ① 머리: 「1 / 5」 · 「AI가 읽은 등기부」 칩 · 제목 — 예전 '근거 살펴보기' 제목·안내 줄은 없다
 ///   ② 사진 카드(내가 올린 사진에서 보기)와 근거 카드가 **따로**, 사진 카드가 위, 사이에 요약 한 줄
 ///   ③ 근거는 위험 → 확인 필요 → 양호 순, 한 줄 아래에 "등급 · 부제"
 ///   ④ 리포트 본문에서 출처 칩(판정 · 규칙 기반 / 설명 · …)과 '중개사에게 물어볼 질문 보기' 버튼이 없다
@@ -50,7 +50,7 @@ void main() {
   testWidgets('머리 · 사진 카드와 근거 카드가 따로 · 요약 한 줄', (tester) async {
     await _pump(tester);
     expect(find.koText('1 / 5'), findsOneWidget);
-    expect(find.koText('AI 분석'), findsOneWidget);
+    expect(find.koText('AI가 읽은 등기부'), findsOneWidget);
     expect(find.koText('등기부에서 찾은 것'), findsOneWidget);
     expect(find.koText('근거 살펴보기'), findsNothing);
     expect(find.koTextContaining('카드를 탭하면'), findsNothing);

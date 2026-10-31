@@ -15,6 +15,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../design_system/components/app_section.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
@@ -196,16 +197,14 @@ class _JourneyChapterState extends State<JourneyChapter> {
                 ),
               ),
               if (stage.items.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
-                const SizedBox(height: 14),
-                AppText(
-                  '더 챙기면 좋은 것',
-                  style: AppTypographyNext.caption.copyWith(
-                    fontWeight: FontWeight.w700,
+                AppDivided(
+                  child: AppSectionHeader(
+                    icon: Icons.checklist_rounded,
+                    label: '더 챙기면 좋은 것',
                     color: AppColors.caution,
                   ),
                 ),
+                const SizedBox(height: 4),
                 for (int n = 0; n < stage.items.length; n++) ...[
                   if (n > 0)
                     Divider(

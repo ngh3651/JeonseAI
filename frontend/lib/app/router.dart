@@ -116,13 +116,18 @@ final appRouter = GoRouter(
           ReportScreen(
             key: ValueKey('report-${state.pathParameters['id']}'),
             reportId: state.pathParameters['id']!,
+            // 중개사 질문의 [리포트에서 근거 보기] — 그 근거 카드를 펼친 채로 연다 (2026-11-01)
+            focusEvidence: state.uri.queryParameters['evidence'],
           ),
     ),
     // 원본 사진 위 하이라이트 뷰어 (분석 직후 그 세션에서만 — 사진이 없으면 진입점이 숨는다)
     GoRoute(
       path: '/registry/:id',
-      builder: (_, state) =>
-          RegistryViewerScreen(reportId: state.pathParameters['id']!),
+      builder: (_, state) => RegistryViewerScreen(
+        reportId: state.pathParameters['id']!,
+        // 리포트 근거 카드의 [등기부에서 위치 보기] — 그 근거의 표시를 골라 둔 채로 연다 (2026-11-01)
+        focusEvidence: state.uri.queryParameters['evidence'],
+      ),
     ),
     GoRoute(
       path: '/simulator/:id',

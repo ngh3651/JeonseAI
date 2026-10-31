@@ -2,8 +2,9 @@
 ///
 /// 2026-11-01 리디자인 (캔버스 '중개사 질문' V-1·V-2 확정 — 규혁):
 /// "N가지만 확인하면 돼요" + 한 줄 안내 → 질문 카드(접고 펴기, **여러 개 동시에 펼칠 수 있다**) → [중개사에게 미리 보내기].
-/// 카드 안: 이 집에서 본 것(표) → 왜 물어봐요 → 이렇게 물어보세요(큰 따옴표 상자) → 중개사 답에 따라([통과][조심] 탭)
-/// → 꼭 받아 오세요(서류 큰 칸). 칸 사이마다 가는 줄. 소제목 모양은 '사진에서 보기' 자세히 보기 시트와 같다.
+/// 카드 안: 왜 물어봐요 → 이렇게 물어보세요(큰 따옴표 상자) → 중개사 답에 따라([통과][조심] 탭)
+/// → 꼭 받아 오세요(서류 큰 칸) → [리포트에서 근거 보기]. 칸 사이마다 가는 줄. 소제목 모양은 앱 전체 같다(AppSection).
+/// '이 집에서 본 것'은 리포트·사진에서 보기에 이미 있어 여기선 뺐다 — 세 군데는 많다(2026-11-01 규혁). 대신 리포트 근거로 바로 간다.
 ///
 /// 뺀 것 (규혁 — "여정 체크리스트만 해도 번잡한데 굳이"): 확인한 것 N/M 막대 · 현장 한마디 띠(고정 문구, 위 안내와 같은 말) ·
 /// 중개사 답은?(글로 받음/말로만/거절) 버튼과 기록 · 합격선 칸(통과 탭 머리와 같은 말이라 합쳤다) · 말풍선 대화 · 용어 밑줄.
@@ -15,6 +16,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:go_router/go_router.dart';
+
+import '../../design_system/components/app_link_chip.dart';
+import '../../design_system/components/app_section.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
@@ -23,18 +28,10 @@ import '../../repositories/content_repository.dart';
 import '../../services/api_client.dart';
 import '../common/ask_selection.dart';
 import '../common/share_feedback.dart';
-import '../report/ask_chapter.dart' show AskChip;
+import '../report/ask_chapter.dart' show AskChip, AskQuote;
 
 /// 중개사 답 탭 — 통과 / 조심
 enum AskTab { pass, careful }
-
-/// "2022.4.15 · 집주인이 이 집을 삼" → ("2022.4.15", "집주인이 이 집을 삼"). 날짜로 시작하지 않으면 (null, 전체).
-(String?, String) splitAskFact(String fact) {
-  final m = RegExp(r'^(\d{4}\.\d{1,2}\.\d{1,2})\s*·\s*(.+)$')
-      .firstMatch(fact.trim());
-  if (m == null) return (null, fact.trim());
-  return (m.group(1), m.group(2)!.trim());
-}
 
 /// 조심 탭 머리 한 줄 — 합격선의 빨간 풀이(이 집 손해 금액)가 있으면 그것, 없으면 정해 둔 '멈춤' 풀이.
 String askCarefulLine(AskCard c) {
@@ -257,20 +254,16 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
   }
 
   Widget _cardBody(AskCard c) {
+    final Color accent = AppColors.isDark ? AppColors.primaryStrong : AppColors.primary;
+    final String? evidence = askEvidenceFor(c.id);
     final sections = <Widget>[
-      if (c.facts.isNotEmpty)
-        _Section(
-          icon: Icons.check_rounded,
-          label: '이 집에서 본 것',
-          note: '✦ AI가 읽었어요',
-          child: _FactTable(key: ValueKey('ask-facts-${c.id}'), facts: c.facts),
-        ),
       if (c.why.trim().isNotEmpty)
-        _Section(
+        AppSection(
           icon: Icons.question_mark_rounded,
           label: '왜 물어봐요',
+          color: accent,
           // 모델이 실제로 썼을 때만 'AI' — 정해 둔 문장이면 붙이지 않는다(과대 표기 금지)
-          note: c.whyByAi ? '✦ AI가 썼어요' : null,
+          note: c.whyByAi ? kAiWroteNote : null,
           child: AppText(
             c.why,
             key: ValueKey('ask-why-${c.id}'),
@@ -281,14 +274,16 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
             ),
           ),
         ),
-      _Section(
+      AppSection(
         icon: Icons.chat_bubble_outline_rounded,
         label: '이렇게 물어보세요',
-        child: _AskQuote(key: ValueKey('ask-quote-${c.id}'), text: c.ask),
+        color: accent,
+        child: AskQuote(key: ValueKey('ask-quote-${c.id}'), text: c.ask),
       ),
-      _Section(
+      AppSection(
         icon: Icons.hearing_rounded,
         label: '중개사 답에 따라',
+        color: accent,
         child: _Answers(
           card: c,
           tab: _tab[c.id] ?? AskTab.careful,
@@ -296,10 +291,20 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
         ),
       ),
       if (c.docs.isNotEmpty)
-        _Section(
+        AppSection(
           icon: Icons.move_to_inbox_rounded,
           label: '꼭 받아 오세요',
+          color: accent,
           child: _DocTiles(key: ValueKey('ask-docs-${c.id}'), docs: c.docs),
+        ),
+      if (evidence != null)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: AppLinkChip(
+            key: ValueKey('ask-to-report-${c.id}'),
+            label: '리포트에서 근거 보기',
+            onTap: () => context.push('/report/${widget.reportId}?evidence=$evidence'),
+          ),
         ),
     ];
     return Padding(
@@ -320,190 +325,22 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
             ),
             const SizedBox(height: 14),
           ],
-          for (int i = 0; i < sections.length; i++)
-            if (i == 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: sections[i],
-              )
-            else
-              Container(
-                margin: const EdgeInsets.only(top: 20),
-                padding: const EdgeInsets.only(top: 20),
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: AppColorsNext.divider)),
-                ),
-                child: sections[i],
-              ),
+          AppSectionList(firstTop: 4, children: sections),
         ],
       ),
     );
   }
 }
 
-/// 칸 하나 — 둥근 네모 아이콘 + 굵은 소제목(17) (+ 오른쪽 작은 말). '사진에서 보기' 자세히 보기 시트와 같은 모양.
-class _Section extends StatelessWidget {
-  const _Section({
-    required this.icon,
-    required this.label,
-    required this.child,
-    this.note,
-  });
-
-  final IconData icon;
-  final String label;
-  final String? note;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color accent = AppColors.isDark
-        ? AppColors.primaryStrong
-        : AppColors.primary;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 26,
-              height: 26,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 17, color: accent),
-            ),
-            const SizedBox(width: 8),
-            AppText(
-              label,
-              style: AppTypographyNext.bodyStrong.copyWith(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: AppColorsNext.textStrong,
-              ),
-            ),
-            if (note != null) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: AppText(
-                      note!,
-                      maxLines: 1,
-                      style: AppTypographyNext.caption.copyWith(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: accent,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
-    );
-  }
-}
-
-/// 이 집에서 본 것 — 회색 줄마다 [날짜 | 내용]. 날짜가 없는 줄은 내용만.
-class _FactTable extends StatelessWidget {
-  const _FactTable({super.key, required this.facts});
-
-  final List<String> facts;
-
-  @override
-  Widget build(BuildContext context) {
-    final value = AppTypographyNext.bodyStrong.copyWith(
-      fontSize: 17,
-      height: 1.4,
-      fontWeight: FontWeight.w700,
-      color: AppColorsNext.textStrong,
-    );
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (int i = 0; i < facts.length; i++)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-              decoration: BoxDecoration(
-                border: i == 0
-                    ? null
-                    : Border(top: BorderSide(color: AppColorsNext.divider)),
-              ),
-              child: switch (splitAskFact(facts[i])) {
-                (null, final v) => AppText(v, style: value),
-                (final String d, final v) => Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 84,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: AppText(
-                          d,
-                          style: AppTypographyNext.caption.copyWith(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: AppColorsNext.textMuted,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(child: AppText(v, style: value)),
-                  ],
-                ),
-              },
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 내가 할 말 — 화면에서 가장 큰 글씨(19), 따옴표, 왼쪽 굵은 초록 줄.
-class _AskQuote extends StatelessWidget {
-  const _AskQuote({super.key, required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-    decoration: BoxDecoration(
-      color: AppColors.primarySoft,
-      borderRadius: BorderRadius.circular(16),
-      border: Border(left: BorderSide(color: AppColors.primary, width: 5)),
-    ),
-    child: AppText(
-      '“$text”',
-      style: AppTypographyNext.title.copyWith(
-        fontSize: 19,
-        height: 29 / 19,
-        fontWeight: FontWeight.w700,
-        color: kAskQuoteFg,
-      ),
-    ),
-  );
-}
-
-/// 할 말 상자 글자색 — 밝게는 진한 초록, 어둡게는 밝은 초록
-Color get kAskQuoteFg =>
-    AppColors.isDark ? AppColors.primaryStrong : const Color(0xFF0E3B27);
+/// 질문 → 같은 이야기를 하는 리포트 근거 카드 (없으면 칩을 달지 않는다 — 밀린 세금·산 지 얼마 안 된 집·공동 소유)
+String? askEvidenceFor(String askId) => switch (askId) {
+  'debt' => 'senior_debt',
+  'lease' || 'seizure' || 'trust' => 'ownership',
+  'pending' => 'pending',
+  'insurance' => 'insurance',
+  'tenants' => 'jeonse_ratio',
+  _ => null,
+};
 
 /// 중개사 답에 따라 — [✓ 통과] [! 조심] 탭, 한 번에 한 카드.
 class _Answers extends StatelessWidget {
@@ -563,7 +400,7 @@ class _Answers extends StatelessWidget {
         onTap: () => onTab(t),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          height: 44,
+          height: 48,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: on ? AppColors.surface : Colors.transparent,

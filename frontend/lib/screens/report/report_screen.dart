@@ -46,7 +46,6 @@ import 'ask_chapter.dart';
 import 'case_chapter.dart';
 import '../common/ask_selection.dart';
 import 'report_history_sheet.dart';
-import 'report_pdf.dart';
 import '../../design_system/text/app_text.dart';
 
 /// 악성임대인 명단이 **아직 우리에게 없을 때** 서버가 붙이는 상태 라벨.
@@ -76,9 +75,13 @@ class ReportScreen extends StatefulWidget {
     required this.reportId,
     this.captureOne = defaultCaptureOne,
     this.pickMany = defaultPickMany,
+    this.focusEvidence,
   });
 
   final String reportId;
+
+  /// 처음부터 펼쳐 두고 그 자리로 내려갈 근거 id — 중개사 질문의 [리포트에서 근거 보기] (2026-11-01)
+  final String? focusEvidence;
 
   /// 카메라 주입 지점 — '그 장만 다시 찍기'에서 쓴다(테스트는 카메라 없이 가짜 함수를 넣는다).
   final CaptureOne captureOne;
@@ -214,13 +217,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 tooltip: '정보 수정',
                 onPressed: () => _editInputs(context, report),
               ),
-              // 이 리포트를 PDF로 저장 — 폰 안에서 만들고 이름은 기본으로 가린다(report_pdf.dart)
-              IconButton(
-                key: const ValueKey('report-pdf-button'),
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                tooltip: 'PDF로 저장',
-                onPressed: () => showReportPdfSheet(context, report),
-              ),
+              // PDF로 저장은 뺐다 — 쓰지 않고 구성도 아쉬웠다(2026-11-01 규혁). 시계 · 수정이 한 칸씩 당겨진다.
             ],
           ),
           // 글자를 꾹 눌러 [챗봇에 묻기] (2026-10-26)
@@ -458,8 +455,9 @@ class _ReportScreenState extends State<ReportScreen> {
                       color: AppColors.primary,
                     ),
                     const SizedBox(width: 4),
+                    // 등급은 규칙이 정한다 — AI는 등기부를 읽었을 뿐이다(2026-11-01 디자인 점검, 'AI 분석'이 'AI가 판정'으로 읽혔다)
                     AppText(
-                      'AI 분석',
+                      'AI가 읽은 등기부',
                       style: AppTypographyNext.caption.copyWith(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -486,8 +484,11 @@ class _ReportScreenState extends State<ReportScreen> {
           FindingsCard(
             items: findings,
             actionFor: (e) => _evidenceAction(context, report, e),
-            // 처음엔 모두 접어 둔다 — 요약 한 줄 + 제목 목록이 먼저 보이게 (2026-10-30 규혁)
-            expandedIndex: null,
+            locateFor: (e) => _locateAction(context, report, e),
+            // 처음엔 모두 접어 둔다 — 요약 한 줄 + 제목 목록이 먼저 보이게 (2026-10-30 규혁).
+            // 중개사 질문에서 왔으면 그 근거만 펼쳐 두고 그 자리로 내려간다(2026-11-01).
+            expandedIndex: _focusIndex(findings),
+            focusKey: _focusKey,
           ),
         ],
       ),
@@ -618,6 +619,36 @@ class _ReportScreenState extends State<ReportScreen> {
 
   /// 근거 카드의 행동 버튼. **실제로 도는 것만** 그린다 — "곧 제공" 같은 가짜 버튼을 두지 않는다
   /// (2026-10-23 서연 리뷰 #4: 심사위원이 누르면 끝). 모르는 라벨이거나 지금 할 수 없으면 null(버튼 없음).
+  /// 중개사 질문에서 온 근거 — 그 줄을 펼치고 한 번만 그 자리로 내려간다
+  final GlobalKey _focusKey = GlobalKey();
+  bool _focusScrolled = false;
+
+  int? _focusIndex(List<EvidenceItem> findings) {
+    final id = widget.focusEvidence;
+    if (id == null) return null;
+    final i = findings.indexWhere((e) => e.id == id);
+    if (i < 0) return null;
+    if (!_focusScrolled) {
+      _focusScrolled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _focusKey.currentContext;
+        if (ctx != null && ctx.mounted) {
+          Scrollable.ensureVisible(ctx, alignment: 0.1, duration: const Duration(milliseconds: 300));
+        }
+      });
+    }
+    return i;
+  }
+
+  /// [등기부에서 위치 보기] — 이 근거의 표시가 사진 위에 있고, 사진이 이 폰에 있을 때만 (2026-11-01)
+  VoidCallback? _locateAction(BuildContext context, AnalysisReport report, EvidenceItem evidence) {
+    final kinds = markKindsForEvidence(evidence.id);
+    if (kinds.isEmpty) return null;
+    if (RegistryPhotoStore.instance.pathsFor(report.id).isEmpty) return null;
+    if (!report.highlights.any((h) => kinds.contains(h.kind))) return null;
+    return () => context.push('/registry/${report.id}?evidence=${evidence.id}');
+  }
+
   Widget? _evidenceAction(
     BuildContext context,
     AnalysisReport report,

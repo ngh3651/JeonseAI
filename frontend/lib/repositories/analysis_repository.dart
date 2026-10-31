@@ -221,24 +221,45 @@ class DummyAnalysisRepository extends AnalysisRepository {
       seniorDebtAmount: seniorDebt,
       gaugeProgress: 0.22,
       evidences: [
-        const EvidenceItem(
+        EvidenceItem(
           id: 'senior_debt',
           title: '나보다 먼저 돈 받아갈 빚이 있나요?',
           termSubtitle: '선순위 채권 · 근저당권',
           grade: RiskGrade.danger,
+          // 2026-11-01 리디자인 모양(굵은 머리말 문단 · 한눈에 · 줄 서기 그림) — 예시 값
           easyExplanation:
-              '이 집에는 은행 빚(근저당권)이 크게 잡혀 있어요. 집이 경매로 넘어가면 '
-              '은행이 먼저 돈을 받아가고, 남는 금액에서 보증금을 돌려받게 돼요.',
+              '**집값의 90%가 이미 빚이에요**이 집에는 은행 빚(근저당권)이 크게 잡혀 있어요.\n'
+              '**경매로 가면 은행이 먼저 가져가요**남는 돈에서 보증금을 돌려받게 돼요.',
           detailText:
               '은행이 최대 받아갈 수 있다고 걸어둔 금액(채권최고액) '
               '1억 8,000만원 · 근저당권 2건 (예시)',
-          termGlossary: {
+          termGlossary: const {
             '근저당권':
                 '집주인이 집을 담보로 돈을 빌렸다는 표시예요. 집이 경매로 '
                 '넘어가면 돈을 빌려준 쪽(주로 은행)이 세입자보다 먼저 돈을 받아갈 수 있어요.',
           },
           sourceText: 'HUG 공식 기준 등 확정 예정',
           actionLabel: '중개사에게 물어볼 질문 보기',
+          hero: const EvidenceHero(text: '집값의 90%가 이미 빚이에요', accent: '90%'),
+          visual: EvidenceVisual(
+            type: 'queue',
+            items: [
+              const EvidenceVisualItem(label: '은행', amount: 120000000, kind: 'debt'),
+              const EvidenceVisualItem(label: '김○○', amount: 60000000, kind: 'debt'),
+              EvidenceVisualItem(label: '내 보증금', amount: deposit, kind: 'mine'),
+            ],
+            cutLabel: '경매로 팔리는 값',
+            cutAmount: 150000000,
+            resultLabel: '경매로 가면 돌려받을 돈',
+            resultSub: '내 보증금 ${formatWon(deposit)} 중',
+            resultValue: '0원',
+            resultTone: 'danger',
+          ),
+          points: const [
+            EvidencePoint(label: '1순위 근저당', value: '1억 2,000만원', sub: '2024.3.2 · 가상은행', dot: 0),
+            EvidencePoint(label: '2순위 근저당', value: '6,000만원', sub: '2025.1.10 · 김○○', dot: 1),
+          ],
+          todo: const ['잔금 날 이 빚을 갚고 **지우는지(말소)** 중개사에게 묻고, 답을 **특약**에 적으세요'],
         ),
         const EvidenceItem(
           id: 'ownership',

@@ -11,6 +11,7 @@ import 'package:jeonse_ai/screens/common/ask_selection.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
+import 'package:jeonse_ai/design_system/components/app_section.dart';
 import 'package:jeonse_ai/screens/report/registry_findings.dart';
 import 'package:jeonse_ai/screens/report/registry_mark_sheet.dart';
 
@@ -49,13 +50,19 @@ Future<void> _pumpCard(WidgetTester tester, EvidenceItem e) async {
 }
 
 void main() {
-  testWidgets('① 펼침 — 막대 · 이 집 숫자 · AI 설명 · 할 일 · 근거, 줄표 없음', (tester) async {
+  testWidgets('① 펼침(옛 리포트 — 그림 없음) — 막대 · 이 집에서 본 것 · 이 집 핵심 · 이 집 맞춤 할 일 · 근거, 줄표 없음', (tester) async {
     await _pumpCard(tester, _senior);
     expect(find.byKey(const ValueKey('finding-meter')), findsOneWidget);
     expect(find.byKey(const ValueKey('finding-points')), findsOneWidget);
     expect(find.koText('1억 8,000만원 · 2건'), findsOneWidget);
-    expect(find.koText('AI 설명'), findsOneWidget);
-    expect(find.koText('이 집에서 할 일'), findsOneWidget);
+    // 칸 이름은 앱 전체와 같다(2026-11-01) — 'AI 설명' · '이 집에서 할 일'은 없다
+    expect(find.koText('이 집에서 본 것'), findsOneWidget);
+    expect(find.koText('이 집 핵심'), findsOneWidget);
+    expect(find.koText('✦ AI가 썼어요'), findsOneWidget);
+    expect(find.koText('이 집 맞춤 할 일'), findsOneWidget);
+    expect(find.koText('✦ AI가 읽었어요'), findsOneWidget);
+    expect(find.koText('AI 설명'), findsNothing);
+    expect(find.koText('이 집에서 할 일'), findsNothing);
     expect(find.koTextContaining('특약으로 남기세요'), findsOneWidget);
     expect(find.byKey(const ValueKey('finding-source-senior_debt')), findsOneWidget);
     // 숫자 줄이 있으면 예전 긴 상세 상자는 그리지 않는다
@@ -65,7 +72,7 @@ void main() {
     expect(find.koTextContaining('—'), findsNothing);
   });
 
-  testWidgets('①-2 준비된 문구면 \'AI 설명\'이라고 하지 않는다', (tester) async {
+  testWidgets('①-2 준비된 문구면 \'AI가 썼어요\'를 붙이지 않는다', (tester) async {
     const fallback = EvidenceItem(
       id: 'senior_debt',
       title: '나보다 먼저 돈 받아갈 빚이 있나요?',
@@ -76,8 +83,8 @@ void main() {
       explanationSource: '준비된 문구',
     );
     await _pumpCard(tester, fallback);
-    expect(find.koText('AI 설명'), findsNothing);
-    expect(find.koText('설명'), findsOneWidget);
+    expect(find.koText('이 집 핵심'), findsOneWidget);
+    expect(find.koTextContaining('AI가 썼어요'), findsNothing);
     expect(explanationByAi('solar-pro4'), isTrue);
     expect(explanationByAi('준비된 문구'), isFalse);
     expect(explanationByAi(null), isFalse);
@@ -135,7 +142,7 @@ void main() {
     expect(find.byKey(const ValueKey('mark-sheet-facts')), findsOneWidget);
     expect(find.koText('2021.6.30'), findsOneWidget);
     expect(find.koText('빌려준 곳'), findsOneWidget);
-    expect(find.koText('✦ AI가 등기부에서 읽었어요'), findsOneWidget);
+    expect(find.koText('✦ AI가 읽었어요'), findsOneWidget);
     expect(find.byKey(const ValueKey('mark-sheet-ai')), findsNothing, reason: '초록 AI 설명 상자는 뺐다');
     // 순서: 이 집에서 본 것 → 기본 확인 → 이 집 맞춤 할 일 → 근거
     final ys = [
@@ -194,11 +201,70 @@ void main() {
     expect(h.withPage(2).factRows, h.factRows);
   });
 
-  test('표시 → 같은 이야기를 하는 근거 카드', () {
-    expect(evidenceIdForMark('mortgage'), 'senior_debt');
-    expect(evidenceIdForMark('provisional_seizure'), 'ownership');
-    expect(evidenceIdForMark('pending_application'), 'pending');
-    expect(evidenceIdForMark('owner'), 'blacklist');
-    expect(evidenceIdForMark('address'), isNull);
+  test('근거 카드 → 사진 위 표시 종류 ([등기부에서 위치 보기])', () {
+    expect(markKindsForEvidence('senior_debt'), contains('mortgage'));
+    expect(markKindsForEvidence('ownership'), contains('provisional_seizure'));
+    expect(markKindsForEvidence('pending'), {'pending_application'});
+    expect(markKindsForEvidence('blacklist'), {'owner'});
+    expect(markKindsForEvidence('jeonse_ratio'), isEmpty);
+  });
+
+  // ── 2026-11-01 리디자인: 한눈에(큰 한 줄 + 그림) · 굵은 머리말 문단 · 밑줄은 처음 한 번 ─────────────
+  testWidgets('③ 빚 카드 — 큰 한 줄 · 줄 서기 막대 · 돌려받을 돈 · 색 점 표 · 머리말 문단 · 위치 보기', (tester) async {
+    tester.view.physicalSize = const Size(1200, 3600);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    const e = EvidenceItem(
+      id: 'senior_debt',
+      title: '나보다 먼저 돈 받아갈 빚이 있나요?',
+      termSubtitle: '선순위 채권',
+      grade: RiskGrade.danger,
+      easyExplanation: '**집을 산 날 바로 빌렸어요** 같은 날 근저당을 잡았어요.\n**개인에게 더 빌렸어요** 두 번째 근저당은 개인이에요.',
+      termGlossary: {'근저당': '집을 담보로 빌린 돈의 표시예요.'},
+      explanationSource: 'solar-pro2',
+      hero: EvidenceHero(text: '집값의 97%가 이미 빚이에요', accent: '97%'),
+      visual: EvidenceVisual(
+        type: 'queue',
+        items: [
+          EvidenceVisualItem(label: '은행', amount: 360000000, kind: 'debt'),
+          EvidenceVisualItem(label: '이○○', amount: 52000000, kind: 'debt'),
+          EvidenceVisualItem(label: '내 보증금', amount: 250000000, kind: 'mine'),
+        ],
+        cutLabel: '경매로 팔리는 값',
+        cutAmount: 318500000,
+        resultValue: '0원',
+        resultSub: '내 보증금 2억 5,000만원 중',
+        resultTone: 'danger',
+      ),
+      points: [EvidencePoint(label: '3순위 근저당', value: '3억 6,000만원', sub: '2022.4.15 · 가상은행', dot: 0)],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FindingsCard(items: const [e], actionFor: (_) => null, locateFor: (_) => () {}, expandedIndex: 0),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('finding-hero')), findsOneWidget);
+    expect(find.byKey(const ValueKey('finding-queue')), findsOneWidget);
+    expect(find.koText('경매로 팔리는 값 3억 1,850만원'), findsOneWidget);
+    expect(find.byKey(const ValueKey('finding-result')), findsOneWidget);
+    expect(find.koText('0원'), findsOneWidget);
+    expect(find.koText('2022.4.15 · 가상은행'), findsOneWidget);
+    // 머리말은 굵은 한 줄로 따로
+    expect(find.koText('집을 산 날 바로 빌렸어요'), findsOneWidget);
+    // '근저당' 밑줄은 이 카드 글에서 처음 한 번만 — 두 번째 문단의 근저당은 평범한 글자
+    expect(find.byWidgetPredicate((w) => w.runtimeType.toString() == '_CaseTerm'), findsOneWidget);
+    expect(find.byKey(const ValueKey('finding-locate-senior_debt')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('머리말 문단 나누기', () {
+    expect(splitLeadParagraph('**머리말** 본문이에요.'), (lead: '머리말', body: '본문이에요.'));
+    expect(splitLeadParagraph('그냥 문단이에요.'), (lead: null, body: '그냥 문단이에요.'));
   });
 }

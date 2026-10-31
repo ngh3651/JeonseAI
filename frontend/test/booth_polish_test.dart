@@ -8,7 +8,6 @@
 ///   ⑥ '다시 뗀 등기부를 올려 주세요' 시트에서 막히지 않게 — [아직 안 뗐어요 — 떼는 법 보기] → 발급 가이드
 library;
 
-import 'dart:convert' show latin1;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -27,11 +26,9 @@ import 'package:jeonse_ai/screens/my/my_screen.dart';
 import 'package:jeonse_ai/screens/my/my_settings.dart';
 import 'package:jeonse_ai/screens/report/report_screen.dart';
 import 'package:jeonse_ai/screens/report/report_inputs_sheet.dart';
-import 'package:jeonse_ai/screens/report/report_pdf.dart';
 import 'package:jeonse_ai/services/kakao_login_gateway.dart';
 import 'package:jeonse_ai/services/session_credentials.dart';
 import 'package:jeonse_ai/services/session_storage.dart';
-import 'package:jeonse_ai/services/pdf_save.dart';
 import 'package:jeonse_ai/state/app_session.dart';
 import 'package:jeonse_ai/state/booth_mode.dart';
 import 'package:jeonse_ai/state/privacy_settings.dart';
@@ -42,55 +39,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/ko_finders.dart';
 import 'support/registry_fixture.dart' show kPhoneHeight, kPhoneWidth;
-
-AnalysisReport _shareReport({List<String> personNames = const ['홍길동']}) =>
-    AnalysisReport(
-      id: 'r-share',
-      alias: '샘플빌라',
-      address: '서울특별시 샘플구 샘플동 1-1',
-      analyzedAt: DateTime(2026, 10, 22, 10),
-      grade: RiskGrade.danger,
-      headline: '보증금을 지키기 어려울 수 있어요',
-      nextAction: '상담부터 받으세요',
-      topRiskSummary: '선순위 채권',
-      deposit: 120000000,
-      marketPrice: null,
-      seniorDebtAmount: 0,
-      gaugeProgress: 0.9,
-      registryViewedAt: '2026.07.09',
-      personNames: personNames,
-      evidences: const [
-        EvidenceItem(
-          id: 'insurance',
-          title: '보증보험에 가입할 수 있나요?',
-          termSubtitle: '전세보증금 반환보증',
-          grade: RiskGrade.ok,
-          easyExplanation: '',
-        ),
-        EvidenceItem(
-          id: 'senior_debt',
-          title: '나보다 먼저 돈 받아갈 빚이 있나요?',
-          termSubtitle: '선순위 채권',
-          grade: RiskGrade.danger,
-          easyExplanation: '',
-        ),
-        EvidenceItem(
-          id: 'ownership',
-          title: '집주인 홍길동 소유권에 이상 신호가 있나요?',
-          termSubtitle: '압류',
-          grade: RiskGrade.caution,
-          easyExplanation: '',
-        ),
-        EvidenceItem(
-          id: 'blacklist',
-          title: '집주인이 위험 명단에 있나요?',
-          termSubtitle: '악성임대인 공개 명단',
-          grade: RiskGrade.caution,
-          statusLabel: '명단 대조 아직 안 됨',
-          easyExplanation: '',
-        ),
-      ],
-    );
 
 Future<void> _pumpReport(WidgetTester tester, String reportId) async {
   tester.view.physicalSize = const Size(kPhoneWidth * 3, kPhoneHeight * 3);
@@ -112,131 +60,15 @@ void main() {
   setUp(() => RegistryPhotoStore.instance.clear());
   tearDown(() {
     RegistryPhotoStore.instance.clear();
-    PdfSave.debugOverride();
     PrivacySettings.instance.resetForTest();
   });
 
-  group('① 리포트 PDF로 저장 (2026-10-29 — 글자 요약 공유를 대신함)', () {
-    test('PDF 글자 — 사람 이름은 기본으로 가리고, 끄면 그대로', () {
-      final hidden = reportPdfData(_shareReport());
-      expect(hidden.texts.join('\n'), isNot(contains('홍길동')));
-      expect(hidden.texts.join('\n'), contains('홍○○'));
-      expect(hidden.namesHidden, isTrue);
-
-      final shown = reportPdfData(_shareReport(), hideNames: false);
-      expect(shown.texts.join('\n'), contains('홍길동'));
-      expect(shown.namesHidden, isFalse);
-    });
-
-    test("'사진 속 이름 가리기'가 켜져 있으면 스위치를 꺼도 가린다", () async {
-      SharedPreferences.setMockInitialValues({});
-      await PrivacySettings.instance.setHideNamesInPhotos(true);
-      final data = reportPdfData(_shareReport(), hideNames: false);
-      expect(data.texts.join('\n'), isNot(contains('홍길동')));
-      expect(data.namesHidden, isTrue);
-    });
-
-    test('근거는 위험 → 확인 필요 → 양호, 명단 미구축 카드는 빼고 면책 위 한 줄로', () {
-      final data = reportPdfData(_shareReport());
-      expect(
-        [for (final e in data.evidences) e.grade],
-        [RiskGrade.danger, RiskGrade.caution, RiskGrade.ok],
-      );
-      expect(data.texts.join('\n'), isNot(contains('위험 명단')));
-      expect(data.blacklistPending, isTrue);
-      expect(data.analyzedDate, '2026.10.22');
-      expect(data.registryDate, '2026.07.09');
-      expect(data.priceLine, '보증금 1억 2,000만원 · 시세를 못 구했어요');
-      expect(reportPdfFileName(data), '전세AI프_리포트_샘플빌라_20261022.pdf');
-    });
-
-    test('등기부 발급일을 못 읽었으면 지어내지 않는다', () {
-      final r = _shareReport();
-      final noDate = AnalysisReport(
-        id: r.id,
-        alias: r.alias,
-        address: r.address,
-        analyzedAt: r.analyzedAt,
-        grade: r.grade,
-        headline: r.headline,
-        nextAction: r.nextAction,
-        topRiskSummary: r.topRiskSummary,
-        deposit: r.deposit,
-        marketPrice: null,
-        seniorDebtAmount: 0,
-        gaugeProgress: 0.5,
-        evidences: const [],
-      );
-      expect(reportPdfData(noDate).registryDate, isNull);
-    });
-
-    test('PDF 바이트가 만들어지고 한글 글꼴(Pretendard)이 들어간다', () async {
-      final fonts = await ReportPdfFonts.load();
-      final bytes = await buildReportPdf(
-        reportPdfData(_shareReport()),
-        fonts,
-        createdAt: DateTime(2026, 10, 29),
-        compress: false,
-      );
-      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
-      final raw = latin1.decode(bytes, allowInvalid: true);
-      expect(raw, contains('Pretendard-Regular'));
-      expect(raw, contains('Pretendard-Bold'));
-      // 사진은 넣지 않는다 — 그림 객체가 없다
-      expect(raw, isNot(contains('/Subtype /Image')));
-      expect(raw, isNot(contains('/Subtype/Image')));
-    });
-
-    testWidgets('PDF 버튼 → 바로 만들어 인쇄 창으로 PDF가 나간다 (설명 시트 없음)', (
-      tester,
-    ) async {
-      final saved = <(Uint8List, String)>[];
-      PdfSave.debugOverride(
-        print: (bytes, {required name}) async => saved.add((bytes, name)),
-      );
-      await _pumpReport(tester, 'dummy-danger');
-
-      await tester.runAsync(() async {
-        await tester.tap(find.byTooltip('PDF로 저장'));
-        // 글꼴 읽기·PDF 만들기는 진짜 시간이 든다
-        for (var i = 0; i < 100 && saved.isEmpty; i++) {
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-        }
-      });
-      await tester.pumpAndSettle();
-      expect(saved, hasLength(1));
-      expect(String.fromCharCodes(saved.single.$1.take(5)), '%PDF-');
-      expect(saved.single.$2, startsWith('전세AI프_리포트_역삼동_오피스텔_'));
-      expect(saved.single.$2, endsWith('.pdf'));
-      expect(find.byType(Switch), findsNothing, reason: '이름 가리기 스위치는 없다(항상 가림)');
-      expect(find.byKey(const ValueKey('report-pdf-making')), findsNothing, reason: '만드는 중 창은 닫힌다');
-      expect(
-        find.byType(SnackBar),
-        findsNothing,
-        reason: '저장했는지는 모르니 아무 말도 하지 않는다',
-      );
-    });
-
-    testWidgets('인쇄 창을 못 열면 공유 창으로, 그것도 안 되면 한 줄로 알린다', (tester) async {
-      var shared = 0;
-      PdfSave.debugOverride(
-        print: (bytes, {required name}) async => throw Exception('인쇄 창 없음 흉내'),
-        share: (bytes, {required name}) async {
-          shared++;
-          throw Exception('공유 창 없음 흉내');
-        },
-      );
-      await _pumpReport(tester, 'dummy-danger');
-      await tester.runAsync(() async {
-        await tester.tap(find.byTooltip('PDF로 저장'));
-        for (var i = 0; i < 100 && shared == 0; i++) {
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-        }
-      });
-      await tester.pumpAndSettle();
-      expect(shared, 1);
-      expect(find.koTextContaining('열지 못했어요'), findsOneWidget);
-    });
+  // ① 리포트 PDF로 저장 — 2026-11-01에 기능을 뺐다(쓰지 않고 구성도 아쉬웠다, 규혁). 버튼이 없는지만 본다.
+  testWidgets('① 리포트 위에 PDF 버튼이 없다 — 시계 · 수정만', (tester) async {
+    await _pumpReport(tester, 'dummy-danger');
+    expect(find.byKey(const ValueKey('report-pdf-button')), findsNothing);
+    expect(find.byKey(const ValueKey('report-history-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('report-edit-button')), findsOneWidget);
   });
 
   testWidgets('② 오래된 리포트에 맨 위 배너를 끼우지 않는다 — 등기부를 뗀 지 며칠인지만 한 줄로', (tester) async {

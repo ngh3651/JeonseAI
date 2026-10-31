@@ -71,10 +71,15 @@ Future<void> applyJourneyReminders(
   if (!context.mounted || enabled != true)
     return; // 꺼져 있으면 아무 안내도 띄우지 않는다(2026-10-26)
   // 짧게 — 언제 첫 알림이 오는지만 (2026-10-30 규혁)
-  showJourneySnack(
-    context,
-    '${describeReminderTime(plan.first.fireAt)}에 첫 알림이 와요',
-  );
+  showJourneySnack(context, firstReminderLine(plan));
+}
+
+/// 저장 뒤 한 줄 — **어느 날의 알림인지** 이름을 붙인다 (2026-11-01 규혁: 잔금만 넣었는데 잔금 날 알림으로 읽혔다).
+/// 잔금은 하루 전·당일 아침 두 번이라, 잔금만 넣으면 첫 알림은 '잔금 하루 전'이다(하루 전 8시가 이미 지났을 때만 당일).
+/// 예: "잔금 하루 전 · 11월 4일 (화) 오전 8시에 첫 알림이 와요"
+String firstReminderLine(List<JourneyReminder> plan) {
+  final first = plan.first;
+  return '${reminderMomentLabel(first.kind)} · ${describeReminderTime(first.fireAt)}에 첫 알림이 와요';
 }
 
 /// 권한을 묻기 전에 **왜** 필요한지 말하는 시트. [알림 받기] = true, 그 밖 = false/null.

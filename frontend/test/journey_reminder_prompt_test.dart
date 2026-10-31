@@ -188,7 +188,10 @@ void main() {
       final first = describeReminderTime(
         DateTime(_day(4).year, _day(4).month, _day(4).day, 8),
       );
-      expect(find.koText('$first에 첫 알림이 와요'), findsOneWidget);
+      // 잔금만 넣으면 첫 알림은 잔금 '하루 전' — 어느 날 알림인지 이름을 붙인다 (2026-11-01)
+      expect(find.koText('잔금 하루 전 · $first에 첫 알림이 와요'), findsOneWidget);
+      // 잔금은 하루 전·당일 아침 두 번
+      expect(platform.scheduled.length, 2);
     });
 
     testWidgets('저장 뒤 가족·배우자에게 보내기 버튼이 없다 (2026-10-26 기능 뺌)', (tester) async {

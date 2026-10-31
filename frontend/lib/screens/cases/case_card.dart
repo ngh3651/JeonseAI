@@ -653,7 +653,11 @@ InlineSpan caseRichText(
   required TextStyle base,
   Map<String, String> glossary = const {},
   List<String> emphasis = const [],
+  Set<String>? seenTerms,
 }) {
+  // 용어 밑줄은 **한 글 안에서 처음 한 번만** (2026-11-01 규혁 — "모든 글자에 형광펜 친 느낌").
+  // 여러 문단·줄이 한 글이면 부르는 쪽이 같은 [seenTerms]를 넘긴다. 이미 그은 용어는 평범한 글자로 지나간다.
+  final seen = seenTerms ?? <String>{};
   final stripped = stripBoldMarkers(text);
   final body = stripped.text;
   final bold = _markRanges(body, [...emphasis, ...stripped.bold]);
@@ -691,6 +695,12 @@ InlineSpan caseRichText(
       break;
     }
     if (bestAt > cursor) addPlain(cursor, bestAt);
+    if (seen.contains(bestTerm)) {
+      addPlain(bestAt, bestAt + bestTerm.length);
+      cursor = bestAt + bestTerm.length;
+      continue;
+    }
+    seen.add(bestTerm);
     children.add(
       WidgetSpan(
         alignment: PlaceholderAlignment.baseline,

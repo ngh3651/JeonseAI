@@ -42,7 +42,7 @@ class AnalysisRequest {
 /// 근거 카드 한 항목 (S-07 근거 카드 목록의 원소).
 /// 근거 카드 펼침의 숫자 한 줄 (2026-10-31) — 서버 규칙 값 그대로.
 class EvidencePoint {
-  const EvidencePoint({required this.label, required this.value, this.tone = 'plain'});
+  const EvidencePoint({required this.label, required this.value, this.tone = 'plain', this.sub, this.dot});
 
   final String label;
   final String value;
@@ -50,11 +50,120 @@ class EvidencePoint {
   /// plain · ok · caution · danger
   final String tone;
 
+  /// 이름 아래 작은 줄 — "2022.4.15 · 주식회사가상은행" (2026-11-01, 없으면 한 줄)
+  final String? sub;
+
+  /// 위 그림(줄 서기 막대)의 몇 번째 칸과 같은 색 점인가 (2026-11-01)
+  final int? dot;
+
   factory EvidencePoint.fromJson(Map<String, dynamic> j) => EvidencePoint(
     label: j['label'] as String? ?? '',
     value: j['value'] as String? ?? '',
     tone: j['tone'] as String? ?? 'plain',
+    sub: j['sub'] as String?,
+    dot: (j['dot'] as num?)?.toInt(),
   );
+}
+
+/// 근거 카드 펼침 맨 위 큰 한 줄 (2026-11-01) — 규칙이 만든 문장. [accent]는 등급 색으로 칠할 부분.
+class EvidenceHero {
+  const EvidenceHero({required this.text, this.accent});
+
+  final String text;
+  final String? accent;
+
+  static EvidenceHero? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final text = (j['text'] as String?)?.trim() ?? '';
+    if (text.isEmpty) return null;
+    return EvidenceHero(text: text, accent: j['accent'] as String?);
+  }
+}
+
+/// 그림의 한 칸 — 줄 서기(queue)의 빚·내 보증금, 또는 체크(checks)의 조건 한 줄
+class EvidenceVisualItem {
+  const EvidenceVisualItem({required this.label, this.amount, this.kind, this.ok, this.value});
+
+  final String label;
+  final int? amount;
+
+  /// queue: debt · mine
+  final String? kind;
+
+  /// checks: 통과 true · 막힘 false · 모름 null
+  final bool? ok;
+  final String? value;
+
+  factory EvidenceVisualItem.fromJson(Map<String, dynamic> j) => EvidenceVisualItem(
+    label: j['label'] as String? ?? '',
+    amount: (j['amount'] as num?)?.toInt(),
+    kind: j['kind'] as String?,
+    ok: j['ok'] as bool?,
+    value: j['value'] as String?,
+  );
+}
+
+/// 근거 카드 펼침의 그림 (2026-11-01) — 숫자는 서버 규칙 값 그대로.
+/// - `queue`: 경매로 팔리면 받는 순서대로 빚 → 내 보증금, [cutAmount] = 경매로 팔리는 값(모르면 null)
+/// - `checks`: HUG 가입 조건 칸들 ([passed] / [total])
+/// - `zones`: 이 집 비율 [value]와 구간 경계 [zones]
+class EvidenceVisual {
+  const EvidenceVisual({
+    required this.type,
+    this.items = const [],
+    this.cutLabel,
+    this.cutAmount,
+    this.resultLabel,
+    this.resultSub,
+    this.resultValue,
+    this.resultTone = 'plain',
+    this.passed,
+    this.total,
+    this.value,
+    this.zones = const [],
+    this.tone = 'plain',
+  });
+
+  final String type;
+  final List<EvidenceVisualItem> items;
+  final String? cutLabel;
+  final int? cutAmount;
+  final String? resultLabel;
+  final String? resultSub;
+  final String? resultValue;
+  final String resultTone;
+  final int? passed;
+  final int? total;
+  final int? value;
+  final List<int> zones;
+  final String tone;
+
+  static EvidenceVisual? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final m = j.cast<String, dynamic>();
+    final type = m['type'] as String? ?? '';
+    if (!const {'queue', 'checks', 'zones'}.contains(type)) return null;
+    final cut = m['cut'] is Map ? (m['cut'] as Map).cast<String, dynamic>() : null;
+    final result = m['result'] is Map ? (m['result'] as Map).cast<String, dynamic>() : null;
+    return EvidenceVisual(
+      type: type,
+      items: [
+        for (final x in (m['items'] as List? ?? const []))
+          if (x is Map) EvidenceVisualItem.fromJson(x.cast<String, dynamic>()),
+      ],
+      cutLabel: cut?['label'] as String?,
+      cutAmount: (cut?['amount'] as num?)?.toInt(),
+      resultLabel: result?['label'] as String?,
+      resultSub: result?['sub'] as String?,
+      resultValue: result?['value'] as String?,
+      resultTone: result?['tone'] as String? ?? 'plain',
+      passed: (m['passed'] as num?)?.toInt(),
+      total: (m['total'] as num?)?.toInt(),
+      value: (m['value'] as num?)?.toInt(),
+      zones: [for (final z in (m['zones'] as List? ?? const [])) (z as num).toInt()],
+      tone: m['tone'] as String? ?? 'plain',
+    );
+  }
 }
 
 /// 근거 카드 펼침의 기준 막대 (2026-10-31) — 이 집 비율과 기준선(서버 상수 그대로).
@@ -94,7 +203,15 @@ class EvidenceItem {
     this.points = const [],
     this.meter,
     this.todo = const [],
+    this.hero,
+    this.visual,
   });
+
+  /// 펼침 맨 위 큰 한 줄 (2026-11-01, 옛 리포트면 없음)
+  final EvidenceHero? hero;
+
+  /// 펼침 맨 위 그림 (2026-11-01, 옛 리포트면 없음 — 그땐 [meter])
+  final EvidenceVisual? visual;
 
   /// 펼침의 이 집 숫자 줄 (2026-10-31). 옛 리포트면 비어 있다 — 그땐 [detailText] 상자를 그린다.
   final List<EvidencePoint> points;
@@ -164,6 +281,8 @@ class EvidenceItem {
     ],
     meter: EvidenceMeter.fromJson(json['meter']),
     todo: [for (final t in (json['todo'] as List? ?? const [])) t as String],
+    hero: EvidenceHero.fromJson(json['hero']),
+    visual: EvidenceVisual.fromJson(json['visual']),
   );
 }
 

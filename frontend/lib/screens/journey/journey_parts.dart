@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/components/app_section.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
@@ -260,8 +261,8 @@ class ReportCard extends StatelessWidget {
   /// 최신 리포트를 만든 대조 기록(있으면 날짜 줄 꼬리말이 '대조 · 변동 없음'/'변동 1건'으로 바뀐다)
   final CompareLogEntry? latestLog;
 
-  /// 회색 띠 문구 (굵은 부분 포함)
-  final InlineSpan recheck;
+  /// 회색 띠 문구 (굵은 부분 포함). null이면 띠가 없다(입주 후까지 끝남)
+  final InlineSpan? recheck;
   final VoidCallback onOpen;
 
   /// null이면 띠를 누를 수 없다("다시 뗄 일정이 없어요")
@@ -368,42 +369,44 @@ class ReportCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Material(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(kRadiusMd),
-            child: InkWell(
-              key: const ValueKey('journey-recheck-strip'),
-              onTap: onRecheck,
+          if (recheck != null) ...[
+            const SizedBox(height: 12),
+            Material(
+              color: AppColors.background,
               borderRadius: BorderRadius.circular(kRadiusMd),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.refresh,
-                        size: 20,
-                        color: AppColors.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(child: AppText.rich(recheck)),
-                      if (onRecheck != null)
+              child: InkWell(
+                key: const ValueKey('journey-recheck-strip'),
+                onTap: onRecheck,
+                borderRadius: BorderRadius.circular(kRadiusMd),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
                         Icon(
-                          Icons.chevron_right,
+                          Icons.refresh,
                           size: 20,
-                          color: AppColorsNext.textMuted,
+                          color: AppColors.primary,
                         ),
-                    ],
+                        const SizedBox(width: 8),
+                        Expanded(child: AppText.rich(recheck!)),
+                        if (onRecheck != null)
+                          Icon(
+                            Icons.chevron_right,
+                            size: 20,
+                            color: AppColorsNext.textMuted,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -888,16 +891,15 @@ class StageCard extends StatelessWidget {
             ),
             semanticsLabel: plainMarkup(stage.subtitle),
           ),
-          const SizedBox(height: 16),
-          Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
-          const SizedBox(height: 14),
-          AppText(
-            '더 챙기면 좋은 것',
-            style: AppTypographyNext.caption.copyWith(
-              fontWeight: FontWeight.w700,
+          // 칸 머리는 앱 전체와 같은 모양(AppSectionHeader · 2026-11-01 디자인 점검)
+          AppDivided(
+            child: AppSectionHeader(
+              icon: Icons.checklist_rounded,
+              label: '더 챙기면 좋은 것',
               color: AppColors.caution,
             ),
           ),
+          const SizedBox(height: 4),
           for (int i = 0; i < stage.items.length; i++) ...[
             if (i > 0)
               Divider(
@@ -1024,9 +1026,10 @@ class JourneyItemRow extends StatelessWidget {
                 width: 24,
                 height: 24,
                 alignment: Alignment.center,
+                // 번호는 원 — 앱의 다른 할 일 번호와 같은 모양(2026-11-01 디자인 점검)
                 decoration: BoxDecoration(
                   color: AppColors.caution,
-                  borderRadius: BorderRadius.circular(kRadiusSm),
+                  shape: BoxShape.circle,
                 ),
                 child: AppText(
                   '$number',

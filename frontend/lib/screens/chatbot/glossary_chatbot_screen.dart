@@ -1179,13 +1179,13 @@ class _NumberBadge extends StatelessWidget {
         height: d,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: AppColors.primarySoft,
+          color: AppColors.primary,
           shape: BoxShape.circle,
         ),
         child: Text(
           '$number',
           style: AppTypographyNext.caption.copyWith(
-            color: AppColors.primary,
+            color: AppColors.onPrimary,
             height: 1,
           ),
         ),

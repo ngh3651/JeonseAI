@@ -277,7 +277,8 @@ class _JourneyScreenState extends State<JourneyScreen> {
             ReportCard(
               property: property,
               latestLog: _latestLog(property, logs),
-              recheck: _recheckSpan(progress),
+              // 입주 후까지 끝났으면 다시 뗄 일이 없다 — 띠를 감춘다
+              recheck: progress.movedInDone ? null : _recheckSpan(progress),
               onOpen: () => context.push('/report/${property.latest.id}'),
               onRecheck: _recheckTarget(progress) == null
                   ? null

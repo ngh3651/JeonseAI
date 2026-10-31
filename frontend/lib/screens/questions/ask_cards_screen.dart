@@ -1,35 +1,43 @@
-/// 4장 상세 '중개사에게 물어볼 질문' (2026-10-29 확정안 — 대본 화면). 라우트는 예전 그대로 `/questions/:id`.
+/// 4장 상세 '중개사에게 물어볼 질문' — 라우트는 예전 그대로 `/questions/:id`.
 ///
-/// 위에서부터: "N가지만 확인하면 돼요" → 확인한 것 N / M 막대 → 현장 한마디(괜찮아요 → 적어 주세요)
-/// → 질문 카드(접고 펴기, 처음엔 1번만 펼침): 이 집 등기부에서 본 것 · ✦ 왜(AI) · 대본(내 질문 / 좋은 답 /
-/// 이럴 땐 조심 / 받아치기) · 합격선 · 받을 것 · 중개사 답은?(글로 받음/말로만/거절) → [중개사에게 미리 보내기].
+/// 2026-11-01 리디자인 (캔버스 '중개사 질문' V-1·V-2 확정 — 규혁):
+/// "N가지만 확인하면 돼요" + 한 줄 안내 → 질문 카드(접고 펴기, **여러 개 동시에 펼칠 수 있다**) → [중개사에게 미리 보내기].
+/// 카드 안: 왜 물어봐요 → 이렇게 물어보세요(큰 따옴표 상자) → 중개사 답에 따라([통과][조심] 탭)
+/// → 꼭 받아 오세요(서류 큰 칸) → [리포트에서 근거 보기]. 칸 사이마다 가는 줄. 소제목 모양은 앱 전체 같다(AppSection).
+/// '이 집에서 본 것'은 리포트·사진에서 보기에 이미 있어 여기선 뺐다 — 세 군데는 많다(2026-11-01 규혁). 대신 리포트 근거로 바로 간다.
 ///
-/// 답 기록은 **이 앱이 켜져 있는 동안만** 이 폰에 둔다(서버로 보내지 않는다).
+/// 뺀 것 (규혁 — "여정 체크리스트만 해도 번잡한데 굳이"): 확인한 것 N/M 막대 · 현장 한마디 띠(고정 문구, 위 안내와 같은 말) ·
+/// 중개사 답은?(글로 받음/말로만/거절) 버튼과 기록 · 합격선 칸(통과 탭 머리와 같은 말이라 합쳤다) · 말풍선 대화 · 용어 밑줄.
+///
+/// 글자는 꾹 눌러 [챗봇에 묻기]. 문구는 전부 서버(규칙 + 정해 둔 문구). '왜 물어봐요'만 AI가 다시 쓸 수 있고,
+/// 그때만(`whyByAi`) "✦ AI가 썼어요"를 붙인다.
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'package:go_router/go_router.dart';
+
+import '../../design_system/components/app_link_chip.dart';
+import '../../design_system/components/app_section.dart';
 import '../../design_system/text/app_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/ask_cards.dart';
 import '../../repositories/content_repository.dart';
 import '../../services/api_client.dart';
+import '../common/ask_selection.dart';
 import '../common/share_feedback.dart';
-import '../report/ask_chapter.dart';
+import '../report/ask_chapter.dart' show AskChip, AskQuote;
 
-/// 중개사 답 — 글로 받음 / 말로만 / 거절
-enum AskAnswer { written, verbal, refused }
+/// 중개사 답 탭 — 통과 / 조심
+enum AskTab { pass, careful }
 
-/// 답 기록 (리포트 id → 카드 id → 답). 앱이 켜져 있는 동안만.
-class AskAnswerStore {
-  AskAnswerStore._();
-  static final Map<String, Map<String, AskAnswer>> _byReport = {};
-
-  static Map<String, AskAnswer> of(String reportId) =>
-      _byReport.putIfAbsent(reportId, () => {});
+/// 조심 탭 머리 한 줄 — 합격선의 빨간 풀이(이 집 손해 금액)가 있으면 그것, 없으면 정해 둔 '멈춤' 풀이.
+String askCarefulLine(AskCard c) {
+  final p = c.passLine;
+  if (p.danger && (p.sub ?? '').trim().isNotEmpty) return p.sub!.trim();
+  return c.stopSub.trim();
 }
 
 class AskCardsScreen extends StatefulWidget {
@@ -43,10 +51,13 @@ class AskCardsScreen extends StatefulWidget {
 
 class _AskCardsScreenState extends State<AskCardsScreen> {
   late Future<AskCards> _future;
-  int _open = 0;
-  String? _copied;
 
-  Map<String, AskAnswer> get _answers => AskAnswerStore.of(widget.reportId);
+  /// 펼친 카드 — 처음엔 1번만. 다른 카드를 펼쳐도 닫히지 않는다(2026-11-01 규혁 "자유롭게").
+  final Set<String> _open = {};
+  bool _seeded = false;
+
+  /// 카드별 고른 탭 — 처음엔 [AskTab.careful] (손해 금액·받아치기가 먼저 보이게)
+  final Map<String, AskTab> _tab = {};
 
   @override
   void initState() {
@@ -55,7 +66,10 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
   }
 
   void _load() {
-    _future = context.read<ContentRepository>().askCards(widget.reportId, polish: true);
+    _future = context.read<ContentRepository>().askCards(
+      widget.reportId,
+      polish: true,
+    );
   }
 
   @override
@@ -103,13 +117,19 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                   ),
                   child: AppText(
                     data.stop!,
-                    style: AppTypographyNext.title.copyWith(color: AppColorsNext.dangerText),
+                    style: AppTypographyNext.title.copyWith(
+                      color: AppColorsNext.dangerText,
+                    ),
                   ),
                 ),
               ],
             );
           }
-          return _body(data);
+          if (!_seeded && data.cards.isNotEmpty) {
+            _seeded = true;
+            _open.add(data.cards.first.id);
+          }
+          return AskSelectionArea(child: _body(data));
         },
       ),
     );
@@ -117,7 +137,6 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
 
   Widget _body(AskCards data) {
     final cards = data.cards;
-    final int done = cards.where((c) => _answers[c.id] != null).length;
     return ListView(
       key: const ValueKey('ask-detail-list'),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
@@ -127,16 +146,18 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AppText('${cards.length}가지만 확인하면 돼요', style: AppTypographyNext.headline),
+              AppText(
+                '${cards.length}가지만 확인하면 돼요',
+                style: AppTypographyNext.headline,
+              ),
               const SizedBox(height: 4),
-              AppText('하나씩 묻고, 답은 글로 받아 두세요.', style: AppTypographyNext.caption),
+              AppText(
+                '하나씩 묻고, 답은 글로 받아 두세요.',
+                style: AppTypographyNext.caption,
+              ),
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        _progress(cards, done),
-        const SizedBox(height: 20),
-        _magicLine(),
         const SizedBox(height: 20),
         for (int i = 0; i < cards.length; i++) ...[
           _card(i, cards[i]),
@@ -149,10 +170,17 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
             key: const ValueKey('ask-share'),
             onPressed: () => shareWithFeedback(context, data.shareText),
             icon: const Icon(Icons.send_rounded),
-            label: AppText('중개사에게 미리 보내기', style: AppTypographyNext.button.copyWith(color: AppColors.onPrimary)),
+            label: AppText(
+              '중개사에게 미리 보내기',
+              style: AppTypographyNext.button.copyWith(
+                color: AppColors.onPrimary,
+              ),
+            ),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
           ),
         ),
@@ -166,87 +194,22 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
     );
   }
 
-  Widget _progress(List<AskCard> cards, int done) => Container(
-    key: const ValueKey('ask-progress'),
-    padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(24)),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(child: AppText('확인한 것', style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w700))),
-            AppText(
-              '$done / ${cards.length}',
-              style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w800, color: AppColors.primary),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            for (int i = 0; i < cards.length; i++) ...[
-              if (i > 0) const SizedBox(width: 6),
-              Expanded(
-                child: Container(
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: _answerColor(_answers[cards[i].id]) ?? AppColorsNext.divider,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ],
-    ),
-  );
-
-  Widget _magicLine() => Container(
-    padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-    decoration: BoxDecoration(color: kAskBandBg, borderRadius: BorderRadius.circular(24)),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppText('현장에서 이 한마디', style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w700, color: kAskBandIcon)),
-        const SizedBox(height: 4),
-        AppText(
-          '중개사가 “괜찮아요” 하면\n→ “그럼 계약서에 적어 주세요”',
-          style: AppTypographyNext.title.copyWith(color: Colors.white),
-        ),
-      ],
-    ),
-  );
-
-  static Color? _answerColor(AskAnswer? a) => switch (a) {
-    AskAnswer.written => AppColors.ok,
-    AskAnswer.verbal => AppColors.caution,
-    AskAnswer.refused => AppColorsNext.dangerText,
-    null => null,
-  };
-
-  static (String, Color, Color)? _pill(AskAnswer? a) => switch (a) {
-    AskAnswer.written => ('글로 받음', AppColors.okSoft, AppColors.ok),
-    AskAnswer.verbal => ('말로만', AppColors.cautionSoft, AppColors.cautionStrong),
-    AskAnswer.refused => ('거절', AppColors.dangerSoft, AppColorsNext.dangerText),
-    null => null,
-  };
-
   Widget _card(int i, AskCard c) {
-    final bool open = _open == i;
-    final AskAnswer? a = _answers[c.id];
-    final pill = _pill(a);
+    final bool open = _open.contains(c.id);
     return Container(
       key: ValueKey('ask-card-${c.id}'),
-      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(24)),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+      ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
             key: ValueKey('ask-toggle-${c.id}'),
-            onTap: () => setState(() => _open = open ? -1 : i),
+            onTap: () =>
+                setState(() => open ? _open.remove(c.id) : _open.add(c.id)),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
               child: Row(
@@ -269,40 +232,81 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(child: AppText(c.title, style: AppTypographyNext.title)),
-                  if (pill != null) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(color: pill.$2, borderRadius: BorderRadius.circular(999)),
-                      child: AppText(
-                        pill.$1,
-                        style: AppTypographyNext.caption.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: pill.$3),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
+                  Expanded(
+                    child: AppText(c.title, style: AppTypographyNext.title),
+                  ),
                   AnimatedRotation(
                     turns: open ? 0.5 : 0,
                     duration: const Duration(milliseconds: 150),
-                    child: Icon(Icons.expand_more, color: AppColorsNext.textMuted),
+                    child: Icon(
+                      Icons.expand_more,
+                      color: AppColorsNext.textMuted,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          if (open) _cardBody(c, a),
+          if (open) _cardBody(c),
         ],
       ),
     );
   }
 
-  Widget _label(String t) => AppText(
-    t,
-    style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w700),
-  );
-
-  Widget _cardBody(AskCard c, AskAnswer? a) {
-    final pass = c.passLine;
+  Widget _cardBody(AskCard c) {
+    final Color accent = AppColors.isDark ? AppColors.primaryStrong : AppColors.primary;
+    final String? evidence = askEvidenceFor(c.id);
+    final sections = <Widget>[
+      if (c.why.trim().isNotEmpty)
+        AppSection(
+          icon: Icons.question_mark_rounded,
+          label: '왜 물어봐요',
+          color: accent,
+          // 모델이 실제로 썼을 때만 'AI' — 정해 둔 문장이면 붙이지 않는다(과대 표기 금지)
+          note: c.whyByAi ? kAiWroteNote : null,
+          child: AppText(
+            c.why,
+            key: ValueKey('ask-why-${c.id}'),
+            style: AppTypographyNext.body.copyWith(
+              fontSize: 17,
+              height: 27 / 17,
+              color: AppColorsNext.textBody,
+            ),
+          ),
+        ),
+      AppSection(
+        icon: Icons.chat_bubble_outline_rounded,
+        label: '이렇게 물어보세요',
+        color: accent,
+        child: AskQuote(key: ValueKey('ask-quote-${c.id}'), text: c.ask),
+      ),
+      AppSection(
+        icon: Icons.hearing_rounded,
+        label: '중개사 답에 따라',
+        color: accent,
+        child: _Answers(
+          card: c,
+          tab: _tab[c.id] ?? AskTab.careful,
+          onTab: (t) => setState(() => _tab[c.id] = t),
+        ),
+      ),
+      if (c.docs.isNotEmpty)
+        AppSection(
+          icon: Icons.move_to_inbox_rounded,
+          label: '꼭 받아 오세요',
+          color: accent,
+          child: _DocTiles(key: ValueKey('ask-docs-${c.id}'), docs: c.docs),
+        ),
+      if (evidence != null)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: AppLinkChip(
+            key: ValueKey('ask-to-report-${c.id}'),
+            label: '리포트에서 근거 보기',
+            onTap: () => context.push('/report/${widget.reportId}?evidence=$evidence'),
+          ),
+        ),
+    ];
     return Padding(
       key: ValueKey('ask-body-${c.id}'),
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -321,278 +325,348 @@ class _AskCardsScreenState extends State<AskCardsScreen> {
             ),
             const SizedBox(height: 14),
           ],
-          if (c.facts.isNotEmpty) ...[
-            _label('이 집 등기부에서 본 것'),
-            const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColorsNext.divider),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (int k = 0; k < c.facts.length; k++)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        border: k == 0 ? null : Border(top: BorderSide(color: AppColorsNext.divider)),
-                      ),
-                      child: AppText(c.facts[k], style: AppTypographyNext.bodyStrong),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(16)),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(top: 5),
-                  child: Icon(Icons.auto_awesome, size: 15, color: AppColors.primary),
-                ),
-                const SizedBox(width: 8),
-                Expanded(child: AppText(c.why, style: AppTypographyNext.body.copyWith(color: kAskMineFg))),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _label('이렇게 물어보세요'),
-          const SizedBox(height: 10),
-          MineBubble(text: c.ask),
-          const SizedBox(height: 10),
-          _broker('좋은 답', AppColors.ok, c.okReply, AppColors.background),
-          const SizedBox(height: 10),
-          _broker('이럴 땐 조심', AppColorsNext.dangerText, c.badReply, AppColors.dangerSoft),
-          const SizedBox(height: 10),
-          Align(alignment: Alignment.centerRight, child: _label('이렇게 받아치세요')),
-          const SizedBox(height: 4),
-          MineBubble(text: c.counter, outlined: true),
-          const SizedBox(height: 16),
-          Container(
-            key: ValueKey('ask-pass-${c.id}'),
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(16)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.track_changes_rounded, size: 18, color: AppColors.primary),
-                    const SizedBox(width: 6),
-                    _label('합격선'),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.end,
-                  spacing: 8,
-                  children: [
-                    if (pass.big != null)
-                      AppText(pass.big!, style: AppTypographyNext.numberLarge.copyWith(color: AppColors.ok, fontWeight: FontWeight.w800)),
-                    AppText(
-                      pass.text,
-                      style: AppTypographyNext.bodyStrong.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: pass.big != null ? AppColorsNext.textStrong : AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-                if (pass.sub != null) ...[
-                  const SizedBox(height: 2),
-                  AppText(
-                    pass.sub!,
-                    style: AppTypographyNext.caption.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: pass.danger ? AppColorsNext.dangerText : AppColorsNext.textMuted,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (c.docs.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _label('받을 것'),
-                for (final d in c.docs)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: AppColors.line),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: AppText(d, style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w600, color: AppColors.chipFg)),
-                  ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 16),
-          Divider(height: 1, thickness: 1, color: AppColorsNext.divider),
-          const SizedBox(height: 14),
-          _label('중개사 답은?'),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              for (final (AskAnswer v, String label) in const [
-                (AskAnswer.written, '글로 받았어요'),
-                (AskAnswer.verbal, '말로만 들었어요'),
-                (AskAnswer.refused, '거절했어요'),
-              ]) ...[
-                if (v != AskAnswer.written) const SizedBox(width: 6),
-                Expanded(child: _answerChip(c, v, label, a == v)),
-              ],
-            ],
-          ),
-          if (a == AskAnswer.written) ...[
-            const SizedBox(height: 12),
-            _note(AppColors.okSoft, AppColors.ok, '기록했어요 · 계약서에 들어가는지 마지막에 한 번 더 보세요'),
-          ],
-          if (a == AskAnswer.verbal) ...[
-            const SizedBox(height: 12),
-            Container(
-              key: ValueKey('ask-clause-${c.id}'),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: AppColors.cautionSoft, borderRadius: BorderRadius.circular(16)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppText(
-                    '말은 나중에 증거가 안 돼요 — 이 특약을 넣어 달라고 하세요',
-                    style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w700, color: AppColors.cautionStrong),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12)),
-                    child: AppText(c.clause, style: AppTypographyNext.body),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: c.clause));
-                      if (mounted) setState(() => _copied = c.id);
-                    },
-                    icon: Icon(Icons.copy_rounded, size: 18, color: AppColors.cautionStrong),
-                    label: AppText(
-                      _copied == c.id ? '복사했어요' : '특약 복사',
-                      style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w700, color: AppColors.cautionStrong),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (a == AskAnswer.refused) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: AppColors.dangerSoft, borderRadius: BorderRadius.circular(16)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppText('가계약금 보내기 전에 멈추세요', style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w700, color: AppColorsNext.dangerText)),
-                  const SizedBox(height: 4),
-                  AppText(c.stopSub, style: AppTypographyNext.caption.copyWith(color: AppColors.chipFg)),
-                ],
-              ),
-            ),
-          ],
+          AppSectionList(firstTop: 4, children: sections),
         ],
       ),
     );
   }
+}
 
-  Widget _note(Color bg, Color fg, String text) => Container(
-    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
-    child: AppText(text, style: AppTypographyNext.bodyStrong.copyWith(fontWeight: FontWeight.w700, color: fg)),
-  );
+/// 질문 → 같은 이야기를 하는 리포트 근거 카드 (없으면 칩을 달지 않는다 — 밀린 세금·산 지 얼마 안 된 집·공동 소유)
+String? askEvidenceFor(String askId) => switch (askId) {
+  'debt' => 'senior_debt',
+  'lease' || 'seizure' || 'trust' => 'ownership',
+  'pending' => 'pending',
+  'insurance' => 'insurance',
+  'tenants' => 'jeonse_ratio',
+  _ => null,
+};
 
-  Widget _broker(String tag, Color tagColor, String text, Color bg) => Row(
-    crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      const BrokerAvatar(),
-      const SizedBox(width: 8),
-      Flexible(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AppText.rich(
-              TextSpan(
-                children: [
-                  const TextSpan(text: '중개사 · '),
-                  TextSpan(text: tag, style: TextStyle(color: tagColor)),
-                ],
+/// 중개사 답에 따라 — [✓ 통과] [! 조심] 탭, 한 번에 한 카드.
+class _Answers extends StatelessWidget {
+  const _Answers({required this.card, required this.tab, required this.onTab});
+
+  final AskCard card;
+  final AskTab tab;
+  final ValueChanged<AskTab> onTab;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = card;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AppColors.chipBg,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _tabButton(
+                  AskTab.pass,
+                  Icons.check_rounded,
+                  '통과',
+                  AppColors.ok,
+                ),
               ),
-              style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w600),
+              Expanded(
+                child: _tabButton(
+                  AskTab.careful,
+                  Icons.priority_high_rounded,
+                  '조심',
+                  AppColorsNext.dangerText,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (tab == AskTab.pass) _passCard(c) else _carefulCard(c),
+      ],
+    );
+  }
+
+  Widget _tabButton(AskTab t, IconData icon, String label, Color color) {
+    final bool on = tab == t;
+    return Semantics(
+      selected: on,
+      button: true,
+      child: GestureDetector(
+        key: ValueKey('ask-tab-${card.id}-${t.name}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onTab(t),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: on ? AppColors.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: on && !AppColors.isDark
+                ? const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 17, color: on ? color : AppColorsNext.textMuted),
+              const SizedBox(width: 4),
+              AppText(
+                label,
+                style: AppTypographyNext.bodyStrong.copyWith(
+                  fontSize: 16,
+                  fontWeight: on ? FontWeight.w800 : FontWeight.w600,
+                  color: on ? color : AppColorsNext.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 통과 — 머리: 합격선(크게 '0원' + 조건), 풀이(빨강이 아닐 때만) / 몸: 좋은 답
+  Widget _passCard(AskCard c) {
+    final p = c.passLine;
+    final String? big = (p.big ?? '').trim().isEmpty ? null : p.big!.trim();
+    final String text = p.text.trim();
+    final String? sub = !p.danger && (p.sub ?? '').trim().isNotEmpty ? p.sub!.trim() : null;
+    return _AnswerCard(
+      key: ValueKey('ask-pass-${c.id}'),
+      border: AppColors.ok.withValues(alpha: 0.35),
+      headBg: AppColors.okSoft,
+      head: [
+        if (big != null || text.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              if (big != null)
+                AppText(
+                  big,
+                  style: _headStyle(AppColors.ok).copyWith(fontSize: 22, height: 28 / 22),
+                ),
+              if (text.isNotEmpty) AppText(text, style: _headStyle(AppColors.ok)),
+            ],
+          ),
+        if (sub != null) ...[
+          const SizedBox(height: 2),
+          AppText(sub, style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w600, color: AppColorsNext.textBody)),
+        ],
+      ],
+      body: [AppText('“${c.okReply}”', style: _replyStyle)],
+    );
+  }
+
+  /// 조심 — 머리: 이 집 손해(또는 멈춤 풀이) / 몸: 핑계 → 받아치기
+  Widget _carefulCard(AskCard c) {
+    final line = askCarefulLine(c);
+    final counter = c.counter
+        .split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    return _AnswerCard(
+      key: ValueKey('ask-careful-${c.id}'),
+      border: AppColorsNext.dangerText.withValues(alpha: 0.3),
+      headBg: AppColors.dangerSoft,
+      head: [
+        if (line.isNotEmpty)
+          AppText(line, style: _headStyle(AppColorsNext.dangerText)),
+      ],
+      body: [
+        AppText('“${c.badReply}”', style: _replyStyle),
+        if (counter.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.only(top: 12),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: AppColorsNext.dangerText.withValues(alpha: 0.25),
+                ),
+              ),
             ),
-            const SizedBox(height: 4),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 262),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(6),
-                    topRight: Radius.circular(20),
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
+            child: Column(
+              key: ValueKey('ask-counter-${c.id}'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppText(
+                  '↳ 이렇게 받아치세요',
+                  style: AppTypographyNext.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColorsNext.dangerText,
                   ),
                 ),
-                child: AppText(text, style: AppTypographyNext.body),
-              ),
+                const SizedBox(height: 4),
+                for (final line in counter)
+                  // "(주택임대차보호법 제3조의7)" 같은 근거 줄은 작고 흐리게
+                  line.startsWith('(')
+                      ? AppText(
+                          line,
+                          style: AppTypographyNext.caption.copyWith(
+                            color: AppColorsNext.textMuted,
+                          ),
+                        )
+                      : AppText(
+                          '“$line”',
+                          style: AppTypographyNext.body.copyWith(
+                            fontSize: 17,
+                            height: 26 / 17,
+                            fontWeight: FontWeight.w700,
+                            color: AppColorsNext.textStrong,
+                          ),
+                        ),
+              ],
             ),
-          ],
-        ),
-      ),
-    ],
-  );
+          ),
+        ],
+      ],
+    );
+  }
 
-  Widget _answerChip(AskCard c, AskAnswer v, String label, bool selected) {
-    final (Color bg, Color fg, Color bd) = !selected
-        ? (AppColors.surface, AppColors.chipFg, AppColors.line)
-        : switch (v) {
-            AskAnswer.written => (AppColors.okSoft, AppColors.ok, AppColors.ok),
-            AskAnswer.verbal => (AppColors.cautionSoft, AppColors.cautionStrong, AppColors.caution),
-            AskAnswer.refused => (AppColors.dangerSoft, AppColorsNext.dangerText, AppColorsNext.dangerText),
-          };
-    return InkWell(
-      key: ValueKey('ask-answer-${c.id}-${v.name}'),
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => setState(() {
-        if (selected) {
-          _answers.remove(c.id);
-        } else {
-          _answers[c.id] = v;
-        }
-      }),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 52),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        decoration: BoxDecoration(
-          color: bg,
-          border: Border.all(color: bd, width: 1.5),
-          borderRadius: BorderRadius.circular(12),
+  static TextStyle _headStyle(Color color) =>
+      AppTypographyNext.bodyStrong.copyWith(
+        fontSize: 17,
+        height: 25 / 17,
+        fontWeight: FontWeight.w800,
+        color: color,
+      );
+
+  static TextStyle get _replyStyle => AppTypographyNext.body.copyWith(
+    fontSize: 17,
+    height: 26 / 17,
+    color: AppColorsNext.textBody,
+  );
+}
+
+class _AnswerCard extends StatelessWidget {
+  const _AnswerCard({
+    super.key,
+    required this.border,
+    required this.headBg,
+    required this.head,
+    required this.body,
+  });
+
+  final Color border;
+  final Color headBg;
+  final List<Widget> head;
+  final List<Widget> body;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: AppColors.surface,
+      border: Border.all(color: border, width: 1.5),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (head.isNotEmpty)
+          Container(
+            color: headBg,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: head,
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: body,
+          ),
         ),
-        child: AppText(
-          label,
-          textAlign: TextAlign.center,
-          style: AppTypographyNext.caption.copyWith(fontWeight: FontWeight.w700, color: fg, height: 1.3),
+      ],
+    ),
+  );
+}
+
+/// 꼭 받아 오세요 — 서류 이름을 초록 테두리 큰 칸으로(두 칸씩).
+class _DocTiles extends StatelessWidget {
+  const _DocTiles({super.key, required this.docs});
+
+  final List<String> docs;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, box) {
+            final double w = docs.length == 1
+                ? box.maxWidth
+                : (box.maxWidth - 8) / 2;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final d in docs)
+                  Container(
+                    width: w,
+                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      border: Border.all(color: AppColors.primary, width: 2),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: AppColors.primarySoft,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.description_outlined,
+                            size: 20,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        AppText(
+                          d,
+                          style: AppTypographyNext.bodyStrong.copyWith(
+                            fontSize: 17,
+                            height: 24 / 17,
+                            fontWeight: FontWeight.w800,
+                            color: AppColorsNext.textStrong,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
-      ),
+        const SizedBox(height: 8),
+        AppText(
+          '말로 한 약속은 증거가 안 돼요. 종이로 받아요.',
+          style: AppTypographyNext.caption.copyWith(
+            color: AppColorsNext.textMuted,
+          ),
+        ),
+      ],
     );
   }
 }

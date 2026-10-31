@@ -214,3 +214,21 @@ def test_이름_칸을_못_찾으면_칸_이름을_로그에_남긴다(data_dir,
     assert st["ok"] is False
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert "[명단] ⚠" in text and "NMXX" in text and "홍길동" not in text
+
+
+def test_HUG_실제_응답_모양에서_이름을_읽는다(data_dir, monkeypatch):
+    """2026-10-31 배포 로그의 실제 모양 — list[1980]{STDD_DT, CUST_NM, AGE, ADDR}."""
+    monkeypatch.setenv("BLACKLIST_SOURCE_URL", B.HUG_ENDPOINT)
+    monkeypatch.setenv("BLACKLIST_API_KEY", "k")
+    body = [{"STDD_DT": "20261031", "CUST_NM": "홍길동", "AGE": 45, "ADDR": "서울"},
+            {"STDD_DT": "20261031", "CUST_NM": "김철수", "AGE": 52, "ADDR": "부산"}]
+
+    def get(url, params=None, timeout=None):
+        assert params["API_KEY"] == "k"
+        return SimpleNamespace(text=json.dumps(body, ensure_ascii=False),
+                               headers={"content-type": "application/json"}, raise_for_status=lambda: None)
+
+    st = B.refresh(get=get, salt=SALT)
+    assert st["ok"] and st["count"] == 2
+    raw = (data_dir / B.STORE_FILE).read_text(encoding="utf-8")
+    assert "홍길동" not in raw and "김철수" not in raw

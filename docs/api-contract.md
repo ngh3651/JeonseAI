@@ -290,7 +290,8 @@ JourneyStage {
 JourneyItem {
   text:  string,            // [UI] 할 일 (한 줄 제목)
   why:   string,            // [설명] "왜 ·" 펼침 설명. **굵게** 표시 가능
-  where: string | null      // [설명] "어디서 ·" 장소·전화·비용 (2026-10-26). 없으면 그 줄을 안 그린다
+  where: string | null,     // [설명] "어디서 ·" 장소·전화·비용 (2026-10-26). 없으면 그 줄을 안 그린다
+  termGlossary: {string: string}  // [설명] why 속 어려운 말 → 풀이 (2026-10-31). 앱이 초록 밑줄. 등기부·보증보험 같은 기본 말은 뺀다
 }
 ```
 - 여정 데이터는 **정적**(모든 사용자 동일)이고 정본은 `backend/data/journey_stages.json`이다(비개발 팀원이 직접 편집).

@@ -252,7 +252,7 @@ class ChatReply {
 
 /// S-11 계약 여정 체크리스트 — 단계별 할 일.
 class JourneyItem {
-  const JourneyItem({required this.text, required this.why, this.where});
+  const JourneyItem({required this.text, required this.why, this.where, this.termGlossary = const {}});
 
   /// 할 일 한 줄 제목
   final String text;
@@ -263,10 +263,16 @@ class JourneyItem {
   /// "어디서 ·" 장소·전화·비용. 없으면 그 줄을 그리지 않는다 (2026-10-26)
   final String? where;
 
+  /// "왜" 속 어려운 말 → 풀이 (2026-10-31) — 초록 밑줄, 누르면 뜻. 옛 서버면 비어 있다.
+  final Map<String, String> termGlossary;
+
   factory JourneyItem.fromJson(Map<String, dynamic> json) => JourneyItem(
     text: json['text'] as String,
     why: json['why'] as String,
     where: (json['where'] as String?)?.trim().isEmpty ?? true ? null : json['where'] as String,
+    termGlossary: {
+      for (final e in ((json['termGlossary'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}',
+    },
   );
 }
 

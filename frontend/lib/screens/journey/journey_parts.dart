@@ -15,6 +15,7 @@ import '../../models/property_reports.dart';
 import '../../models/risk_grade.dart';
 import '../../state/journey_progress_store.dart';
 import '../../utils/korean_date.dart';
+import '../cases/case_card.dart' show caseRichText;
 import 'change_boxes.dart';
 import 'journey_logic.dart';
 
@@ -1084,7 +1085,11 @@ class JourneyItemRow extends StatelessWidget {
                                   color: AppColors.caution,
                                 ),
                               ),
-                              boldMarkup(item.why, detail),
+                              // 어려운 말은 초록 밑줄(누르면 뜻) — 풀이가 있을 때만. 없으면 예전처럼 굵게만(2026-10-31)
+                              if (item.termGlossary.isEmpty)
+                                boldMarkup(item.why, detail)
+                              else
+                                caseRichText(context, text: item.why, base: detail, glossary: item.termGlossary),
                             ],
                           ),
                           semanticsLabel: '왜 · ${plainMarkup(item.why)}',

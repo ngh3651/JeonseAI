@@ -97,7 +97,10 @@ def _to_stage(t: _StageTemplate, index: int) -> JourneyStage:
     return JourneyStage(
         title=t.title,
         subtitle=t.subtitle,
-        items=[JourneyItem(text=i.text, why=i.why, where=(i.where or None)) for i in t.items],
+        items=[
+            JourneyItem(text=i.text, why=i.why, where=(i.where or None), termGlossary=_glossary(i.why))
+            for i in t.items
+        ],
         chip=(t.chip or None),
         kind=kind,
         compare=t.compare,
@@ -105,6 +108,30 @@ def _to_stage(t: _StageTemplate, index: int) -> JourneyStage:
         agency=(t.agency or None),
         dateKey=date_key,
     )
+
+
+#: 여정 어디에나 나오는 앱의 기본 말 — 줄마다 밑줄이 붙으면 오히려 안 읽혀서 뺀다(첫 화면·리포트에서 이미 풀어 준다)
+_COMMON = {"등기부", "등기부등본", "보증보험"}
+
+
+def _glossary(why: str) -> dict[str, str]:
+    """할 일 설명 속 어려운 말 풀이 — 앱이 초록 밑줄로 그린다(2026-10-31). 실패해도 여정은 그대로.
+
+    앱(caseRichText)은 같은 자리면 긴 말을 먼저 고르므로, '가계약금'과 '계약금'을 둘 다 담아도 된다
+    (`terms.attach`는 옛 화면 때문에 짧은 쪽을 버린다 — 여기선 쓰지 않는다).
+    """
+    try:
+        from . import terms
+
+        text = (why or "").replace("**", "")
+        out: dict[str, str] = {}
+        for t in terms.load():
+            for surface in t.surfaces:
+                if surface and surface not in _COMMON and surface in text:
+                    out.setdefault(surface, t.description)
+        return out
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def load_stages() -> list[JourneyStage]:

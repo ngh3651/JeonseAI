@@ -295,8 +295,8 @@ def test_현재_소유자_이름에_좌표가_붙는다():
     assert len(result) == 2
     assert [h.kind for h in result] == ["owner", "owner"]
     assert [h.badge for h in result] == [1, 2]
-    assert all("계약서에 적힌 집주인(임대인) 이름" in h.body for h in result)
-    assert all("대리인이 나왔다면" in h.body for h in result)  # 위임장 케이스 누락 방지
+    assert all("집주인 본인" in h.body for h in result)
+    assert all("대리인이 나오면" in h.body for h in result)  # 위임장 케이스 누락 방지
     # 공동명의는 전원 동의가 필요하다는 안내가 붙어야 한다
     assert all(h.caution and "2명이 함께 가진 집" in h.caution for h in result)
 
@@ -328,7 +328,7 @@ def test_법인_소유자에게는_법인용_문구가_나간다():
     assert len(result) == 1
     body = result[0].body
     assert "회사(법인)" in body
-    assert "법인 등기사항전부증명서" in body and "대표이사" in body
+    assert "법인 등기부" in body and "대표이사" in body
     assert "법인인감증명서" in body
     # 개인용 지시가 섞여 나가면 안 된다
     assert "신분증이 이 이름과 같은지" not in body
@@ -338,7 +338,7 @@ def test_개인_소유자_문구는_그대로다():
     """법인 분기를 넣으면서 개인 경로가 바뀌지 않았는지 지킨다."""
     extract = extract_with(current_owners=[Owner(name="홍길동")])
     body = _run(extract, as_result(gap_gu_page()))[0].body
-    assert "계약서에 적힌 집주인(임대인) 이름" in body
+    assert "집주인 본인" in body
     assert "회사(법인)" not in body
 
 

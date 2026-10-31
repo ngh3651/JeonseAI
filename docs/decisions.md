@@ -2388,3 +2388,15 @@
   - 새 수치 없음.
 - **출처**: CLAUDE.md §2-3 보수 편향(정보가 없으면 '양호' 없이 '확인 필요'), decisions.md 2026-10-27 '쪽이 빠졌거나 잘 안 읽힌 장이 있으면 양호를 막는다'의 연장. 계기는 규칙 재감사(2026-10-31).
 - **봉인**: `backend/tests/test_settlement_gap.py`(OCR 0장이면 양호 없음 — 분석 경로 끝까지), `test_insurance_good.py`(명단 사정 문구 · 다시 판정 재료 2건).
+
+
+### [2026-10-31] 악성임대인 명단 — 받는 곳은 HUG 빅데이터 개방포털 주소, 인증키 칸 `API_KEY`(저절로)
+- **처음 의도**: 명단 받기(같은 날 앞 항목)는 받는 곳 모양을 몰라 공공데이터포털 방식(`serviceKey` · `pageNo`/`numOfRows`)을 기본으로 두고, 다르면 환경변수(`BLACKLIST_KEY_PARAM`·`BLACKLIST_FIELD_NAME`)로 맞추게 했다.
+- **바꾼 이유**: 규혁이 공공데이터포털에서 API를 찾다가 물어봐서 확인했다(2026-10-31) — 공공데이터포털 15161980은 안내만 있고(요청 주소 비어 있음) 신청은 HUG 빅데이터 개방포털로 연결된다. HUG 안내 페이지의 요청 주소는 `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=…`(인증키 칸 `API_KEY`, 쪽 나눔 변수 없음, JSON). 예시 키 `OPEN`으로 불러 보니 HTTP 200에 `[{"ERROR_CODE", "ERROR_MSG": "EXPIRED API_KEY."}]`가 왔다 — 지금 코드로는 키 칸 이름이 틀리고, 오류가 와도 '이름 칸을 못 찾음'으로 잘못 남는다.
+- **최종 결정**:
+  - 받는 곳이 HUG 주소면 인증키 칸을 저절로 `API_KEY`로(환경변수가 있으면 그것). 사람이 넣을 것은 `BLACKLIST_SOURCE_URL`=`https://www.khug.or.kr/defaultOnDebitList.do`, `BLACKLIST_API_KEY`=신청해 받은 키 둘뿐.
+  - 칸 이름은 대소문자를 가리지 않고 찾는다(HUG는 대문자 칸). 응답 안의 오류 칸(ERROR_MSG 등)은 그 글을 상태·로그에 남긴다("받는 곳 오류: EXPIRED API_KEY." — 사람 이름이 아니다). 헬스체크는 그대로 참/거짓만.
+  - 쪽 나눔이 없는 API는 몇 쪽을 달라 해도 같은 목록을 준다 — 같은 쪽이 또 오면 멈춘다.
+  - 신청 때 시스템 유형은 '일반'(받은 결과를 서버에 저장하지 않음)이 아니다 — 우리는 가린 명단을 서버에 둔다.
+- **출처**: 공공데이터포털 15161980 메타데이터(접근 주소 = HUG 빅데이터 개방포털 안내 페이지), HUG 빅데이터 개방포털 '상습 채무불이행자 정보공개' 안내(요청 주소·`API_KEY`·JSON·무료·이용허락 제한 없음). 판정 변경 없음.
+- **봉인**: `backend/tests/test_blacklist_source.py`(HUG 주소 = `API_KEY` · 대문자 칸 · 같은 쪽이면 멈춤 · 오류 글 남기고 전 명단 그대로 · 공공데이터포털 방식은 `serviceKey`).

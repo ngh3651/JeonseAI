@@ -142,3 +142,48 @@ def test_사진에서_보기_소유자_표시에_명단_결과가_붙는다():
     r = _owner_report({"grade": "확인 필요", "statusLabel": rule_engine.BLACKLIST_PENDING_LABEL})
     RB._add_blacklist_to_owner_mark(r)
     assert r.highlights[0].facts == ["지금 소유자 1명"]
+
+
+def test_HUG_주소면_키_칸은_API_KEY_대문자_칸도_읽고_같은_쪽이면_멈춘다(data_dir, monkeypatch):
+    """2026-10-31 실제 확인: https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=… · 쪽 나눔 없음 · 대문자 칸."""
+    monkeypatch.setenv("BLACKLIST_SOURCE_URL", B.HUG_ENDPOINT)
+    monkeypatch.setenv("BLACKLIST_API_KEY", "k")
+    monkeypatch.delenv("BLACKLIST_KEY_PARAM", raising=False)
+    same = [{"LSR_NM": f"사람{i}", "AGE": "50"} for i in range(B.PAGE_SIZE)]
+    calls = []
+
+    def get(url, params=None, timeout=None):
+        calls.append(params)
+        return SimpleNamespace(text=json.dumps(same, ensure_ascii=False),
+                               headers={"content-type": "application/json"}, raise_for_status=lambda: None)
+
+    st = B.refresh(get=get, salt=SALT)
+    assert st["ok"] and st["count"] == B.PAGE_SIZE
+    assert calls[0]["API_KEY"] == "k" and "serviceKey" not in calls[0]
+    assert len(calls) == 2  # 2쪽이 1쪽과 같아서 멈췄다(40번 부르지 않는다)
+    raw = (data_dir / B.STORE_FILE).read_text(encoding="utf-8")
+    assert "사람1" not in raw
+
+
+def test_받는_곳이_오류를_주면_그_글을_남기고_전_명단_그대로(data_dir, monkeypatch):
+    """HUG는 키가 만료되면 HTTP 200에 [{"ERROR_CODE", "ERROR_MSG": "EXPIRED API_KEY."}]를 준다(2026-10-31 실제 응답)."""
+    monkeypatch.setenv("BLACKLIST_SOURCE_URL", B.HUG_ENDPOINT)
+    monkeypatch.setenv("BLACKLIST_API_KEY", "OPEN")
+    old = B.to_entries([{"성명": "김철수"}], salt=SALT)
+    (data_dir / B.STORE_FILE).write_text(json.dumps({"saltId": B.salt_id(SALT), "entries": old}), encoding="utf-8")
+
+    def get(url, params=None, timeout=None):
+        return SimpleNamespace(text=json.dumps([{"ERROR_CODE": "E99", "ERROR_MSG": "EXPIRED API_KEY."}]),
+                               headers={"content-type": "application/json"}, raise_for_status=lambda: None)
+
+    st = B.refresh(get=get, salt=SALT)
+    assert st["ok"] is False and st["note"] == "받는 곳 오류: EXPIRED API_KEY."
+    assert B.load() == old
+
+
+def test_공공데이터포털_방식이면_serviceKey():
+    import os
+
+    os.environ.pop("BLACKLIST_KEY_PARAM", None)
+    assert B._key_param("https://apis.data.go.kr/x/y") == "serviceKey"
+    assert B._key_param(B.HUG_ENDPOINT) == "API_KEY"

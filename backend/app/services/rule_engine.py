@@ -472,18 +472,34 @@ def _judge_insurance(
     if lease_count:
         disqualify.append(f"임차권등기 {lease_count}건")
 
-    if disqualify:
+    # ② 빚 조건 — 빚 카드와 **같은 상수·같은 원값 비교**(senior_over_limit·combined_over_limit)를 그대로 읽는다.
+    #   2026-11-01 규혁: 빚이 시세의 97%·빚+보증금 156%로 HUG 기준을 분명히 넘었는데(표에 빨간 숫자) 이 카드는
+    #   '확인 필요 · 등기부만으로는 알 수 없어요'였다 — 위험이 되는 길이 ①(권리침해)뿐이라서다. 새 수치 없음(decisions.md 2026-11-01).
+    sf = ev_senior.facts if ev_senior is not None else {}
+    debt_signals: list[str] = []
+    if sf.get("senior_over_limit"):
+        debt_signals.append(
+            f"빚이 시세의 {sf.get('senior_ratio_pct')}% (HUG 기준 {T.SENIOR_DEBT_RATIO_DANGER_PCT}% 이하)"
+        )
+    if sf.get("combined_over_limit"):
+        debt_signals.append(
+            f"빚과 보증금 {sf.get('combined_ratio_pct')}% (기준 {T.COMBINED_RATIO_DANGER_PCT}% 이하)"
+        )
+
+    if disqualify or debt_signals:
+        tail = " (HUG 권리침해 결격 사유)" if not debt_signals else " (HUG 가입요건)"
         return EvidenceVerdict(
             id="insurance",
             grade=Grade.DANGER,
             # [D25] '가입 결격 신호'는 보험 약관 어휘다. 출처 표기(HUG …)는 그대로 둔다.
-            detail_text=(
-                "보증보험에 못 들 수 있는 신호: "
-                + " · ".join(disqualify)
-                + " (HUG 권리침해 결격 사유)"
-            ),
+            detail_text="보증보험에 못 들 수 있는 신호: " + " · ".join([*disqualify, *debt_signals]) + tail,
             source_text=_SRC_INSURANCE,
-            facts={"disqualify_signals": disqualify},
+            facts={
+                "disqualify_signals": [*disqualify, *debt_signals],
+                # 나눠 둔다 — 화면 ①줄(권리침해 있음/없음)과 설명이 빚 신호를 '압류'처럼 읽지 않게
+                "rights_signals": disqualify,
+                "debt_signals": debt_signals,
+            },
         )
     registry_ok = (
         ev_jeonse is not None

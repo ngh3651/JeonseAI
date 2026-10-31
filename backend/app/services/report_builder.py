@@ -49,7 +49,7 @@ from . import (
     store,
     terms,
 )
-from . import evidence_view, mark_plans, text_guard
+from . import evidence_view, house_signals, mark_plans, text_guard
 from .formatting import format_won, short_address
 from .patterns import tags_from_verdict as issue_tags_from_verdict
 
@@ -150,6 +150,8 @@ def _build(
     registry_viewed_at: str | None = None,
     price_info: "price_resolver.ResolvedPrice | None" = None,
     blacklist_override: "EvidenceVerdict | None" = None,
+    house_types: list[str] | None = None,
+    property_address: str | None = None,
 ) -> tuple[Report, "explanation.ExplanationResult"]:
     """조립 본체 — (Report, 설명 생성 결과)를 돌려준다.
 
@@ -176,6 +178,16 @@ def _build(
     # 가리키려면 id가 필요하다(계산은 now/report_id에만 의존하므로 순서를 옮겨도 안전).
     now = analyzed_at or datetime.now(KST)
     resolved_id = report_id or f"analysis-{int(now.timestamp() * 1000)}"
+    # 깊은 설명 재료 (2026-11-01) — 판정 **뒤**, 설명 **앞**. 판정은 위에서 이미 끝났다(이 값들은 등급을 못 움직인다).
+    #   손실 계산은 리포트 2장·손실 시뮬레이터와 **같은 함수·같은 입력**(houseTypes·쪽 머리 주소·최우선변제 재료)으로 낸다 —
+    #   빚 카드 그림의 '경매로 팔리는 값'·'돌려받을 돈'이 시뮬레이터 숫자와 어긋나지 않게.
+    risk_facts = registry_facts.build(extract)
+    loss = _loss_for(verdict, risk_facts, house_types=house_types, property_address=property_address)
+    verdict.loss_summary = house_signals.loss_summary(loss)
+    verdict.house_signals = house_signals.build(extract, verdict)
+    # 카드 펼침(숫자 줄·할 일·큰 줄·그림)은 규칙 값만으로 먼저 만든다 — 설명이 할 일을 되풀이하지 않게 할 일을 재료로 넘긴다
+    views = {ev.id: evidence_view.build(ev, verdict, risk_facts, loss) for ev in verdict.evidences}
+    verdict.card_todo = {eid: list(v["todo"]) for eid, v in views.items() if v["todo"]}
     if use_llm:
         # LLM은 설명 문장만 — 실패 시 내부에서 폴백으로 완성돼 돌아온다(리포트 항상 완성)
         explanation_result = explanation.generate(verdict, report_id=resolved_id)
@@ -206,11 +218,10 @@ def _build(
         verdict.evidences,
         key=lambda e: (_SEVERITY_ORDER[e.grade], _CANONICAL_ORDER.index(e.id)),
     )
-    risk_facts = registry_facts.build(extract)
     evidences = []
     for ev in ordered:
         t = texts["evidences"][ev.id]
-        view = evidence_view.build(ev, verdict, risk_facts)  # [UI — 규칙 값만] 펼침의 숫자 줄·막대·할 일
+        view = views[ev.id]  # [UI — 규칙 값만] 펼침의 숫자 줄·막대·할 일·큰 줄·그림
         evidences.append(
             Evidence(
                 id=ev.id,
@@ -230,6 +241,8 @@ def _build(
                 points=view["points"],
                 meter=view["meter"],
                 todo=view["todo"],
+                hero=view["hero"],  # [UI — 규칙 값만] 2026-11-01 맨 위 큰 한 줄
+                visual=view["visual"],  # [UI — 규칙 값만] 2026-11-01 그림(줄 서기·조건 칸·구간)
             )
         )
 
@@ -276,6 +289,30 @@ def _build(
         riskTags=issue_tags_from_verdict(verdict),  # [판례·질문 재료] 이 집에 실제로 걸린 문제 — 판정에 쓰지 않음
     )
     return report, explanation_result
+
+
+def _loss_for(verdict: RuleVerdict, risk_facts: list, *, house_types: list[str] | None,
+              property_address: str | None):
+    """판정 결과 → 손실 예상(`loss_estimate.estimate`). 완성된 리포트에서 다시 계산해도 같은 값이 나오게 같은 입력을 쓴다.
+
+    실패하면 None — 그림의 '경매로 팔리는 값'·'돌려받을 돈'만 비고, 설명·리포트는 그대로 나간다.
+    """
+    from types import SimpleNamespace
+
+    try:
+        shape = SimpleNamespace(
+            deposit=verdict.deposit,
+            seniorDebtAmount=verdict.senior_debt_amount,
+            marketPrice=verdict.market_price,
+            address=verdict.address,
+            propertyAddress=property_address,
+            houseTypes=list(house_types or []),
+            riskFacts=risk_facts,
+        )
+        return loss_estimate.estimate(shape)
+    except Exception:  # noqa: BLE001
+        _log.error("[손실예상] ⚠ 카드 그림용 계산 실패 — 그림의 결과 칸 없이 갑니다", exc_info=True)
+        return None
 
 
 def _timed(fn, *args, **kwargs):
@@ -600,6 +637,9 @@ def rejudge(
         registry_viewed_at=old.registryViewedAt,
         price_info=price_info,
         blacklist_override=blacklist,
+        # 손실 계산 입력을 분석 때와 같게 — 카드 그림이 시뮬레이터와 같은 숫자를 내게(2026-11-01)
+        house_types=list(old.houseTypes or []),
+        property_address=old.propertyAddress,
     )
     keep = {k: getattr(old, k) for k in _KEEP_ON_REJUDGE if hasattr(old, k)}
     return fresh.model_copy(update=keep)
@@ -923,6 +963,17 @@ def analyze(
         _log.info("[판정] 사진 글자를 한 장도 못 읽음 — 빠진 쪽·신청사건을 확인 못 해 '양호' 금지")
 
     _raise_if_cancelled(cancelled, "설명 생성(Solar)")
+    # 용도 후보 (2026-10-28) — 손실 예상이 어느 매각가율을 쓸지 고르는 데만 쓴다. 판정과 무관하다.
+    #   2026-11-01: 설명·카드 그림도 손실 계산을 쓰게 되어 조립 **전에** 정한다(같은 값을 리포트에도 남긴다).
+    house_types: list[str] = []
+    try:
+        house_types = loss_estimate.house_types_from(
+            list(price_info.candidates) if price_info else [],
+            (doc_check.header_address if doc_check is not None else None) or extract.address,
+            registry_use=ocr_layout.building_use(ocr_result.pages),
+        )
+    except Exception:  # noqa: BLE001 — 용도를 못 정해도 리포트는 나간다(손실 예상이 세 용도 중 낮은 값을 쓴다)
+        _log.error("[손실예상] ⚠ 용도 후보를 정하지 못했습니다", exc_info=True)
     report, explain = _build(
         extract,
         deposit=deposit,
@@ -934,6 +985,8 @@ def analyze(
         checked_notes=highlight_result.checked_notes,
         registry_viewed_at=highlight_result.viewed_at,
         price_info=price_info,
+        house_types=house_types,
+        property_address=doc_check.header_address if doc_check is not None else None,
     )
     if mask_result is not None:
         report.privacyMasks = mask_result.masks
@@ -949,15 +1002,7 @@ def analyze(
         report.checkedNotes = [*report.checkedNotes, *recovery.notes]
     # 같은 집 묶기의 첫 기준 (2026-10-27) — 표시·판정에 쓰지 않는다. 주소는 읽을 때마다 글자가 조금씩 달라진다.
     report.propertyId = store.property_id(extract.unique_number)
-    # 용도 후보 (2026-10-28) — 손실 예상이 어느 매각가율을 쓸지 고르는 데만 쓴다. 판정과 무관하다.
-    try:
-        report.houseTypes = loss_estimate.house_types_from(
-            list(price_info.candidates) if price_info else [],
-            (doc_check.header_address if doc_check is not None else None) or extract.address,
-            registry_use=ocr_layout.building_use(ocr_result.pages),
-        )
-    except Exception:  # noqa: BLE001 — 용도를 못 정해도 리포트는 나간다(손실 예상이 세 용도 중 낮은 값을 쓴다)
-        _log.error("[손실예상] ⚠ 용도 후보를 정하지 못했습니다", exc_info=True)
+    report.houseTypes = house_types  # 위에서 조립 전에 정한 값(카드 그림·설명이 쓴 것과 같다)
     _add_house_type_to_address_mark(report)
     _add_blacklist_to_owner_mark(report)
     _attach_mark_glossary(report)

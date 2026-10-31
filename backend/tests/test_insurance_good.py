@@ -147,3 +147,44 @@ def test_다시_판정_재료가_원래_결과를_지킨다():
     assert "이름을 못 읽어" not in (ins.detail_text or "")
     bl3 = next(e for e in re.evidences if e.id == "blacklist")
     assert evidence_view.build(bl3, re)["points"][0].value.endswith("같은 이름 없음")
+
+
+# ── 2026-11-01: 빚이 HUG 기준을 넘으면 보증보험도 '위험' (decisions.md 2026-11-01) ─────────────────────
+
+
+def _with_mortgage(amount: int):
+    from app.schemas.internal import MoneyEntry
+
+    ex = _ex()
+    ex.mortgages = [MoneyEntry(amount=amount, rank_number="1", receipt_date="2022-04-15", mortgagee="주식회사가상은행")]
+    return ex
+
+
+def test_빚이_HUG_기준을_넘으면_보증보험도_위험_종합은_그대로():
+    v = rule_engine.evaluate(_with_mortgage(291_000_000), deposit=150_000_000, market_price=300_000_000,
+                             blacklist_entries=OTHER)
+    ins = _ins(v)
+    senior = next(e for e in v.evidences if e.id == "senior_debt")
+    assert senior.grade is Grade.DANGER
+    assert ins.grade is Grade.DANGER
+    assert ins.facts["rights_signals"] == [] and len(ins.facts["debt_signals"]) == 2
+    assert "빚이 시세의 97% (HUG 기준 60% 이하)" in ins.detail_text and "(HUG 가입요건)" in ins.detail_text
+    # 종합 등급은 빚 카드가 이미 '위험'이라 그대로 — 판정이 넓어지지 않았다
+    assert v.grade is Grade.DANGER
+    # 화면 ①줄(권리침해)은 '없음' — 빚 신호를 압류처럼 말하지 않는다
+    from app.services import evidence_view
+
+    pts = evidence_view.build(ins, v)["points"]
+    assert pts[0].label.startswith("압류") and pts[0].value == "없음" and pts[0].tone == "ok"
+    assert pts[1].tone == "danger" and pts[2].tone == "danger"
+    # 준비된 문구도 빚을 이유로 말한다(압류라고 하지 않는다)
+    text = fallback_texts.build(v)["evidences"]["insurance"]["easy_explanation"]
+    assert text.startswith("**빚이 HUG 기준을 넘었어요**") and "압류" not in text
+    # 홈 요약 줄은 같은 이유를 두 번 세지 않는다
+    assert "보증보험" not in fallback_texts.top_risk_summary(v)
+
+
+def test_빚이_기준_안이면_예전과_같다():
+    v = rule_engine.evaluate(_with_mortgage(60_000_000), deposit=150_000_000, market_price=300_000_000,
+                             blacklist_entries=OTHER)
+    assert _ins(v).grade is Grade.GOOD  # 빚 20% · 빚+보증금 70% · 전세가율 50%

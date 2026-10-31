@@ -11,7 +11,16 @@
 
 from __future__ import annotations
 
-from ..schemas.contract import EvidenceMeter, EvidencePoint
+from ..schemas.contract import (
+    EvidenceHero,
+    EvidenceMeter,
+    EvidencePoint,
+    EvidenceVisual,
+    VisualCheck,
+    VisualCut,
+    VisualQueueItem,
+    VisualResult,
+)
 from ..schemas.internal import EvidenceVerdict, Grade, RuleVerdict
 from . import thresholds as T
 from .formatting import format_won
@@ -25,16 +34,32 @@ def _pt(label: str, value: str, tone: str = "plain") -> EvidencePoint:
     return EvidencePoint(label=label, value=value, tone=tone)
 
 
-def build(ev: EvidenceVerdict, verdict: RuleVerdict, risk_facts: list | None = None) -> dict:
-    """근거 하나 → {points, meter, todo}. 실패하면 빈 값(앱은 예전 상세 상자로 그린다)."""
+_EMPTY = {"points": [], "meter": None, "todo": [], "hero": None, "visual": None}
+
+
+def build(ev: EvidenceVerdict, verdict: RuleVerdict, risk_facts: list | None = None, loss=None) -> dict:
+    """근거 하나 → {points, meter, todo, hero, visual}. 실패하면 빈 값(앱은 예전 상세 상자로 그린다).
+
+    [loss]: 손실 예상(`loss_estimate.estimate` 결과 — 리포트 2장·손실 시뮬레이터와 **같은 계산**). 빚 카드 그림의
+    '경매로 팔리는 값'·'돌려받을 돈'에만 쓴다. 없으면 그 두 칸을 비운다.
+    """
     try:
         fn = _BUILDERS.get(ev.id)
         if fn is None:
-            return {"points": [], "meter": None, "todo": []}
+            return dict(_EMPTY)
         points, meter, todo = fn(ev, verdict, list(risk_facts or []))
-        return {"points": points, "meter": meter, "todo": todo}
     except Exception:  # noqa: BLE001 — 펼침 재료 하나 때문에 리포트를 잃지 않는다
-        return {"points": [], "meter": None, "todo": []}
+        return dict(_EMPTY)
+    out = {"points": points, "meter": meter, "todo": todo, "hero": None, "visual": None}
+    # 2026-11-01 리디자인 — 큰 한 줄 + 그림. 여기서 실패해도 숫자 줄·할 일은 그대로 나간다.
+    try:
+        out["visual"], replaced = _visual(ev, verdict, points, loss)
+        if replaced is not None:
+            out["points"] = replaced
+        out["hero"] = _hero(ev, verdict, out["visual"])
+    except Exception:  # noqa: BLE001
+        out["visual"], out["hero"] = None, None
+    return out
 
 
 def _tone_for(grade: Grade) -> str:
@@ -159,7 +184,11 @@ def _insurance(ev: EvidenceVerdict, verdict: RuleVerdict, _facts: list):
     jeonse = next((e for e in verdict.evidences if e.id == "jeonse_ratio"), None)
     blacklist = next((e for e in verdict.evidences if e.id == "blacklist"), None)
     pending = next((e for e in verdict.evidences if e.id == "pending"), None)
-    signals = ev.facts.get("disqualify_signals") or []
+    # ①줄은 **권리침해만** — 빚 조건을 넘어 위험이 된 카드(2026-11-01)의 빚 신호는 ②③줄이 말한다.
+    #   옛 리포트(rights_signals 없음)는 예전처럼 disqualify_signals 전체가 권리침해였다.
+    signals = ev.facts.get("rights_signals")
+    if signals is None:
+        signals = ev.facts.get("disqualify_signals") or []
     sf = senior.facts if senior else {}
     jf = jeonse.facts if jeonse else {}
     sp, cp, jp = sf.get("senior_ratio_pct"), sf.get("combined_ratio_pct"), jf.get("jeonse_ratio_pct")
@@ -250,3 +279,154 @@ _BUILDERS = {
     "blacklist": _blacklist,
     "pending": _pending,
 }
+
+
+# ── 2026-11-01 리디자인: 맨 위 큰 한 줄(hero) · 그림 하나(visual) ─────────────────────────────────
+# ⚠ 규칙이 이미 낸 값만 쓴다. 새 수치·새 기준 없음. 사진이 빠져 확정 못 한 카드(capped_reason)는 큰 말을 하지 않는다.
+
+
+def _won(n: int | None) -> str:
+    return "0원" if not n else format_won(n)
+
+
+def _short_lender(name: str | None) -> str:
+    """'주식회사가상은행' → '가상은행'. 사람이면 이미 '이○○'으로 가려져 있다(rule_engine._mortgage_fact)."""
+    n = (name or "").strip()
+    for cut in ("주식회사", "(주)", "㈜", "유한회사"):
+        n = n.replace(cut, "")
+    return n.strip() or "빚"
+
+
+def _queue(ev: EvidenceVerdict, verdict: RuleVerdict, points: list, loss):
+    f = ev.facts
+    total = int(f.get("senior_debt_total") or 0)
+    if not total or f.get("unknown_amount_count") or f.get("capped_reason"):
+        return None, None  # 금액을 모르는 빚이 있으면 줄을 정직하게 그릴 수 없다
+    ms = [m for m in (f.get("mortgages") or []) if m.get("max_claim_amount")]
+
+    def order(m):
+        r = str(m.get("rank_number") or "")
+        return (0, int(r)) if r.isdigit() else (1, str(m.get("receipt_date") or ""))
+
+    ms.sort(key=order)
+    items = [VisualQueueItem(label=_short_lender(m.get("mortgagee")), amount=int(m["max_claim_amount"]), kind="debt")
+             for m in ms]
+    rest = total - sum(i.amount for i in items)
+    if rest > 0:  # 전세권 등 근저당 밖의 먼저 받아갈 돈(빚 카드 합계에 들어간 것)
+        items.append(VisualQueueItem(label="전세권 등", amount=rest, kind="debt"))
+    deposit = int(verdict.deposit or 0)
+    items.append(VisualQueueItem(label="내 보증금", amount=deposit, kind="mine"))
+
+    cut = result = None
+    if loss is not None and verdict.market_price:
+        status = getattr(loss, "status", None)
+        back = getattr(loss, "expectedReturn", None)
+        if status == "ok" and getattr(loss, "expectedSale", None):
+            cut = VisualCut(label="경매로 팔리는 값", amount=int(loss.expectedSale))
+        elif status == "debt_exceeds":
+            cut = VisualCut(label="집값(시세)", amount=int(verdict.market_price))
+        if status in ("ok", "debt_exceeds") and back is not None:
+            tone = "ok" if back >= deposit else ("danger" if back <= 0 else "caution")
+            sub = f"내 보증금 {format_won(deposit)} 중"
+            if (getattr(loss, "priorityAmount", 0) or 0) > 0:
+                sub += " · 최우선변제 포함"
+            result = VisualResult(label="경매로 가면 돌려받을 돈", sub=sub, value=_won(back), tone=tone)
+
+    # 숫자 줄 = 그림의 칸(같은 색 점). 합계·빚+보증금 %는 그림과 큰 한 줄이 말하므로 뺀다.
+    rows: list[EvidencePoint] = []
+    for i, m in enumerate(ms[:4]):
+        label = f"{m['rank_number']}순위 근저당" if m.get("rank_number") else "근저당"
+        sub = " · ".join(b for b in (dot(m.get("receipt_date")), m.get("mortgagee")) if b) or None
+        rows.append(EvidencePoint(label=label, value=format_won(m["max_claim_amount"]), sub=sub, dot=i))
+    if rest > 0:
+        rows.append(EvidencePoint(label="전세권 등", value=format_won(rest), dot=len(ms)))
+    rows += [p for p in points if p.label == "임차권등기"]
+    visual = EvidenceVisual(type="queue", items=[i.model_dump() for i in items], cut=cut, result=result)
+    return visual, rows
+
+
+def _checks(ev: EvidenceVerdict, points: list):
+    items = [VisualCheck(ok={"ok": True, "danger": False}.get(p.tone), label=p.label, value=p.value) for p in points]
+    if not items:
+        return None
+    return EvidenceVisual(type="checks", items=[i.model_dump() for i in items],
+                          passed=sum(1 for i in items if i.ok is True), total=len(items))
+
+
+def _visual(ev: EvidenceVerdict, verdict: RuleVerdict, points: list, loss):
+    """(그림, 바꿔 쓸 숫자 줄 | None)"""
+    if ev.id == "senior_debt":
+        return _queue(ev, verdict, points, loss)
+    if ev.id == "insurance":
+        return _checks(ev, points), None
+    if ev.id == "jeonse_ratio":
+        pct = ev.facts.get("jeonse_ratio_pct")
+        if pct is None or ev.facts.get("whole_building"):
+            return None, None
+        return EvidenceVisual(type="zones", value=int(pct),
+                              zones=[T.JEONSE_RATIO_CAUTION_PCT, T.JEONSE_RATIO_DANGER_PCT],
+                              tone=_tone_for(ev.grade)), None
+    return None, None
+
+
+def _hero(ev: EvidenceVerdict, verdict: RuleVerdict, visual) -> EvidenceHero | None:
+    f = ev.facts
+    if f.get("capped_reason"):
+        return None  # 사진이 빠져 확정 못 한 카드 — 큰 말을 하지 않는다
+    if ev.id == "senior_debt":
+        total = int(f.get("senior_debt_total") or 0)
+        pct = f.get("senior_ratio_pct")
+        if total and pct is not None:
+            if ev.grade is Grade.GOOD:  # 기준 안 — 겁주는 말('이미 빚')을 쓰지 않는다
+                return EvidenceHero(text=f"빚은 집값의 {pct}%예요", accent=f"{pct}%")
+            return EvidenceHero(text=f"집값의 {pct}%가 이미 빚이에요", accent=f"{pct}%")
+        if f.get("lease_registration_count"):
+            return EvidenceHero(text="전 세입자가 보증금을 못 받은 기록이 있어요", accent="못 받은 기록")
+        if f.get("unknown_amount_count"):
+            n = f["unknown_amount_count"]
+            return EvidenceHero(text=f"금액을 못 읽은 빚이 {n}건 있어요", accent=f"{n}건")
+        if total:
+            return EvidenceHero(text=f"먼저 받아갈 빚이 {format_won(total)} 있어요", accent=format_won(total))
+        return EvidenceHero(text="먼저 받아갈 빚은 보이지 않았어요")
+    if ev.id == "jeonse_ratio":
+        pct = f.get("jeonse_ratio_pct")
+        if f.get("whole_building"):
+            return EvidenceHero(text="단독·다가구라 이 비율로는 볼 수 없어요")
+        return EvidenceHero(text=f"보증금은 시세의 {pct}%예요", accent=f"{pct}%") if pct is not None else None
+    if ev.id == "insurance":
+        if visual is None or not visual.total:
+            return None
+        failed = sum(1 for i in visual.items if i.get("ok") is False)
+        unknown = sum(1 for i in visual.items if i.get("ok") is None)
+        if failed:
+            return EvidenceHero(text=f"가입 조건 {visual.total}개 중 {failed}개가 막혀요", accent=f"{failed}개")
+        if unknown:
+            return EvidenceHero(text=f"가입 조건 {visual.total}개 중 {unknown}개를 아직 몰라요", accent=f"{unknown}개")
+        return EvidenceHero(text=f"가입 조건 {visual.total}개를 모두 통과했어요", accent="모두 통과")
+    if ev.id == "ownership":
+        sig = f.get("signals") or {}
+        if sig.get("경매개시결정"):
+            return EvidenceHero(text="경매가 이미 시작된 집이에요", accent="경매")
+        if sig.get("신탁등기"):
+            return EvidenceHero(text="집이 신탁회사에 맡겨져 있어요", accent="신탁회사")
+        n = sum(int(sig.get(k) or 0) for k in ("압류", "가압류", "가처분"))
+        if n:
+            kinds = "·".join(k for k in ("압류", "가압류", "가처분") if sig.get(k))
+            return EvidenceHero(text=f"{kinds} {n}건이 걸려 있어요", accent=f"{n}건")
+        if ev.grade is Grade.GOOD:
+            return EvidenceHero(text="압류·경매·신탁 기록은 보이지 않았어요")
+        return None
+    if ev.id == "blacklist":
+        label = str(ev.status_label or "")
+        if label.startswith("명단 일치"):
+            return EvidenceHero(text="공개 명단에 같은 이름이 있어요", accent="같은 이름")
+        if ev.grade is Grade.GOOD:
+            size = f.get("list_size")
+            return EvidenceHero(text=f"공개 명단 {size:,}명과 맞춰 봤어요" if size else "공개 명단과 맞춰 봤어요")
+        if label == BLACKLIST_PENDING_LABEL:
+            return EvidenceHero(text="아직 공개 명단과 맞춰 보지 못했어요")
+        return EvidenceHero(text="집주인 이름을 못 읽었어요")
+    if ev.id == "pending":
+        return EvidenceHero(text="등기소에서 처리 중인 신청이 있어요", accent="처리 중")
+    return None
+

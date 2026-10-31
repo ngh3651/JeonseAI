@@ -328,3 +328,9 @@ class RuleVerdict(BaseModel):
     registry_viewed_at: Optional[str] = None  # 'YYYY.MM.DD'
     # 무엇을 찾아봤고 무엇을 왜 뺐는지(말소된 근저당 등). "을구를 읽었다"는 신뢰 장치다.
     checked_notes: list[str] = Field(default_factory=list)
+    # ── 깊은 설명 재료 (2026-11-01) — report_builder가 판정 **뒤에** 채운다. 판정에 쓰이지 않는다. ─────────
+    # 손실 계산(리포트 2장·손실 시뮬레이터와 같은 값)과 규칙이 찾은 '이 집 신호'(사실만, 판정 아님).
+    loss_summary: Optional[dict[str, Any]] = None
+    house_signals: list[str] = Field(default_factory=list)
+    # 카드마다 규칙이 이미 쓴 '이 집 맞춤 할 일' — 설명이 같은 말을 되풀이하지 않게 보여 준다(2026-11-01).
+    card_todo: dict[str, list[str]] = Field(default_factory=dict)

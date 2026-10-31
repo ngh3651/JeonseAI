@@ -523,6 +523,17 @@ void main() {
       expect(find.koText('완료'), findsOneWidget);
     });
 
+    testWidgets('입주 후(6번)까지 체크하면 리포트 카드의 "다시 떼서 대조" 띠가 사라진다 (2026-11-01)', (tester) async {
+      await _pumpJourney(tester);
+      expect(find.byKey(const ValueKey('journey-recheck-strip')), findsOneWidget);
+      await JourneyProgressStore.instance.setCheckedThrough(_jeongjaKey, 4); // 이사까지
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('journey-recheck-strip')), findsOneWidget, reason: '이사까지는 띠가 남는다');
+      await JourneyProgressStore.instance.setCheckedThrough(_jeongjaKey, 5); // 입주 후까지
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('journey-recheck-strip')), findsNothing);
+    });
+
     testWidgets('순서를 건너뛰면 체크되지 않고 한 줄로 알려 준다', (tester) async {
       await _pumpJourney(tester);
       await _tapChip(tester, 3); // 잔금으로

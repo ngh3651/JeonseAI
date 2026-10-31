@@ -260,8 +260,8 @@ class ReportCard extends StatelessWidget {
   /// 최신 리포트를 만든 대조 기록(있으면 날짜 줄 꼬리말이 '대조 · 변동 없음'/'변동 1건'으로 바뀐다)
   final CompareLogEntry? latestLog;
 
-  /// 회색 띠 문구 (굵은 부분 포함)
-  final InlineSpan recheck;
+  /// 회색 띠 문구 (굵은 부분 포함). null이면 띠가 없다(입주 후까지 끝남)
+  final InlineSpan? recheck;
   final VoidCallback onOpen;
 
   /// null이면 띠를 누를 수 없다("다시 뗄 일정이 없어요")
@@ -368,42 +368,44 @@ class ReportCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Material(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(kRadiusMd),
-            child: InkWell(
-              key: const ValueKey('journey-recheck-strip'),
-              onTap: onRecheck,
+          if (recheck != null) ...[
+            const SizedBox(height: 12),
+            Material(
+              color: AppColors.background,
               borderRadius: BorderRadius.circular(kRadiusMd),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.refresh,
-                        size: 20,
-                        color: AppColors.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(child: AppText.rich(recheck)),
-                      if (onRecheck != null)
+              child: InkWell(
+                key: const ValueKey('journey-recheck-strip'),
+                onTap: onRecheck,
+                borderRadius: BorderRadius.circular(kRadiusMd),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
                         Icon(
-                          Icons.chevron_right,
+                          Icons.refresh,
                           size: 20,
-                          color: AppColorsNext.textMuted,
+                          color: AppColors.primary,
                         ),
-                    ],
+                        const SizedBox(width: 8),
+                        Expanded(child: AppText.rich(recheck!)),
+                        if (onRecheck != null)
+                          Icon(
+                            Icons.chevron_right,
+                            size: 20,
+                            color: AppColorsNext.textMuted,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

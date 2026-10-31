@@ -201,6 +201,13 @@ class JourneyProgress {
   /// 대조 버튼이 붙는 단계인가 — 대조 단계이면서 아직 안 끝났다.
   bool showsCompare(int i) => stages[i].compare && !isDone(i);
 
+  /// '입주 후' 단계까지 끝났나 — 끝났으면 리포트 카드의 '다시 떼서 대조' 띠를 감춘다
+  /// (2026-11-01 규혁: 입주 후까지 체크했는데 "돈 보내기 전 다시 떼서 대조"가 남아 있었다).
+  bool get movedInDone {
+    final i = stages.indexWhere((s) => s.dateKey == JourneyDateKey.moveInNext);
+    return i >= 0 && isDone(i);
+  }
+
   /// 회색 띠가 가리킬 단계 — 아직 안 끝났고, 대조 버튼이 있고, 날짜가 있는 첫 단계.
   int? get nextRecheckIndex {
     for (int i = 0; i < stages.length; i++) {

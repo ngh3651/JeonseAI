@@ -493,37 +493,25 @@ class _PriorityStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String base = e.priorityBaseDate != null
-        ? '${_dot(e.priorityBaseDate!)} ${e.priorityBaseKind ?? '담보'} 기준'
-        : '담보가 없어 오늘 기준';
-    // 지역 이름 뒤에 조사를 붙이지 않는다('서울특별시은' — 2026-10-31 페르소나 리뷰). 애매하면 따로 한 토막.
-    String join(List<String?> parts) => [
-      for (final p in parts)
-        if (p != null && p.trim().isNotEmpty) p.trim(),
-    ].join(' · ');
-    final String? region = e.priorityRegion;
-    final String? unsure = e.priorityRegionUnsure ? '지역이 애매해 보호가 적은 쪽으로 봤어요' : null;
+    // 지역·기준일은 아래 '법령' 근거 줄로 옮겼다 — 여기는 한 줄에 들어가는 이 집 말만 (2026-10-31 규혁)
     final (String value, Color color, String sub) = switch (e.priorityStatus) {
       PriorityStatus.ok => (
         priced ? '+ ${formatWon(e.priorityAmount)}' : '최대 ${formatWon(e.priorityLimit ?? 0)}',
         AppColors.ok,
-        join([
-          region,
-          '보증금 ${formatWon(e.priorityCap ?? 0)} 이하',
-          base,
-          e.priorityHalfCapped ? '낙찰가의 절반까지' : null,
-          unsure,
-        ]),
+        e.priorityHalfCapped
+            ? '보증금 ${formatWon(e.priorityCap ?? 0)} 이하 · 낙찰가의 절반까지'
+            : '보증금 ${formatWon(e.priorityCap ?? 0)} 이하라 받아요',
       ),
+      // 못 받는 건 경매와 같이 '0원'(빨강) — '대상 아님'은 받는 돈이 얼마인지 말하지 않았다(2026-10-31 규혁)
       PriorityStatus.overCap => (
-        '대상 아님',
-        AppColorsNext.textMuted,
-        join(['보증금 ${formatWon(e.priorityCap ?? 0)} 이하만 받아요', region, base, unsure]),
+        '0원',
+        AppColorsNext.dangerText,
+        '보증금 ${formatWon(e.priorityCap ?? 0)} 이하만 받아요',
       ),
       PriorityStatus.blockedAuction => (
         '0원',
         AppColorsNext.dangerText,
-        '이미 경매가 시작된 집이에요 · 경매 전에 입주한 세입자만 받아요',
+        '경매 전에 입주한 세입자만 받아요',
       ),
       PriorityStatus.shared => (
         '나눠 받아요',
@@ -647,6 +635,12 @@ class _Basis extends StatelessWidget {
           '법령',
           [
             e.prioritySource!,
+            // 지역·기준일 — 이 집에 어느 표를 썼는지 (위 최우선변제 줄에서 옮겨 옴, 2026-10-31)
+            if (e.priorityRegion != null && e.priorityRegion!.trim().isNotEmpty) e.priorityRegion!.trim(),
+            e.priorityBaseDate != null
+                ? '${_dot(e.priorityBaseDate!)} ${e.priorityBaseKind ?? '담보'} 기준'
+                : '담보가 없어 오늘 기준',
+            if (e.priorityRegionUnsure) '지역이 애매해 보호가 적은 쪽으로 봤어요',
             if (e.priorityTableFrom != null) '${_dot(e.priorityTableFrom!)} 개정 표',
           ].join(' · '),
         ),

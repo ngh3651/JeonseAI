@@ -472,6 +472,15 @@ def _attach_mark_glossary(report: Report) -> None:
         _log.error("[매칭] ⚠ 표시 용어 풀이를 붙이지 못했습니다", exc_info=True)
 
 
+def _attach_fact_rows(report: Report) -> None:
+    """사진 표시마다 '이 집에서 본 것' 표 줄 [이름, 값] (2026-10-31 사진에서 보기 리디자인). 표시 전용 — 사실을 새로 만들지 않는다."""
+    try:
+        for h in report.highlights:
+            h.factRows = mark_plans.fact_rows(h.kind, list(h.facts))
+    except Exception:  # noqa: BLE001 — 표 한 줄 때문에 리포트를 잃지 않는다
+        _log.error("[매칭] ⚠ 표시 표 줄을 만들지 못했습니다", exc_info=True)
+
+
 def _add_blacklist_to_owner_mark(report: Report) -> None:
     """소유자 표시에 '공개 명단과 맞춰 본 결과'를 붙인다 (2026-10-31 — 사진에서 보기에서도 보이게). 표시 전용.
 
@@ -952,6 +961,7 @@ def analyze(
     _add_house_type_to_address_mark(report)
     _add_blacklist_to_owner_mark(report)
     _attach_mark_glossary(report)
+    _attach_fact_rows(report)
     if doc_check is not None:
         # 두 번째 기준(쪽 머리 주소) · 빠진 쪽 · 장마다 쪽 번호 — 표시·묶기 전용
         report.propertyAddress = doc_check.header_address

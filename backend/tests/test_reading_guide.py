@@ -134,7 +134,7 @@ def test_압류는_순위번호와_등기목적_두_앵커로_좌표를_준다()
     assert kinds_of(result) == ["seizure"]
     h = result.highlights[0]
     assert h.title == "집이 묶여 있어요 (압류)"
-    assert "국가·기관이 이 집을 묶어 둔 상태" in h.body
+    assert "기관이 집을 묶어 둔" in h.body  # 2026-10-31 기본 확인은 짧게
     assert h.source and "갑구" in h.source
 
 
@@ -155,7 +155,7 @@ def test_경매개시결정과_신탁도_2앵커로_잡힌다():
     result = highlight.build_highlights(extract, as_result(gap_gu_claims_page()))
     assert sorted(kinds_of(result)) == ["auction", "trust"]
     trust = marks(result, "trust")[0]
-    assert "신탁원부" in trust.body  # 계약 상대가 누구인지 확인하라는 실행 가능한 지시
+    assert "신탁원부" in " ".join(trust.plan)  # 실행 가능한 지시는 2026-10-31부터 '이 집 맞춤 할 일'에
 
 
 def test_등기목적이_다른_줄에_있으면_2앵커도_좌표를_주지_않는다():
@@ -288,7 +288,7 @@ def test_토지_별도등기를_표제부에서_찾는다():
     result = highlight.build_highlights(extract_with(), as_result(header_page()))
     assert "separate_land" in kinds_of(result)
     body = marks(result, "separate_land")[0].body
-    assert "토지 등기부도 함께 보여 달라" in body
+    assert "땅에 빚" in body
 
 
 def test_별도등기_없음은_표시하지_않는다():
@@ -303,7 +303,7 @@ def test_공동담보목록과_신청사건_처리중을_찾는다():
     result = highlight.build_highlights(extract_with(), as_result(footer_page()))
     assert "joint_collateral" in kinds_of(result)
     assert "pending_application" in kinds_of(result)
-    assert "몇 채가 함께 묶여" in marks(result, "joint_collateral")[0].body
+    assert "몇 채가 묶였는지" in " ".join(marks(result, "joint_collateral")[0].plan)
 
 
 def test_텍스트_감지_3종은_판정에_쓰이지_않는다():
@@ -337,7 +337,7 @@ def test_주소와_서류종류를_짚어준다():
     result = highlight.build_highlights(extract, as_result(header_page()))
     assert "address" in kinds_of(result)
     assert "doc_title" in kinds_of(result)
-    assert "말소사항 포함" in marks(result, "doc_title")[0].body
+    assert "말소사항 포함" in " ".join(marks(result, "doc_title")[0].plan)
 
 
 def test_IE가_주소를_못_읽었으면_주소를_짚지_않는다():
@@ -416,7 +416,7 @@ def test_뗀_날을_꼬리말에서_짚어준다():
     result = highlight.build_highlights(extract_with(), as_result(footer_page()))
     assert "viewed_at" in kinds_of(result)
     assert "2026.07.09" in marks(result, "viewed_at")[0].title
-    assert "서명하는 날" in marks(result, "viewed_at")[0].body
+    assert "잔금 날 아침" in " ".join(marks(result, "viewed_at")[0].plan)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -471,9 +471,9 @@ def test_상한으로_생략한_것은_사용자에게_말해준다():
 
 
 def test_표시는_등기부_읽는_순서로_번호가_매겨진다():
-    """뱃지 번호 순서 자체가 '등기부는 이렇게 읽는 겁니다' 가이드가 된다.
+    """뱃지 번호 = **종이 위에서 아래** 순서 (2026-10-31 — 종류 순서로 매기면 ②가 ①보다 위에 오곤 했다).
 
-    표제부(주소·면적·별도등기) → 표지(서류 종류) → 갑구(소유자 → 압류 계열)
+    표지(서류 종류) → 표제부(주소·면적·별도등기) → 갑구(소유자 → 압류 계열)
     → 을구(근저당 → 임차권 → 공동담보) → 문서 상태 → 꼬리말(뗀 날)
     """
     extract = extract_with(
@@ -489,8 +489,9 @@ def test_표시는_등기부_읽는_순서로_번호가_매겨진다():
     order = kinds_of(result)
     # [2026-08-14 D16] `area`는 `_DISABLED_KINDS`로 꺼져 이 순서에서 빠졌다.
     # 순서 자체(표제부 → 표지 → 갑구 → 을구 → 문서 상태 → 꼬리말)는 그대로다.
+    # 2026-10-31 규혁: 번호는 종이 위에서 아래 순서 — 표지 제목(서류 종류)이 주소 줄보다 위에 있다.
     expected = [
-        "address", "separate_land", "doc_title",
+        "doc_title", "address", "separate_land",
         "seizure", "lease_registration", "joint_collateral",
         "pending_application", "viewed_at",
     ]
@@ -710,26 +711,15 @@ def test_말소된_항목은_상한_계산에도_들어가지_않는다():
 # 문구 규율 — 카드에 보이는 것은 `body`의 **첫 문장**뿐이다
 # ══════════════════════════════════════════════════════════════════════════════
 
-# 2026-07-27 이전에 이미 리뷰를 거친 문구 2종. 이번 규율의 소급 대상이 아니다
-# (바꾸려면 별도 결정이 필요하다 — 기록된 문구를 조용히 갈아치우지 않는다).
-_LEGACY_BODIES = {"mortgage", "jeonse"}
+@pytest.mark.parametrize("kind", sorted(k for k, s in highlight._SPECS.items() if s.body))
+def test_기본_확인은_짧고_되묻지_않는다(kind: str):
+    """2026-10-31 사진에서 보기 리디자인 — `body`는 '기본 확인'(무슨 뜻인지) 두 줄 이하, 할 일은 `plan`(mark_plans)으로 옮겼다.
 
-
-@pytest.mark.parametrize(
-    "kind", sorted(k for k, s in highlight._SPECS.items() if s.body and k not in _LEGACY_BODIES)
-)
-def test_첫_문장이_행동으로_끝난다(kind: str):
-    """카드 캐러셀은 `body`의 **첫 문장만** 요약으로 보여준다(`analysis_report.dart`).
-
-    상황 설명이 먼저 오면 카드에는 무서운 사실만 남고 할 일은 시트를 열어야 보인다 —
-    "심장이 내려앉았는데 뭘 하라는 말이 없어요"(2026-07-28 지수).
+    카드 미리보기는 이제 '이 집에서 본 것'(facts)을 먼저 보여 준다. 앱이 읽은 걸 사용자에게 되묻는 말("맞는지 확인하세요")은 쓰지 않는다.
     """
-    line = highlight._SPECS[kind].body.split("\n")[0]
-    # 한 줄에 두 문장이 올 수 있다. **첫 문장**이 행동이어야 한다.
-    first = line.split(". ")[0].rstrip()
-    assert first.endswith(("하세요", "마세요", "보세요", "안 돼요", "하세요.", "마세요.", "보세요.", "안 돼요.")), (
-        f"{kind}의 첫 문장이 행동이 아니다: {first[:50]}"
-    )
+    body = highlight._SPECS[kind].body
+    assert len([ln for ln in body.split("\n") if ln.strip()]) <= 2, kind
+    assert "맞는지 확인하세요" not in body
 
 
 @pytest.mark.parametrize("kind", sorted(highlight._SPECS))
@@ -764,3 +754,39 @@ def test_압류가_있는데_위치를_못_짚으면_그_사실이_화면에_나
     joined = " ".join(result.checked_notes)
     assert "1건 있어요" in joined
     assert "표시하지 않았어요" in joined, "앱 필터를 통과하지 못해 화면이 빈다"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2026-10-31 사진에서 보기 리디자인 — 표 줄 · 단정하는 말
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_이_집에서_본_것_표_줄():
+    from app.services import mark_plans
+
+    rows = mark_plans.fact_rows("mortgage", ["3순위", "2022.4.15 접수", "주식회사가상은행", "빚 최대 한도 3억 6,000만원"])
+    assert rows == [["순위", "3순위"], ["접수", "2022.4.15"], ["빌려준 곳", "주식회사가상은행"], ["빚 최대 한도", "3억 6,000만원"]]
+    assert mark_plans.fact_rows("address", ["신길동 274-1 제3층 제301호", "서울 연립다세대로 계산"]) == [
+        ["주소", "신길동 274-1 제3층 제301호"], ["집 종류", "서울 연립다세대"],
+    ]
+    assert mark_plans.fact_rows("owner", ["지금 소유자 2명", "공동명의", "공개 명단에 같은 이름 없음"]) == [
+        ["지금 집주인", "2명 · 공동명의"], ["공개 명단", "같은 이름 없음"],
+    ]
+
+
+def test_서류_제목은_읽은_대로_단정한다():
+    from app.services import mark_plans
+
+    facts, plan = mark_plans.document("doc_title", doc_text="등기사항전부증명서(말소사항포함)")
+    assert facts == [mark_plans.DOC_FULL_FACT]
+    assert not any("확인하세요" in p for p in plan)
+    facts, plan = mark_plans.document("doc_title", doc_text="등기사항전부증명서(현재유효사항)")
+    assert facts == [mark_plans.DOC_CURRENT_FACT]
+    assert "다시 떼어" in plan[0]
+
+
+def test_집_종류는_되묻지_않는다():
+    from app.services import mark_plans
+
+    fact, plan = mark_plans.house_type_line("서울", "연립다세대")
+    assert fact == "서울 연립다세대로 계산"
+    assert plan is None

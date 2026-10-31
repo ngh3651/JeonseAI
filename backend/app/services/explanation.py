@@ -218,6 +218,13 @@ def _verdict_for_prompt(verdict: RuleVerdict) -> dict:
     if by_evidence:
         out["배정된_중개사_질문"] = by_evidence
 
+    # ── 깊은 설명 재료 (2026-11-01) — 규칙이 이미 낸 값만. 판정은 이 값들을 보지 않는다. ──────────────
+    if verdict.loss_summary:
+        out["경매로_가면"] = verdict.loss_summary  # 리포트 2장·손실 시뮬레이터와 같은 계산
+    if verdict.house_signals:
+        out["이_집_신호"] = verdict.house_signals  # 등기부 사실을 이어 붙인 문장(평가 아님)
+    if verdict.card_todo:
+        out["카드에_이미_있는_할일"] = verdict.card_todo  # 화면에 따로 나가는 할 일 — 설명에서 되풀이 금지
     return out
 
 
@@ -256,7 +263,26 @@ def _field_reason(
     2026-08-05: 불리언(`_field_ok`) → 사유 문자열로 바꿨다. 폴백이 조용하면 무엇이
     걸렸는지 다음에도 모르기 때문이다(감사 §B-5의 세 건이 전부 '통과한 위반'이었다).
     """
-    return text_guard.check(text, max_len=_MAX_LEN[kind], allowed=allowed, grade=grade)
+    reason = text_guard.check(text, max_len=_MAX_LEN[kind], allowed=allowed, grade=grade)
+    if reason is None and kind == "easy_explanation":
+        reason = _lead_format_reason(text)
+    return reason
+
+
+def _lead_format_reason(text: str) -> str | None:
+    """'이 집 핵심' 문단 모양 검사 (2026-11-01) — 깨진 굵은 표시만 막는다.
+
+    앱은 문단 맨 앞 `**머리말**`을 굵은 한 줄로 따로 세운다(`splitLeadParagraph`). `**`가 짝이 안 맞으면
+    화면에 별표가 그대로 보이므로 그 카드만 준비된 문구로 돌린다. 머리말이 없는 문단은 그냥 문단으로 그려지니
+    **막지 않는다**(괜히 폴백을 늘리지 않게).
+    """
+    for para in text.split("\n"):
+        n = para.count("**")
+        if n == 0:
+            continue
+        if n != 2 or not para.lstrip().startswith("**"):
+            return "굵은 표시(**)는 문단 맨 앞 머리말에만"
+    return None
 
 
 

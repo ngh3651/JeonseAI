@@ -351,3 +351,14 @@ def test_출처_라벨이_리포트_카드까지_실려_나간다(danger_case, s
         alias="테스트",
     )
     assert all(ev.explanationSource for ev in report.evidences)
+
+
+# ── 2026-11-01 '이 집 핵심' 문단 모양 — 깨진 굵은 표시만 막는다 ─────────────────────────────
+def test_이_집_핵심_머리말_모양_검사():
+    from app.services.explanation import _lead_format_reason
+
+    assert _lead_format_reason("**집을 산 날 바로 빌렸어요** 같은 날 근저당을 잡았어요.\n**경매로 가면** 남는 돈이 없어요.") is None
+    assert _lead_format_reason("머리말 없는 문단도 괜찮아요.") is None
+    assert _lead_format_reason("**짝이 안 맞아요 본문이에요.") is not None
+    assert _lead_format_reason("본문 가운데 **굵게** 쓰면 별표가 보여요.") is not None
+    assert _lead_format_reason("**머리말** 본문 **또 굵게**") is not None

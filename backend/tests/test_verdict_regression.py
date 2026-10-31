@@ -45,9 +45,11 @@ GOLDEN: dict[str, tuple[str, float, int, dict[str, str]]] = {
     "missing_sections": ("확인 필요", 0.5, 0, {
         "jeonse_ratio": "확인 필요", "senior_debt": "확인 필요", "ownership": "확인 필요",
         "insurance": "확인 필요", "blacklist": "확인 필요"}),
+    # 2026-11-01: 빚이 HUG 기준(60%·90%)을 넘으면 보증보험도 '위험'(decisions.md 2026-11-01 — 출처는 2026-07-06 HUG
+    #   가입요건 그대로, 새 수치 없음). 빚 카드가 이미 '위험'이라 **종합 등급·게이지는 그대로**다.
     "mortgage_heavy": ("위험", 0.35, 180_000_000, {
         "jeonse_ratio": "양호", "senior_debt": "위험", "ownership": "양호",
-        "insurance": "확인 필요", "blacklist": "확인 필요"}),
+        "insurance": "위험", "blacklist": "확인 필요"}),
     "real_snapshot": ("양호", 0.8, 0, {
         "jeonse_ratio": "양호", "senior_debt": "양호", "ownership": "양호",
         "insurance": "확인 필요", "blacklist": "확인 필요"}),

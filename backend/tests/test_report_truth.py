@@ -213,7 +213,7 @@ def test_auction_only_text_says_auction_not_seizure():
     assert "경매개시결정" in text
     assert "압류" not in text
     ins = ev(report, "insurance").easyExplanation
-    assert ins.startswith("경매개시결정 때문에")
+    assert ins.startswith("**경매개시결정 기록이 있어요**")  # 2026-11-01 머리말 문단
 
 
 def test_ratio_just_over_caution_line_keeps_tag():

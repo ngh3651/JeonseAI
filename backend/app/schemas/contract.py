@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,67 @@ class EvidencePoint(BaseModel):
     label: str
     value: str
     tone: str = "plain"
+    # 2026-11-01 리디자인 — 둘째 줄(날짜 · 빌려준 곳)과 그림 칸 번호(visual.items의 몇 번째와 같은 색 점인지). 선택적.
+    sub: Optional[str] = None
+    dot: Optional[int] = None
+
+
+class EvidenceHero(BaseModel):
+    """근거 카드 펼침 맨 위 **큰 한 줄** (2026-11-01) — 규칙 값으로만 만든 문장. accent = 색칠할 부분(문장 안 글자 그대로)."""
+
+    text: str
+    accent: Optional[str] = None
+
+
+class VisualQueueItem(BaseModel):
+    """줄 서기 막대 한 칸 — 경매로 팔리면 돈을 받는 순서. kind: debt(나보다 먼저) | mine(내 보증금)."""
+
+    label: str
+    amount: int
+    kind: str = "debt"
+
+
+class VisualCut(BaseModel):
+    """줄 서기 막대 위 선 — '경매로 팔리는 값'(손실 계산과 같은 값) 또는 시세."""
+
+    label: str
+    amount: int
+
+
+class VisualResult(BaseModel):
+    """그림 아래 결과 상자 — '경매로 가면 돌려받을 돈' (손실 시뮬레이터와 같은 계산)."""
+
+    label: str
+    sub: Optional[str] = None
+    value: str
+    tone: str = "plain"
+
+
+class VisualCheck(BaseModel):
+    """조건 칸 하나 — ok: 통과 True · 막힘 False · 모름 None."""
+
+    ok: Optional[bool] = None
+    label: str
+    value: str
+
+
+class EvidenceVisual(BaseModel):
+    """근거 카드 펼침의 **그림 하나** (2026-11-01, 계약 §2.2-c). 앱이 모르는 type이면 그리지 않는다.
+
+    - queue (빚 카드): items · cut · result
+    - checks (보증보험): items(VisualCheck) · passed · total
+    - zones (전세가율): value · zones(기준선 %) · tone
+    """
+
+    type: str
+    items: list[Any] = Field(default_factory=list)
+    cut: Optional[VisualCut] = None
+    result: Optional[VisualResult] = None
+    passed: Optional[int] = None
+    total: Optional[int] = None
+    value: Optional[int] = None
+    zones: list[int] = Field(default_factory=list)
+    tone: Optional[str] = None
 
 
 class EvidenceMeter(BaseModel):
@@ -51,6 +112,9 @@ class Evidence(BaseModel):
     points: list[EvidencePoint] = Field(default_factory=list)
     meter: Optional[EvidenceMeter] = None
     todo: list[str] = Field(default_factory=list)
+    # 2026-11-01 리디자인 — 맨 위 큰 한 줄 + 그림 하나(규칙 값만). 옛 리포트·모르는 경우 None — 앱은 meter로 그린다.
+    hero: Optional[EvidenceHero] = None
+    visual: Optional[EvidenceVisual] = None
 
 
 # ── 원본 사진 하이라이트 (§2.7 — 2026-07-27 추가, **선택적**) ──────────────

@@ -484,9 +484,8 @@ def test_잘린_쪽이_어디든_한_가지로_정해지면_채운다(footers, e
     "footers",
     [
         [["1/4"], None, ["3/4"]],  # 4쪽인데 3장 — 빠진 쪽이 있다
-        [["3/3"], None, ["1/3"]],  # 순서가 뒤바뀌었다 — 어디에 끼웠는지 모른다
+        [["4/4"], None, None, ["1/4"]],  # 순서가 뒤바뀐 채 두 장을 못 읽었다 — 어느 장이 2쪽인지 모른다
         [["1/3"], ["2/3"], ["3/3"], None],  # 쪽 수보다 사진이 많다 — 다른 서류가 섞였을 수 있다
-        [["1/3"], None, ["2/3"]],  # 1쪽과 2쪽 사이엔 들어갈 쪽이 없다
         [None, None, None],  # 쪽 번호를 하나도 못 읽었다 — 전체 쪽수를 모른다
     ],
 )
@@ -589,3 +588,13 @@ def test_쪽마다_머리표_모양이_달라도_같은_등기부다():
                 + footer_words(["2/2"]))
     check = check_document([a, b])
     assert check.notice is None and check.ok_to_highlight_money is True
+
+
+@pytest.mark.parametrize("footers, expected", [
+    ([["1/3"], ["3/3"], None], [1, 3, 2]),  # 실기기 2026-10-31 — 1·3·2쪽 순서로 찍고 2쪽 꼬리말만 못 읽음
+    ([["3/3"], None, ["1/3"]], [3, 2, 1]),
+    ([["1/3"], None, ["2/3"]], [1, 3, 2]),
+])
+def test_한_장만_못_읽고_빈_쪽도_하나면_순서와_상관없이_채운다(footers, expected):
+    check = check_document(_pages_with_footers(footers))
+    assert check.page_numbers == expected and check.missing_pages == []

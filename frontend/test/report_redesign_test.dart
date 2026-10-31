@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jeonse_ai/screens/common/ask_selection.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
 import 'package:jeonse_ai/models/risk_grade.dart';
@@ -103,7 +104,7 @@ void main() {
     expect(softenDashes('줄표 없음'), '줄표 없음');
   });
 
-  testWidgets('③ 자세히 보기 — 이 집에서 본 것 · 맞춤 할 일 · AI 설명 · 기본 확인 · 근거', (tester) async {
+  testWidgets('③ 자세히 보기 — 이 집에서 본 것(표) → 기본 확인 → 맞춤 할 일 → 근거, AI 상자 없음', (tester) async {
     const mark = RegistryHighlight(
       id: 'mortgage-0',
       page: 0,
@@ -114,6 +115,11 @@ void main() {
       body: '집이 경매로 넘어가면 이 돈을 빌려준 곳이 먼저 가져가요.\n지금 남은 빚은 부채증명원으로 확인하세요.',
       source: '등기부 을구 — 이 앱이 사진에서 직접 찾은 위치',
       facts: ['1순위', '2021.6.30 접수', '○○은행', '채권최고액 1억 3,000만원'],
+      factRows: [
+        ['순위', '1순위'],
+        ['접수', '2021.6.30'],
+        ['빌려준 곳', '○○은행'],
+      ],
       plan: [
         '잔금 날 이 빚(1억 3,000만원)을 갚고 **말소**하는지 중개사에게 묻고, 특약으로 남기세요',
         '지금 남은 빚은 집주인 **대출 잔액 확인서(부채증명원)**로 확인하세요',
@@ -122,29 +128,70 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
-        home: const Scaffold(
-          body: RegistryMarkSheet(
-            mark: mark,
-            aiText: '이 집 빚은 시세의 90%예요 — 높아요.\n둘째 문단.\n셋째 문단.',
-            aiWritten: true,
-          ),
-        ),
+        home: const Scaffold(body: RegistryMarkSheet(mark: mark)),
       ),
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('mark-sheet-facts')), findsOneWidget);
-    expect(find.koText('2021.6.30 접수'), findsOneWidget);
-    expect(find.koText('이 집 맞춤 할 일'), findsOneWidget);
-    expect(find.byKey(const ValueKey('mark-sheet-ai')), findsOneWidget);
-    expect(find.koTextContaining('셋째 문단'), findsNothing, reason: 'AI 설명은 두 문단까지');
-    expect(find.koText('AI가 이 집에 맞춰 쓴 설명'), findsOneWidget);
-    expect(find.koText('기본 확인'), findsOneWidget);
+    expect(find.koText('2021.6.30'), findsOneWidget);
+    expect(find.koText('빌려준 곳'), findsOneWidget);
+    expect(find.koText('✦ AI가 등기부에서 읽었어요'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mark-sheet-ai')), findsNothing, reason: '초록 AI 설명 상자는 뺐다');
+    // 순서: 이 집에서 본 것 → 기본 확인 → 이 집 맞춤 할 일 → 근거
+    final ys = [
+      for (final t in ['이 집에서 본 것', '기본 확인', '이 집 맞춤 할 일'])
+        tester.getTopLeft(find.koText(t)).dy,
+      tester.getTopLeft(find.byKey(const ValueKey('mark-sheet-source'))).dy,
+    ];
+    expect(ys, [...ys]..sort());
     // 기본 확인 = 맞춤 할 일에 없는 줄만. '부채증명원으로 확인하세요'는 할 일 2번과 같은 말이라 빠진다
     expect(find.koTextContaining('먼저 가져가요'), findsOneWidget);
     expect(find.koTextContaining('부채증명원으로 확인하세요'), findsNothing);
-    expect(find.koTextContaining('위험도 판정이 아닙니다'), findsNothing);
     expect(find.koText('근거 · 등기부 을구 · 사진에서 직접 찾은 위치'), findsOneWidget);
     expect(find.koTextContaining('—'), findsNothing);
+    expect(find.byType(AskSelectionArea), findsOneWidget, reason: '꾹 눌러 챗봇에 묻기');
+  });
+
+  testWidgets('③ 옛 리포트(표 줄 없음)면 이 집에서 본 것을 칩으로', (tester) async {
+    const mark = RegistryHighlight(
+      id: 'mortgage-0',
+      page: 0,
+      kind: 'mortgage',
+      badge: 1,
+      box: HighlightBox(x: 0.1, y: 0.1, w: 0.3, h: 0.02),
+      title: '집에 잡힌 빚 (근저당권)',
+      body: '집이 경매로 넘어가면 이 돈을 빌려준 곳이 먼저 가져가요.',
+      facts: ['1순위', '2021.6.30 접수'],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: const Scaffold(body: RegistryMarkSheet(mark: mark)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.koText('2021.6.30 접수'), findsOneWidget);
+  });
+
+  test('표 줄을 읽는다 (서버 factRows)', () {
+    final h = RegistryHighlight.fromJson({
+      'id': 'a',
+      'page': 0,
+      'kind': 'mortgage',
+      'badge': 1,
+      'box': {'x': 0, 'y': 0, 'w': 0.1, 'h': 0.1},
+      'title': 't',
+      'body': 'b',
+      'factRows': [
+        ['순위', '1순위'],
+        ['', '값만'],
+      ],
+    });
+    expect(h.factRows, [
+      ['순위', '1순위'],
+      ['', '값만'],
+    ]);
+    expect(h.withPage(2).factRows, h.factRows);
   });
 
   test('표시 → 같은 이야기를 하는 근거 카드', () {

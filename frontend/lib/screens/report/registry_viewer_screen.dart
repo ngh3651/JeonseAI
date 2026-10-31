@@ -51,7 +51,7 @@ import '../../state/privacy_settings.dart';
 import '../../state/registry_photo_store.dart';
 import 'registry_document_layout.dart';
 import 'registry_entry_card.dart' show previewMarkOf;
-import 'registry_findings.dart' show explanationByAi, softenDashes;
+import 'registry_findings.dart' show softenDashes;
 import 'registry_mark_carousel.dart';
 import 'registry_mark_sheet.dart';
 import 'registry_mark_stripe.dart';
@@ -323,35 +323,12 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
   RegistryDocumentLayout? _layout;
   List<RegistryHighlight> _marks = const [];
 
-  /// 지금 보고 있는 리포트 — 시트에 같은 이야기를 하는 근거 카드의 AI 설명을 함께 싣는다(2026-10-31)
-  AnalysisReport? _report;
-
   /// 아래 카드 줄 거르기 — null이면 전부, 아니면 그 톤(따져볼 곳 · 대조할 곳)만 (2026-10-31)
   final ValueNotifier<MarkTone?> _filter = ValueNotifier<MarkTone?>(null);
 
   /// 이 표시와 같은 이야기를 하는 근거 카드 (없으면 null) — 시트가 그 카드의 설명·용어 풀이를 함께 싣는다
-  EvidenceItem? _evidenceFor(RegistryHighlight m) {
-    final id = evidenceIdForMark(m.kind);
-    if (id == null) return null;
-    for (final e in _report?.evidences ?? const <EvidenceItem>[]) {
-      // 명단을 아직 못 받은 카드('명단 대조 아직 안 됨')는 이 집 이야기가 아니라서 싣지 않는다
-      if (e.id == id && e.statusLabel == '명단 대조 아직 안 됨') return null;
-      if (e.id == id && e.easyExplanation.trim().isNotEmpty) return e;
-    }
-    return null;
-  }
-
-  /// 자세히 보기 — 같은 이야기를 하는 근거 카드의 설명(모델이 썼을 때만 'AI'라고)과 함께
-  void _openSheet(RegistryHighlight m) {
-    final e = _evidenceFor(m);
-    showRegistryMarkSheet(
-      context,
-      m,
-      aiText: e?.easyExplanation,
-      aiWritten: explanationByAi(e?.explanationSource),
-      glossary: e?.termGlossary ?? const {},
-    );
-  }
+  /// 자세히 보기 (2026-10-31 — 리포트 근거 카드의 AI 설명 상자는 뺐다. 이 표시에서 읽은 것만 보여 준다)
+  void _openSheet(RegistryHighlight m) => showRegistryMarkSheet(context, m);
 
   void _publishMetrics() {
     if (!_scroll.hasClients) return;
@@ -531,7 +508,6 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
         final layout = data.layoutFor(MediaQuery.sizeOf(context).width);
         _layout = layout;
         _marks = marks;
-        _report = report;
 
         return Scaffold(
           backgroundColor: AppColors.surface,
@@ -671,13 +647,12 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
   // test/registry_viewer_layout_test.dart가 360dp 기준으로 재고 상한을 지킨다.
 
   /// 하단 한 줄 (2026-10-31 개편 — 규혁 "흐린 글씨·긴 줄글 싫다, 트렌디하게"):
-  /// [● 따져볼 곳 N] [● 대조할 곳 N] 거르기 칩 + 오른쪽 [ⓘ 참고 N](누르면 표시하지 않은 것·교차 확인을 시트로).
+  /// [● 따져볼 곳 N] [● 대조할 곳 N] 거르기 칩 (참고 칩은 2026-10-31에 뺐다).
   /// 예전의 범례 한 줄 + 회색 두 줄 문장을 칩 한 줄로 줄였다 — 색-의미 대응은 칩의 점이 맡는다.
   Widget _bottomInfo(AnalysisReport report, List<RegistryHighlight> marks) {
-    final notes = unmarkedNotes(report.checkedNotes);
     final risk = MarkLegend.examineCount(marks.map((m) => m.markKind));
     final verify = MarkLegend.verifyCount(marks.map((m) => m.markKind));
-    if (risk == 0 && verify == 0 && notes.isEmpty) return const SizedBox.shrink();
+    if (risk == 0 && verify == 0) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
       color: AppColors.surface,
@@ -710,11 +685,7 @@ class _RegistryViewerScreenState extends State<RegistryViewerScreen>
                 ),
               ),
             ),
-            // 메모는 오른쪽에 붙여 둔다 — 칩이 많아 밀려도 늘 보이게
-            if (notes.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              NotesChip(count: notes.length, onTap: () => showViewerNotesSheet(context, notes)),
-            ],
+            // [ⓘ 참고 N] 칩은 뺐다(2026-10-31 규혁) — '표시하지 않은 것·교차 확인'은 사용자에게 쓸모가 없었다.
           ],
         ),
       ),

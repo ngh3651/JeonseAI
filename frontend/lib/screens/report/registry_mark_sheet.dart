@@ -19,6 +19,8 @@ import '../../models/analysis_report.dart';
 import '../../models/registry_mark_kind.dart';
 import '../../design_system/text/app_text.dart';
 import '../cases/case_card.dart' show caseRichText;
+import '../common/ask_selection.dart';
+import 'mark_title.dart';
 import 'registry_findings.dart' show softenDashes;
 
 /// 시트 진입 시간 (시안: 260ms cubic-bezier(.22,1,.36,1))
@@ -43,11 +45,8 @@ const double kSheetHandleHeight = 4;
 ///   시간 조절은 [AnimationStyle]로 한다 — 컨트롤러는 route가 만들고 route가 버린다.
 Future<void> showRegistryMarkSheet(
   BuildContext context,
-  RegistryHighlight mark, {
-  String? aiText,
-  bool aiWritten = false,
-  Map<String, String> glossary = const {},
-}) {
+  RegistryHighlight mark,
+) {
   return showModalBottomSheet<void>(
     context: context,
     // 핸들바를 시안 규격(38×4, 구분선 색)으로 직접 그리므로 기본 핸들은 끈다.
@@ -64,7 +63,7 @@ Future<void> showRegistryMarkSheet(
         top: Radius.circular(AppRadius.sheet),
       ),
     ),
-    builder: (_) => RegistryMarkSheet(mark: mark, aiText: aiText, aiWritten: aiWritten, glossary: glossary),
+    builder: (_) => RegistryMarkSheet(mark: mark),
   );
 }
 
@@ -102,45 +101,80 @@ String markSourceLine(String? source) {
   return softenDashes(raw).replaceAll(', ', ' · ');
 }
 
-/// 자세히 보기 (2026-10-31 개편 — 규혁 "글자 체계·줄바꿈·볼드가 엉망, 쓸데없는 말·대시 빼고, AI가 쓰였으면"):
-/// [톤 칩 · 번호] 제목 → **이 집에서 본 것**(칩) → **이 집 맞춤 할 일**(번호) → ✦ AI 설명(리포트 근거 카드의 설명)
-/// → **기본 확인**(어느 집에나 같은 원래 안내, 줄마다) → 공동명의 안내 → 근거 한 줄. '위험도 판정이 아닙니다'는 뺐다.
+/// 자세히 보기 (2026-10-31 두 번째 개편 — 규혁 "소제목이 안 보이고, 순서·구조가 엉망, 초록 AI 상자는 빼고, 확신 있게"):
+/// [번호 · 톤 칩] 제목 → **이 집에서 본 것**(표, ✦ AI가 등기부에서 읽었어요) → **기본 확인**(점)
+/// → **이 집 맞춤 할 일**(번호) → 공동명의 안내 → 근거 한 줄. 칸 사이마다 가는 줄.
+///
+/// 따져볼 곳이면 칸 아이콘·'AI가 읽었어요'·번호 원이 주황(따져볼 곳 색), 대조할 곳이면 초록. 용어 밑줄은 늘 초록.
+/// 글자를 꾹 누르면 [챗봇에 묻기] — 시트를 닫고 챗봇으로 간다.
 class RegistryMarkSheet extends StatelessWidget {
-  const RegistryMarkSheet({
-    super.key,
-    required this.mark,
-    this.aiText,
-    this.aiWritten = false,
-    this.glossary = const {},
-  });
+  const RegistryMarkSheet({super.key, required this.mark});
 
   final RegistryHighlight mark;
-
-  /// 같은 이야기를 하는 근거 카드의 설명 (없으면 그 칸이 없다)
-  final String? aiText;
-
-  /// 그 설명을 모델(AI)이 썼나 — 아니면(준비된 문구·옛 리포트) 'AI'라고 쓰지 않는다
-  final bool aiWritten;
-
-  /// 그 근거 카드의 용어 풀이 — 설명 칸에 쓴다(할 일·기본 확인은 표시 자체의 풀이)
-  final Map<String, String> glossary;
 
   @override
   Widget build(BuildContext context) {
     final tone = mark.markKind.tone;
     final color = AppColors.markSolid(tone);
+    final accent = AppColors.markText(tone);
+    final accentSoft = accent.withValues(alpha: 0.14);
     // 기본 확인 = 어느 집에나 같은 원래 안내. 맞춤 할 일에 이미 있는 줄은 뺀다(같은 말 두 번 X)
     final basics = [
       for (final line in softenDashes(mark.body).split('\n'))
         if (line.trim().isNotEmpty && !coveredByPlan(line.trim(), mark.plan)) line.trim(),
     ];
     final markGlossary = mark.termGlossary;
-    final ai = aiText == null
-        ? const <String>[]
-        : [
-            for (final p in softenDashes(aiText!).split('\n'))
-              if (p.trim().isNotEmpty) p.trim(),
-          ].take(2).toList();
+    final hasFacts = mark.factRows.isNotEmpty || mark.facts.isNotEmpty;
+    Widget header(IconData icon, String label, {String? note}) => _SectionHeader(
+      icon: icon,
+      label: label,
+      color: accent,
+      soft: accentSoft,
+      note: note,
+    );
+    final sections = <Widget>[
+      if (hasFacts)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header(Icons.check_rounded, '이 집에서 본 것', note: '✦ AI가 등기부에서 읽었어요'),
+            const SizedBox(height: 12),
+            if (mark.factRows.isNotEmpty)
+              _FactTable(key: const ValueKey('mark-sheet-facts'), rows: mark.factRows)
+            else
+              Wrap(
+                key: const ValueKey('mark-sheet-facts'),
+                spacing: 6,
+                runSpacing: 6,
+                children: [for (final f in mark.facts) _FactChip(f)],
+              ),
+          ],
+        ),
+      if (basics.isNotEmpty)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header(Icons.menu_book_rounded, '기본 확인'),
+            const SizedBox(height: 10),
+            for (final line in basics) _DotRow(text: line, glossary: markGlossary),
+          ],
+        ),
+      if (mark.plan.isNotEmpty)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header(Icons.checklist_rounded, '이 집 맞춤 할 일'),
+            const SizedBox(height: 10),
+            for (int i = 0; i < mark.plan.length; i++)
+              _NumberedRow(
+                index: i + 1,
+                text: mark.plan[i],
+                glossary: markGlossary,
+                color: color,
+              ),
+          ],
+        ),
+    ];
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -149,185 +183,77 @@ class RegistryMarkSheet extends StatelessWidget {
         child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: kSheetHandleWidth,
-                    height: kSheetHandleHeight,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: AppColors.line,
-                      borderRadius: BorderRadius.circular(AppRadius.pill),
+            child: AskSelectionArea(
+              // 챗봇으로 가기 전에 시트부터 닫는다(시트가 챗봇 위에 남지 않게)
+              beforeAsk: () => Navigator.of(context).maybePop(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: kSheetHandleWidth,
+                      height: kSheetHandleHeight,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.line,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
                     ),
                   ),
-                ),
-                Row(
-                  children: [
-                    _SheetBadge(number: mark.badge, color: color),
-                    const SizedBox(width: 8),
-                    MarkTonePill(tone: tone),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                AppText(
-                  mark.title,
-                  key: const ValueKey('mark-sheet-title'),
-                  style: AppTypographyNext.title.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppColorsNext.textStrong,
-                  ),
-                ),
-                if (mark.facts.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  const _Label('이 집에서 본 것'),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    key: const ValueKey('mark-sheet-facts'),
-                    spacing: 6,
-                    runSpacing: 6,
+                  Row(
                     children: [
-                      for (final f in mark.facts)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: AppColors.background,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: AppText(
-                            f,
-                            style: AppTypographyNext.caption.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: AppColorsNext.textStrong,
-                            ),
-                          ),
-                        ),
+                      _SheetBadge(number: mark.badge, color: color),
+                      const SizedBox(width: 8),
+                      MarkTonePill(tone: tone),
                     ],
                   ),
-                ],
-                if (mark.plan.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  const _Label('이 집 맞춤 할 일'),
-                  const SizedBox(height: 8),
-                  for (int i = 0; i < mark.plan.length; i++)
-                    _NumberedRow(index: i + 1, text: mark.plan[i], glossary: markGlossary),
-                ],
-                if (ai.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    key: const ValueKey('mark-sheet-ai'),
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.primarySoft,
-                      borderRadius: BorderRadius.circular(14),
+                  const SizedBox(height: 10),
+                  MarkTitle(
+                    mark.title,
+                    key: const ValueKey('mark-sheet-title'),
+                    mutedColor: AppColorsNext.textMuted,
+                    style: AppTypographyNext.title.copyWith(
+                      fontSize: 21,
+                      height: 1.4,
+                      fontWeight: FontWeight.w800,
+                      color: AppColorsNext.textStrong,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              aiWritten ? Icons.auto_awesome : Icons.notes_rounded,
-                              size: 15,
-                              color: aiWritten ? AppColors.primary : AppColorsNext.textMuted,
-                            ),
-                            const SizedBox(width: 5),
-                            AppText(
-                              // 모델이 쓴 설명일 때만 'AI'. 준비된 문구면 사실대로(2026-07-09 결정 · 과대 표기 금지)
-                              aiWritten ? 'AI가 이 집에 맞춰 쓴 설명' : '리포트 근거 카드 설명',
-                              style: AppTypographyNext.caption.copyWith(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: aiWritten ? AppColors.primary : AppColorsNext.textMuted,
-                              ),
-                            ),
-                          ],
+                  ),
+                  for (int i = 0; i < sections.length; i++)
+                    i == 0
+                        ? Padding(padding: const EdgeInsets.only(top: 20), child: sections[i])
+                        : _Divided(child: sections[i]),
+                  if (mark.caution != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      decoration: BoxDecoration(
+                        color: AppColors.cautionSoft,
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                      child: AppText(
+                        softenDashes(mark.caution!),
+                        style: AppTypographyNext.body.copyWith(
+                          color: AppColorsNext.textStrong,
+                          height: 1.5,
                         ),
-                        for (final para in ai) ...[
-                          const SizedBox(height: 6),
-                          AppText.rich(
-                            caseRichText(
-                              context,
-                              text: para,
-                              base: AppTypographyNext.body.copyWith(
-                                color: AppColorsNext.textStrong,
-                                height: 1.5,
-                              ),
-                              glossary: glossary,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-                if (basics.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  const _Label('기본 확인'),
-                  const SizedBox(height: 8),
-                  for (final line in basics)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 점 — 체크 표시는 '이미 확인됨'으로 읽혔다(2026-10-31 페르소나 리뷰)
-                          Container(
-                            width: 5,
-                            height: 5,
-                            margin: const EdgeInsets.only(top: 10, left: 4, right: 4),
-                            decoration: BoxDecoration(color: AppColorsNext.textMuted, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: AppText.rich(
-                              caseRichText(
-                                context,
-                                text: line,
-                                base: AppTypographyNext.body.copyWith(
-                                  color: AppColorsNext.textBody,
-                                  height: 1.5,
-                                ),
-                                glossary: markGlossary,
-                              ),
-                            ),
-                          ),
-                        ],
                       ),
                     ),
-                ],
-                if (mark.caution != null) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.cautionSoft,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                    ),
+                  ],
+                  // 출처 한 줄 — 이게 없으면 시트 문장이 "앱이 그냥 하는 말"로 읽힌다.
+                  _Divided(
                     child: AppText(
-                      softenDashes(mark.caution!),
-                      style: AppTypographyNext.body.copyWith(
-                        color: AppColorsNext.textStrong,
-                        height: 1.5,
+                      '근거 · ${markSourceLine(mark.source)}',
+                      key: const ValueKey('mark-sheet-source'),
+                      style: AppTypographyNext.caption.copyWith(
+                        color: AppColorsNext.textMuted,
                       ),
                     ),
                   ),
                 ],
-                const SizedBox(height: 14),
-                // 출처 한 줄 — 이게 없으면 시트 문장이 "앱이 그냥 하는 말"로 읽힌다.
-                AppText(
-                  '근거 · ${markSourceLine(mark.source)}',
-                  key: const ValueKey('mark-sheet-source'),
-                  style: AppTypographyNext.caption.copyWith(
-                    color: AppColorsNext.textMuted,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -336,26 +262,168 @@ class RegistryMarkSheet extends StatelessWidget {
   }
 }
 
-class _Label extends StatelessWidget {
-  const _Label(this.text);
+/// 칸 위 가는 줄 — 칸과 칸 사이마다.
+class _Divided extends StatelessWidget {
+  const _Divided({required this.child});
 
-  final String text;
+  final Widget child;
 
   @override
-  Widget build(BuildContext context) => AppText(
-    text,
-    style: AppTypographyNext.caption.copyWith(
-      fontSize: 13,
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(top: 20),
+    padding: const EdgeInsets.only(top: 20),
+    decoration: BoxDecoration(
+      border: Border(top: BorderSide(color: AppColors.line, width: 1)),
+    ),
+    child: child,
+  );
+}
+
+/// 칸 머리 — 둥근 네모 아이콘 + 굵은 소제목 (+ 오른쪽 작은 말)
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.soft,
+    this.note,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color soft;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 26,
+        height: 26,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(8)),
+        child: Icon(icon, size: 17, color: color),
+      ),
+      const SizedBox(width: 8),
+      AppText(
+        label,
+        style: AppTypographyNext.bodyStrong.copyWith(
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+          color: AppColorsNext.textStrong,
+        ),
+      ),
+      if (note != null) ...[
+        const SizedBox(width: 8),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: AppText(
+                note!,
+                key: const ValueKey('mark-sheet-ai-note'),
+                maxLines: 1,
+                style: AppTypographyNext.caption.copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ],
+  );
+}
+
+/// 이 집에서 본 것 — 회색 둥근 줄마다 [이름 | 값]
+class _FactTable extends StatelessWidget {
+  const _FactTable({super.key, required this.rows});
+
+  final List<List<String>> rows;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (int i = 0; i < rows.length; i++)
+        Container(
+          margin: EdgeInsets.only(top: i == 0 ? 0 : 6),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: rows[i][0].isEmpty
+              ? _value(rows[i][1])
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 84,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: AppText(
+                          rows[i][0],
+                          style: AppTypographyNext.caption.copyWith(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColorsNext.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: _value(rows[i][1])),
+                  ],
+                ),
+        ),
+    ],
+  );
+
+  Widget _value(String v) => AppText(
+    v,
+    style: AppTypographyNext.bodyStrong.copyWith(
+      fontSize: 17,
+      height: 1.4,
       fontWeight: FontWeight.w700,
-      color: AppColorsNext.textMuted,
+      color: AppColorsNext.textStrong,
     ),
   );
 }
 
-class _NumberedRow extends StatelessWidget {
-  const _NumberedRow({required this.index, required this.text, this.glossary = const {}});
+/// 옛 리포트(표 줄 없음)의 이 집에서 본 것 — 칩
+class _FactChip extends StatelessWidget {
+  const _FactChip(this.text);
 
-  final int index;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+    decoration: BoxDecoration(
+      color: AppColors.background,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: AppText(
+      text,
+      style: AppTypographyNext.caption.copyWith(
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        color: AppColorsNext.textStrong,
+      ),
+    ),
+  );
+}
+
+/// 기본 확인 한 줄 — 회색 점(체크는 '이미 확인됨'으로 읽혔다, 2026-10-31 페르소나 리뷰)
+class _DotRow extends StatelessWidget {
+  const _DotRow({required this.text, this.glossary = const {}});
+
   final String text;
   final Map<String, String> glossary;
 
@@ -366,18 +434,63 @@ class _NumberedRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 22,
-          height: 22,
+          width: 5,
+          height: 5,
+          margin: const EdgeInsets.only(top: 11, left: 4, right: 4),
+          decoration: BoxDecoration(color: AppColorsNext.textMuted, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: AppText.rich(
+            caseRichText(
+              context,
+              text: text,
+              base: AppTypographyNext.body.copyWith(
+                fontSize: 17,
+                color: AppColorsNext.textBody,
+                height: 27 / 17,
+              ),
+              glossary: glossary,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _NumberedRow extends StatelessWidget {
+  const _NumberedRow({
+    required this.index,
+    required this.text,
+    required this.color,
+    this.glossary = const {},
+  });
+
+  final int index;
+  final String text;
+  final Color color;
+  final Map<String, String> glossary;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24,
+          height: 24,
           margin: const EdgeInsets.only(top: 1),
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: AppColors.primarySoft, shape: BoxShape.circle),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           child: AppText(
             '$index',
             textScaler: TextScaler.noScaling,
             style: AppTypographyNext.caption.copyWith(
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: FontWeight.w800,
-              color: AppColors.primaryStrong,
+              color: Colors.white,
             ),
           ),
         ),
@@ -388,8 +501,9 @@ class _NumberedRow extends StatelessWidget {
               context,
               text: text,
               base: AppTypographyNext.body.copyWith(
+                fontSize: 17,
                 color: AppColorsNext.textStrong,
-                height: 1.45,
+                height: 1.5,
               ),
               glossary: glossary,
             ),

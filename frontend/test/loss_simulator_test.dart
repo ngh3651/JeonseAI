@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeonse_ai/design_system/theme.dart';
 import 'package:jeonse_ai/models/analysis_report.dart';
@@ -261,5 +262,115 @@ void main() {
       LossEstimate.fromJson({'status': '???', 'deposit': 1}).status,
       LossStatus.noRate,
     );
+  });
+
+  // 실제 앱 글꼴(Pretendard)로 잰다 — 테스트 기본 글꼴은 글자마다 1em이라 실제보다 훨씬 넓다. 파일 맨 끝 묶음이라 다른 테스트에 영향 없음
+  group('최우선변제 한 줄 (실제 글꼴)', () {
+    setUpAll(() async {
+      final loader = FontLoader('Pretendard');
+      for (final w in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+        loader.addFont(rootBundle.load('assets/fonts/Pretendard-$w.otf'));
+      }
+      await loader.load();
+    });
+
+    // 2026-10-31 규혁 — 못 받으면 '0원'(빨강)으로 통일, 아래 한 줄은 글자를 줄이지 않고 한 줄에, 지역·기준일은 '법령' 근거로
+    testWidgets('최우선변제 — 보증금이 커서 못 받으면 0원 · 한 줄 · 지역은 법령 줄에', (t) async {
+      await _pump(
+        t,
+        const LossEstimate(
+          status: LossStatus.ok,
+          deposit: 200000000,
+          basePrice: 400000000,
+          seniorDebt: 200000000,
+          ratePct: 75.0,
+          region: '서울',
+          use: '연립다세대',
+          soldCount: 4808,
+          period: '2025.11~2026.10',
+          source: '대법원 법원경매정보 매각통계',
+          expectedSale: 300000000,
+          expectedReturn: 100000000,
+          expectedLoss: 100000000,
+          priorityStatus: PriorityStatus.overCap,
+          priorityCap: 150000000,
+          priorityRegion: '서울특별시',
+          priorityTableFrom: '2021-05-11',
+          priorityBaseDate: '2022-04-15',
+          priorityBaseKind: '근저당',
+          prioritySource: '주택임대차보호법 시행령 제10·11조',
+        ),
+      );
+      final row = find.byKey(const ValueKey('loss-priority-row'));
+      expect(
+        find.descendant(of: row, matching: find.koText('0원')),
+        findsOneWidget,
+      );
+      expect(find.koTextContaining('대상 아님'), findsNothing);
+      final sub = find.byKey(const ValueKey('loss-priority-sub'));
+      expect(
+        find.descendant(
+          of: sub,
+          matching: find.koText('보증금 1억 5,000만원 이하만 받아요'),
+        ),
+        findsOneWidget,
+      );
+      // 한 줄 — 글자 높이 두 배보다 낮다
+      final double h = t.getSize(sub).height;
+      final double fs =
+          (t
+              .widget<RichText>(
+                find.descendant(of: sub, matching: find.byType(RichText)).first,
+              )
+              .text
+              .style
+              ?.fontSize) ??
+          14;
+      expect(h, lessThan(fs * 2.2), reason: '한 줄에 들어간다');
+      expect(
+        find.koTextContaining('서울특별시 · 2022.4.15 근저당 기준'),
+        findsOneWidget,
+        reason: '지역·기준일은 법령 근거 줄',
+      );
+      expect(
+        find.descendant(of: sub, matching: find.koTextContaining('서울특별시')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('최우선변제 — 경매가 시작된 집은 0원 · 한 줄', (t) async {
+      await _pump(
+        t,
+        const LossEstimate(
+          status: LossStatus.ok,
+          deposit: 100000000,
+          basePrice: 400000000,
+          seniorDebt: 200000000,
+          ratePct: 75.0,
+          region: '서울',
+          use: '연립다세대',
+          expectedSale: 300000000,
+          expectedReturn: 100000000,
+          expectedLoss: 0,
+          priorityStatus: PriorityStatus.blockedAuction,
+          prioritySource: '주택임대차보호법 시행령 제10·11조',
+        ),
+      );
+      final sub = find.byKey(const ValueKey('loss-priority-sub'));
+      expect(
+        find.descendant(of: sub, matching: find.koText('경매 전에 입주한 세입자만 받아요')),
+        findsOneWidget,
+      );
+      final double fs =
+          (t
+              .widget<RichText>(
+                find.descendant(of: sub, matching: find.byType(RichText)).first,
+              )
+              .text
+              .style
+              ?.fontSize) ??
+          14;
+      expect(t.getSize(sub).height, lessThan(fs * 2.2));
+    });
   });
 }

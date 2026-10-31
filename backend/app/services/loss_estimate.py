@@ -228,16 +228,21 @@ def load_table(path: Path = RATES_PATH) -> RateTable:
 # ── 용도 ─────────────────────────────────────────────────────────────────────
 
 
-def house_types_from(candidates: list[R.PriceCandidate], address: str | None) -> list[str]:
+def house_types_from(
+    candidates: list[R.PriceCandidate], address: str | None, *, registry_use: str | None = None
+) -> list[str]:
     """이 집의 용도 후보 — 분석 때 한 번 정해 리포트(`houseTypes`)에 남긴다.
 
     ① 통건물 등기(단독·다가구로 의심) → 단독·다가구(소계 한 값)
-    ② 실거래가가 매칭됐으면 그 거래의 유형 — 같은 지번·면적의 거래라 가장 강한 신호
-    ③ 공시가격·기준시가가 매칭됐으면 그 유형(공동주택 공시가격은 아파트·연립다세대 중 어느 쪽인지 모른다)
-    ④ 아무것도 없으면 집합건물 세 용도 전부(→ 가장 낮은 값을 쓰게 된다)
+    ② **등기부 표제부 건물내역의 용도**('4층 다세대주택' → 연립다세대, 2026-10-31) — 서류 자체에 적힌 말이라 가장 강하다
+    ③ 실거래가가 매칭됐으면 그 거래의 유형 — 같은 지번·면적의 거래
+    ④ 공시가격·기준시가가 매칭됐으면 그 유형(공동주택 공시가격은 아파트·연립다세대 중 어느 쪽인지 모른다)
+    ⑤ 아무것도 없으면 집합건물 세 용도 전부(→ 가장 낮은 값을 쓰게 된다)
     """
     if address and N.is_whole_building(address):
         return [HOUSE]
+    if registry_use in (APT, ROW, OFFI, HOUSE):
+        return [registry_use]
     trade = [c for c in candidates if c.source == R.SOURCE_ACTUAL_TRADE and c.house_types]
     picked: set[str] = set()
     if trade:
@@ -249,6 +254,20 @@ def house_types_from(candidates: list[R.PriceCandidate], address: str | None) ->
                 picked.update(c.house_types)
     uses = [_HOUSE_TYPE_TO_USE[h] for h in ("apt", "row_house", "officetel") if h in picked]
     return uses or [APT, ROW, OFFI]
+
+
+def chosen_use(report: Report, table: "RateTable | None" = None) -> str | None:
+    """손실 예상이 **실제로 쓰는** 용도 하나 — 후보가 여럿이면 그 지역 매각가율이 가장 낮은 것(`estimate`와 같은 규칙)."""
+    uses = _uses_for(report)
+    if len(uses) == 1:
+        return uses[0]
+    try:
+        table = table or load_table()
+        region = sido_of(report.propertyAddress) or sido_of(report.address)
+        found = [(use, hit) for use in uses if (hit := table.lookup(region, use)) is not None]
+        return min(found, key=lambda x: x[1][0])[0] if found else uses[0]
+    except Exception:  # noqa: BLE001 — 표시 한 줄용이다
+        return uses[0]
 
 
 def _uses_for(report: Report) -> list[str]:

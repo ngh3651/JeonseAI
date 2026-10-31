@@ -853,6 +853,8 @@ class DocumentCheck:
     header_address: str | None = None
     # 그 머리표 — '집합건물' · '건물' · '토지' (2026-10-31). 시세 조회 주소를 쪽 머리로 채울 때 등기 종류를 함께 넘긴다.
     header_kind: str | None = None
+    # 쪽 번호가 잘렸지만 앞뒤 쪽 번호로 쪽을 정한 사진 (`pages` 순서의 위치, 2026-10-31) — `page_numbers`엔 정한 번호가 들어 있다
+    inferred_pages: list[int] = field(default_factory=list)
 
 
 def header_address(pages: list[OcrPage]) -> str | None:
@@ -864,6 +866,60 @@ def header_address(pages: list[OcrPage]) -> str | None:
                 if text:
                     return text
     return None
+
+
+# 표제부 '건물내역'의 용도 낱말 → 경매 통계 용도 이름 (`loss_estimate`와 같은 글자).
+# 실제 표기: '철근콘크리트구조 (철근)콘크리트지붕 4층 다세대주택' · '… 15층 아파트' · '… 20층 업무시설(오피스텔)' ·
+# '… 5층 공동주택(아파트)' · '… 제2종근린생활시설 및 다세대주택'. 오피스텔을 먼저 본다('업무시설(오피스텔)').
+_USE_WORDS: tuple[tuple[str, str], ...] = (
+    ("오피스텔", "오피스텔"),
+    ("아파트", "아파트"),
+    ("다세대", "연립다세대"),
+    ("연립", "연립다세대"),
+    ("다가구", "단독·다가구"),
+    ("단독주택", "단독·다가구"),
+)
+# 건물내역 자리 — 용도 낱말 바로 앞에 'N층'·'지붕'·'구조'가 있으면 건물 이름이 아니라 건물내역이다
+_USE_CONTEXT = re.compile(r"(\d+층|지붕|구조)[^0-9]{0,14}$")
+
+
+def building_use(pages: list[OcrPage]) -> str | None:
+    """등기부 표제부의 건물 용도 — '4층 다세대주택' → '연립다세대' (2026-10-31). 못 찾으면 None.
+
+    왜: 손실 시뮬레이터의 경매 매각가율은 용도마다 다르다. 예전엔 시세 자료의 종류로만 짐작해서(공동주택 공시가격은
+    아파트인지 빌라인지 모른다) 늘 '용도 확실하지 않음' + 가장 낮은 용도로 계산했다. 그런데 **등기부 표제부
+    건물내역에 용도가 글자로 적혀 있다.** 갑구가 시작되기 전(표제부) 글자만 본다. 건물내역 자리('N층 ○○')에서
+    찾은 것을 먼저 쓰고, 없으면 표제부 전체에서 한 가지 용도만 보일 때 쓴다(건물 이름 '○○아파트' 같은 것).
+    """
+    text: list[str] = []
+    section: str | None = None
+    for page in pages:  # 구역은 쪽을 넘어 이어진다(표제부가 2쪽까지 갈 수 있다)
+        for line in page.lines:
+            section = detect_section(line) or section
+            if section == "표제부":
+                text.append(line.squeezed)
+    if not text:
+        # 구역 머리(【표제부】)를 못 읽었으면 — '건물내역'이 있는 쪽의 갑구·을구 전 글자로
+        for page in pages:
+            lines = []
+            for line in page.lines:
+                if detect_section(line) in ("갑구", "을구"):
+                    break
+                lines.append(line.squeezed)
+            if any("건물내역" in t or "건물의표시" in t for t in lines):
+                text.extend(lines)
+    joined = "".join(text)
+    strong: list[tuple[int, str]] = []
+    weak: set[str] = set()
+    for word, use in _USE_WORDS:
+        for m in re.finditer(word, joined):
+            if _USE_CONTEXT.search(joined[max(0, m.start() - 20) : m.start()]):
+                strong.append((m.start(), use))
+            else:
+                weak.add(use)
+    if strong:
+        return min(strong)[1]  # 표제부에서 먼저 나온 건물내역(1동의 건물의 표시)
+    return weak.pop() if len(weak) == 1 else None
 
 
 def header_kind(pages: list[OcrPage]) -> str | None:
@@ -951,6 +1007,20 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
     markers = [(i, m) for i, (m, _, _, _) in enumerate(facts) if m]
     issues = {iss for _, iss, _, _ in facts if iss}
     addresses = {addr for _, _, addr, _ in facts if addr}
+
+    # 쪽 번호만 잘린 장 — 앞뒤 쪽 번호로 몇 쪽인지 **빈틈없이 한 가지로** 정해질 때만 채운다 (2026-10-31)
+    inferred = _infer_page_numbers(pages, markers)
+    if inferred:
+        facts = [
+            ((inferred[i], markers[0][1][1]), iss, addr, viewed) if i in inferred else (m, iss, addr, viewed)
+            for i, (m, iss, addr, viewed) in enumerate(facts)
+        ]
+        markers = [(i, m) for i, (m, _, _, _) in enumerate(facts) if m]
+        check.inferred_pages = sorted(inferred)
+        check.reasons.append(
+            "쪽 번호가 잘린 사진의 쪽을 앞뒤 쪽 번호로 정함: "
+            + ", ".join(f"{pages[i].name}={n}쪽" for i, n in sorted(inferred.items()))
+        )
 
     # 쪽 번호·빠진 쪽·머리 주소 — **모든 return 경로보다 앞에서** 채운다 (2026-10-27).
     # 예전에는 빠진 쪽을 ③에서만 셌다 → 순서가 어긋난 채 일부 쪽만 올리면(②에서 먼저 끝남)
@@ -1102,6 +1172,70 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
     else:
         check.reasons.append("페이지 표식(N/M) 미검출 — 순서·누락을 확인할 수 없음(사진이 잘렸을 수 있음)")
     return check
+
+
+#: 쪽 번호를 짐작해 채울 사진이 등기부 쪽으로 보이려면 낱말이 이만큼은 있어야 한다(빈 종이·다른 물건 사진 걸러내기)
+_INFER_MIN_WORDS = 20
+_REGISTRY_CUES = ("순위번호", "표시번호", "이하여백", "권리자및기타사항", "등기목적", "등기원인")
+
+
+def _looks_like_registry_page(page: OcrPage) -> bool:
+    """등기부 한 쪽으로 보이나 — 표 머리 낱말·구역 머리·'이하 여백'·쪽 머리 주소 중 하나가 있다."""
+    if len(page.words) < _INFER_MIN_WORDS:
+        return False
+    for line in page.lines:
+        sq = line.squeezed
+        if detect_section(line) or _PAGE_HEADER.match(line.display) or any(c in sq for c in _REGISTRY_CUES):
+            return True
+    return False
+
+
+def _infer_page_numbers(
+    pages: list[OcrPage], markers: list[tuple[int, tuple[int, int]]]
+) -> dict[int, int]:
+    """쪽 번호를 못 읽은 사진 → 쪽 번호. **한 가지로만 정해질 때만** 채우고, 아니면 빈 dict (2026-10-31).
+
+    실촬영에서 가장 흔한 '다시 찍기'는 맨 아래 쪽 번호가 화면 밖으로 잘린 것이다. 그런데 나머지 쪽 번호가 다 읽혔고
+    올린 순서대로라면 그 사진이 몇 쪽인지 알 수 있다 — 예: `1/3 · ? · 3/3` → 가운데는 2쪽.
+
+    채우는 조건(하나라도 어긋나면 안 채운다 — [2026-07-28] '무관한 사진이 빠진 쪽 자리를 채우는' 사고 방어):
+      ① 읽힌 쪽 번호의 전체 쪽수(M)가 모두 같고, 쪽 번호가 겹치지 않고, **올린 순서대로 커진다**
+      ② 사진 장수가 정확히 M장이다(빠진 쪽이 없다)
+      ③ 못 읽은 사진들이 끼어 있는 자리마다 들어갈 쪽 번호 개수가 그 자리의 사진 장수와 **정확히 같다**
+      ④ 못 읽은 사진이 등기부 쪽으로 보인다(낱말 20개 이상 + 표 머리·구역 머리·'이하 여백'·쪽 머리 주소 중 하나)
+    """
+    if not markers or len(markers) == len(pages):
+        return {}
+    totals = {m[1] for _, m in markers}
+    if len(totals) != 1:
+        return {}
+    total = totals.pop()
+    if len(pages) != total:
+        return {}
+    numbers = [m[0] for _, m in markers]
+    if len(set(numbers)) != len(numbers) or numbers != sorted(numbers):
+        return {}
+    known = dict(markers)
+    out: dict[int, int] = {}
+    prev_number = 0
+    run: list[int] = []
+    for i in range(len(pages) + 1):
+        if i < len(pages) and i not in known:
+            run.append(i)
+            continue
+        next_number = known[i][0] if i < len(pages) else total + 1
+        if run:
+            if next_number - prev_number - 1 != len(run):
+                return {}
+            for offset, idx in enumerate(run, start=1):
+                out[idx] = prev_number + offset
+            run = []
+        elif i < len(pages) and next_number - prev_number - 1 != 0:
+            return {}  # 이웃한 두 사진 사이에 쪽이 빠졌다 — 빠진 쪽은 빠진 쪽이다
+        prev_number = next_number
+    if not all(_looks_like_registry_page(pages[i]) for i in out):
+        return {}
+    return out
 
 
 def _resolve_order(

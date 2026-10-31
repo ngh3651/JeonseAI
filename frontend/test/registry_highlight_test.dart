@@ -595,10 +595,10 @@ void main() {
     });
 
     test('대조할 곳과 따져볼 곳의 톤이 지시대로 갈린다', () {
-      // 초록(대조할 곳): 주소·면적·서류 종류·이름·뗀 날 · 신청사건(잔금 날 다시 뗀 등기부와 대조 — 2026-10-31)
+      // 초록(대조할 곳): 주소·면적·서류 종류·이름·뗀 날
       for (final k in [
         MarkKind.address, MarkKind.area, MarkKind.docTitle,
-        MarkKind.owner, MarkKind.viewedAt, MarkKind.pendingApplication,
+        MarkKind.owner, MarkKind.viewedAt,
       ]) {
         expect(k.tone, MarkTone.verify, reason: '${k.key} 는 대조할 곳이다');
       }
@@ -607,6 +607,7 @@ void main() {
         MarkKind.separateLand, MarkKind.provisionalSeizure, MarkKind.seizure,
         MarkKind.auction, MarkKind.trust, MarkKind.mortgage, MarkKind.jeonse,
         MarkKind.leaseRegistration, MarkKind.jointCollateral,
+        MarkKind.pendingApplication, // 신청사건 — "돈 보내지 마세요"라 주황(2026-10-31 규혁)
       ]) {
         expect(k.tone, MarkTone.risk, reason: '${k.key} 는 따져볼 곳이다');
       }

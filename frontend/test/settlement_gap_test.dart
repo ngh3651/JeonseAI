@@ -60,8 +60,8 @@ CompareResult _result({bool pending = true, bool debtAdded = false}) =>
     });
 
 void main() {
-  test('① 신청사건은 대조할 곳이고 미리보기는 이 줄부터', () {
-    expect(MarkKind.fromKey('pending_application').tone, MarkTone.verify);
+  test('① 신청사건은 따져볼 곳(주황)이고 미리보기는 이 줄부터', () {
+    expect(MarkKind.fromKey('pending_application').tone, MarkTone.risk);
     final marks = [
       fixtureMark(1, 'owner', 0, 0.2, '집주인 이름'),
       fixtureMark(2, 'mortgage', 1, 0.4, '집에 잡힌 빚 (근저당권) · 1억원'),

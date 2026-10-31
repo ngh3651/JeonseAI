@@ -73,9 +73,10 @@ enum MarkKind {
   jointCollateral('joint_collateral', MarkTone.risk,
       shortNoun: '공동담보', countNoun: '공동담보', unit: '곳', weight: 35),
   // ── 문서 상태 · 꼬리말 ──────────────────────────────────────────────────
-  // 2026-10-31 잔금 당일 빈틈: 잔금 날 다시 뗀 등기부와 **대조할 곳**이다(규혁). 무엇인지 모르는 변화라 위험 색이 아니라
-  // 대조 색이고, 리포트는 규칙 엔진이 '확인 필요' 카드로 따로 말한다. 미리보기는 이 표시가 있으면 이것부터(previewMarkOf).
-  pendingApplication('pending_application', MarkTone.verify,
+  // 2026-10-31 잔금 당일 빈틈: 처음엔 '대조할 곳'(초록)이었다가, 문장이 "돈 보내지 마세요"인데 초록이면 어긋난다는
+  // 페르소나 지적에 규혁이 **따져볼 곳(주황)**으로 정했다. 리포트는 규칙 엔진이 '확인 필요' 카드로 따로 말한다.
+  // 미리보기는 이 표시가 있으면 이것부터(previewMarkOf).
+  pendingApplication('pending_application', MarkTone.risk,
       shortNoun: '신청사건', countNoun: '처리 중인 등기 신청', unit: '곳', weight: 50),
   viewedAt('viewed_at', MarkTone.verify,
       shortNoun: '뗀 날', countNoun: '서류를 뗀 날', unit: '곳'),

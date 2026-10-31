@@ -1214,7 +1214,15 @@ def _infer_page_numbers(
     if len(pages) != total:
         return {}
     numbers = [m[0] for _, m in markers]
-    if len(set(numbers)) != len(numbers) or numbers != sorted(numbers):
+    if len(set(numbers)) != len(numbers):
+        return {}
+    unread = [i for i in range(len(pages)) if i not in dict(markers)]
+    missing = sorted(set(range(1, total + 1)) - set(numbers))
+    if len(unread) == 1 and len(missing) == 1:
+        # 못 읽은 사진 1장 · 빈 쪽 번호 1개 — 올린 순서와 상관없이 그 장이 그 쪽이다(2026-10-31 실기기:
+        # 1·3·2쪽 순서로 찍고 2쪽 꼬리말만 못 읽음 → `1/3 · 3/3 · ?`). 순서는 뒤에서 쪽 번호로 다시 세운다.
+        return {unread[0]: missing[0]} if _looks_like_registry_page(pages[unread[0]]) else {}
+    if numbers != sorted(numbers):
         return {}
     known = dict(markers)
     out: dict[int, int] = {}

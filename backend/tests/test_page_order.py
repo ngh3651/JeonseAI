@@ -62,12 +62,21 @@ def test_표식이_전부_읽히고_1부터_M까지_채워지면_정렬한다():
 
 
 def test_한_장이라도_표식을_못_읽으면_정렬하지_않는다():
-    """`?/?`가 하나라도 있으면 그 사진이 몇 쪽인지 모른다 — 세울 수 없는 순서다."""
-    check = check_document([paged(0, page_no=3, total=3), paged(1, page_no=1, total=3),
-                            paged(2, page_no=0, total=3, marker=False)])
+    """`?/?`가 둘 이상이면 어느 사진이 몇 쪽인지 모른다 — 세울 수 없는 순서다."""
+    check = check_document([paged(0, page_no=4, total=4), paged(1, page_no=1, total=4),
+                            paged(2, page_no=0, total=4, marker=False), paged(3, page_no=0, total=4, marker=False)])
     assert check.page_order is None
     assert check.ok_to_highlight_any is False
     assert check.notice and "순서" in check.notice
+
+
+def test_못_읽은_사진이_한_장이고_빈_쪽도_하나면_그_쪽으로_채워_정렬한다():
+    """2026-10-31 실기기(1·3·2쪽 순서, 2쪽 꼬리말만 못 읽음) — 한 장·한 쪽이면 헷갈릴 여지가 없다."""
+    check = check_document([paged(0, page_no=3, total=3), paged(1, page_no=1, total=3),
+                            paged(2, page_no=0, total=3, marker=False)])
+    assert check.page_numbers == [3, 1, 2]
+    assert check.page_order == [1, 2, 0]
+    assert check.ok_to_highlight_any is True
 
 
 def test_같은_쪽_번호가_두_번_나오면_정렬하지_않는다():

@@ -943,7 +943,8 @@ def _page_footer_facts(
     for line in page.lines:
         squeezed = line.squeezed
         if address is None and _PAGE_HEADER.match(line.display):
-            address = re.sub(r"\s+", "", line.display)
+            # 머리표 모양('[집합건물]'·'［집합 건물］')이 쪽마다 다르게 읽혀도 같은 주소로 — 머리표는 떼고 견준다
+            address = re.sub(r"\s+", "", _PAGE_HEADER.sub("", line.display))
         if issue is None:
             m = _ISSUE_NO.search(squeezed)
             if m:

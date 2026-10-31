@@ -70,6 +70,17 @@ def test_받기가_실패하면_전에_받은_명단_그대로(data_dir, monkeyp
     assert not st["ok"] and len(B.load()) == 1
 
 
+def test_못_받았으면_일주일을_기다리지_않고_다시_받는다(data_dir, monkeypatch):
+    """2026-10-31 실사고 — 키 승인 전에 실패한 기록(오늘 날짜) 때문에 키를 넣고 다시 배포해도 일주일 동안 안 받았다."""
+    monkeypatch.setenv("BLACKLIST_SOURCE_URL", "https://example.invalid/api")
+
+    def boom(*a, **k):
+        raise RuntimeError("down")
+
+    assert B.refresh(get=boom, salt=SALT)["ok"] is False
+    assert B.due()  # 다음 차례(서버 시작 3분 뒤·6시간마다)에 다시
+
+
 def test_설정이_없으면_아무것도_안_한다(data_dir, monkeypatch):
     monkeypatch.delenv("BLACKLIST_SOURCE_URL", raising=False)
     assert not B.configured() and not B.due()

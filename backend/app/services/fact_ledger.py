@@ -406,6 +406,11 @@ def _check_money(sent: str, led: Ledger) -> str | None:
         explicit_item = bool(_ORDER_RE.search(before)) or bool(_ORDER_RE.search(after[:6]))
         if "senior_total" in roles and len(led.senior_items) >= 2 and led.senior_total and not explicit_item:
             whole = _close(sum(values), [led.senior_total]) or any(_close(v, [led.senior_total]) for v in values)
+            # 같은 문장 어딘가에 합계나 **모든 건**이 다 나오면 한 건만 말한 게 아니다("선순위 3억 6,000만원 외에 5,200만원이 더")
+            in_sentence = [sp[3] for sp in spans]
+            whole = whole or any(_close(v, [led.senior_total]) for v in in_sentence) or all(
+                any(_close(v, [item]) for v in in_sentence) for item in led.senior_items
+            )
             if not whole:
                 return (
                     f"'{', '.join(chunks)}'만 '선순위·먼저 갚을 빚'으로 쓰면 빚이 그것뿐인 것처럼 읽혀요."

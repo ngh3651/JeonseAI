@@ -42,6 +42,8 @@ class Ledger:
     senior_total: int | None = None
     orders: int = 0  # 받는 순서를 아는 빚의 수(0 = 순서를 모른다)
     back_zero: bool = False  # 경매로 가면 돌려받을 돈이 0원이다(손실 계산 결과)
+    priority_amount: int | None = None  # 최우선변제로 실제로 먼저 받는 돈(손실 계산에 더한 값)
+    priority_cap: int | None = None  # 그 표·지역의 보증금 상한(이하여야 받는다)
 
     def add_money(self, role: str, *values: int | None) -> None:
         for v in values:
@@ -96,6 +98,8 @@ def _base(
             getattr(loss, "priorityLimit", None),
             getattr(loss, "priorityCap", None),
         )
+        led.priority_amount = getattr(loss, "priorityAmount", None) or None
+        led.priority_cap = getattr(loss, "priorityCap", None)
     for k, v in (pcts or {}).items():
         led.add_pct(k, v)
     led.add_pct(
@@ -192,9 +196,10 @@ def sheet(led: Ledger, senior_lines: list[str] | None = None) -> dict:
         out["경매로_가면_돌려받을_돈"] = "0원"
     if (v := one("loss")):
         out["못_돌려받는_돈"] = v
-    pr = sorted(led.money.get("priority") or ())
-    if pr:
-        out["최우선변제"] = "먼저 받는 돈(최우선변제) 기준에 쓰인 금액: " + " · ".join(format_won(x) for x in pr)
+    if led.priority_amount:
+        out["최우선변제로_먼저_받는_돈"] = format_won(led.priority_amount)
+    if led.priority_cap:
+        out["최우선변제_보증금_상한"] = format_won(led.priority_cap) + " 이하일 때만"
     out["먼저_받는_쪽"] = "경매로 팔리면 **돈을 빌려준 곳**(근저당권자·전세권자)이 순서대로 먼저 받아요. 빚을 진 집주인이 아니에요"
     return out
 

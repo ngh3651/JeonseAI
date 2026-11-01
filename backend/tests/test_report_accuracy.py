@@ -224,11 +224,13 @@ def test_우리_준비된_문구는_숫자_뜻_검사를_지난다():
 def test_빚을_진_쪽이_먼저_받는다는_말은_걸린다():
     assert text_guard.legal_fact_hit("집이 경매로 넘어가면 이 빚을 진 쪽이 먼저 돈을 받아가고") is not None
     assert text_guard.legal_fact_hit("집주인이 갚지 못하면 은행이 먼저 받아가요.") is None
+    assert text_guard.legal_fact_hit("빚을 진 사람이 먼저 받는 게 아니라 빌려준 곳이 먼저 받아요.") is None
 
 
 def test_대항력은_다음_날_0시():
     assert text_guard.legal_fact_hit("전입신고를 한 그날 바로 대항력이 생겨요.") is not None
     assert text_guard.legal_fact_hit("전입신고를 하면 바로 다음 날 0시에 대항력이 생겨요.") is None
+    assert text_guard.legal_fact_hit("전입신고를 해도 대항력이 바로 생기는 건 아니에요.") is None
 
 
 def test_채권최고액은_실제_빚이_아니다():

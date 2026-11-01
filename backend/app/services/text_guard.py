@@ -248,14 +248,23 @@ _MAX_CLAIM_EQ_RE = re.compile(
 )
 
 
+#: 바로 뒤에 부정이 오면 맞는 말이다 — "빚을 진 사람이 먼저 받는 게 **아니라** 빌려준 곳이 먼저 받아요"
+_NEGATED_AFTER = re.compile(r"^[가-힣]{0,6}(아니|않|못|없)")
+
+
 def _debtor_first(squeezed: str) -> bool:
-    return bool(_DEBTOR_FIRST_RE.search(squeezed))
+    return any(not _NEGATED_AFTER.match(squeezed[m.end():]) for m in _DEBTOR_FIRST_RE.finditer(squeezed))
 
 
 def _same_day_opposability(squeezed: str) -> bool:
     """'전입신고하면 그날/바로 대항력' — 문장 단위로 본다('다음 날 0시'가 함께 있으면 맞는 말)."""
     for sent in re.split(r"[.!?。\n]", squeezed):
-        if "대항력" in sent and _SAME_DAY_RE.search(sent) and not _NEXT_DAY_RE.search(sent):
+        if (
+            "대항력" in sent
+            and _SAME_DAY_RE.search(sent)
+            and not _NEXT_DAY_RE.search(sent)
+            and not re.search(r"아니|않|못", sent)  # "바로 생기는 건 아니에요"는 맞는 말
+        ):
             return True
     return False
 

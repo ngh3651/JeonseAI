@@ -30,6 +30,12 @@ const int kMaxKeepAllRunes = 12;
 
 final RegExp _word = RegExp(r'\S+');
 
+/// 긴 어절을 나눠도 되는 자리 — 가운뎃점 뒤 (2026-11-01).
+///
+/// '신탁·압류·가압류·가처분·경매'(16자)는 [kMaxKeepAllRunes]보다 길어 통째로 두었더니 `…가처분·경` / `매`처럼
+/// 낱말 가운데서 잘렸다. 가운뎃점으로 이어 쓴 낱말 묶음은 **점 뒤에서만** 줄이 바뀌게 토막마다 묶는다.
+final RegExp _dotBreak = RegExp(r'(?<=[·・])');
+
 /// 이모지·결합 문자가 든 어절은 건드리지 않는다 — 글자 사이에 부호를 끼우면
 /// ZWJ 이모지 시퀀스(예: 👩‍👧)가 깨진다.
 bool _isFragile(String token) =>
@@ -41,18 +47,49 @@ bool _isFragile(String token) =>
 /// 이미 처리된 문자열에 다시 적용해도 결과가 같다(멱등).
 String keepAll(String text) {
   if (text.isEmpty) return text;
+  if (text.contains(wordJoiner)) return text; // 이미 처리됨(멱등)
   return text.replaceAllMapped(_word, (m) {
     final token = m[0]!;
-    if (token.contains(wordJoiner)) return token; // 이미 처리됨
     if (_isFragile(token)) return token;
-    final runes = token.runes.toList();
-    if (runes.length < 2 || runes.length > kMaxKeepAllRunes) return token;
-    return runes.map(String.fromCharCode).join(wordJoiner);
+    return _joinToken(token);
   });
 }
 
-/// [keepAll]이 끼운 부호를 없앤 원문. 비교·검색·복사에 쓴다.
-String stripWordJoiner(String text) => text.replaceAll(wordJoiner, '');
+String _joinToken(String token) {
+  final runes = token.runes.toList();
+  if (runes.length < 2) return token;
+  if (runes.length > kMaxKeepAllRunes) {
+    // 긴 어절: 가운뎃점 뒤에서만 나눈다 — 토막마다 묶고, 토막 사이는 줄이 바뀔 수 있게 둔다
+    if (!token.contains('·') && !token.contains('・')) return token;
+    return token.split(_dotBreak).map(_joinPiece).join();
+  }
+  return runes.map(String.fromCharCode).join(wordJoiner);
+}
+
+String _joinPiece(String piece) {
+  final runes = piece.runes.toList();
+  if (runes.length < 2 || runes.length > kMaxKeepAllRunes) return piece;
+  return runes.map(String.fromCharCode).join(wordJoiner);
+}
+
+/// 덩어리 **전체**를 한 줄로 묶는다 — 띄어쓰기에서도 줄이 바뀌지 않는다(WJ ␣ WJ).
+///
+/// ' · '로 나눈 짧은 토막('같은 이름 없음')이나 제목 덩어리('(지워진 기록까지 나오는가)')처럼 한 줄에 들어가는 것만 쓴다.
+/// 한 줄보다 길면 Flutter가 아무 데서나 쪼개므로, 부르는 쪽이 폭을 재고 길면 [keepAll]을 쓴다([PhraseText]).
+String glueAll(String text) {
+  if (text.isEmpty) return text;
+  final runes = text.runes.toList();
+  if (runes.any((r) => r > 0xFFFF) || text.contains('‍')) return keepAll(text);
+  // 띄어쓰기는 줄이 안 바뀌는 공백(U+00A0)으로 — 글자 엔진은 보통 띄어쓰기를 늘 줄바꿈 자리로 본다(WJ로는 못 막는다,
+  // 2026-11-01 테스트로 확인). 음절 사이는 WJ로 묶는다.
+  return runes.map((r) => r == 0x20 ? nbsp : String.fromCharCode(r)).join(wordJoiner);
+}
+
+/// 줄이 안 바뀌는 공백 (U+00A0)
+const String nbsp = '\u00A0';
+
+/// [keepAll]·[glueAll]이 끼운 부호를 없앤 원문. 비교·검색·복사에 쓴다.
+String stripWordJoiner(String text) => text.replaceAll(wordJoiner, '').replaceAll(nbsp, ' ');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 여러 조각(TextSpan)으로 이루어진 글
@@ -77,7 +114,8 @@ class _SpanJoiner {
 
   InlineSpan visit(InlineSpan span) {
     if (span is! TextSpan) {
-      // WidgetSpan 등 글자가 아닌 조각. 여기서는 줄이 바뀌어도 된다.
+      // WidgetSpan 등 글자가 아닌 조각. 여기서는 줄이 바뀌어도 된다(엔진이 자리 표시 앞뒤의 WJ를 지키지 않는다 —
+      // 그래서 용어 밑줄은 바로 뒤 토씨를 **조각 안에 함께** 싣는다: case_card.dart caseRichText, 2026-11-01).
       _pendingJoin = false;
       return span;
     }

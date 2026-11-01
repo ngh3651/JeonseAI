@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/components/source_label.dart' show kLegacyExplanationSource;
 import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
@@ -508,7 +509,8 @@ class EvidencePoints extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      AppText(
+                      // 이름·둘째 줄·값 모두 ' · ' 덩어리 사이에서만 줄이 바뀐다(2026-11-01 — '…맞춰봤어요 · 같은' / '이름 없음')
+                      PhraseText(
                         points[i].label,
                         style: AppTypographyNext.caption.copyWith(
                           fontSize: 15,
@@ -517,7 +519,7 @@ class EvidencePoints extends StatelessWidget {
                         ),
                       ),
                       if ((points[i].sub ?? '').trim().isNotEmpty)
-                        AppText(
+                        PhraseText(
                           points[i].sub!,
                           style: AppTypographyNext.caption.copyWith(fontSize: 14, color: AppColorsNext.textMuted),
                         ),
@@ -527,7 +529,7 @@ class EvidencePoints extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   flex: 5,
-                  child: AppText(
+                  child: PhraseText(
                     points[i].value,
                     textAlign: TextAlign.right,
                     style: AppTypographyNext.bodyStrong.copyWith(

@@ -41,6 +41,7 @@ class Ledger:
     senior_items: list[int] = field(default_factory=list)  # 먼저 받아갈 빚 한 건 한 건(받는 순서대로)
     senior_total: int | None = None
     orders: int = 0  # 받는 순서를 아는 빚의 수(0 = 순서를 모른다)
+    back_zero: bool = False  # 경매로 가면 돌려받을 돈이 0원이다(손실 계산 결과)
 
     def add_money(self, role: str, *values: int | None) -> None:
         for v in values:
@@ -87,6 +88,7 @@ def _base(
             # '돌려받을 돈 0원'·'못 받는 돈 = 보증금 전부'도 사실이다 — 0은 text_guard가 늘 허용한다
             led.add_money("return", back)
             led.add_money("loss", lost)
+            led.back_zero = back == 0
             led.add_pct("sale_rate", getattr(loss, "ratePct", None))
         led.add_money(
             "priority",
@@ -184,9 +186,10 @@ def sheet(led: Ledger, senior_lines: list[str] | None = None) -> dict:
             )
     if (v := one("sale")):
         out["경매로_팔리는_값"] = v
-    if led.money.get("return") is not None or "return" in led.money:
-        if (v := one("return")):
-            out["경매로_가면_돌려받을_돈"] = v
+    if (v := one("return")):
+        out["경매로_가면_돌려받을_돈"] = v
+    elif led.back_zero:
+        out["경매로_가면_돌려받을_돈"] = "0원"
     if (v := one("loss")):
         out["못_돌려받는_돈"] = v
     pr = sorted(led.money.get("priority") or ())

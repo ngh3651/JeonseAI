@@ -271,8 +271,9 @@ def _blacklist(ev: EvidenceVerdict, verdict: RuleVerdict, _facts: list):
         todo = ["**안심전세포털**에서 이름과 나이를 직접 맞춰 보고, 중개사에게도 꼭 물어보세요"]
     elif ev.grade is Grade.GOOD or ev.facts.get("capped_reason"):
         # 사진이 빠져 '확인 필요'로 올라간 카드(capped_reason)도 대조 자체는 했다 — 같은 이름이 없었던 것은 사실이다
-        value = f"{size:,}명과 맞춰봤어요 · 같은 이름 없음" if size else "맞춰봤어요 · 같은 이름 없음"
-        points = [_pt("공개 명단", value, "ok")]
+        # 2026-11-01: 값 칸(오른쪽, 좁다)엔 결과만 짧게 — '1,978명과 맞춰봤어요 · 같은 / 이름 없음'처럼 접혔다. 몇 명과 맞춰 봤는지는 둘째 줄.
+        points = [EvidencePoint(label="공개 명단", value="같은 이름 없음", tone="ok",
+                                sub=f"{size:,}명과 맞춰봤어요" if size else "명단과 맞춰봤어요")]
         todo = ["명단에 없어도 안심할 수는 없어요. 중개사에게 집주인 체납·다른 보증금 사고를 물어보세요"]
     elif label == BLACKLIST_PENDING_LABEL:
         points = [_pt("공개 명단", "아직 맞춰보지 못했어요", "caution")]

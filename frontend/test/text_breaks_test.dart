@@ -167,7 +167,7 @@ void main() {
     test('용어 밑줄 칸은 바로 앞 여는 괄호와 바로 뒤 토씨를 함께 싣는다 — 그 사이에서 줄이 안 바뀌게', () {
       const body = '빚(선순위 채권)이 있고 근저당이에요. 또 근저당권자들에게 아주길게이어지는낱말이에요';
       int at(String t) => body.indexOf(t);
-      expect(termNeighbors(body, at('선순위 채권'), at('선순위 채권') + 6), ('(', ')이'));
+      expect(termNeighbors(body, at('선순위 채권'), at('선순위 채권') + 6), ('빚(', ')이'));
       expect(termNeighbors(body, at('근저당'), at('근저당') + 3), ('', '이에요.'));
       // 뒤 낱말이 너무 길면(8자 넘게) 싣지 않는다 — 칸이 한 줄보다 커지지 않게
       final long = at('아주길게');

@@ -216,7 +216,7 @@ def build(report: Report) -> AskCards:
             fs = [f"{_dot(of.latestTransferDate)} · " + ("새 건물로 처음 등기됨" if of.latestCause == "보존" else "매매로 집주인이 바뀜"),
                   f"{_dot(viewed)} · 이 등기부를 뗀 날"]
             leads.append(_card("recent", t, v, facts=fs, why=T["recent"]["why"],
-                               pass_line=AskPass(text="특약 2줄 — 잔금 다음 날까지 새 담보 금지 · 팔거나 대출 늘리면 미리 알림")))
+                               pass_line=AskPass(text="특약 2줄: 잔금 다음 날까지 새 담보 금지 · 팔거나 대출 늘리면 미리 알림")))
 
     # ── 공동 소유 ──
     if of and of.ownerCount >= 2:
@@ -251,7 +251,7 @@ def build(report: Report) -> AskCards:
     else:
         ins_facts = [f"보증금 {W(dep)}"]
     insurance = _card("insurance", T["insurance"], values, facts=ins_facts, why=T["insurance"]["why"],
-                      pass_line=AskPass(text="특약 — 보증보험이 안 되면 계약 해제 · 계약금 전액 반환"))
+                      pass_line=AskPass(text="특약: 보증보험이 안 되면 계약 해제 · 계약금 전액 반환"))
 
     if leads:
         ordered = [leads[0], tax, *leads[1:], *others, insurance]

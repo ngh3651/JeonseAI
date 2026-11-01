@@ -761,7 +761,7 @@ class EvidenceResultBox extends StatelessWidget {
                   style: AppTypographyNext.caption.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: fg),
                 ),
                 if ((visual.resultSub ?? '').isNotEmpty)
-                  AppText(visual.resultSub!, style: AppTypographyNext.caption.copyWith(color: AppColorsNext.textBody)),
+                  PhraseText(visual.resultSub!, style: AppTypographyNext.caption.copyWith(color: AppColorsNext.textBody)),
               ],
             ),
           ),
@@ -871,22 +871,28 @@ class EvidenceChecks extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
+                  flex: 6,
                   child: AppText(
                     items[i].label,
                     style: AppTypographyNext.caption.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: AppColorsNext.textBody),
                   ),
                 ),
                 const SizedBox(width: 8),
-                AppText(
-                  items[i].value ?? '',
-                  style: AppTypographyNext.bodyStrong.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: switch (items[i].ok) {
-                      true => AppColors.ok,
-                      false => AppColorsNext.dangerText,
-                      null => AppColorsNext.textMuted,
-                    },
+                // 값이 길면('아직 못 맞춰 봤어요') 이름 칸을 누르지 않게 폭을 나눠 쓴다(2026-11-01 — 이름이 세 줄로 접혔다)
+                Flexible(
+                  flex: 5,
+                  child: PhraseText(
+                    items[i].value ?? '',
+                    textAlign: TextAlign.right,
+                    style: AppTypographyNext.bodyStrong.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: switch (items[i].ok) {
+                        true => AppColors.ok,
+                        false => AppColorsNext.dangerText,
+                        null => AppColorsNext.textMuted,
+                      },
+                    ),
                   ),
                 ),
               ],

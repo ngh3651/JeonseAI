@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
@@ -667,7 +668,8 @@ class _Basis extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(width: 40, child: AppText(k, style: label)),
-                  Expanded(child: AppText(v, style: AppTypographyNext.caption)),
+                  // ' · '로 이은 근거는 덩어리 사이에서만 줄이 바뀐다(2026-11-01)
+                  Expanded(child: PhraseText(v, style: AppTypographyNext.caption)),
                 ],
               ),
             ),

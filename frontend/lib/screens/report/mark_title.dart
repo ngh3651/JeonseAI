@@ -12,11 +12,13 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/text/app_text.dart';
 import '../../design_system/text/phrase_text.dart';
 
 /// 제목 → 덩어리들 (글자, 괄호인가).
 List<(String, bool)> markTitleChunks(String title) {
-  final parts = title.trim().split(' · ');
+  // 제목엔 굵게 표시가 없지만, 들어와도 별표가 보이지 않게(2026-11-01 — 글자를 그리는 다른 곳과 같은 규칙)
+  final parts = stripBoldMarkup(title).trim().split(' · ');
   final out = <(String, bool)>[];
   final paren = RegExp(r'\s\(([^()]+)\)$');
   for (int i = 0; i < parts.length; i++) {

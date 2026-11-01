@@ -131,7 +131,10 @@ def _report_summary(report: Report, tags: list[str], ledger: "fact_ledger.Ledger
     if ledger is not None:
         if senior_lines and all("순위" in x for x in senior_lines):
             senior_lines.sort()
-        summary["이_집_숫자표"] = fact_ledger.sheet(ledger, senior_lines)
+        try:
+            summary["이_집_숫자표"] = fact_ledger.sheet(ledger, senior_lines)
+        except Exception:  # noqa: BLE001 — 숫자표 하나 때문에 판례를 잃지 않는다
+            pass
     summary["보증금_표기"] = format_won(report.deposit)
     if report.seniorDebtAmount:
         summary["먼저_갚을_빚_표기"] = format_won(report.seniorDebtAmount)
@@ -151,9 +154,12 @@ def _verdict_summary(
             if ev.grade != Grade.GOOD and ev.detail_text:
                 summary.setdefault("근거_상세", []).append({"id": ev.id, "상세": ev.detail_text})
     if ledger is not None:
-        from ..explanation import senior_lines
+        try:
+            from ..explanation import senior_lines
 
-        summary["이_집_숫자표"] = fact_ledger.sheet(ledger, senior_lines(verdict) if verdict is not None else None)
+            summary["이_집_숫자표"] = fact_ledger.sheet(ledger, senior_lines(verdict) if verdict is not None else None)
+        except Exception:  # noqa: BLE001 — 숫자표 하나 때문에 판례를 잃지 않는다(검사는 장부로 그대로 돈다)
+            pass
     return summary
 
 

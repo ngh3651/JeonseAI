@@ -255,7 +255,11 @@ def _reason_text(kind: str, text: str, source: str, ledger: "fact_ledger.Ledger 
             "숫자": "입력에 없는 숫자를 썼어요. 입력의 '금액_표기'·숫자만 쓰세요",
         }.get(why, "검사에 걸렸어요")
     if kind in ("common_point", "advice"):
-        meaning = fact_ledger.check(text, ledger, skip_precedent=True)
+        try:
+            meaning = fact_ledger.check(text, ledger, skip_precedent=True)
+        except Exception:  # noqa: BLE001 — 검사기 버그가 판례 카드를 통째로 잃게 하지 않는다(로그만)
+            _log.error("[Solar/판례] ⚠ 숫자 뜻 검사 실패 — 이 칸은 예전 검사만", exc_info=True)
+            meaning = None
         if meaning:
             return meaning
     return None

@@ -322,7 +322,11 @@ def _field_reason(
     if reason is None and kind == "easy_explanation":
         reason = _lead_format_reason(text)
     if reason is None:
-        meaning = fact_ledger.check(text, ledger)
+        try:
+            meaning = fact_ledger.check(text, ledger)
+        except Exception:  # noqa: BLE001 — 검사기 버그가 설명 전체를 폴백시키지 않게(로그만)
+            _log.error("[설명] ⚠ 숫자 뜻 검사 실패 — 이 칸은 예전 검사만", exc_info=True)
+            meaning = None
         if meaning:
             reason = f"숫자 뜻: {meaning}"
     return reason

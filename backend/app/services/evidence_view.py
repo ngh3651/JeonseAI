@@ -22,7 +22,7 @@ from ..schemas.contract import (
     VisualResult,
 )
 from ..schemas.internal import EvidenceVerdict, Grade, RuleVerdict
-from . import thresholds as T
+from . import debt_order, thresholds as T
 from .formatting import format_won
 from .mark_plans import dot
 from .rule_engine import BLACKLIST_PENDING_LABEL
@@ -115,20 +115,45 @@ def _over(flag, pct, limit) -> bool | None:
     return None if pct is None else pct > limit
 
 
+def _senior_items(f: dict) -> list[dict]:
+    """먼저 받아갈 빚(근저당 + 전세권)을 **받는 순서대로** 한 줄로 — {kind, order, rank_number, receipt_date, holder, amount}.
+
+    옛 판정(전세권 얼굴 없음·order 없음)도 그대로 그린다: 순서 번호가 없으면 순위번호·접수일 순으로 늘어놓고 'N순위'를 붙이지 않는다.
+    """
+    items: list[dict] = []
+    for m in f.get("mortgages") or []:
+        items.append({
+            "kind": "근저당", "order": m.get("order"), "rank_number": m.get("rank_number"),
+            "receipt_date": m.get("receipt_date"), "holder": m.get("mortgagee"),
+            "amount": m.get("max_claim_amount"), "amount_unknown": m.get("amount_unknown"),
+        })
+    for j in f.get("jeonse_rights") or []:
+        items.append({
+            "kind": "전세권", "order": j.get("order"), "rank_number": j.get("rank_number"),
+            "receipt_date": j.get("receipt_date"), "holder": j.get("holder"),
+            "amount": j.get("amount"), "amount_unknown": j.get("amount_unknown"),
+        })
+    if items and all(i.get("order") for i in items):
+        items.sort(key=lambda i: i["order"])
+    else:
+        items.sort(key=debt_order.sort_key)
+    return items
+
+
 def _senior(ev: EvidenceVerdict, verdict: RuleVerdict, _facts: list):
     f = ev.facts
     total = f.get("senior_debt_total") or 0
     count = (f.get("mortgage_count") or 0) + (f.get("jeonse_right_count") or 0)
     points = [_pt("먼저 받아갈 빚", f"{format_won(total)} · {count}건" if count else "없음",
                   "danger" if ev.grade is Grade.DANGER else ("ok" if not total else "plain"))]
-    for m in (f.get("mortgages") or [])[:3]:
-        label = f"{m['rank_number']}순위 근저당" if m.get("rank_number") else "근저당"
-        bits = [dot(m.get("receipt_date")), m.get("mortgagee")]
-        if m.get("max_claim_amount") is not None:
-            bits.append(format_won(m["max_claim_amount"]))
-        elif m.get("amount_unknown"):
+    # 2026-11-01: 'N순위'는 등기부 칸 번호가 아니라 **살아 있는 빚끼리의 받는 순서**(debt_order). 전세권도 같은 줄에 선다.
+    for item in _senior_items(f)[:3]:
+        bits = [dot(item.get("receipt_date")), item.get("holder")]
+        if item.get("amount") is not None:
+            bits.append(format_won(item["amount"]))
+        elif item.get("amount_unknown"):
             bits.append("금액 못 읽음")
-        points.append(_pt(label, " · ".join(b for b in bits if b)))
+        points.append(_pt(debt_order.label(item["kind"], item.get("order")), " · ".join(b for b in bits if b)))
     if f.get("lease_registration_count"):
         points.append(_pt("임차권등기", f"{f['lease_registration_count']}건", "danger"))
     combined = f.get("combined_ratio_pct")
@@ -302,17 +327,14 @@ def _queue(ev: EvidenceVerdict, verdict: RuleVerdict, points: list, loss):
     total = int(f.get("senior_debt_total") or 0)
     if not total or f.get("unknown_amount_count") or f.get("capped_reason"):
         return None, None  # 금액을 모르는 빚이 있으면 줄을 정직하게 그릴 수 없다
-    ms = [m for m in (f.get("mortgages") or []) if m.get("max_claim_amount")]
-
-    def order(m):
-        r = str(m.get("rank_number") or "")
-        return (0, int(r)) if r.isdigit() else (1, str(m.get("receipt_date") or ""))
-
-    ms.sort(key=order)
-    items = [VisualQueueItem(label=_short_lender(m.get("mortgagee")), amount=int(m["max_claim_amount"]), kind="debt")
+    # 근저당·전세권을 **받는 순서대로** 한 줄에 세운다(2026-11-01 — 전엔 전세권을 맨 뒤 '전세권 등'으로 몰았다:
+    # 을구 1번 전세권 · 2번 근저당이면 순서가 거꾸로 그려졌다).
+    ms = [m for m in _senior_items(f) if m.get("amount")]
+    items = [VisualQueueItem(label=_short_lender(m.get("holder")) if m["kind"] == "근저당" else "전세권",
+                             amount=int(m["amount"]), kind="debt")
              for m in ms]
     rest = total - sum(i.amount for i in items)
-    if rest > 0:  # 전세권 등 근저당 밖의 먼저 받아갈 돈(빚 카드 합계에 들어간 것)
+    if rest > 0:  # 얼굴(항목 사실)이 없는 옛 판정의 전세권 등 — 빚 카드 합계에 들어간 나머지
         items.append(VisualQueueItem(label="전세권 등", amount=rest, kind="debt"))
     deposit = int(verdict.deposit or 0)
     items.append(VisualQueueItem(label="내 보증금", amount=deposit, kind="mine"))
@@ -335,9 +357,9 @@ def _queue(ev: EvidenceVerdict, verdict: RuleVerdict, points: list, loss):
     # 숫자 줄 = 그림의 칸(같은 색 점). 합계·빚+보증금 %는 그림과 큰 한 줄이 말하므로 뺀다.
     rows: list[EvidencePoint] = []
     for i, m in enumerate(ms[:4]):
-        label = f"{m['rank_number']}순위 근저당" if m.get("rank_number") else "근저당"
-        sub = " · ".join(b for b in (dot(m.get("receipt_date")), m.get("mortgagee")) if b) or None
-        rows.append(EvidencePoint(label=label, value=format_won(m["max_claim_amount"]), sub=sub, dot=i))
+        sub = " · ".join(b for b in (dot(m.get("receipt_date")), m.get("holder")) if b) or None
+        rows.append(EvidencePoint(label=debt_order.label(m["kind"], m.get("order")), value=format_won(m["amount"]),
+                                  sub=sub, dot=i))
     if rest > 0:
         rows.append(EvidencePoint(label="전세권 등", value=format_won(rest), dot=len(ms)))
     rows += [p for p in points if p.label == "임차권등기"]

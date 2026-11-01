@@ -235,7 +235,8 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
                 if combined is not None:
                     body += f" 내 보증금까지 더하면 {combined}%가 돼요."
             return (
-                f"{head}.{body} 집이 경매로 넘어가면 이 빚을 진 쪽이 먼저 돈을 받아가고, "
+                # 2026-11-01: '이 빚을 **진** 쪽이 먼저 받아가고' → 빚을 진 쪽은 집주인이다. 먼저 받는 쪽은 **빌려준** 곳.
+                f"{head}.{body} 집이 경매로 넘어가면 이 돈을 빌려준 곳이 먼저 받아가고, "
                 "남는 금액에서 보증금을 돌려받게 돼요."
             )
         if f.get("unknown_amount_count"):

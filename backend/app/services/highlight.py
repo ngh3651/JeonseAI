@@ -53,7 +53,7 @@ from dataclasses import dataclass, field, replace
 from ..schemas.contract import Highlight, HighlightBox
 from ..schemas.internal import MoneyEntry, RegistryEntry, RegistryExtract, parse_amount
 from .cross_check import CrossCheck, to_notes as cross_check_notes
-from . import mark_plans
+from . import debt_order, mark_plans
 from .formatting import eun_neun, format_won, mask_name  # mask_name: 2026-08-05 formatting으로 이관(re-export)
 from .ocr import OcrResult
 from .ocr_layout import (
@@ -935,6 +935,10 @@ def build_highlights(
         )
 
     # ── ② 순위 항목 (3앵커 / 2앵커) ─────────────────────────────────────────
+    # 받는 순서(2026-11-01) — 먼저 받아갈 빚(근저당·전세권)끼리의 순서. 등기부 순위번호(말소된 줄도 번호를 차지한다)를
+    # 그대로 'N순위'라 부르면 "3순위 근저당"처럼 앞에 빚이 둘 더 있는 것으로 읽힌다(debt_order 참고).
+    _senior = [e for f in ("mortgages", "jeonse_rights") for e in (getattr(extract, f, []) or []) if e.is_active]
+    _senior_order = {id(e): o for e, o in zip(_senior, debt_order.orders(_senior))}
     for rule in _RANKED_RULES:
         entries = [e for e in getattr(extract, rule.ie_field, []) if e.is_active]
         # ── 언제 표 항목을 칠하지 않는가 (2026-07-28 자기 공격으로 다듬음) ──────
@@ -970,7 +974,9 @@ def build_highlights(
                 continue
             spec = _SPECS[rule.kind]
             amount_text = f" · {format_won(amount)}" if amount is not None else ""
-            facts, plan = mark_plans.ranked(rule.kind, entry, amount, rank)
+            facts, plan = mark_plans.ranked(
+                rule.kind, entry, amount, rank, section=rule.section, order=_senior_order.get(id(entry))
+            )
             candidates.append(
                 _Candidate(
                     kind=rule.kind,

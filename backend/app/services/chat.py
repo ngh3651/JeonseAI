@@ -697,7 +697,9 @@ def report_block(report) -> tuple[str, list[float]]:
             amount = f", 금액 {_won(f.amount)}" if f.amount else ""
             when = f", 접수 {f.receiptDate}" if f.receiptDate else ""
             holder = f", 권리자 {f.holder}" if f.holder else ""
-            lines.append(f"  - {f.kind}{when}{amount}{holder}")
+            # 'N순위' = 살아 있는 빚끼리의 받는 순서(2026-11-01) — 등기부 칸 번호를 순위로 말하지 않게
+            order = f"{f.order}순위 " if getattr(f, "order", None) else ""
+            lines.append(f"  - {order}{f.kind}{when}{amount}{holder}")
     if report.checkedNotes:
         lines.append("· 확인 메모: " + " / ".join(n.replace("**", "") for n in report.checkedNotes[:6]))
     text = "\n".join(x for x in lines if x)

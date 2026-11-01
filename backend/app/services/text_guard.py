@@ -211,6 +211,77 @@ def extract_numbers(text: str) -> list[tuple[str, float]]:
     return found
 
 
+def money_spans(text: str) -> list[tuple[int, int, str, float]]:
+    """금액 덩어리의 자리까지 — `[(시작, 끝, 원문 조각, 값)]` (2026-11-01 숫자 뜻 검사 `fact_ledger`가 쓴다)."""
+    out: list[tuple[int, int, str, float]] = []
+    for m in _MONEY_RE.finditer(text or ""):
+        total = 0.0
+        for part in _MONEY_PART_RE.finditer(m.group(0)):
+            if part.group(1):
+                total += _to_float(part.group(1)) * _UNIT[part.group(2)]
+        if total:
+            chunk = m.group(0)
+            lead = len(chunk) - len(chunk.lstrip())
+            out.append((m.start() + lead, m.start() + len(chunk.rstrip()), chunk.strip(), total))
+    return out
+
+
+def percent_spans(text: str) -> list[tuple[int, int, str, float]]:
+    """퍼센트의 자리까지 — `[(시작, 끝, 원문 조각, 값)]`."""
+    return [(m.start(), m.end(), m.group(0), float(m.group(1))) for m in _PERCENT_RE.finditer(text or "")]
+
+
+# ── ⑸ 법이 정한 사실과 반대로 말하기 (2026-11-01) ─────────────────────────────
+#
+# 숫자는 장부로 잡지만, **누가 먼저 받나**처럼 숫자 없는 사실은 숫자 그물에 걸리지 않는다.
+# 실제로 우리 준비된 문구가 "이 빚을 **진** 쪽이 먼저 돈을 받아가고"라고 썼다(빚을 진 쪽 = 집주인.
+# 먼저 받는 쪽은 돈을 **빌려준** 곳이다). 몇 개뿐인 핵심 사실만 패턴으로 지킨다 — 문장을 틀에 넣지 않는다.
+# 비교는 공백을 지운 문자열(`_squeeze`)에 댄다.
+_DEBTOR_FIRST_RE = re.compile(
+    r"(빚을?(진|지고있는)(쪽|사람|분|곳|이)|채무자|집주인|임대인)(이|가|은|는)?(먼저|우선)(돈을|돈)?(받|가져|챙)"
+)
+_SAME_DAY_RE = re.compile(r"당일|그날|즉시|곧바로|하자마자|바로")
+_NEXT_DAY_RE = re.compile(r"다음날|이튿날|0시|영시|자정|익일")
+_MAX_CLAIM_EQ_RE = re.compile(
+    r"(채권최고액|빚최대한도)(은|는|이|가)?(곧|바로)?(실제로?|진짜|정확한)?(빌린|남은|대출받은|갚을)"
+    r"(돈|금액|빚|대출)(이에요|예요|입니다|이다|이랍니다|과같아요|와같아요)"
+)
+
+
+def _debtor_first(squeezed: str) -> bool:
+    return bool(_DEBTOR_FIRST_RE.search(squeezed))
+
+
+def _same_day_opposability(squeezed: str) -> bool:
+    """'전입신고하면 그날/바로 대항력' — 문장 단위로 본다('다음 날 0시'가 함께 있으면 맞는 말)."""
+    for sent in re.split(r"[.!?。\n]", squeezed):
+        if "대항력" in sent and _SAME_DAY_RE.search(sent) and not _NEXT_DAY_RE.search(sent):
+            return True
+    return False
+
+
+def _max_claim_is_debt(squeezed: str) -> bool:
+    return bool(_MAX_CLAIM_EQ_RE.search(squeezed))
+
+
+_LEGAL_FACTS: tuple[tuple[str, Any, str], ...] = (
+    ("먼저받는쪽-채무자", _debtor_first,
+     "경매로 팔리면 먼저 받는 쪽은 돈을 빌려준 곳(근저당권자·전세권자)이에요. 빚을 진 집주인이 아니에요"),
+    ("대항력-당일", _same_day_opposability, "대항력은 전입신고와 입주를 마친 다음 날 0시에 생겨요"),
+    ("채권최고액-실제빚", _max_claim_is_debt,
+     "채권최고액은 실제로 남은 빚이 아니라 담보로 잡을 수 있는 최대 한도예요"),
+)
+
+
+def legal_fact_hit(text: str) -> tuple[str, str] | None:
+    """법이 정한 핵심 사실과 반대로 말하면 `(이름, 고쳐 쓸 사유)`, 아니면 None."""
+    squeezed = _squeeze(text)
+    for name, test, reason in _LEGAL_FACTS:
+        if test(squeezed):
+            return name, reason
+    return None
+
+
 def collect_allowed(material: Any) -> set[float]:
     """입력 재료(판정 JSON)에 등장하는 모든 수 → 허용 집합.
 
@@ -399,6 +470,9 @@ def check_chat_reply(
     for name, pattern in _CHAT_VERDICT_RAW_PATTERNS:
         if pattern.search(text):
             return (name, verdict_msg)
+    legal = legal_fact_hit(text)
+    if legal:
+        return (f"사실과반대-{legal[0]}", legal[1])
     for m in _URL_RE.finditer(text):
         host = m.group(1).lower()
         if "." in host and not _PUBLIC_DOMAIN_RE.search(host):
@@ -439,6 +513,9 @@ def check(
     hit = polarity_hit(text, grade)
     if hit:
         return f"등급과 반대 방향({hit})"
+    legal = legal_fact_hit(text)
+    if legal:
+        return f"사실과 반대({legal[0]}): {legal[1]}"
     bad = unsupported_numbers(text, allowed)
     if bad:
         return f"재료에 없는 수치({', '.join(bad[:3])})"

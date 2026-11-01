@@ -48,6 +48,11 @@ def _amount(entry: RegistryEntry, key: str | None) -> int | None:
 
 
 def build(extract: RegistryExtract) -> list[RiskFact]:
+    from .debt_order import orders  # 늦게 가져온다(debt_order가 이 파일의 norm_date를 쓴다)
+
+    # 근저당·전세권의 받는 순서(2026-11-01) — 살아 있는 빚끼리, 을구 순위번호 순(debt_order)
+    senior = [e for f in ("mortgages", "jeonse_rights") for e in (getattr(extract, f, []) or []) if e.is_active]
+    order_of = {id(e): o for e, o in zip(senior, orders(senior))}
     facts: list[RiskFact] = []
     for field, label, amount_key, holder_key in _KINDS:
         for e in getattr(extract, field, []) or []:
@@ -60,6 +65,7 @@ def build(extract: RegistryExtract) -> list[RiskFact]:
                     receiptDate=(str(raw.get("receipt_date")).strip() or None) if raw.get("receipt_date") else None,
                     amount=_amount(e, amount_key),
                     holder=_holder_kind(raw.get(holder_key)) if holder_key else None,
+                    order=order_of.get(id(e)),
                 )
             )
     return _trim(facts)

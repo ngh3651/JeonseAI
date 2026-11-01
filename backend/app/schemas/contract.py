@@ -218,6 +218,8 @@ class RiskFact(BaseModel):
     receiptDate: Optional[str] = None
     amount: Optional[int] = None  # 청구금액·채권최고액·보증금(원)
     holder: Optional[str] = None  # "기관" | "개인"
+    # 2026-11-01 — 근저당·전세권의 **받는 순서**(살아 있는 빚끼리 1부터, debt_order). 등기부 순위번호가 아니다. 모르면 None.
+    order: Optional[int] = None
 
 
 class OwnerFacts(BaseModel):

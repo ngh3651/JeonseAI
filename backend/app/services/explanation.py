@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
@@ -46,6 +47,11 @@ SOLAR_BASE_URL = "https://api.upstage.ai/v1/solar"  # OpenAI 호환 base_url
 SOLAR_MODEL = "solar-pro2"  # 첫 모델의 기본 이름. 실제 호출은 llm/solar_models.py가 고른다(끝난 모델이면 solar-pro4로 — 2026-10-31)
 REQUEST_TIMEOUT_SECONDS = 60  # 인프라 수치(판정 아님)
 MAX_ATTEMPTS = 2  # 최초 1회 + 재시도 1회
+#: 고쳐 쓰기 호출의 기다림 상한(인프라 수치, 2026-11-01) — 걸린 칸 몇 개만 다시 쓰는 짧은 호출이다.
+#: 첫 호출에 이어 오래 기다리면 앱의 분석 대기(180초)를 넘길 수 있어 짧게 끊고, 넘으면 준비된 문구로 간다.
+REPAIR_TIMEOUT_SECONDS = 30
+#: 이번 호출에만 쓸 기다림 상한 — `_call_solar(messages, api_key)` 모양을 그대로 두려고(테스트 이음매) 문맥 값으로 넘긴다
+_CALL_TIMEOUT: contextvars.ContextVar[float | None] = contextvars.ContextVar("explain_call_timeout", default=None)
 
 # 2026-08-05: 여기 있던 `REASONING_EFFORT = "low"`를 지웠다. **이 파일에서 쓰이지 않는
 # 죽은 상수**였다(감사 §C 부수 확인) — 실제 적용은 `llm/providers.py:39`가 하고,
@@ -301,7 +307,8 @@ def _call_solar(messages: list[dict], api_key: str) -> str:
     system = next((m["content"] for m in messages if m.get("role") == "system"), "")
     user = next((m["content"] for m in messages if m.get("role") == "user"), "")
     return provider.chat(
-        system, user, max_tokens=MAX_OUTPUT_TOKENS, temperature=llm.EXPLAIN_TEMPERATURE
+        system, user, max_tokens=MAX_OUTPUT_TOKENS, temperature=llm.EXPLAIN_TEMPERATURE,
+        timeout=_CALL_TIMEOUT.get(),
     ).text
 
 
@@ -382,11 +389,14 @@ def _repair(material: dict, payload: "ExplanationPayload", retry: dict[str, str]
         },
     ]
     t0 = time.perf_counter()
+    token = _CALL_TIMEOUT.set(REPAIR_TIMEOUT_SECONDS)
     try:
         fixed = _RepairPayload.model_validate(json.loads(_call_solar(messages, api_key)))
     except Exception as e:  # noqa: BLE001 — 고쳐 쓰기는 덤이다. 실패하면 준비된 문구로 간다
         _log.info(f"[설명:{name}] 고쳐 쓰기 실패 → 걸린 칸은 준비된 문구 ({type(e).__name__}, {time.perf_counter() - t0:.1f}초)")
         return {}
+    finally:
+        _CALL_TIMEOUT.reset(token)
     out = {e.id: e.easy_explanation for e in fixed.evidences if e.id in retry}
     if fixed.headline and "headline" in retry:
         out["headline"] = fixed.headline

@@ -166,6 +166,17 @@ BAD = [
     "내 보증금까지 더하면 103%가 돼요.",  # 빚 비율을 합친 비율 자리에
     "경매로 팔리면 4억원에 팔려요.",  # 시세를 낙찰가 자리에
     "이 집도 3억 6,000만원\n선순위 근저당이 있어요.",  # 말풍선처럼 문장 가운데서 줄을 바꿔도
+    # 2026-11-01 머지 뒤 검토에서 나온 것
+    "이 집 빚은 3억 6,000만원이에요.",  # 맨 '빚'도 합계 자리 — 한 건만 쓰면 빚이 그것뿐인 것처럼 읽힌다
+    "선순위 근저당 3억 6,000만원이 있어요.",  # '선순위'가 앞에 있어도
+    "보증금 1억원을 모두 돌려받을 수 있어요.",  # 계산은 5,000만원 — 부풀리기
+    "경매로 가면 보증금 1억원을 모두 돌려받아요.",
+    "근저당 3억 6,000만원은 시세의 25%예요.",  # 25%는 전세가율이다
+    "3순위인 근저당이 있어요.",
+    "근저당이 3순위예요.",
+    "빚 4억원이 시세 4억원보다 많아요.",  # 고쳐 쓰라는 사유를 잘못 읽고 쓴 문장
+    "앞선 빚 3억 6,000만원이 있어요.",
+    "최우선변제로 5,500만원을 먼저 받아요.",
 ]
 GOOD = [
     "이 집도 4억 1,200만원 선순위 빚이 있어요.",
@@ -183,6 +194,25 @@ GOOD = [
     "개인이 빌려준 5,200만원도 있어요.",
     "선순위 근저당 3억 6,000만원 외에 개인 근저당 5,200만원이 더 있어요.",  # 한 문장에 두 건 다
     "**경매로 가면 반만 돌아와요** 경매로 팔리면 3억 148만원쯤에 팔리는데, 빚 4억 1,200만원이 먼저라 내 보증금 1억원 중 최우선변제 5,000만원만 돌려받아요.",
+    # 2026-11-01 머지 뒤 검토 — 맞는 문장인데 걸리던 것
+    "빚 4억 1,200만원이 시세 4억원보다 많아요.",  # 뒤에 오는 '시세'는 견주는 대상이다
+    "먼저 갚을 빚은 3억 6,000만원(1순위)과 5,200만원(2순위)이에요.",
+    "보증금 1억원을 돌려받으려면 집이 5억 1,200만원 넘게 팔려야 해요.",  # 조건·문턱 금액
+    "보증금이 1억 5,000만원 이하여야 최우선변제를 받아요.",
+    "최우선변제는 낙찰가의 50%까지만 받아요.",
+    "1순위 근저당 3억 6,000만원은 시세의 90%예요.",  # 빚 한 건 ÷ 시세
+    "근저당 1건만 따져도 시세의 90%예요.",
+    "보증보험에 가입하면 보증금 1억원을 모두 돌려받을 수 있어요.",  # 조건 마디 — 이 집 경매 계산이 아니다
+    "경매로 가면 보증금 1억원을 모두 돌려받기는 어려워요.",
+    "보증금에서 5,000만원을 빼면 나머지는 못 받을 수 있어요.",
+    "보증금 1억원을 다 돌려받으려면 집이 5억 1,200만원 이상에 팔려야 해요.",  # '다 돌려받으려면'은 조건이다
+    "보증금 1억원을 모두 돌려받을 수 있는지 계약 전에 확인하세요.",  # 물음 — 돌려받는다고 말한 게 아니다
+    "선순위 빚은 1순위 3억 6,000만원, 2순위 5,200만원으로 모두 4억 1,200만원이에요.",
+    "경매로 팔리면 1순위인 은행이 3억 6,000만원을 먼저 받아가요.",
+    "보증금 1억원에 빚 4억 1,200만원을 더하면 시세의 128%예요.",
+    "빚에 보증금까지 얹으면 128%예요.",
+    "3억 148만원에 낙찰되면 빚 4억 1,200만원도 다 못 갚아요.",
+    "이 집 시세 4억원보다 빚이 1,200만원 더 많아요.",  # 차이 금액
 ]
 
 
@@ -196,9 +226,56 @@ def test_제자리에_쓴_숫자는_막지_않는다(text):
     assert fact_ledger.check(text, sample_ledger()) is None
 
 
+def _clean_ledger() -> fact_ledger.Ledger:
+    """빚 없는 아파트 — 보증금 2억 8,000만원 · 시세 4억원(전세가율 70%) · 경매로 가도 다 돌려받는 계산."""
+    raw = {**sample_registry(), "mortgages": []}
+    extract = RegistryExtract.from_raw(raw)
+    v = rule_engine.evaluate(extract, deposit=280_000_000, market_price=400_000_000, blacklist_entries=[])
+    loss = NS(status="ok", expectedSale=328_000_000, expectedReturn=280_000_000, expectedLoss=0, ratePct=82.0,
+              priorityAmount=0, priorityLimit=None, priorityCap=None)
+    return fact_ledger.for_verdict(v, registry_facts.build(extract), loss)
+
+
+@pytest.mark.parametrize("text", [
+    "보증금 2억 8,000만원은 시세 4억원의 70%예요.",
+    "전세가율이 70%로 주의 기준 80%보다 낮아요.",
+    "경매로 가도 3억 2,800만원쯤에 팔려 보증금 2억 8,000만원을 모두 돌려받는 계산이에요.",
+    "시세가 3억 5,000만원 아래로 떨어지면 전세가율이 80%를 넘어요.",  # 문턱
+    "보증금이 시세의 80%(3억 2,000만원)를 넘으면 보증보험 가입이 어려울 수 있어요.",
+])
+def test_빚_없는_집의_맞는_문장(text):
+    assert fact_ledger.check(text, _clean_ledger()) is None
+
+
+@pytest.mark.parametrize("text", ["보증금 3억원은 시세의 70%예요.", "전세가율이 75%예요.", "경매로 가면 3억원에 팔려요."])
+def test_빚_없는_집의_틀린_문장(text):
+    assert fact_ledger.check(text, _clean_ledger()) is not None
+
+
 def test_판례_이야기_문장은_이_집_장부와_견주지_않는다():
     text = "판례 속 집은 보증금 5억원이었어요.\n이 집도 4억 1,200만원 선순위 빚이 있어요."
     assert fact_ledger.check(text, sample_ledger(), skip_precedent=True) is None
+    # 판례 문장이어도 '이 집'을 말하면 견준다
+    bad = "이 집도 판례처럼 3억 6,000만원 선순위 근저당이 있어요."
+    assert fact_ledger.check(bad, sample_ledger(), skip_precedent=True) is not None
+    # 한 문장에 판례 집과 이 집을 견주면 판례 쪽 마디의 숫자는 판례의 숫자다
+    both = "판례 속 집은 보증금 2억원이었고, 이 집은 보증금 1억원이에요."
+    assert fact_ledger.check(both, sample_ledger(), skip_precedent=True) is None
+    assert fact_ledger.check("판례 속 집은 보증금 2억원이었고, 이 집은 보증금 3억원이에요.", sample_ledger(),
+                             skip_precedent=True) is not None
+    # '그 집'·'당시'도 판례 이야기다
+    assert fact_ledger.check("판례 속 집처럼 빚이 많았어요. 그 집은 보증금 2억원이었어요.", sample_ledger(),
+                             skip_precedent=True) is None
+
+
+def test_경매로_한_푼도_못_받는_집에서_모두_돌려받는다고_하면_걸린다():
+    v = sample_verdict()
+    zero = NS(status="debt_exceeds", expectedSale=301_480_000, expectedReturn=0, expectedLoss=100_000_000,
+              ratePct=75.4, priorityAmount=0, priorityLimit=None, priorityCap=None)
+    led = fact_ledger.for_verdict(v, registry_facts.build(sample_extract()), zero)
+    why = fact_ledger.check("보증금 1억원을 모두 돌려받을 수 있어요.", led)
+    assert why is not None and "0원" in why
+    assert fact_ledger.check("보증금 1억원을 모두 돌려받기는 어려워요.", led) is None
 
 
 def test_걸린_이유는_AI가_고칠_수_있게_정답을_알려_준다():
@@ -227,12 +304,21 @@ def test_빚을_진_쪽이_먼저_받는다는_말은_걸린다():
     assert text_guard.legal_fact_hit("집이 경매로 넘어가면 이 빚을 진 쪽이 먼저 돈을 받아가고") is not None
     assert text_guard.legal_fact_hit("집주인이 갚지 못하면 은행이 먼저 받아가요.") is None
     assert text_guard.legal_fact_hit("빚을 진 사람이 먼저 받는 게 아니라 빌려준 곳이 먼저 받아요.") is None
+    assert text_guard.legal_fact_hit("빚을 진 사람이 먼저 받는 게 **아니라** 빌려준 곳이 먼저 받아요.") is None
+    assert text_guard.banned_hit("이 집은 **안전**합니다") is not None  # 별표가 말을 갈라도
+    # 집주인·임대인은 경매로 팔린 돈 이야기일 때만 — 계약금 이야기는 맞는 말
+    assert text_guard.legal_fact_hit("경매가 되면 집주인이 먼저 돈을 받아가요.") is not None
+    assert text_guard.legal_fact_hit("임대인이 먼저 받는 계약금을 확인하세요.") is None
 
 
 def test_대항력은_다음_날_0시():
     assert text_guard.legal_fact_hit("전입신고를 한 그날 바로 대항력이 생겨요.") is not None
     assert text_guard.legal_fact_hit("전입신고를 하면 바로 다음 날 0시에 대항력이 생겨요.") is None
     assert text_guard.legal_fact_hit("전입신고를 해도 대항력이 바로 생기는 건 아니에요.") is None
+    assert text_guard.legal_fact_hit("입주하자마자 대항력이 생겨요.") is not None
+    # 같은 날 말이 '대항력이 생긴다'에 붙지 않으면 맞는 말
+    assert text_guard.legal_fact_hit("잔금 당일 근저당이 잡히면 대항력보다 빨라요.") is None
+    assert text_guard.legal_fact_hit("이사 당일 근저당이 잡히면 대항력이 생기기 전이라 위험해요.") is None
 
 
 def test_채권최고액은_실제_빚이_아니다():
@@ -352,3 +438,33 @@ def test_리포트_전체에서_N순위는_살아_있는_빚_수를_넘지_않�
                 for m in re.finditer(r"(\d+)순위", f"{p.label} {p.value} {p.sub or ''}"):
                     assert 1 <= int(m.group(1)) <= live, (p.label, live)
         assert report.grade == Grade.DANGER.value
+
+
+def test_고쳐_쓰기는_짧게_기다린다(monkeypatch, solar_key):
+    """고쳐 쓰기 호출은 기다림 상한을 짧게(앱 분석 대기 180초를 넘기지 않게) — 첫 호출은 그대로."""
+    seen: list[float | None] = []
+
+    class _Provider:
+        name, model = "solar", "solar-pro2"
+
+        def chat(self, system, user, *, max_tokens, temperature, timeout=None):
+            seen.append(timeout)
+            raise explanation.LlmError("끊김")
+
+    monkeypatch.setattr(explanation.llm, "explain_provider", lambda: _Provider())
+    explanation._repair({}, explanation.ExplanationPayload.model_construct(headline="", evidences=[]),
+                        {"headline": "x"}, "key", "solar")
+    assert seen == [explanation.REPAIR_TIMEOUT_SECONDS]
+    assert explanation._CALL_TIMEOUT.get() is None  # 끝나면 되돌린다
+
+    sent: list[float] = []
+
+    def post_chat(payload, *, api_key, timeout, post=None):
+        sent.append(timeout)
+        raise explainer.requests.exceptions.ReadTimeout("끊김")
+
+    monkeypatch.setattr(explainer.solar_models, "post_chat", post_chat)
+    explainer._repair_cases({"판례_후보": []}, [], "key")
+    with pytest.raises(explainer.requests.exceptions.ReadTimeout):
+        explainer._call_solar([], "key")
+    assert sent == [explainer._REPAIR_TIMEOUT, explainer._REQUEST_TIMEOUT]

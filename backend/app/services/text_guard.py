@@ -111,8 +111,12 @@ def polarity_hit(text: str, grade: str | None) -> str | None:
 
 
 def _squeeze(text: str) -> str:
-    """공백을 전부 지운다 — 띄어쓰기 변형을 패턴에 적지 않기 위해서."""
-    return re.sub(r"\s+", "", text or "")
+    """공백을 전부 지운다 — 띄어쓰기 변형을 패턴에 적지 않기 위해서.
+
+    굵게 표시(`**`)도 지운다(2026-11-01) — "**안전**합니다"·"먼저 받는 게 **아니라**"처럼 별표가 말을 갈라
+    금지 표현이 빠져나가거나 맞는 부정문이 걸리지 않게.
+    """
+    return re.sub(r"[\s*]+", "", text or "")
 
 
 def banned_hit(text: str) -> str | None:
@@ -238,10 +242,19 @@ def percent_spans(text: str) -> list[tuple[int, int, str, float]]:
 # 먼저 받는 쪽은 돈을 **빌려준** 곳이다). 몇 개뿐인 핵심 사실만 패턴으로 지킨다 — 문장을 틀에 넣지 않는다.
 # 비교는 공백을 지운 문자열(`_squeeze`)에 댄다.
 _DEBTOR_FIRST_RE = re.compile(
-    r"(빚을?(진|지고있는)(쪽|사람|분|곳|이)|채무자|집주인|임대인)(이|가|은|는)?(먼저|우선)(돈을|돈)?(받|가져|챙)"
+    r"(빚을?(진|지고있는)(쪽|사람|분|곳|이)|채무자)(이|가|은|는)?(먼저|우선)(돈을|돈)?(받|가져|챙)"
 )
-_SAME_DAY_RE = re.compile(r"당일|그날|즉시|곧바로|하자마자|바로")
+#: '집주인·임대인이 먼저 받는다'는 **경매로 팔린 돈** 이야기일 때만 틀린 말이다
+#: ("임대인이 먼저 받는 계약금을 확인하세요"는 맞는 말 — 2026-11-01 검토)
+_OWNER_FIRST_RE = re.compile(r"(집주인|임대인)(이|가|은|는)?(먼저|우선)(돈을|돈)?(받|가져|챙)")
+_AUCTION_CTX_RE = re.compile(r"경매|팔리|팔면|배당|낙찰|매각")
 _NEXT_DAY_RE = re.compile(r"다음날|이튿날|0시|영시|자정|익일")
+#: '그날·바로 대항력이 생긴다' — 같은 날 말이 **대항력이 생기는 것**에 바로 붙을 때만
+#: ("잔금 당일 근저당이 잡히면 대항력보다 빨라요"는 맞는 말 — 2026-11-01 검토)
+_SAME_DAY_ARISE_RE = re.compile(
+    r"(당일|그날|즉시|곧바로|하자마자|바로)[가-힣]{0,6}?대항력(이|을|은|도)?(생|발생|갖|얻|취득)"
+    r"|대항력(이|을|은|도)?(당일|그날|즉시|곧바로|바로)(생|발생|갖|얻|취득)"
+)
 _MAX_CLAIM_EQ_RE = re.compile(
     r"(채권최고액|빚최대한도)(은|는|이|가)?(곧|바로)?(실제로?|진짜|정확한)?(빌린|남은|대출받은|갚을)"
     r"(돈|금액|빚|대출)(이에요|예요|입니다|이다|이랍니다|과같아요|와같아요)"
@@ -253,17 +266,23 @@ _NEGATED_AFTER = re.compile(r"^[가-힣]{0,6}(아니|않|못|없)")
 
 
 def _debtor_first(squeezed: str) -> bool:
-    return any(not _NEGATED_AFTER.match(squeezed[m.end():]) for m in _DEBTOR_FIRST_RE.finditer(squeezed))
+    for sent in re.split(r"[.!?。\n]", squeezed):
+        if any(not _NEGATED_AFTER.match(sent[m.end():]) for m in _DEBTOR_FIRST_RE.finditer(sent)):
+            return True
+        if _AUCTION_CTX_RE.search(sent) and any(
+            not _NEGATED_AFTER.match(sent[m.end():]) for m in _OWNER_FIRST_RE.finditer(sent)
+        ):
+            return True
+    return False
 
 
 def _same_day_opposability(squeezed: str) -> bool:
-    """'전입신고하면 그날/바로 대항력' — 문장 단위로 본다('다음 날 0시'가 함께 있으면 맞는 말)."""
+    """'전입신고하면 그날/바로 대항력이 생겨요' — 문장 단위로 본다('다음 날 0시'가 함께 있으면 맞는 말)."""
     for sent in re.split(r"[.!?。\n]", squeezed):
         if (
-            "대항력" in sent
-            and _SAME_DAY_RE.search(sent)
+            _SAME_DAY_ARISE_RE.search(sent)
             and not _NEXT_DAY_RE.search(sent)
-            and not re.search(r"아니|않|못", sent)  # "바로 생기는 건 아니에요"는 맞는 말
+            and not re.search(r"아니|않|못|생기기전|갖추기전|전이라|전에", sent)  # "바로 생기는 건 아니에요"는 맞는 말
         ):
             return True
     return False

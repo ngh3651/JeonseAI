@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import re
@@ -35,6 +36,10 @@ _log = logging.getLogger("jeonseai")
 
 _REQUEST_TIMEOUT = 60
 _MAX_ATTEMPTS = 2
+#: 고쳐 쓰기 호출의 기다림 상한(인프라 수치, 2026-11-01) — 넘으면 걸린 카드만 뺀다(판례 화면이 늦어지지 않게)
+_REPAIR_TIMEOUT = 30
+#: 이번 호출에만 쓸 기다림 상한 — `_call_solar(messages, api_key)` 모양을 그대로 두려고(테스트 이음매) 문맥 값으로 넘긴다
+_CALL_TIMEOUT: contextvars.ContextVar[float | None] = contextvars.ContextVar("precedent_call_timeout", default=None)
 _MAX_LEN = {"easy_summary": 220, "common_point": 240, "advice": 260}  # 표시 안정용 인프라 수치
 MAX_PICK = 4  # AI가 고를 최대 판례 수 (화면 카드 수)
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
@@ -116,7 +121,7 @@ def _call_solar(messages: list[dict], api_key: str) -> str:
             "response_format": {"type": "json_object"},
         },
         api_key=api_key,
-        timeout=_REQUEST_TIMEOUT,
+        timeout=_CALL_TIMEOUT.get() or _REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
@@ -380,11 +385,14 @@ def _repair_cases(
          + json.dumps(asks, ensure_ascii=False)},
     ]
     t0 = time.perf_counter()
+    token = _CALL_TIMEOUT.set(_REPAIR_TIMEOUT)
     try:
         parsed = _ExplanationList.model_validate(json.loads(_call_solar(messages, api_key)))
     except Exception as e:  # noqa: BLE001 — 고쳐 쓰기는 덤이다
         _log.info(f"[Solar/판례] 고쳐 쓰기 실패 ({type(e).__name__}, {time.perf_counter() - t0:.1f}초)")
         return {}
+    finally:
+        _CALL_TIMEOUT.reset(token)
     out = {c.case_id: c for c in parsed.cases if c.case_id in ids}
     _log.info(f"[Solar/판례] 고쳐 쓰기 {len(ids)}건 요청 → {len(out)}건 받음 ({time.perf_counter() - t0:.1f}초)")
     return out

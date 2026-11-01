@@ -483,7 +483,7 @@ const AskCards kDummyAskCards = AskCards(
       okReply: '없어요. 생기면 미리 알려 드릴게요.',
       badReply: '집주인 사정은 저도 잘 몰라요.',
       counter: '그럼 ‘팔거나 대출을 늘리면 미리 알린다’를 특약에 넣어 주세요',
-      passLine: AskPass(text: '특약 2줄 — 잔금 다음 날까지 새 담보 금지 · 팔거나 대출 늘리면 미리 알림'),
+      passLine: AskPass(text: '특약 2줄: 잔금 다음 날까지 새 담보 금지 · 팔거나 대출 늘리면 미리 알림'),
       docs: ['계약서 특약'],
       clause: '임대인은 잔금 다음 날까지 이 집에 새 담보(근저당 등)를 잡지 않는다.',
       stopSub: '계약 뒤 새 집주인·새 대출이 생기면 보증금 순서가 밀릴 수 있어요',

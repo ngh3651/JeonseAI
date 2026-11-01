@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..schemas.internal import RuleVerdict
-from . import fallback_texts, llm, questions, text_guard
+from . import debt_order, fact_ledger, fallback_texts, llm, questions, text_guard
 from .llm import LlmError
 from .llm.prompts import EXPLAIN_SYSTEM_PROMPT
 
@@ -155,7 +155,54 @@ _PRICE_SOURCE_LABELS = {
 }
 
 
-def _verdict_for_prompt(verdict: RuleVerdict) -> dict:
+def senior_lines(verdict: RuleVerdict) -> list[str]:
+    """먼저 갚을 빚 한 건씩 — '1순위 근저당 3억 6,000만원 · 2022.4.15 · 주식회사가상은행' (받는 순서대로, 2026-11-01)."""
+    from .formatting import format_won
+    from .mark_plans import dot
+
+    senior = next((e for e in verdict.evidences if e.id == "senior_debt"), None)
+    if senior is None:
+        return []
+    f = senior.facts
+    items = [("근저당", m.get("order"), m.get("max_claim_amount"), m.get("receipt_date"), m.get("mortgagee"), m.get("rank_number"))
+             for m in (f.get("mortgages") or [])]
+    items += [("전세권", j.get("order"), j.get("amount"), j.get("receipt_date"), j.get("holder"), j.get("rank_number"))
+              for j in (f.get("jeonse_rights") or [])]
+    if items and all(i[1] for i in items):
+        items.sort(key=lambda i: i[1])
+    out = []
+    for kind, order, amount, date, holder, _rank in items:
+        bits = [debt_order.label(kind, order) + (f" {format_won(amount)}" if amount else " 금액 못 읽음")]
+        bits += [b for b in (dot(date), holder) if b]
+        out.append(" · ".join(bits))
+    return out
+
+
+def _facts_for_prompt(eid: str, facts: dict) -> dict:
+    """AI에게 보일 수치사실 — 빚 한 건 한 건의 등기부 칸 번호를 **'N순위'로 읽지 않게** 바꿔 싣는다 (2026-11-01).
+
+    판정 facts는 그대로 두고(그림·숫자 줄이 쓴다) 사본만 바꾼다: `rank_number`('3') → `등기부_칸`('을구 3번'),
+    `order`(1) → `받는_순서`('1순위'). 말소된 1번 때문에 살아 있는 첫 빚이 '3순위'로 불리던 것을 막는다.
+    """
+    if eid != "senior_debt" or not isinstance(facts, dict):
+        return facts
+    out = dict(facts)
+    for key in ("mortgages", "jeonse_rights"):
+        rows = []
+        for m in facts.get(key) or []:
+            r = {k: v for k, v in m.items() if k not in ("rank_number", "order")}
+            if m.get("order"):
+                r["받는_순서"] = f"{m['order']}순위"
+            ref = debt_order.registry_ref("을구", m.get("rank_number"))
+            if ref:
+                r["등기부_칸"] = ref
+            rows.append(r)
+        if key in facts:
+            out[key] = rows
+    return out
+
+
+def _verdict_for_prompt(verdict: RuleVerdict, ledger: "fact_ledger.Ledger | None" = None) -> dict:
     """LLM에 넘길 판정 요약 — RuleVerdict에서 파생한 값만 (추출 원본·이미지 없음).
 
     2026-08-05: 설명 재료를 넓혔다. 늘어난 것은 **규칙 엔진이 이미 계산했거나 이미 손에
@@ -175,11 +222,14 @@ def _verdict_for_prompt(verdict: RuleVerdict) -> dict:
                 "등급": e.grade.value,
                 "상태": e.status_label,
                 "판정상세": e.detail_text,
-                "수치사실": e.facts,
+                "수치사실": _facts_for_prompt(e.id, e.facts),
             }
             for e in verdict.evidences
         ],
     }
+    # 이 집 숫자표(2026-11-01) — 같은 숫자를 **같은 이름**으로 부르게 하는 정본. 숫자 뜻 검사(fact_ledger)도 이 장부로 본다.
+    if ledger is not None:
+        out["이_집_숫자표"] = fact_ledger.sheet(ledger, senior_lines(verdict))
 
     prov = verdict.price_provenance
     if prov is not None and prov.source:
@@ -256,16 +306,29 @@ def _call_solar(messages: list[dict], api_key: str) -> str:
 
 
 def _field_reason(
-    kind: str, text: str, allowed: set[float], grade: str | None = None
+    kind: str,
+    text: str,
+    allowed: set[float],
+    grade: str | None = None,
+    ledger: "fact_ledger.Ledger | None" = None,
 ) -> str | None:
     """이 필드를 쓸 수 있나 — 쓸 수 있으면 None, 아니면 **사유 문자열**.
 
     2026-08-05: 불리언(`_field_ok`) → 사유 문자열로 바꿨다. 폴백이 조용하면 무엇이
     걸렸는지 다음에도 모르기 때문이다(감사 §B-5의 세 건이 전부 '통과한 위반'이었다).
+    2026-11-01: 숫자가 재료에 **있는지**에 더해 **제자리에 쓰였는지**(fact_ledger)도 본다.
     """
     reason = text_guard.check(text, max_len=_MAX_LEN[kind], allowed=allowed, grade=grade)
     if reason is None and kind == "easy_explanation":
         reason = _lead_format_reason(text)
+    if reason is None:
+        try:
+            meaning = fact_ledger.check(text, ledger)
+        except Exception:  # noqa: BLE001 — 검사기 버그가 설명 전체를 폴백시키지 않게(로그만)
+            _log.error("[설명] ⚠ 숫자 뜻 검사 실패 — 이 칸은 예전 검사만", exc_info=True)
+            meaning = None
+        if meaning:
+            reason = f"숫자 뜻: {meaning}"
     return reason
 
 
@@ -287,7 +350,53 @@ def _lead_format_reason(text: str) -> str | None:
 
 
 
-def generate(verdict: RuleVerdict, *, report_id: str = "-") -> ExplanationResult:
+class _RepairPayload(BaseModel):
+    """고쳐 쓰기 응답 — 걸린 칸만. 판정 필드는 여기에도 없다."""
+
+    model_config = ConfigDict(extra="forbid")
+    headline: str | None = None
+    evidences: list[EvidenceExplanation] = []
+
+
+#: 고쳐 쓰기 지시 — 시스템 지시(EXPLAIN_SYSTEM_PROMPT)는 그대로 두고 사용자 칸에 붙인다
+_REPAIR_NOTE = (
+    "\n\n## 고쳐 쓰기\n아래 칸은 화면에 내보내기 전 검사에 걸렸어요. '걸린_이유'를 그대로 고쳐서 **그 칸만** 다시 써 주세요."
+    " 숫자는 위 판정 JSON(특히 `이_집_숫자표`)에 있는 것만, 제자리에 쓰세요. 다른 칸은 쓰지 마세요.\n"
+    '출력: {"headline": "(headline이 걸렸을 때만)", "evidences": [{"id": "걸린 근거 id", "easy_explanation": "..."}]}\n'
+)
+
+
+def _repair(material: dict, payload: "ExplanationPayload", retry: dict[str, str], api_key: str, name: str) -> dict:
+    """걸린 칸만 한 번 다시 쓰게 한다 → {칸 id 또는 'headline': 새 글}. 실패하면 빈 dict(예외를 내지 않는다)."""
+    first = {e.id: e.easy_explanation for e in payload.evidences}
+    asks = [
+        {"칸": k, "처음_쓴_글": (payload.headline if k == "headline" else first.get(k)) or "", "걸린_이유": v}
+        for k, v in retry.items()
+    ]
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": "판정 JSON:\n" + json.dumps(material, ensure_ascii=False)
+            + _REPAIR_NOTE + "고칠 칸:\n" + json.dumps(asks, ensure_ascii=False),
+        },
+    ]
+    t0 = time.perf_counter()
+    try:
+        fixed = _RepairPayload.model_validate(json.loads(_call_solar(messages, api_key)))
+    except Exception as e:  # noqa: BLE001 — 고쳐 쓰기는 덤이다. 실패하면 준비된 문구로 간다
+        _log.info(f"[설명:{name}] 고쳐 쓰기 실패 → 걸린 칸은 준비된 문구 ({type(e).__name__}, {time.perf_counter() - t0:.1f}초)")
+        return {}
+    out = {e.id: e.easy_explanation for e in fixed.evidences if e.id in retry}
+    if fixed.headline and "headline" in retry:
+        out["headline"] = fixed.headline
+    _log.info(f"[설명:{name}] 고쳐 쓰기 {len(retry)}칸 요청 → {len(out)}칸 받음 ({time.perf_counter() - t0:.1f}초)")
+    return out
+
+
+def generate(
+    verdict: RuleVerdict, *, report_id: str = "-", ledger: "fact_ledger.Ledger | None" = None
+) -> ExplanationResult:
     """판정 → 설명 텍스트. **어떤 실패에도** 완성된 texts를 돌려준다(리포트 항상 완성).
 
     이 함수의 보증은 "예외를 빠뜨리지 않고 잘 잡았다"가 아니라 **구조**다 —
@@ -300,7 +409,7 @@ def generate(verdict: RuleVerdict, *, report_id: str = "-") -> ExplanationResult
     """
     base = fallback_texts.build(verdict)  # 결정적 기본값 — 실패 시 이대로 나간다
     try:
-        return _generate_with_llm(verdict, base, report_id=report_id)
+        return _generate_with_llm(verdict, base, report_id=report_id, ledger=ledger)
     except Exception as e:  # noqa: BLE001 — 구조적 방어선 (위 docstring 참고)
         _log.error(
             f"[설명] ⚠ 설명 생성 경로에서 예기치 못한 예외 — 폴백 문구로 리포트 완성"
@@ -313,7 +422,7 @@ def generate(verdict: RuleVerdict, *, report_id: str = "-") -> ExplanationResult
 
 
 def _generate_with_llm(
-    verdict: RuleVerdict, base: dict, *, report_id: str = "-"
+    verdict: RuleVerdict, base: dict, *, report_id: str = "-", ledger: "fact_ledger.Ledger | None" = None
 ) -> ExplanationResult:
     """실제 생성·검증·병합. 예외를 밖으로 낼 수 있다 — `generate`가 받아낸다."""
     provider = llm.explain_provider()
@@ -330,7 +439,7 @@ def _generate_with_llm(
 
     # 이 dict가 **재료의 정본**이다 — LLM에 보내는 것과 숫자 화이트리스트의 기준이
     # 같은 객체여야 한다(둘이 어긋나면 정상 문장이 폴백된다).
-    material = _verdict_for_prompt(verdict)
+    material = _verdict_for_prompt(verdict, ledger)
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {
@@ -404,7 +513,41 @@ def _generate_with_llm(
     allowed = text_guard.collect_allowed(material)
 
     # 맨 윗줄은 종합 등급, 카드는 그 카드 등급과 **같은 방향**이어야 한다(2026-10-29 — 위험인데 안심시키기 금지)
-    head_reason = _field_reason("headline", payload.headline, allowed, verdict.grade.value)
+    head_reason = _field_reason("headline", payload.headline, allowed, verdict.grade.value, ledger)
+    by_id = {e.id: e.easy_explanation for e in payload.evidences}
+    grade_of = {e.id: e.grade.value for e in verdict.evidences}
+    card_reason: dict[str, str | None] = {}
+    for eid in texts["evidences"]:
+        candidate = by_id.get(eid)
+        card_reason[eid] = (
+            "응답 누락" if candidate is None
+            else _field_reason("easy_explanation", candidate, allowed, grade_of.get(eid), ledger)
+        )
+
+    # ── 고쳐 쓰기 한 번 (2026-11-01) ───────────────────────────────────────
+    # 검사에 걸린 칸을 바로 준비된 문구로 내리지 않고, **왜 걸렸는지**를 알려 그 칸만 한 번 다시 쓰게 한다.
+    # AI 문장을 틀에 가두지 않으면서(고정 문구로 바꾸지 않는다) 틀린 숫자·뜻은 화면에 닿지 못하게 하는 자리.
+    # 다시 쓴 글도 **같은 검사**를 다시 통과해야 쓴다. 그래도 걸리면 준비된 문구.
+    retry = {k: v for k, v in card_reason.items() if v}
+    if head_reason:
+        retry["headline"] = head_reason
+    if retry:
+        fixed = _repair(material, payload, retry, api_key, provider.name)
+        if head_reason and fixed.get("headline"):
+            again = _field_reason("headline", fixed["headline"], allowed, verdict.grade.value, ledger)
+            if again is None:
+                payload = payload.model_copy(update={"headline": fixed["headline"]})
+                head_reason = None
+        for eid in list(card_reason):
+            text_fixed = fixed.get(eid)
+            if card_reason[eid] and text_fixed:
+                again = _field_reason("easy_explanation", text_fixed, allowed, grade_of.get(eid), ledger)
+                if again is None:
+                    by_id[eid] = text_fixed
+                    card_reason[eid] = None
+                else:
+                    card_reason[eid] = f"{card_reason[eid]} → 고쳐 쓴 글도 {again}"
+
     if head_reason is None:
         texts["headline"] = payload.headline.strip()
         applied += 1
@@ -412,22 +555,14 @@ def _generate_with_llm(
         dropped += 1
         reasons.append(f"headline={head_reason}")
 
-    by_id = {e.id: e.easy_explanation for e in payload.evidences}
-    grade_of = {e.id: e.grade.value for e in verdict.evidences}
     # [D26 · 2026-08-14] 카드마다 "이 문장을 누가 썼는가"를 여기서 기록한다.
     # 이 루프가 **필드 단위 폴백이 실제로 갈리는 유일한 지점**이라, 다른 곳에서 추측하지
     # 않고 갈리는 자리에서 바로 남긴다.
     evidence_sources: dict[str, str] = {}
     for eid in texts["evidences"]:
-        candidate = by_id.get(eid)
-        if candidate is None:
-            dropped += 1
-            reasons.append(f"{eid}=응답 누락")
-            evidence_sources[eid] = FALLBACK_SOURCE_LABEL
-            continue
-        reason = _field_reason("easy_explanation", candidate, allowed, grade_of.get(eid))
+        reason = card_reason.get(eid)
         if reason is None:
-            texts["evidences"][eid]["easy_explanation"] = candidate.strip()
+            texts["evidences"][eid]["easy_explanation"] = by_id[eid].strip()
             applied += 1
             evidence_sources[eid] = provider.model
         else:

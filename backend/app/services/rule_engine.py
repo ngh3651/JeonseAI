@@ -27,7 +27,7 @@ from ..schemas.internal import (
     floor_caution,
     worst,
 )
-from . import price_normalize, thresholds as T
+from . import debt_order, price_normalize, thresholds as T
 from .formatting import format_won, mask_name, mask_person_name, round_half_up
 
 # 판정 출처 문구([판정] sourceText — 계약 §2.2). 리포트 화면 칩에 그대로 노출되므로
@@ -348,6 +348,14 @@ def _judge_senior_debt(
         detail += " — " + " / ".join(reasons)
 
     source = _SRC_LEASE if active_lease else _SRC_SENIOR
+    # 받는 순서(2026-11-01) — 등기부 순위번호가 아니라 **살아 있는 빚끼리의 순서**(debt_order 참고). 판정과 무관하다.
+    orders = debt_order.orders([*active_mortgages, *active_jeonse])
+    mortgage_facts = [
+        _mortgage_fact(m, order=o) for m, o in zip(active_mortgages, orders[: len(active_mortgages)])
+    ]
+    jeonse_facts = [
+        _jeonse_fact(j, order=o) for j, o in zip(active_jeonse, orders[len(active_mortgages):])
+    ]
     verdict = EvidenceVerdict(
         id="senior_debt",
         grade=grade,
@@ -376,20 +384,27 @@ def _judge_senior_debt(
             # 객체에 살아 있는데(감사 §A-4-⑴) 지금까지 설명까지 오지 못했다.
             # ⚠ 채무자는 개인 이름일 수 있어 마스킹한다. 근저당권자는 기관명이면 그대로,
             #   개인으로 보이면 마스킹한다(2026-10-21 — 개인 사채가 있다).
-            "mortgages": [_mortgage_fact(m) for m in active_mortgages],
+            "mortgages": mortgage_facts,
+            # 2026-11-01 — 전세권도 '먼저 받아갈 빚'이다. 줄 서기 그림·받는 순서가 근저당과 **한 줄**로 서게 얼굴을 남긴다.
+            "jeonse_rights": jeonse_facts,
         },
     )
     return verdict, total_known
 
 
-def _mortgage_fact(m: MoneyEntry) -> dict:
+def _mortgage_fact(m: MoneyEntry, order: int | None = None) -> dict:
     """근저당 1건 → 설명용 사실 묶음. **판정에 쓰지 않는다.**
 
     `RegistryEntry.model_config`가 `extra="allow"`라 IE가 준 원본 키가 그대로 살아 있다.
     없는 키는 넣지 않는다 — LLM이 빈 값을 보고 문장을 지어내지 않게 한다.
+
+    `order`: 살아 있는 빚끼리의 **받는 순서**(1부터, 2026-11-01). `rank_number`는 등기부 칸 번호(말소된 줄도 번호를 차지한다) —
+    화면의 'N순위'는 `order`로만 쓴다(debt_order 참고).
     """
     raw = m.model_dump()
     out: dict = {}
+    if order:
+        out["order"] = order
     if raw.get("rank_number"):
         out["rank_number"] = str(raw["rank_number"])
     if raw.get("receipt_date"):
@@ -402,6 +417,25 @@ def _mortgage_fact(m: MoneyEntry) -> dict:
     if m.amount is not None:
         out["max_claim_amount"] = m.amount
     elif m.amount_unknown:
+        out["amount_unknown"] = True
+    return out
+
+
+def _jeonse_fact(j: MoneyEntry, order: int | None = None) -> dict:
+    """전세권 1건 → 설명·그림용 사실 묶음 (2026-11-01). **판정에 쓰지 않는다.** 전세권자는 사람이면 가린다."""
+    raw = j.model_dump()
+    out: dict = {}
+    if order:
+        out["order"] = order
+    if raw.get("rank_number"):
+        out["rank_number"] = str(raw["rank_number"])
+    if raw.get("receipt_date"):
+        out["receipt_date"] = str(raw["receipt_date"])
+    if raw.get("holder"):
+        out["holder"] = mask_person_name(str(raw["holder"]))
+    if j.amount is not None:
+        out["amount"] = j.amount
+    elif j.amount_unknown:
         out["amount_unknown"] = True
     return out
 

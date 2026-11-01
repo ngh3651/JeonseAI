@@ -49,7 +49,7 @@ from . import (
     store,
     terms,
 )
-from . import evidence_view, house_signals, mark_plans, text_guard
+from . import evidence_view, fact_ledger, house_signals, mark_plans, text_guard
 from .formatting import format_won, short_address
 from .patterns import tags_from_verdict as issue_tags_from_verdict
 
@@ -190,7 +190,13 @@ def _build(
     verdict.card_todo = {eid: list(v["todo"]) for eid, v in views.items() if v["todo"]}
     if use_llm:
         # LLM은 설명 문장만 — 실패 시 내부에서 폴백으로 완성돼 돌아온다(리포트 항상 완성)
-        explanation_result = explanation.generate(verdict, report_id=resolved_id)
+        # 이 집 숫자 장부(2026-11-01) — AI 문장의 숫자가 **제자리에** 쓰였는지 보는 기준(fact_ledger). 판정 뒤라 등급과 무관하다.
+        try:
+            ledger = fact_ledger.for_verdict(verdict, risk_facts, loss)
+        except Exception:  # noqa: BLE001 — 장부를 못 만들면 숫자 뜻 검사만 빠진다(리포트는 그대로)
+            _log.error("[설명] ⚠ 이 집 숫자 장부를 못 만들었어요 — 숫자 뜻 검사 없이", exc_info=True)
+            ledger = None
+        explanation_result = explanation.generate(verdict, report_id=resolved_id, ledger=ledger)
     else:
         _forced = fallback_texts.build(verdict)
         explanation_result = explanation.ExplanationResult(

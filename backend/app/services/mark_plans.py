@@ -11,8 +11,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
+from .debt_order import registry_ref
 from .formatting import format_won, looks_like_institution
 from .registry_facts import norm_date
 
@@ -45,18 +47,31 @@ def _holder(raw: dict[str, Any], key: str | None) -> str | None:
     return name if looks_like_institution(name) else "개인"
 
 
-def ranked(kind: str, entry: Any, amount: int | None, rank: str | None) -> tuple[list[str], list[str]]:
-    """근저당·압류 같은 순위 항목 하나 → (이 집에서 본 것, 이 집 맞춤 할 일)."""
+def ranked(
+    kind: str,
+    entry: Any,
+    amount: int | None,
+    rank: str | None,
+    *,
+    section: str | None = None,
+    order: int | None = None,
+) -> tuple[list[str], list[str]]:
+    """근저당·압류 같은 순위 항목 하나 → (이 집에서 본 것, 이 집 맞춤 할 일).
+
+    2026-11-01: 'N순위'는 [order](먼저 받아갈 빚끼리의 받는 순서 — debt_order)로만 쓴다. 등기부 순위번호([rank])는
+    말소된 줄도 번호를 차지해서 "3순위"가 "앞에 빚이 둘 더"로 읽혔다 → 사진과 맞춰 볼 칸 번호('을구 3번')로 따로, 맨 뒤에 둔다.
+    """
     raw = entry.model_dump() if hasattr(entry, "model_dump") else dict(entry or {})
     holder_key, amount_name = _HOLDER.get(kind, (None, None))
     date = dot(raw.get("receipt_date"))
     holder = _holder(raw, holder_key)
     money = format_won(amount) if amount is not None else None
     facts = [x for x in (
-        f"{rank}순위" if rank else None,
+        f"{order}순위" if order else None,
         f"{date} 접수" if date else None,
         holder,
         f"{amount_name} {money}" if (amount_name and money) else None,
+        registry_ref(section, rank),
     ) if x]
     when = f"{date} " if date else ""
     plan: list[str]
@@ -209,6 +224,8 @@ _HOLDER_LABEL = {
     "trust": "신탁회사",
 }
 _AMOUNT_NAMES = ("빚 최대 한도", "전세금", "보증금", "청구한 돈")
+#: 사진과 맞춰 볼 등기부 칸 번호 — '을구 3번' · '갑구 2-1번' (debt_order.registry_ref)
+_REGISTRY_REF = re.compile(r"(갑구|을구) \d+(-\d+)?번")
 
 
 def fact_rows(kind: str, facts: list[str]) -> list[list[str]]:
@@ -247,7 +264,9 @@ def fact_rows(kind: str, facts: list[str]) -> list[list[str]]:
             rows.append(["집 종류", f[: -len("로 계산")]] if f.endswith("로 계산") else ["주소", f])
             continue
         if f.endswith("순위") and f[:-2].isdigit():
-            rows.append(["순위", f])
+            rows.append(["받는 순서", f])  # 먼저 받아갈 빚끼리의 순서(2026-11-01) — 등기부 칸 번호는 아래 줄
+        elif _REGISTRY_REF.fullmatch(f):
+            rows.append(["등기부 번호", f])
         elif f.endswith(" 접수"):
             rows.append(["접수", f[: -len(" 접수")]])
         elif f.endswith(" 뗀 서류"):

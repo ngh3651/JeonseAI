@@ -17,7 +17,8 @@ from pathlib import Path
 
 from ...schemas.contract import Report
 from ...schemas.internal import Grade, RuleVerdict
-from .. import patterns as _patterns, terms, thresholds as T
+from .. import fact_ledger, patterns as _patterns, terms, thresholds as T
+from ..debt_order import label as _debt_label
 from ..formatting import format_won
 from . import emphasis as emphasis_picker, explainer
 from .models import OUTCOME_TEXT, OUTCOME_UNKNOWN, PrecedentSection, RetrievedPrecedent
@@ -80,7 +81,7 @@ def _korean_date(raw: str) -> str:
     return f"{int(m.group(1))}년 {int(m.group(2))}월 {int(m.group(3))}일"
 
 
-def _report_summary(report: Report, tags: list[str]) -> dict:
+def _report_summary(report: Report, tags: list[str], ledger: "fact_ledger.Ledger | None" = None) -> dict:
     """저장된 리포트 → LLM 맞춤 설명 재료 (2026-10-23 — '이 매물'과 얼마나 닮았나를 쓰게).
 
     판정에서 나온 값만 싣는다: 종합 등급·보증금·시세·먼저 갚을 빚·위험 항목별 상세.
@@ -106,8 +107,11 @@ def _report_summary(report: Report, tags: list[str]) -> dict:
         summary["위험_항목"] = items
     # 살아 있는 등기 항목(가압류·근저당 등)의 종류·접수일·금액 — 공통점이 '이 집의 숫자'를 짚게 (이름 없음)
     facts = []
+    senior_lines: list[str] = []
     for f in getattr(report, "riskFacts", []) or []:
         fact = {"종류": f.kind}
+        if getattr(f, "order", None):
+            fact["받는_순서"] = f"{f.order}순위"  # 2026-11-01 — 살아 있는 빚끼리의 순서(등기부 칸 번호 아님)
         if f.receiptDate:
             fact["접수일"] = _korean_date(f.receiptDate)
         if f.amount is not None:
@@ -116,8 +120,21 @@ def _report_summary(report: Report, tags: list[str]) -> dict:
         if f.holder:
             fact["권리자"] = f.holder
         facts.append(fact)
+        if f.kind in ("근저당", "전세권") and f.amount:
+            senior_lines.append(
+                f"{_debt_label(f.kind, getattr(f, 'order', None))} {format_won(f.amount)}"
+                + (f" ({_korean_date(f.receiptDate)})" if f.receiptDate else "")
+            )
     if facts:
         summary["등기_항목"] = facts
+    # 이 집 숫자표(2026-11-01) — 같은 숫자를 같은 이름으로 부르게(공통점이 '선순위 3억 6,000만원'처럼 한 건만 말하지 않게)
+    if ledger is not None:
+        if senior_lines and all("순위" in x for x in senior_lines):
+            senior_lines.sort()
+        try:
+            summary["이_집_숫자표"] = fact_ledger.sheet(ledger, senior_lines)
+        except Exception:  # noqa: BLE001 — 숫자표 하나 때문에 판례를 잃지 않는다
+            pass
     summary["보증금_표기"] = format_won(report.deposit)
     if report.seniorDebtAmount:
         summary["먼저_갚을_빚_표기"] = format_won(report.seniorDebtAmount)
@@ -126,7 +143,9 @@ def _report_summary(report: Report, tags: list[str]) -> dict:
     return summary
 
 
-def _verdict_summary(verdict: RuleVerdict | None, tags: list[str]) -> dict:
+def _verdict_summary(
+    verdict: RuleVerdict | None, tags: list[str], ledger: "fact_ledger.Ledger | None" = None
+) -> dict:
     """LLM 공통점 서술용 판정 요약 — 판정에서 파생한 값만 (원본 추출·이미지 없음)."""
     summary: dict = {"위험_태그": tags}
     if verdict is not None:
@@ -134,6 +153,13 @@ def _verdict_summary(verdict: RuleVerdict | None, tags: list[str]) -> dict:
         for ev in verdict.evidences:
             if ev.grade != Grade.GOOD and ev.detail_text:
                 summary.setdefault("근거_상세", []).append({"id": ev.id, "상세": ev.detail_text})
+    if ledger is not None:
+        try:
+            from ..explanation import senior_lines
+
+            summary["이_집_숫자표"] = fact_ledger.sheet(ledger, senior_lines(verdict) if verdict is not None else None)
+        except Exception:  # noqa: BLE001 — 숫자표 하나 때문에 판례를 잃지 않는다(검사는 장부로 그대로 돈다)
+            pass
     return summary
 
 
@@ -233,6 +259,7 @@ class PrecedentService:
         *,
         explain: bool,
         summary: dict | None = None,
+        ledger: "fact_ledger.Ledger | None" = None,
     ) -> PrecedentSection:
         if not tags:
             return PrecedentSection(cases=[], fallback_text=FALLBACK_NO_RISK)
@@ -250,7 +277,9 @@ class PrecedentService:
         source = "자동 생성"  # LLM 미호출·폴백은 "자동 생성" (라벨 정직성 — decisions.md 2026-07-09)
         if explain:
             explanations, llm_source = explainer.explain_matches(
-                candidates, summary if summary is not None else _verdict_summary(verdict, tags)
+                candidates,
+                summary if summary is not None else _verdict_summary(verdict, tags, ledger),
+                ledger,
             )
             if llm_source != "폴백":
                 source = llm_source
@@ -310,13 +339,32 @@ class PrecedentService:
         return PrecedentSection(cases=cases, explanation_source=source)
 
     def match_for_verdict(self, verdict: RuleVerdict, *, explain: bool = False) -> PrecedentSection:
-        return self._build_section(tags_from_verdict(verdict), verdict, explain=explain)
+        ledger = _ledger_for_verdict(verdict) if explain else None
+        return self._build_section(tags_from_verdict(verdict), verdict, explain=explain, ledger=ledger)
 
     def match_for_report(self, report: Report, *, explain: bool = False) -> PrecedentSection:
         tags = tags_from_report(report)
+        ledger = _ledger_for_report(report) if explain else None
         return self._build_section(
-            tags, None, explain=explain, summary=_report_summary(report, tags)
+            tags, None, explain=explain, summary=_report_summary(report, tags, ledger), ledger=ledger
         )
+
+
+def _ledger_for_report(report: Report) -> "fact_ledger.Ledger | None":
+    """저장된 리포트 → 이 집 숫자 장부(손실 계산 포함 — 리포트 2장·시뮬레이터와 같은 함수). 실패하면 None(검사만 빠진다)."""
+    try:
+        from ..loss_estimate import estimate
+
+        return fact_ledger.for_report(report, estimate(report))
+    except Exception:  # noqa: BLE001 — 장부 하나 때문에 판례를 잃지 않는다
+        return None
+
+
+def _ledger_for_verdict(verdict: RuleVerdict) -> "fact_ledger.Ledger | None":
+    try:
+        return fact_ledger.for_verdict(verdict)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ── 싱글턴 (2026-08-07 라우터 통합) ──────────────────────────────────────────

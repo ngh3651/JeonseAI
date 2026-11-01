@@ -6,15 +6,19 @@
 /// - ' · '는 앞 덩어리 끝에 붙인다(줄 첫머리에 점이 오지 않게)
 /// - 괄호 덩어리는 흐린 색
 ///
-/// 덩어리 안의 띄어쓰기는 줄이 안 바뀌는 공백(U+00A0)으로 바꿔 둔다 — 그래서 글자 엔진이 덩어리 사이 공백에서만 줄을 바꾼다.
-/// 덩어리 하나가 한 줄보다 길면(드묾) 그 안에서 끊긴다.
+/// 덩어리 하나가 한 줄에 들어가면 글자 사이를 전부 묶는다(띄어쓰기·음절 사이 모두). 한 줄보다 길면(드묾) 그 안에서는
+/// 낱말 사이로만 나눈다 — 폭을 재서 고른다([phraseSpan], 2026-11-01).
 library;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
+
 /// 제목 → 덩어리들 (글자, 괄호인가).
 List<(String, bool)> markTitleChunks(String title) {
-  final parts = title.trim().split(' · ');
+  // 제목엔 굵게 표시가 없지만, 들어와도 별표가 보이지 않게(2026-11-01 — 글자를 그리는 다른 곳과 같은 규칙)
+  final parts = stripBoldMarkup(title).trim().split(' · ');
   final out = <(String, bool)>[];
   final paren = RegExp(r'\s\(([^()]+)\)$');
   for (int i = 0; i < parts.length; i++) {
@@ -36,30 +40,30 @@ List<(String, bool)> markTitleChunks(String title) {
   return out;
 }
 
-/// 덩어리 사이에서만 줄이 바뀌는 제목 글자.
+/// 덩어리 사이에서만 줄이 바뀌는 제목 글자 — 한 줄에 들어가는 덩어리는 **통째로** 묶는다(2026-11-01).
+///
+/// 전엔 덩어리 안 띄어쓰기만 줄 안 바뀌는 공백으로 바꿨다. 그런데 엔진은 한글 **음절 사이**에서도 줄을 바꿔
+/// `(지워진 기록까` / `지 나오는가)`가 됐다. 이제 덩어리 글자 사이를 전부 묶고([glueAll]), 덩어리가 한 줄보다
+/// 길 때만 그 안에서 낱말 사이로 나눈다([phraseSpan]).
 TextSpan markTitleSpan(
   String title, {
   required TextStyle style,
   required Color mutedColor,
+  required double maxWidth,
+  TextScaler textScaler = TextScaler.noScaling,
 }) {
-  final chunks = markTitleChunks(title);
-  return TextSpan(
-    style: style,
-    children: [
-      for (int i = 0; i < chunks.length; i++) ...[
-        if (i > 0) const TextSpan(text: ' '),
-        TextSpan(
-          text: chunks[i].$1.replaceAll(' ', ' '),
-          style: chunks[i].$2
-              ? TextStyle(color: mutedColor, fontWeight: FontWeight.w700)
-              : null,
-        ),
-      ],
-    ],
+  final muted = TextStyle(color: mutedColor, fontWeight: FontWeight.w700);
+  return phraseSpan(
+    [for (final (text, paren) in markTitleChunks(title)) PhraseChunk(text, paren ? muted : null)],
+    base: style,
+    maxWidth: maxWidth,
+    textScaler: textScaler,
   );
 }
 
 /// 제목 위젯 — [AppText]의 낱말 지킴(keep-all)을 거치지 않고 덩어리 규칙만 쓴다.
+///
+/// [maxWidth]: 한 줄 폭. 사진 아래 카드 줄은 IntrinsicHeight 안이라 LayoutBuilder를 못 쓴다 → 카드가 폭을 넘겨준다.
 class MarkTitle extends StatelessWidget {
   const MarkTitle(
     this.title, {
@@ -67,21 +71,31 @@ class MarkTitle extends StatelessWidget {
     required this.style,
     required this.mutedColor,
     this.maxLines,
+    this.maxWidth,
   });
 
   final String title;
   final TextStyle style;
   final Color mutedColor;
   final int? maxLines;
+  final double? maxWidth;
 
   @override
   Widget build(BuildContext context) {
-    return Text.rich(
-      markTitleSpan(title, style: style, mutedColor: mutedColor),
+    Widget paint(double width) => Text.rich(
+      markTitleSpan(
+        title,
+        style: DefaultTextStyle.of(context).style.merge(style),
+        mutedColor: mutedColor,
+        maxWidth: width,
+        textScaler: MediaQuery.textScalerOf(context),
+      ),
       maxLines: maxLines,
       overflow: maxLines == null ? null : TextOverflow.ellipsis,
       // 화면 읽기 프로그램은 원래 제목 그대로 읽는다
       semanticsLabel: title,
     );
+    if (maxWidth != null) return paint(maxWidth!);
+    return LayoutBuilder(builder: (context, c) => paint(c.maxWidth));
   }
 }

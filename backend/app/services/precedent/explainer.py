@@ -23,7 +23,7 @@ import time
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .. import text_guard  # 2026-08-05: 금지어 목록 → 패턴(E-2와 **같은** 검증 공유)
+from .. import fact_ledger, text_guard  # 2026-08-05: 금지어 목록 → 패턴(E-2와 **같은** 검증 공유)
 from ..explanation import _load_api_key  # E-2와 동일 정책 공유 (키 로드)
 from ..llm import solar_models
 
@@ -65,6 +65,10 @@ _SYSTEM_PROMPT = """당신은 전세 위험 분석 앱의 '판례 통역사'입�
 4. 단정 표현 금지: "안전합니다", "문제없습니다", "걱정 마세요" 계열 전부 금지.
 5. **숫자(금액·비율·건수·날짜)는 입력에 있는 것만** 쓰세요. 금액은 '이_매물'의 '금액_표기'를 그대로 옮기세요. 입력에 없는 숫자를 하나라도 쓰면 그 칸은 버려집니다.
 6. 전문용어는 쉬운 말을 먼저 쓰고 필요하면 괄호로 용어를 병기하세요.
+7. **이 집 숫자는 '이_매물.이_집_숫자표'의 이름 그대로의 자리에** 쓰세요(보증금은 보증금, 시세는 시세). 빚이 2건 이상이면
+   '선순위'·'먼저 갚을 빚'은 **합계**로 말하고, 한 건만 말할 때는 "1순위 근저당 ○○원"처럼 **받는 순서**를 붙이세요.
+   'N순위'는 '받는_순서'만 쓰세요. 경매로 팔리면 먼저 받는 쪽은 **돈을 빌려준 곳**이에요(빚을 진 집주인이 아니에요).
+   이 규칙을 어기면 그 칸은 버려져요.
 
 줄바꿈 (화면 폭에 맞춘 규칙 — 꼭 지키세요):
 - 줄바꿈은 \n 으로 표시합니다. 한 줄 글자 수는 띄어쓰기 포함으로 셉니다.
@@ -226,7 +230,39 @@ def _field_ok(kind: str, text: str, source: str = "") -> bool:
         return False
     if text_guard.grade_word_hit(text) is not None:  # 등급 이름은 리포트 뱃지가 말한다(2026-10-24)
         return False
+    if text_guard.legal_fact_hit(text) is not None:  # 누가 먼저 받나 같은 법의 사실(2026-11-01)
+        return False
     return _numbers_grounded(text, source)
+
+
+#: 칸 이름(AI에게 돌려줄 말)
+_FIELD_NAME = {"easy_summary": "easy_summary(판례 요약)", "common_point": "common_point(우리 매물과 공통점)",
+               "advice": "advice(이런 피해를 피하려면)"}
+
+
+def _reason_text(kind: str, text: str, source: str, ledger: "fact_ledger.Ledger | None") -> str | None:
+    """이 칸이 왜 못 나가나 — **AI에게 돌려줄 쉬운 말**. 통과면 None (2026-11-01 고쳐 쓰기용)."""
+    if not _field_ok(kind, text, source):
+        why = _why_not_ok(kind, text, source)
+        legal = text_guard.legal_fact_hit(text or "")
+        if legal:
+            return legal[1]
+        return {
+            "빈칸": "칸이 비었어요",
+            "길이": f"{_MAX_LEN[kind]}자를 넘었어요. 더 짧게 써 주세요",
+            "금지표현": "'안전해요·문제없어요·걱정 마세요' 같은 단정은 쓸 수 없어요",
+            "등급단어": "'양호·확인 필요·위험' 같은 등급 이름은 쓸 수 없어요",
+            "숫자": "입력에 없는 숫자를 썼어요. 입력의 '금액_표기'·숫자만 쓰세요",
+        }.get(why, "검사에 걸렸어요")
+    if kind in ("common_point", "advice"):
+        try:
+            meaning = fact_ledger.check(text, ledger, skip_precedent=True)
+        except Exception:  # noqa: BLE001 — 검사기 버그가 판례 카드를 통째로 잃게 하지 않는다(로그만)
+            _log.error("[Solar/판례] ⚠ 숫자 뜻 검사 실패 — 이 칸은 예전 검사만", exc_info=True)
+            meaning = None
+        if meaning:
+            return meaning
+    return None
 
 
 def fallback_summary(match: RetrievedPrecedent) -> str:
@@ -270,8 +306,92 @@ def _remember(result: str, *, reason: str = "", kept: int = 0, drops: list[str] 
     )
 
 
+def _vet(
+    exp: PrecedentExplanation, source_text: str, property_text: str, ledger: "fact_ledger.Ledger | None"
+) -> tuple[PrecedentExplanation | None, dict[str, str], list[str]]:
+    """설명 하나 다듬고 검사 → (쓸 설명 | None, 걸린 칸 {칸: AI에게 돌려줄 이유}, 로그용 이름들).
+
+    요약·공통점이 걸리면 카드를 못 쓴다(None). 조언만 걸리면 조언 칸만 버린다(큐레이션 조언으로).
+    """
+    # 줄바꿈 정리 + `**굵게**` 표시를 떼어 강조 목록(emphasis)으로 옮긴다 — 옛 앱도 굵게를 그린다
+    summary, b_sum = split_bold(tidy_lines(exp.easy_summary))
+    common, b_com = split_bold(tidy_lines(exp.common_point))
+    advice, b_adv = split_bold(tidy_lines(exp.advice)) if exp.advice else (None, [])
+    emphasis = {k: v for k, v in (exp.emphasis or {}).items() if k == "result"}
+    if b_sum:
+        emphasis["easy_summary"] = b_sum
+    if b_com:
+        emphasis["common_point"] = b_com
+    if b_adv:
+        emphasis["advice"] = b_adv
+    clean = exp.model_copy(update={"easy_summary": summary, "common_point": common, "advice": advice, "emphasis": emphasis})
+    failed: dict[str, str] = {}
+    notes: list[str] = []
+    r = _reason_text("easy_summary", clean.easy_summary, source_text, ledger)
+    if r:
+        failed["easy_summary"] = r
+        notes.append("요약검사:" + _why_not_ok("easy_summary", clean.easy_summary, source_text))
+    r = _reason_text("common_point", clean.common_point, source_text, ledger)
+    if r:
+        failed["common_point"] = r
+        notes.append("공통점검사:" + (_why_not_ok("common_point", clean.common_point, source_text)
+                                     if not _field_ok("common_point", clean.common_point, source_text) else "숫자뜻"))
+    elif not _mentions_property(clean.common_point, property_text):
+        # 공통점이 이 집의 숫자를 하나도 짚지 않으면(어느 집에나 맞는 말) 버린다 → 폴백
+        failed["common_point"] = "이 집의 숫자(금액·건수·접수일)를 하나 이상 넣어 '이 집도 ~예요'를 써 주세요"
+        notes.append("이집숫자없음")
+    if failed:
+        return None, failed, notes
+    if clean.advice:
+        r = _reason_text("advice", clean.advice, source_text, ledger)
+        if r:
+            # 조언만 검사에 걸리면 **조언 칸만** 버린다(요약·공통점은 살린다) → 호출부가 큐레이션 조언으로
+            _log.info(f"[Solar/판례] 조언 검사 실패 → 큐레이션 조언으로 ({exp.case_id})")
+            clean = clean.model_copy(update={"advice": None})
+            notes.append("조언만버림")
+    return clean, {}, notes
+
+
+_REPAIR_NOTE = (
+    "\n\n## 고쳐 쓰기\n아래 판례 카드는 화면에 내보내기 전 검사에 걸렸어요. '걸린_칸'의 이유대로 고쳐서 **그 판례만** 다시 써 주세요."
+    " 판례는 바꾸지 말고(case_id 그대로), 이 집 숫자는 '이_매물.이_집_숫자표'에 있는 것만 제자리에 쓰세요.\n"
+    "출력은 처음과 같은 JSON 모양: {\"cases\": [{\"case_id\": ..., \"easy_summary\": ..., \"common_point\": ..., \"advice\": ...}]}\n"
+)
+
+
+def _repair_cases(
+    payload: dict, to_fix: list[tuple[str, dict[str, str], PrecedentExplanation]], api_key: str
+) -> dict[str, PrecedentExplanation]:
+    """걸린 판례 카드만 한 번 다시 쓰게 한다 → {case_id: 새 설명}. 실패하면 빈 dict."""
+    asks = [
+        {
+            "case_id": cid,
+            "처음_쓴_글": {"easy_summary": first.easy_summary, "common_point": first.common_point, "advice": first.advice},
+            "걸린_칸": {_FIELD_NAME.get(k, k): v for k, v in failed.items()},
+        }
+        for cid, failed, first in to_fix
+    ]
+    ids = {cid for cid, _, _ in to_fix}
+    small = dict(payload)
+    small["판례_후보"] = [c for c in payload.get("판례_후보", []) if c.get("case_id") in ids]
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(small, ensure_ascii=False) + _REPAIR_NOTE + "고칠 카드:\n"
+         + json.dumps(asks, ensure_ascii=False)},
+    ]
+    t0 = time.perf_counter()
+    try:
+        parsed = _ExplanationList.model_validate(json.loads(_call_solar(messages, api_key)))
+    except Exception as e:  # noqa: BLE001 — 고쳐 쓰기는 덤이다
+        _log.info(f"[Solar/판례] 고쳐 쓰기 실패 ({type(e).__name__}, {time.perf_counter() - t0:.1f}초)")
+        return {}
+    out = {c.case_id: c for c in parsed.cases if c.case_id in ids}
+    _log.info(f"[Solar/판례] 고쳐 쓰기 {len(ids)}건 요청 → {len(out)}건 받음 ({time.perf_counter() - t0:.1f}초)")
+    return out
+
+
 def explain_matches(
-    matches: list[RetrievedPrecedent], verdict_summary: dict
+    matches: list[RetrievedPrecedent], verdict_summary: dict, ledger: "fact_ledger.Ledger | None" = None
 ) -> tuple[dict[str, PrecedentExplanation], str]:
     """검색 결과 → {case_id: 설명}. 실패 항목은 비워 두고(호출부가 폴백 적용) source를 반환.
 
@@ -332,54 +452,44 @@ def explain_matches(
         return {}, "폴백"
 
     valid_ids = {m.doc.case_id for m in matches}
-    out: dict[str, PrecedentExplanation] = {}
     dropped = 0
     drops: list[str] = []
+    # 고른 순서대로: (case_id, 다듬은 설명 | None, 걸린 칸 {칸: 이유}, 처음 설명)
+    vetted: list[tuple[str, PrecedentExplanation | None, dict[str, str], PrecedentExplanation]] = []
+    seen_ids: set[str] = set()
     for exp in parsed.cases:
-        if exp.case_id not in valid_ids:
+        if exp.case_id not in valid_ids or exp.case_id in seen_ids:
             dropped += 1  # 검색 결과에 없는 판례 언급 → 폐기 (환각 인용 차단)
             drops.append("없는사건")
             continue
-        # 줄바꿈 정리 + `**굵게**` 표시를 떼어 강조 목록(emphasis)으로 옮긴다 — 옛 앱도 굵게를 그린다
-        summary, b_sum = split_bold(tidy_lines(exp.easy_summary))
-        common, b_com = split_bold(tidy_lines(exp.common_point))
-        advice, b_adv = split_bold(tidy_lines(exp.advice)) if exp.advice else (None, [])
-        emphasis = {k: v for k, v in (exp.emphasis or {}).items() if k == "result"}
-        if b_sum:
-            emphasis["easy_summary"] = b_sum
-        if b_com:
-            emphasis["common_point"] = b_com
-        if b_adv:
-            emphasis["advice"] = b_adv
-        exp = exp.model_copy(
-            update={
-                "easy_summary": summary,
-                "common_point": common,
-                "advice": advice,
-                "emphasis": emphasis,
-            }
-        )
-        if not _field_ok("easy_summary", exp.easy_summary, source_text):
+        seen_ids.add(exp.case_id)
+        clean, failed, note = _vet(exp, source_text, property_text, ledger)
+        drops.extend(note)
+        vetted.append((exp.case_id, clean, failed, exp))
+
+    # ── 고쳐 쓰기 한 번 (2026-11-01) — 걸린 판례 카드만, 걸린 이유와 함께 다시 쓰게 한다. 다시 쓴 글도 같은 검사를 지나야 쓴다.
+    to_fix = [(cid, failed, first) for cid, clean, failed, first in vetted if clean is None and failed]
+    if to_fix:
+        fixed = _repair_cases(payload, to_fix, api_key)
+        for i, (cid, clean, failed, first) in enumerate(vetted):
+            again = fixed.get(cid)
+            if clean is not None or again is None:
+                continue
+            clean2, failed2, note2 = _vet(again, source_text, property_text, ledger)
+            if clean2 is not None:
+                vetted[i] = (cid, clean2, {}, first)
+                drops.append("고쳐씀")
+            else:
+                drops.extend(f"고쳐도:{n}" for n in note2)
+
+    out: dict[str, PrecedentExplanation] = {}
+    for cid, clean, failed, _first in vetted:
+        if clean is None:
             dropped += 1
-            drops.append("요약검사:" + _why_not_ok("easy_summary", exp.easy_summary, source_text))
             continue
-        if not _field_ok("common_point", exp.common_point, source_text):
-            dropped += 1
-            drops.append("공통점검사:" + _why_not_ok("common_point", exp.common_point, source_text))
-            continue
-        # 공통점이 이 집의 숫자를 하나도 짚지 않으면(어느 집에나 맞는 말) 버린다 → 폴백
-        if not _mentions_property(exp.common_point, property_text):
-            _log.info(f"[Solar/판례] 공통점에 이 집 숫자 없음 → 폐기 ({exp.case_id})")
-            dropped += 1
-            drops.append("이집숫자없음")
-            continue
-        # 조언만 검사에 걸리면 **조언 칸만** 버린다(요약·공통점은 살린다) → 호출부가 큐레이션 조언으로
-        if exp.advice and not _field_ok("advice", exp.advice, source_text):
-            _log.info(f"[Solar/판례] 조언 검사 실패 → 큐레이션 조언으로 ({exp.case_id})")
-            exp = exp.model_copy(update={"advice": None})
         if len(out) >= MAX_PICK:
             break
-        out[exp.case_id] = exp
+        out[cid] = clean
 
     elapsed = time.perf_counter() - t0
     if not out:

@@ -65,7 +65,8 @@ def _build(extract: RegistryExtract, verdict: RuleVerdict) -> list[str]:
     # ② 빌려준 곳이 사람(개인)인 근저당 — 은행과 달리 갚았는지 말로만 확인하기 어렵다(사실만)
     for m in mortgages:
         if is_individual(m.get("mortgagee")):
-            rank = f"{m['rank_number']}순위 " if m.get("rank_number") else ""
+            # 'N순위' = 살아 있는 빚끼리의 받는 순서(2026-11-01, debt_order) — 등기부 칸 번호(말소된 줄도 센다)가 아니다
+            rank = f"{m['order']}순위 " if m.get("order") else ""
             amt = f" {format_won(m['max_claim_amount'])}" if m.get("max_claim_amount") else ""
             when = f" ({dot(m.get('receipt_date'))})" if dot(m.get("receipt_date")) else ""
             out.append(f"{rank}근저당{amt}은 은행이 아니라 개인({m['mortgagee']})이 빌려줬어요{when}")

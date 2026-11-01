@@ -174,6 +174,8 @@ class _MarkCard extends StatelessWidget {
                       // 뒤쪽이 정보의 핵심이다). 그래서 두 줄까지 허용한다.
                       // 줄은 ' · '나 괄호 앞에서만 바뀐다(mark_title.dart, 2026-10-31).
                       maxLines: 2,
+                      // IntrinsicHeight 안이라 폭을 넘겨준다(카드 폭 − 테두리 1.5×2 − 안쪽 여백 13×2)
+                      maxWidth: width - 3 - 26,
                       mutedColor: AppColorsNext.textMuted,
                       style: AppTypographyNext.bodyStrong.copyWith(
                         fontSize: 15,

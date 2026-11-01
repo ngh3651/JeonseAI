@@ -553,7 +553,7 @@ class _WhiteBox extends StatelessWidget {
 /// 구절은 어절마다 따로 칠한다 — 한 덩어리로 묶으면 긴 구절이 줄 끝에서 넘치기 때문이다.
 InlineSpan _highlightedResult(String text, List<String> phrases) {
   final base = AppTypographyNext.title;
-  final mark = _markRanges(text, phrases);
+  final mark = _wholeWords(text, _markRanges(text, phrases));
   final children = <InlineSpan>[];
   int i = 0;
   while (i < text.length) {
@@ -633,6 +633,39 @@ List<bool> _markRanges(String text, List<String> phrases) {
   return mark;
 }
 
+/// 칠할 자리를 **낱말 끝까지** 넓힌다 — 구절이 낱말 가운데서 끝나면('1억원' + '을') 칠한 칸과 토씨 사이에서 줄이 바뀌었다(2026-11-01).
+/// 띄어쓰기 전까지, 길어야 6자만.
+List<bool> _wholeWords(String text, List<bool> mark) {
+  final out = List<bool>.of(mark);
+  bool space(int k) => RegExp(r'\s').hasMatch(text[k]);
+  for (int k = 0; k < text.length; k++) {
+    if (!mark[k]) continue;
+    if (k + 1 < text.length && !mark[k + 1] && !space(k + 1)) {
+      int j = k + 1;
+      while (j < text.length && !space(j) && j - k <= 6) {
+        j++;
+      }
+      if (j >= text.length || space(j)) {
+        for (int x = k + 1; x < j; x++) {
+          out[x] = true;
+        }
+      }
+    }
+    if (k > 0 && !mark[k - 1] && !space(k - 1)) {
+      int j = k - 1;
+      while (j >= 0 && !space(j) && k - j <= 6) {
+        j--;
+      }
+      if (j < 0 || space(j)) {
+        for (int x = j + 1; x < k; x++) {
+          out[x] = true;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /// `**굵게**` 표시를 떼어 낸 글과, 굵게였던 구절 목록.
 ({String text, List<String> bold}) stripBoldMarkers(String raw) {
   final bold = <String>[];
@@ -694,35 +727,93 @@ InlineSpan caseRichText(
       addPlain(cursor, body.length);
       break;
     }
-    if (bestAt > cursor) addPlain(cursor, bestAt);
     if (seen.contains(bestTerm)) {
+      if (bestAt > cursor) addPlain(cursor, bestAt);
       addPlain(bestAt, bestAt + bestTerm.length);
       cursor = bestAt + bestTerm.length;
       continue;
     }
     seen.add(bestTerm);
+    // 용어 밑줄은 글자 엔진에선 '그림 한 칸'이라 그 앞뒤에서 줄이 바뀔 수 있다 → '근저당' / '이에요'처럼 토씨가 줄
+    // 첫머리로 떨어졌다. 바로 앞 여는 괄호와 바로 뒤 토씨·닫는 괄호(띄어쓰기 전까지, 짧을 때만)를 **같은 칸에** 싣는다(2026-11-01).
+    final (head, tail) = termNeighbors(body, bestAt, bestAt + bestTerm.length, cursor: cursor, bold: bold);
+    final headStart = bestAt - head.length;
+    if (headStart > cursor) addPlain(cursor, headStart);
     children.add(
       WidgetSpan(
         alignment: PlaceholderAlignment.baseline,
         baseline: TextBaseline.alphabetic,
-        child: _CaseTerm(term: bestTerm, description: glossary[bestTerm]!, base: base),
+        child: _CaseTerm(term: bestTerm, description: glossary[bestTerm]!, base: base, head: head, tail: tail),
       ),
     );
-    cursor = bestAt + bestTerm.length;
+    cursor = bestAt + bestTerm.length + tail.length;
   }
   return TextSpan(style: base, children: children);
 }
 
+/// 용어 칸에 함께 실을 (앞 여는 괄호, 뒤 토씨) — 띄어쓰기 사이의 짧은 글자만. 굵게 칠할 글자는 싣지 않는다(굵기가 사라진다).
+(String, String) termNeighbors(String body, int start, int end, {int cursor = 0, List<bool>? bold}) {
+  const maxTail = 8;
+  const maxHead = 6;
+  bool isBold(int k) => bold?[k] ?? false;
+  // 앞: 띄어쓰기 없이 붙은 앞말('빚(')을 통째로 — 짧을 때만. 길면 여는 괄호 하나만.
+  var h = start;
+  while (h - 1 >= cursor && !RegExp(r'\s').hasMatch(body[h - 1]) && start - h < maxHead) {
+    h--;
+  }
+  var head = '';
+  final reachedSpace = h - 1 < cursor || RegExp(r'\s').hasMatch(body[h - 1]);
+  final headBold = [for (int k = h; k < start; k++) isBold(k)].any((x) => x);
+  if (h < start && reachedSpace && !headBold) {
+    head = body.substring(h, start);
+  } else if (start - 1 >= cursor && '(（「『“‘'.contains(body[start - 1]) && !isBold(start - 1)) {
+    head = body[start - 1];
+  }
+  var j = end;
+  while (j < body.length && !RegExp(r'\s').hasMatch(body[j])) {
+    j++;
+  }
+  final tail = body.substring(end, j);
+  final boldInTail = bold != null && [for (int k = end; k < j; k++) bold[k]].any((x) => x);
+  if (tail.isEmpty || tail.length > maxTail || boldInTail) return (head, '');
+  return (head, tail);
+}
+
 /// 요약 속 용어 — 초록 #14724B · 굵기 600 · 실선 밑줄(두께 2, 35% 투명, 글자와 간격 4). 누르면 풀이 시트.
 class _CaseTerm extends StatelessWidget {
-  const _CaseTerm({required this.term, required this.description, required this.base});
+  const _CaseTerm({
+    required this.term,
+    required this.description,
+    required this.base,
+    this.head = '',
+    this.tail = '',
+  });
 
   final String term;
   final String description;
   final TextStyle base;
 
+  /// 용어 바로 앞 여는 괄호 · 바로 뒤 토씨(밑줄 없이 평범한 글자) — 줄이 그 사이에서 바뀌지 않게 같은 칸에 싣는다
+  final String head;
+  final String tail;
+
   @override
   Widget build(BuildContext context) {
+    final underlined = _termBody(context);
+    if (head.isEmpty && tail.isEmpty) return underlined;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        if (head.isNotEmpty) AppText(head, style: base),
+        underlined,
+        if (tail.isNotEmpty) AppText(tail, style: base),
+      ],
+    );
+  }
+
+  Widget _termBody(BuildContext context) {
     return Semantics(
       button: true,
       label: '$term 뜻 보기',

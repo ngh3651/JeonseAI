@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/components/source_label.dart' show kLegacyExplanationSource;
 import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
@@ -508,7 +509,8 @@ class EvidencePoints extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      AppText(
+                      // 이름·둘째 줄·값 모두 ' · ' 덩어리 사이에서만 줄이 바뀐다(2026-11-01 — '…맞춰봤어요 · 같은' / '이름 없음')
+                      PhraseText(
                         points[i].label,
                         style: AppTypographyNext.caption.copyWith(
                           fontSize: 15,
@@ -517,7 +519,7 @@ class EvidencePoints extends StatelessWidget {
                         ),
                       ),
                       if ((points[i].sub ?? '').trim().isNotEmpty)
-                        AppText(
+                        PhraseText(
                           points[i].sub!,
                           style: AppTypographyNext.caption.copyWith(fontSize: 14, color: AppColorsNext.textMuted),
                         ),
@@ -527,7 +529,7 @@ class EvidencePoints extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   flex: 5,
-                  child: AppText(
+                  child: PhraseText(
                     points[i].value,
                     textAlign: TextAlign.right,
                     style: AppTypographyNext.bodyStrong.copyWith(
@@ -759,7 +761,7 @@ class EvidenceResultBox extends StatelessWidget {
                   style: AppTypographyNext.caption.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: fg),
                 ),
                 if ((visual.resultSub ?? '').isNotEmpty)
-                  AppText(visual.resultSub!, style: AppTypographyNext.caption.copyWith(color: AppColorsNext.textBody)),
+                  PhraseText(visual.resultSub!, style: AppTypographyNext.caption.copyWith(color: AppColorsNext.textBody)),
               ],
             ),
           ),
@@ -869,22 +871,28 @@ class EvidenceChecks extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
+                  flex: 6,
                   child: AppText(
                     items[i].label,
                     style: AppTypographyNext.caption.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: AppColorsNext.textBody),
                   ),
                 ),
                 const SizedBox(width: 8),
-                AppText(
-                  items[i].value ?? '',
-                  style: AppTypographyNext.bodyStrong.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: switch (items[i].ok) {
-                      true => AppColors.ok,
-                      false => AppColorsNext.dangerText,
-                      null => AppColorsNext.textMuted,
-                    },
+                // 값이 길면('아직 못 맞춰 봤어요') 이름 칸을 누르지 않게 폭을 나눠 쓴다(2026-11-01 — 이름이 세 줄로 접혔다)
+                Flexible(
+                  flex: 5,
+                  child: PhraseText(
+                    items[i].value ?? '',
+                    textAlign: TextAlign.right,
+                    style: AppTypographyNext.bodyStrong.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: switch (items[i].ok) {
+                        true => AppColors.ok,
+                        false => AppColorsNext.dangerText,
+                        null => AppColorsNext.textMuted,
+                      },
+                    ),
                   ),
                 ),
               ],

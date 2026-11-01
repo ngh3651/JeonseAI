@@ -18,6 +18,7 @@ import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
 import '../../models/registry_mark_kind.dart';
 import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
 import '../cases/case_card.dart' show caseRichText;
 import '../../design_system/components/app_section.dart';
 import '../common/ask_selection.dart';
@@ -302,7 +303,8 @@ class _FactTable extends StatelessWidget {
     ),
   );
 
-  Widget _value(String v) => AppText(
+  // 값은 ' · ' 덩어리 사이에서만 줄이 바뀐다('1,978명과 맞춰봤어요 · 같은 이름 없음', 2026-11-01). `**굵게**`는 굵게 그린다.
+  Widget _value(String v) => PhraseText(
     v,
     style: AppTypographyNext.bodyStrong.copyWith(
       fontSize: 17,

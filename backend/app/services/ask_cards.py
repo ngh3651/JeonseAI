@@ -75,6 +75,18 @@ def _months_between(a: str, b: str) -> int | None:
     return months
 
 
+def _named(kind: str, items: list, money_word: str, W) -> str | None:
+    """특약에 적을 빚 이름 — '근저당(채권최고액 3억원)' · '근저당 2건(채권최고액 합계 4억 1,200만원)' · 금액을 다 못 읽으면 '근저당 2건'."""
+    if not items:
+        return None
+    amounts = [int(f.amount) for f in items if f.amount]
+    if len(items) == 1:
+        return f"{kind}({money_word} {W(amounts[0])})" if amounts else kind
+    if len(amounts) == len(items):
+        return f"{kind} {len(items)}건({money_word} 합계 {W(sum(amounts))})"
+    return f"{kind} {len(items)}건"
+
+
 def _card(key: str, t: dict, values: dict[str, str], *, facts: list[str], why: str,
           pass_line: AskPass, ask_key: str = "ask", card_id: str | None = None) -> AskCard:
     return AskCard(
@@ -117,13 +129,19 @@ def build(report: Report) -> AskCards:
     for f in report.riskFacts or []:
         facts_by.setdefault(f.kind, []).append(f)
 
-    # 특약에 적는 금액은 **근저당만** 더한다(2026-11-01 감사) — seniorDebtAmount엔 전세권 전세금도 들어 있어
-    # "근저당(채권최고액 ○원)을 말소한다"에 틀린 금액이 들어갔다. 전세권은 따로 적는다.
-    mort_sum = sum(int(f.amount) for f in facts_by.get("근저당", []) if f.amount)
+    # 특약에 적는 말소할 빚은 **이 집 등기부 그대로** 종류·건수·금액을 적는다(2026-11-01 감사·검토).
+    # seniorDebtAmount엔 전세권 전세금도 들어 있어 "근저당(채권최고액 합계)"에 틀린 금액이 들어갔고, 근저당이 2건인데
+    # "근저당(채권최고액 4억 1,200만원)"이라고 쓰면 그런 근저당 한 건이 있는 것처럼 읽힌다.
+    mortgages_f = facts_by.get("근저당", [])
     jeonse_rights = facts_by.get("전세권", [])
+    mort_sum = sum(int(f.amount) for f in mortgages_f if f.amount)
+    parts = [x for x in (_named("근저당", mortgages_f, "채권최고액", W), _named("전세권", jeonse_rights, "전세금", W)) if x]
+    if not parts and debt > 0:  # 항목 사실이 없는 옛 리포트
+        parts = [f"근저당 등 먼저 잡힌 빚(합계 {W(debt)})"]
     values = {
         "모자람": W(lost),
-        "근저당합계": W(mort_sum) if mort_sum else (W(debt) if debt and not jeonse_rights else "등기부에 적힌 금액"),
+        "근저당합계": W(mort_sum) if mort_sum else W(debt),
+        "말소할빚": "과 ".join(parts),
         "소유자수": str(of.ownerCount if of else 0),
     }
     leads: list[AskCard] = []
@@ -174,14 +192,8 @@ def build(report: Report) -> AskCards:
         else:
             t = T["debtClear"]
             if jeonse_rights:
-                # 먼저 잡힌 전세권이 있으면 '이 근저당'이라고 하지 않는다 — 말소할 것을 이 집 등기부로 적는다
-                parts = []
-                if mortgages:
-                    parts.append(f"근저당(채권최고액 {values['근저당합계']})")
-                jeonse_sum = sum(int(f.amount) for f in jeonse_rights if f.amount)
-                parts.append(f"전세권(전세금 {W(jeonse_sum) if jeonse_sum else '등기부에 적힌 금액'})")
-                t = {**t, "ask": t["askJeonse"], "why": t["whyJeonse"],
-                     "clause": t["clauseJeonse"].replace("{말소할빚}", "과 ".join(parts))}
+                # 먼저 잡힌 전세권이 있으면 '이 근저당'이라고 하지 않는다(말소할 것은 values['말소할빚'] — 이 집 등기부 그대로)
+                t = {**t, "ask": t["askJeonse"], "why": t["whyJeonse"], "clause": t["clauseJeonse"]}
             why = ("집을 산 같은 날 대출이 잡혔어요. 전세금으로 이 대출을 갚으려는 걸 수 있어요." if same_day else t["why"])
             if lost > 0:
                 why += f" 안 갚고 두면 경매 때 보증금 {W(lost)}이 모자라요."

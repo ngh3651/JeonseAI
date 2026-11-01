@@ -264,7 +264,11 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
             combined = f.get("combined_ratio_pct")
             if combined is not None and th.get("combined_danger_over_pct"):
                 text += f" 내 보증금까지 더해도 {combined}%로 기준({th['combined_danger_over_pct']}%)을 넘지 않아요."
-            return text + " 다만 계약 직전에는 최신 등기부등본으로 다시 확인하세요."
+            # 기준 안이어도 경매에선 시세보다 싸게 팔린다 — 안심 문장으로 끝내지 않는다(보수적 편향)
+            return text + (
+                " 그래도 경매로 가면 시세보다 싸게 팔려 보증금이 모자랄 수 있어요."
+                " 계약 직전에는 최신 등기부등본으로 다시 확인하세요."
+            )
         return (
             "등기부등본에서 나보다 먼저 받아갈 빚(근저당·전세권)은 보이지 않았어요."
             " 다만 계약 직전에는 최신 등기부등본으로 다시 확인하세요."

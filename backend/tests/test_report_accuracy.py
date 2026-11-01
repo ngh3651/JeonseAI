@@ -145,6 +145,8 @@ def test_이_집_신호와_AI_재료에_등기부_칸_번호를_순위로_싣지
     joined = " ".join(signals)
     assert "4순위" not in joined and "3순위" not in joined
     assert "2순위 근저당 5,200만원은 은행이 아니라 개인" in joined
+    # 근저당 금액은 빌린 돈이 아니라 채권최고액 — 이름을 붙이고, 집주인이 빌렸다고 단정하지 않는다
+    assert "의 근저당(채권최고액 3억 6,000만원)이 잡혔어요" in joined and "빌렸어요" not in joined
 
     material = explanation._verdict_for_prompt(v, sample_ledger())
     senior = next(e for e in material["근거"] if e["id"] == "senior_debt")["수치사실"]

@@ -296,3 +296,15 @@ def test_사실이_넘쳐도_최우선변제가_기대는_사실은_남는다():
     assert ("근저당", "2009-02-03") in kinds and ("근저당", None) in kinds
     assert _p(SEOUL_ADDR, facts=kept, debt=120_000_000).status == "blocked_auction"
     assert RF._trim(facts[:5]) == facts[:5]  # 넘치지 않으면 그대로
+
+
+def test_사실이_넘쳐도_임차권등기는_남는다():
+    """임차권등기가 잘리면 '임차권등기 집은 0원'이 안 걸려 최우선변제를 더하게 된다(2026-11-01 검토)."""
+    from app.services import registry_facts as RF
+
+    facts = [RiskFact(kind="압류", receiptDate=f"2025-02-{i % 28 + 1:02d}", amount=1_000_000, holder="기관")
+             for i in range(RF.MAX_FACTS + 5)]
+    facts += [_mortgage("2020-05-01"), RiskFact(kind="임차권등기", receiptDate="2025-06-01", amount=90_000_000)]
+    kept = RF._trim(facts)
+    assert any(f.kind == "임차권등기" for f in kept)
+    assert _p(SEOUL_ADDR, facts=kept, debt=120_000_000).status == "blocked_lease"

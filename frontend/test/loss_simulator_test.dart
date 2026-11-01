@@ -406,6 +406,9 @@ void main() {
               ?.fontSize) ??
           14;
       expect(t.getSize(sub).height, lessThan(fs * 2.2));
+      // 법령 줄은 못 받게 하는 조항 — 표·기준일('담보가 없어 오늘 기준')이 아니다(2026-11-01 검토)
+      expect(find.koTextContaining('주택임대차보호법 제3조의3 ⑥'), findsOneWidget);
+      expect(find.koTextContaining('담보가 없어 오늘 기준'), findsNothing);
     });
   });
 

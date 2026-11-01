@@ -509,7 +509,7 @@ def _priority_line(est) -> str:
         return (f"\n  · 최우선변제(소액임차인): 낙찰가에서 다른 빚보다 먼저 {_won(est.priorityAmount)}을 받아요"
                 f" ({where} · 보증금 {_won(est.priorityCap)} 이하 · {base} {table}"
                 f"{' · 낙찰가의 절반 한도' if est.priorityHalfCapped else ''})"
-                " — 경매개시결정 등기 전에 전입신고·입주를 마치고, 법원에 배당요구를 해야 해요")
+                " — 경매개시결정 등기 전에 전입신고·입주를 마치고, 배당요구 종기까지 그대로 살면서 법원에 배당요구를 해야 해요")
     if s == "over_cap":
         return f"\n  · 최우선변제(소액임차인): 보증금이 {where} 상한 {_won(est.priorityCap)}보다 커서 못 받아요 ({base} {table})"
     if s == "blocked_auction":

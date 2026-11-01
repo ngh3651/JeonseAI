@@ -311,7 +311,8 @@ class ReportHeadline extends StatelessWidget {
           color: AppColorsNext.textStrong,
         );
         final painter = TextPainter(
-          text: TextSpan(text: text, style: style(kHeadlineSize)),
+          // 굵게 표시(**)는 화면에 안 그려진다 — 별표를 빼고 잰다(2026-11-01)
+          text: TextSpan(text: stripBoldMarkup(text), style: style(kHeadlineSize)),
           textDirection: TextDirection.ltr,
           textScaler: scaler,
           maxLines: 1,

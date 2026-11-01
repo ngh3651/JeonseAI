@@ -21,6 +21,7 @@ import 'package:go_router/go_router.dart';
 import '../../design_system/components/app_link_chip.dart';
 import '../../design_system/components/app_section.dart';
 import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/ask_cards.dart';
@@ -456,7 +457,8 @@ class _Answers extends StatelessWidget {
                   big,
                   style: _headStyle(AppColors.ok).copyWith(fontSize: 22, height: 28 / 22),
                 ),
-              if (text.isNotEmpty) AppText(text, style: _headStyle(AppColors.ok)),
+              // '특약 2줄: … · …'처럼 ' · '로 이은 글 — 덩어리 사이에서만 줄을 바꾼다(2026-11-01)
+              if (text.isNotEmpty) PhraseText(text, style: _headStyle(AppColors.ok)),
             ],
           ),
         if (sub != null) ...[

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/components/app_section.dart';
 import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography_next.dart';
@@ -1395,8 +1396,9 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // 제목·상세는 ' · '로 이은 글이다 — 덩어리 사이에서만 줄을 바꾼다(2026-11-01)
                               for (final l in e.lines) ...[
-                                AppText(
+                                PhraseText(
                                   l.title,
                                   style: AppTypographyNext.caption.copyWith(
                                     fontWeight: FontWeight.w700,
@@ -1404,7 +1406,7 @@ class _ChangeLogCardState extends State<ChangeLogCard> {
                                   ),
                                 ),
                                 if (l.detail.isNotEmpty)
-                                  AppText(
+                                  PhraseText(
                                     l.detail,
                                     style: AppTypographyNext.caption.copyWith(
                                       color: kJourneyBodySub,

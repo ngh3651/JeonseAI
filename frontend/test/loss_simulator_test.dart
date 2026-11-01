@@ -372,5 +372,44 @@ void main() {
           14;
       expect(t.getSize(sub).height, lessThan(fs * 2.2));
     });
+
+    testWidgets('최우선변제 — 임차권등기가 남은 집은 0원 · 한 줄 (법 제3조의3 ⑥)', (t) async {
+      await _pump(
+        t,
+        const LossEstimate(
+          status: LossStatus.ok,
+          deposit: 100000000,
+          basePrice: 400000000,
+          seniorDebt: 200000000,
+          ratePct: 75.0,
+          region: '서울',
+          use: '연립다세대',
+          expectedSale: 300000000,
+          expectedReturn: 100000000,
+          expectedLoss: 0,
+          priorityStatus: PriorityStatus.blockedLease,
+          prioritySource: '주택임대차보호법 시행령 제10·11조',
+        ),
+      );
+      final sub = find.byKey(const ValueKey('loss-priority-sub'));
+      expect(
+        find.descendant(of: sub, matching: find.koText('임차권등기가 남은 집은 못 받아요')),
+        findsOneWidget,
+      );
+      final double fs =
+          (t
+              .widget<RichText>(
+                find.descendant(of: sub, matching: find.byType(RichText)).first,
+              )
+              .text
+              .style
+              ?.fontSize) ??
+          14;
+      expect(t.getSize(sub).height, lessThan(fs * 2.2));
+    });
+  });
+
+  test('서버의 blocked_lease(임차권등기가 남은 집)를 읽는다', () {
+    expect(PriorityStatus.fromWire('blocked_lease'), PriorityStatus.blockedLease);
   });
 }

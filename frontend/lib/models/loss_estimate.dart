@@ -36,6 +36,9 @@ enum PriorityStatus {
   /// 이미 경매가 시작된 집 — 지금 들어가면 못 받는다
   blockedAuction,
 
+  /// 임차권등기가 남은 집 — 그 뒤에 빌린 세입자는 못 받는다 (주택임대차보호법 제3조의3 ⑥, 2026-11-01)
+  blockedLease,
+
   /// 단독·다가구 — 다른 소액임차인과 나눠 계산에 넣지 않았다
   shared,
 
@@ -49,6 +52,7 @@ enum PriorityStatus {
     'ok' => PriorityStatus.ok,
     'over_cap' => PriorityStatus.overCap,
     'blocked_auction' => PriorityStatus.blockedAuction,
+    'blocked_lease' => PriorityStatus.blockedLease,
     'shared' => PriorityStatus.shared,
     'unknown_date' => PriorityStatus.unknownDate,
     _ => PriorityStatus.none,

@@ -519,6 +519,11 @@ class _PriorityStep extends StatelessWidget {
         AppColorsNext.dangerText,
         '경매 전에 입주한 세입자만 받아요',
       ),
+      PriorityStatus.blockedLease => (
+        '0원',
+        AppColorsNext.dangerText,
+        '임차권등기가 남은 집은 못 받아요',
+      ),
       PriorityStatus.shared => (
         '나눠 받아요',
         AppColors.caution,

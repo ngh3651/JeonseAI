@@ -560,7 +560,8 @@ class LossEstimate(BaseModel):
     expectedReturn: Optional[int] = None  # 내가 돌려받을 돈 (최우선변제 포함)
     expectedLoss: Optional[int] = None  # 못 돌려받는 돈
     # ── 최우선변제 (2026-10-31, `priority_repayment.py`) ───────────────────────────────
-    # ok(더했다) | over_cap(보증금이 상한보다 크다) | blocked_auction(이미 경매가 시작된 집) | shared(단독·다가구라 나눈다 — 안 더함)
+    # ok(더했다) | over_cap(보증금이 상한보다 크다) | blocked_auction(이미 경매가 시작된 집)
+    # | blocked_lease(임차권등기가 남은 집 — 그 뒤 세입자는 못 받음, 법 제3조의3 ⑥) | shared(단독·다가구라 나눈다 — 안 더함)
     # | unknown_date(빚 날짜를 못 읽음 — 안 더함) | no_table(표 없음). 옛 서버면 None
     priorityStatus: Optional[str] = None
     priorityAmount: int = 0  # 돌려받음에 실제로 더한 금액 (ok일 때만)

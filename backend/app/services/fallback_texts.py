@@ -224,11 +224,14 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
             # 값은 전부 facts에서 온다(결정적 템플릿 유지 — 새로 계산하지 않는다).
             total = f.get("senior_debt_total") or 0
             count = f.get("mortgage_count") or 0
+            # 합계엔 전세권 전세금도 들어 있다 — 건수도 함께 센다(2026-11-01 감사: '근저당 N건'만 세던 것)
+            jeonse = f.get("jeonse_right_count") or 0
             ratio = f.get("senior_ratio_pct")
             combined = f.get("combined_ratio_pct")
             head = f"이 집에는 나보다 먼저 갚아야 할 빚(선순위 채권)이 {format_won(total)} 있어요"
-            if count:
-                head += f" — 근저당 {count}건이에요"
+            kinds = ([f"근저당 {count}건"] if count else []) + ([f"전세권 {jeonse}건"] if jeonse else [])
+            if kinds:
+                head += f". {'과 '.join(kinds)}이에요"
             body = ""
             if ratio is not None:
                 body = f" 이 빚만으로 {price_call(verdict)}의 {ratio}%예요."
@@ -249,7 +252,23 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
                 "등기부등본에 먼저 갚아야 할 빚이 있어요. 시세를 입력하면 "
                 "이 빚이 과한 수준인지 비율로 알려드릴 수 있어요."
             )
-        return "등기부등본에서 큰 빚은 보이지 않았어요. 다만 계약 직전에는 최신 등기부등본으로 다시 확인하세요."
+        # 양호여도 빚이 있을 수 있다 — '큰 빚은 보이지 않았어요'라고 하지 않고 기준과 견준 사실을 말한다(2026-11-01 감사)
+        total = f.get("senior_debt_total") or 0
+        ratio = f.get("senior_ratio_pct")
+        th = f.get("thresholds") or {}  # 기준값도 판정이 쓴 facts에서만(새로 정하지 않는다)
+        if total and ratio is not None and th.get("senior_danger_over_pct"):
+            text = (
+                f"먼저 갚을 빚 {format_won(total)}은 {price_call(verdict)}의 {ratio}%로,"
+                f" 위험 기준({th['senior_danger_over_pct']}%)을 넘지 않아요."
+            )
+            combined = f.get("combined_ratio_pct")
+            if combined is not None and th.get("combined_danger_over_pct"):
+                text += f" 내 보증금까지 더해도 {combined}%로 기준({th['combined_danger_over_pct']}%)을 넘지 않아요."
+            return text + " 다만 계약 직전에는 최신 등기부등본으로 다시 확인하세요."
+        return (
+            "등기부등본에서 나보다 먼저 받아갈 빚(근저당·전세권)은 보이지 않았어요."
+            " 다만 계약 직전에는 최신 등기부등본으로 다시 확인하세요."
+        )
     if ev.id == "ownership":
         signals = f.get("signals") or {}
         if ev.grade is Grade.DANGER:
@@ -263,7 +282,8 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
             if "경매개시결정" in found:
                 tail = "집이 경매로 팔리면 나보다 먼저 받을 사람이 먼저 돈을 가져가요. 계약 전에 꼭 전문가와 확인하세요."
             else:
-                tail = "집주인이 빚 문제로 다투는 중일 수 있고, 경매로 이어질 수 있어 계약 전 전문가 확인이 필요해요."
+                # 가처분은 돈이 아니라 집 주인 자리를 두고 다툴 때도 건다(2026-11-01 감사)
+                tail = "돈이나 집 소유권을 두고 다투는 중일 수 있고, 경매로 이어질 수도 있어 계약 전 전문가 확인이 필요해요."
             return f"이 집엔 {listed}가 걸려 있어요. {tail}"
         if ev.grade is Grade.CAUTION:
             return "갑구(소유권) 정보를 온전히 확인하지 못했어요. 등기부등본 원본으로 다시 확인해 주세요."
@@ -290,7 +310,8 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
                 paras.append(f"**{what} 기록이 있어요** 이 기록 때문에 보증보험 가입이 거절될 수 있어요.")
             if not paras:
                 paras.append("**등기부의 몇 가지 표시가 걸려요** 이 때문에 보증보험 가입이 거절될 수 있어요.")
-            paras.append("**가입이 안 되면** 보증금을 대신 돌려줄 곳이 없어 보증금을 지킬 안전장치가 사라져요.")
+            # 보증보험이 없어도 대항력·우선변제권은 남는다 — '안전장치가 사라진다'고 하지 않는다(2026-11-01 감사)
+            paras.append("**가입이 안 되면** 집주인이 보증금을 못 돌려줄 때 대신 돌려줄 곳이 없어요.")
             return "\n".join(paras)
         if ev.grade is Grade.GOOD:
             return (

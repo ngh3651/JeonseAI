@@ -56,9 +56,11 @@ def _build(extract: RegistryExtract, verdict: RuleVerdict) -> list[str]:
         for m in mortgages:
             if norm_date(m.get("receipt_date")) == bought and m.get("max_claim_amount"):
                 who = m.get("mortgagee") or "빌려준 곳"
+                # 근저당을 '잡는' 쪽은 돈을 빌려준 곳이다 — 집주인이 잡았다고 읽히지 않게(2026-11-01 감사)
+                lender = f"{who}에게" if is_individual(m.get("mortgagee")) else f"{who}에서"
                 out.append(
-                    f"집주인이 {dot(bought)}에 이 집을 {verb} 같은 날 {who} 근저당 "
-                    f"{format_won(m['max_claim_amount'])}을 잡았어요"
+                    f"집주인이 {dot(bought)}에 이 집을 {verb} 같은 날 {lender} 이 집을 담보로 돈을 빌렸어요"
+                    f"(근저당 {format_won(m['max_claim_amount'])})"
                 )
                 break
 

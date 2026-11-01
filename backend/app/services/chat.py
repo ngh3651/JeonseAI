@@ -505,13 +505,17 @@ def _priority_line(est) -> str:
             else "담보가 없어 오늘 기준")
     where = f"{est.priorityRegion}{'(지역이 애매해 보호가 적은 쪽)' if est.priorityRegionUnsure else ''}"
     if s == "ok":
-        return (f"\n  · 최우선변제(소액임차인): 낙찰가에서 가장 먼저 {_won(est.priorityAmount)}을 받아요"
+        # 경매비용이 먼저 빠지고, 법원에 배당요구를 해야 받는다 — '가장 먼저'라고 하지 않는다(2026-11-01 감사)
+        return (f"\n  · 최우선변제(소액임차인): 낙찰가에서 다른 빚보다 먼저 {_won(est.priorityAmount)}을 받아요"
                 f" ({where} · 보증금 {_won(est.priorityCap)} 이하 · {base} {table}"
-                f"{' · 낙찰가의 절반 한도' if est.priorityHalfCapped else ''}) — 경매 전에 전입신고·입주를 마쳐야 해요")
+                f"{' · 낙찰가의 절반 한도' if est.priorityHalfCapped else ''})"
+                " — 경매개시결정 등기 전에 전입신고·입주를 마치고, 법원에 배당요구를 해야 해요")
     if s == "over_cap":
         return f"\n  · 최우선변제(소액임차인): 보증금이 {where} 상한 {_won(est.priorityCap)}보다 커서 못 받아요 ({base} {table})"
     if s == "blocked_auction":
         return "\n  · 최우선변제(소액임차인): 이미 경매가 시작된 집이라 지금 들어가면 못 받아요 (주택임대차보호법 제8조 ①)"
+    if s == "blocked_lease":
+        return "\n  · 최우선변제(소액임차인): 임차권등기가 남아 있는 집이라 지금 들어가면 못 받아요 (주택임대차보호법 제3조의3 ⑥)"
     if s == "shared":
         return (f"\n  · 최우선변제(소액임차인): 단독·다가구라 다른 소액임차인과 낙찰가의 절반을 나눠요 — 혼자면 최대"
                 f" {_won(est.priorityLimit)}, 계산에는 넣지 않았어요")

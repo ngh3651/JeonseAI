@@ -107,6 +107,15 @@ def test_이미_경매가_시작된_집은_0원():
     assert pr.status == "blocked_auction" and pr.amount == 0
 
 
+def test_임차권등기가_남은_집은_그_뒤_세입자가_못_받는다():
+    """주택임대차보호법 제3조의3 ⑥ — 임차권등기가 끝난 주택을 그 뒤에 빌린 세입자는 최우선변제를 받을 권리가 없다(2026-11-01)."""
+    lease = RiskFact(kind="임차권등기", receiptDate="2025-03-02", amount=90_000_000)
+    pr = _p(SEOUL_ADDR, facts=[_mortgage("2022-04-15"), lease], debt=120_000_000)
+    assert pr.status == "blocked_lease" and pr.amount == 0
+    # 단독·다가구는 다른 호실의 등기일 수 있어 원래대로 '나눠요'(더하지 않음)
+    assert _p(SEOUL_ADDR, facts=[lease], whole=True).status == "shared"
+
+
 def test_날짜를_못_읽으면_더하지_않는다():
     assert _p(SEOUL_ADDR, facts=[_mortgage(None)], debt=120_000_000).status == "unknown_date"
     # 빚은 있는데 항목 사실이 없다(옛 리포트) — 표를 고를 수 없다

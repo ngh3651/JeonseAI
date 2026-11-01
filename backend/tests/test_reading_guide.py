@@ -288,7 +288,8 @@ def test_토지_별도등기를_표제부에서_찾는다():
     result = highlight.build_highlights(extract_with(), as_result(header_page()))
     assert "separate_land" in kinds_of(result)
     body = marks(result, "separate_land")[0].body
-    assert "땅에 빚" in body
+    # 별도등기는 빚(근저당)일 수도, 지상권 같은 다른 권리일 수도 있다 — 빚이라고 단정하지 않는다(2026-11-01 감사)
+    assert "땅에 따로 걸린 권리" in body and "빚(근저당)일 수도" in body
 
 
 def test_별도등기_없음은_표시하지_않는다():

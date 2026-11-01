@@ -519,6 +519,11 @@ class _PriorityStep extends StatelessWidget {
         AppColorsNext.dangerText,
         '경매 전에 입주한 세입자만 받아요',
       ),
+      PriorityStatus.blockedLease => (
+        '0원',
+        AppColorsNext.dangerText,
+        '임차권등기가 남은 집은 못 받아요',
+      ),
       PriorityStatus.shared => (
         '나눠 받아요',
         AppColors.caution,
@@ -636,7 +641,12 @@ class _Basis extends StatelessWidget {
       if (e.period != null && e.period!.isNotEmpty) ('기간', e.period!),
       if (e.source != null && e.source!.isNotEmpty) ('출처', e.source!),
       // 최우선변제 근거 (2026-10-31) — 법령 이름 + 고른 표
-      if (e.hasPriority && e.prioritySource != null)
+      // 못 받는 상태는 표·기준일이 아니라 **못 받게 하는 조항**을 적는다(2026-11-01 검토 — 전엔 '담보가 없어 오늘 기준'이 나왔다)
+      if (e.priorityStatus == PriorityStatus.blockedLease)
+        ('법령', '주택임대차보호법 제3조의3 ⑥ · 임차권등기 뒤에 빌린 세입자는 최우선변제를 못 받아요')
+      else if (e.priorityStatus == PriorityStatus.blockedAuction)
+        ('법령', '주택임대차보호법 제8조 ① · 경매가 시작되기 전에 입주·전입신고를 마쳐야 받아요')
+      else if (e.hasPriority && e.prioritySource != null)
         (
           '법령',
           [

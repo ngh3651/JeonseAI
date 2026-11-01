@@ -56,9 +56,12 @@ def _build(extract: RegistryExtract, verdict: RuleVerdict) -> list[str]:
         for m in mortgages:
             if norm_date(m.get("receipt_date")) == bought and m.get("max_claim_amount"):
                 who = m.get("mortgagee") or "빌려준 곳"
+                # 근저당을 '잡는' 쪽은 돈을 빌려준 곳이다 — 집주인이 잡았다고 읽히지 않게(2026-11-01 감사).
+                # 빌린 사람(채무자)이 집주인이 아닐 수도 있어(남의 빚 담보) '집주인이 빌렸다'고도 쓰지 않는다.
+                # 금액은 빌린 돈이 아니라 채권최고액(빚 최대 한도)이다 — 'X원을 빌렸어요'로 옮겨 쓰지 않게 이름을 붙인다
                 out.append(
-                    f"집주인이 {dot(bought)}에 이 집을 {verb} 같은 날 {who} 근저당 "
-                    f"{format_won(m['max_claim_amount'])}을 잡았어요"
+                    f"집주인이 {dot(bought)}에 이 집을 {verb} 같은 날 {who}의 근저당"
+                    f"(채권최고액 {format_won(m['max_claim_amount'])})이 잡혔어요"
                 )
                 break
 

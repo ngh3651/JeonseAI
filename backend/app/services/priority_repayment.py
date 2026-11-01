@@ -18,6 +18,9 @@
 - 단독·다가구는 한 집에 소액임차인이 여럿이라 낙찰가의 절반을 나눈다(시행령 제10조 ③④) — 다른 세입자를 모르니
   **더하지 않고** 얼마까지인지만 알린다(`shared`).
 - 이미 경매가 시작된 집 → 0원(`blocked_auction`).
+- 임차권등기가 남아 있는 집(단독·다가구가 아닌 한 집) → 0원(`blocked_lease`, 2026-11-01). 임차권등기가 끝난 주택을
+  그 뒤에 빌린 세입자는 최우선변제를 받을 권리가 없다(법 제3조의3 ⑥). 단독·다가구는 등기가 다른 호실일 수 있어
+  원래대로 `shared`(더하지 않음)로 둔다.
 
 판정 등급과는 무관하다(참고 정보). 판정 엔진은 이 파일을 모른다.
 """
@@ -45,6 +48,8 @@ TABLE_PATH = Path(__file__).resolve().parents[2] / "data" / "small_tenant_priori
 BASE_KINDS = ("근저당", "전세권", "가압류", "압류")
 #: 이미 경매가 시작됐다는 표시
 AUCTION_KIND = "경매개시결정"
+#: 전 세입자가 보증금을 못 받고 남긴 임차권등기 — 그 뒤에 빌린 세입자는 최우선변제를 못 받는다(법 제3조의3 ⑥)
+LEASE_KIND = "임차권등기"
 
 _METRO = {"부산", "대구", "인천", "광주", "대전", "울산"}
 _COUNTY_RE = re.compile(r"군$")
@@ -58,7 +63,7 @@ _DONG_RE = re.compile(r"^[가-힣0-9]+(동|가|읍|면|리)$")
 class Priority:
     """최우선변제 계산 결과 하나."""
 
-    status: str  # ok | over_cap | blocked_auction | shared | unknown_date | no_table
+    status: str  # ok | over_cap | blocked_auction | blocked_lease | shared | unknown_date | no_table
     amount: int = 0  # 실제로 '돌려받음'에 더한 금액 (ok일 때만 0보다 크다)
     limit: int | None = None  # 그 표·지역의 일정액(보증금 중 먼저 받는 한도)
     cap: int | None = None  # 그 표·지역의 보증금 상한(이하여야 받는다)
@@ -301,6 +306,10 @@ def compute(
     facts = list(risk_facts or [])
     if any(getattr(f, "kind", None) == AUCTION_KIND for f in facts):
         return Priority(status="blocked_auction", source=src)
+    if whole_building is None:
+        whole_building = N.is_whole_building(address or "")
+    if not whole_building and any(getattr(f, "kind", None) == LEASE_KIND for f in facts):
+        return Priority(status="blocked_lease", source=src)
 
     base_date, base_kind, unknown = _base(facts)
     has_debt_fact = any(getattr(f, "kind", None) in ("근저당", "전세권") for f in facts)
@@ -336,8 +345,6 @@ def compute(
         half = max(0, expected_sale // 2)
         if amount > half:
             amount, half_capped = half, True
-    if whole_building is None:
-        whole_building = N.is_whole_building(address or "")
     if whole_building:
         return Priority(status="shared", amount=0, half_capped=half_capped, **common)
     return Priority(status="ok", amount=amount, half_capped=half_capped, **common)

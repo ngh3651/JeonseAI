@@ -79,14 +79,16 @@ def _trim(facts: list[RiskFact]) -> list[RiskFact]:
     """
     if len(facts) <= MAX_FACTS:
         return facts
-    from .priority_repayment import AUCTION_KIND, BASE_KINDS  # 늦게 가져온다(서로 가져오기 방지)
+    from .priority_repayment import AUCTION_KIND, BASE_KINDS, LEASE_KIND  # 늦게 가져온다(서로 가져오기 방지)
 
     must: list[RiskFact] = []
     auction = [f for f in facts if f.kind == AUCTION_KIND]
+    # 임차권등기가 잘리면 '임차권등기 집은 0원'(2026-11-01)이 안 걸려 최우선변제를 더하게 된다 — 꼭 남긴다
+    lease = [f for f in facts if f.kind == LEASE_KIND]
     base = [f for f in facts if f.kind in BASE_KINDS]
     undated = [f for f in base if norm_date(f.receiptDate) is None]
     dated = sorted((f for f in base if norm_date(f.receiptDate)), key=lambda f: norm_date(f.receiptDate) or "")
-    for group in (auction, undated, dated):
+    for group in (auction, lease, undated, dated):
         if group:
             must.append(group[0])
     keep = {id(f) for f in must}

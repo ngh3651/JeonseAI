@@ -22,6 +22,7 @@ import 'package:provider/provider.dart';
 
 import '../../design_system/components/app_button.dart';
 import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
 import '../../design_system/tokens/app_colors.dart';
 import '../../design_system/tokens/app_spacing.dart';
 import '../../design_system/tokens/app_typography.dart';
@@ -359,7 +360,8 @@ class _StopCardState extends State<_StopCard> {
         ),
         if (changes.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
-          AppText(
+          // ' · '로 이은 목록이다 — 덩어리 사이에서만 줄을 바꾼다(2026-11-01)
+          PhraseText(
             '달라진 점: ${changes.join(' · ')}',
             key: const ValueKey('stop-card-changes'),
             style: AppTypography.bodyStrong,

@@ -75,6 +75,18 @@ def _months_between(a: str, b: str) -> int | None:
     return months
 
 
+def _named(kind: str, items: list, money_word: str, W) -> str | None:
+    """특약에 적을 빚 이름 — '근저당(채권최고액 3억원)' · '근저당 2건(채권최고액 합계 4억 1,200만원)' · 금액을 다 못 읽으면 '근저당 2건'."""
+    if not items:
+        return None
+    amounts = [int(f.amount) for f in items if f.amount]
+    if len(items) == 1:
+        return f"{kind}({money_word} {W(amounts[0])})" if amounts else kind
+    if len(amounts) == len(items):
+        return f"{kind} {len(items)}건({money_word} 합계 {W(sum(amounts))})"
+    return f"{kind} {len(items)}건"
+
+
 def _card(key: str, t: dict, values: dict[str, str], *, facts: list[str], why: str,
           pass_line: AskPass, ask_key: str = "ask", card_id: str | None = None) -> AskCard:
     return AskCard(
@@ -117,9 +129,19 @@ def build(report: Report) -> AskCards:
     for f in report.riskFacts or []:
         facts_by.setdefault(f.kind, []).append(f)
 
+    # 특약에 적는 말소할 빚은 **이 집 등기부 그대로** 종류·건수·금액을 적는다(2026-11-01 감사·검토).
+    # seniorDebtAmount엔 전세권 전세금도 들어 있어 "근저당(채권최고액 합계)"에 틀린 금액이 들어갔고, 근저당이 2건인데
+    # "근저당(채권최고액 4억 1,200만원)"이라고 쓰면 그런 근저당 한 건이 있는 것처럼 읽힌다.
+    mortgages_f = facts_by.get("근저당", [])
+    jeonse_rights = facts_by.get("전세권", [])
+    mort_sum = sum(int(f.amount) for f in mortgages_f if f.amount)
+    parts = [x for x in (_named("근저당", mortgages_f, "채권최고액", W), _named("전세권", jeonse_rights, "전세금", W)) if x]
+    if not parts and debt > 0:  # 항목 사실이 없는 옛 리포트
+        parts = [f"근저당 등 먼저 잡힌 빚(합계 {W(debt)})"]
     values = {
         "모자람": W(lost),
-        "근저당합계": W(debt),
+        "근저당합계": W(mort_sum) if mort_sum else W(debt),
+        "말소할빚": "과 ".join(parts),
         "소유자수": str(of.ownerCount if of else 0),
     }
     leads: list[AskCard] = []
@@ -154,12 +176,12 @@ def build(report: Report) -> AskCards:
     mortgages = facts_by.get("근저당", [])
     same_day = bool(of and of.latestTransferDate and any(
         norm_date(m.receiptDate) == of.latestTransferDate for m in mortgages))
-    if mortgages or debt > 0:
+    if mortgages or jeonse_rights or debt > 0:
         fs: list[str] = []
         if same_day:
             fs.append(f"{_dot(of.latestTransferDate)} · 집주인이 이 집을 삼")
-        fs += [" · ".join(x for x in (_dot(m.receiptDate), "근저당" + (f" {W(m.amount)}" if m.amount else "")) if x)
-               for m in mortgages[:2]]
+        fs += [" · ".join(x for x in (_dot(m.receiptDate), m.kind + (f" {W(m.amount)}" if m.amount else "")) if x)
+               for m in [*mortgages, *jeonse_rights][:2]]
         keep = priced and lost == 0
         if keep:
             t = T["debtKeep"]
@@ -169,6 +191,9 @@ def build(report: Report) -> AskCards:
             others.append(card)
         else:
             t = T["debtClear"]
+            if jeonse_rights:
+                # 먼저 잡힌 전세권이 있으면 '이 근저당'이라고 하지 않는다(말소할 것은 values['말소할빚'] — 이 집 등기부 그대로)
+                t = {**t, "ask": t["askJeonse"], "why": t["whyJeonse"], "clause": t["clauseJeonse"]}
             why = ("집을 산 같은 날 대출이 잡혔어요. 전세금으로 이 대출을 갚으려는 걸 수 있어요." if same_day else t["why"])
             if lost > 0:
                 why += f" 안 갚고 두면 경매 때 보증금 {W(lost)}이 모자라요."
@@ -231,8 +256,11 @@ def build(report: Report) -> AskCards:
         pl = AskPass(big="0원", text=f"많아도 {W(cushion)} 이하", sub="이만큼까지는 경매 때도 보증금이 다 돌아오는 계산이에요")
         why += f" 이 집 여유는 {W(cushion)}이에요."
     elif priced and debt > 0 and cushion_clear is not None and cushion_clear > 0:
-        pl = AskPass(big="0원", text=f"빚을 말소하면 {W(cushion_clear)}까지", sub="근저당을 말소했을 때 보증금이 다 돌아오는 한도예요")
-        why += f" 근저당을 말소하면 이 집 여유는 {W(cushion_clear)}이에요."
+        # 말소할 것의 이름은 이 집 등기부대로(전세권만 있는 집에 '근저당을 말소하면'이라고 하지 않게)
+        debt_word = "전세권" if jeonse_rights and not facts_by.get("근저당") else (
+            "근저당·전세권" if jeonse_rights else "근저당")
+        pl = AskPass(big="0원", text=f"빚을 말소하면 {W(cushion_clear)}까지", sub=f"{debt_word}을 말소했을 때 보증금이 다 돌아오는 한도예요")
+        why += f" {debt_word}을 말소하면 이 집 여유는 {W(cushion_clear)}이에요."
     elif priced:
         pl = AskPass(big="0원", text="밀린 세금이 없어야 해요")
     else:

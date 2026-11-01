@@ -92,7 +92,7 @@ GROUPS: tuple[Group, ...] = (
         title_removed="없어진 빚이 있어요",
         title_same="빚 · 그대로예요",
         title_unknown="빚 · 대조하지 못했어요",
-        subtitle="나보다 먼저 돈 받아갈 빚 (근저당권·전세권·임차권등기)",
+        subtitle="집에 잡힌 빚 (근저당권·전세권·임차권등기)",
         empty_detail="양쪽 모두 없음",
     ),
     Group(

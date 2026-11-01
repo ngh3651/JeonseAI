@@ -20,6 +20,7 @@ import '../../design_system/tokens/app_typography.dart';
 import '../../design_system/tokens/app_typography_next.dart';
 import '../../models/analysis_report.dart';
 import '../../design_system/text/app_text.dart';
+import '../../design_system/text/phrase_text.dart';
 import 'mark_title.dart';
 import 'registry_findings.dart' show softenDashes;
 import 'registry_mark_sheet.dart' show MarkTonePill;
@@ -185,17 +186,32 @@ class _MarkCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    AppText(
-                      // 이 집에서 본 것(순위 · 날짜 · 금액)이 있으면 그것, 없으면 본문 첫 문장
-                      mark.facts.isNotEmpty ? mark.facts.join(' · ') : softenDashes(mark.summary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypographyNext.caption.copyWith(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColorsNext.textBody,
+                    // 이 집에서 본 것(순위 · 날짜 · 빌려준 곳 · 금액)이 있으면 그것, 없으면 본문 첫 문장.
+                    // 2026-11-01: 한 줄이면 금액이 '…'로 잘렸다 → 두 줄까지, ' · ' 사이에서만 줄을 바꾼다(PhraseText).
+                    if (mark.facts.isNotEmpty)
+                      PhraseText(
+                        mark.facts.join(' · '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        // IntrinsicHeight 안이라 폭을 넘겨준다(제목과 같은 폭)
+                        maxWidth: width - 3 - 26,
+                        style: AppTypographyNext.caption.copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColorsNext.textBody,
+                        ),
+                      )
+                    else
+                      AppText(
+                        softenDashes(mark.summary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypographyNext.caption.copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColorsNext.textBody,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

@@ -249,9 +249,11 @@ class _FindingRowState extends State<FindingRow> {
                             ),
                           ),
                         ),
-                        AppText(
+                        // 용어가 많으면('신탁등기 · 압류 · 가압류 · 가처분') 한 줄에서 '…'로 잘렸다 —
+                        // 두 줄까지, ' · ' 사이에서만 줄을 바꾼다(2026-11-01)
+                        PhraseText(
                           '${e.grade.label} · ${e.termSubtitle}',
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: AppTypographyNext.caption.copyWith(
                             fontSize: 14,

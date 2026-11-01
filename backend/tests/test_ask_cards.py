@@ -93,6 +93,41 @@ def test_작은빚은_말소대신_대출_더_안받기():
     assert debt.passLine.text.startswith("대출 더 안 받기")
 
 
+def test_특약_금액은_근저당만_전세권은_따로_적는다():
+    """seniorDebtAmount엔 전세권 전세금도 들어 있다 — '근저당(채권최고액 ○원)'에 합계를 넣으면 틀린 특약이 된다(2026-11-01)."""
+    both = A.build(_report(
+        seniorDebtAmount=78_000_000,
+        riskFacts=[RiskFact(kind="근저당", receiptDate="2026-08-12", amount=48_000_000, holder="기관"),
+                   RiskFact(kind="전세권", receiptDate="2025-01-02", amount=30_000_000, holder="개인")],
+    ))
+    debt = next(c for c in both.cards if c.id == "debt")
+    assert "을구의 근저당(채권최고액 4,800만원)과 전세권(전세금 3,000만원)을 모두 말소한다" in debt.clause
+    assert "7,800만원" not in debt.clause and "이 근저당" not in debt.ask
+    assert any("전세권 3,000만원" in f for f in debt.facts)
+
+    only_jeonse = A.build(_report(
+        seniorDebtAmount=30_000_000, ownerFacts=OwnerFacts(ownerCount=1, latestTransferDate="2015-03-02", latestCause="매매"),
+        riskFacts=[RiskFact(kind="전세권", receiptDate="2025-01-02", amount=30_000_000, holder="개인")],
+    ))
+    debt = next(c for c in only_jeonse.cards if c.id == "debt")
+    assert debt.clause.startswith("임대인은 잔금 날 이 집 등기부 을구의 전세권(전세금 3,000만원)을 모두 말소한다")
+    tax = next(c for c in only_jeonse.cards if c.id == "tax")
+    assert "근저당을 말소" not in tax.why and "전세권을 말소하면" in tax.why
+
+    # 근저당만 있으면 '이 근저당'
+    plain = next(c for c in A.build(_report()).cards if c.id == "debt")
+    assert "을구의 근저당(채권최고액 4,800만원)을 모두 말소한다" in plain.clause and "이 근저당" in plain.ask
+    # 근저당이 2건이면 건수와 합계 — '그런 근저당 한 건'처럼 읽히지 않게
+    two = A.build(_report(
+        seniorDebtAmount=78_000_000,
+        riskFacts=[RiskFact(kind="근저당", receiptDate="2026-08-12", amount=48_000_000, holder="기관"),
+                   RiskFact(kind="근저당", receiptDate="2026-09-01", amount=30_000_000, holder="개인")],
+    ))
+    debt2 = next(c for c in two.cards if c.id == "debt")
+    assert "근저당 2건(채권최고액 합계 7,800만원)을 모두 말소한다" in debt2.clause
+    assert "은행 상환 계좌" not in debt2.clause  # 개인이 빌려준 빚도 있다
+
+
 def test_경매_중인_집은_질문_대신_멈춤():
     b = A.build(_report(riskTags=["경매"]))
     assert b.cards == [] and b.stop

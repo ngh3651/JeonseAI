@@ -111,6 +111,7 @@ def recover_missing_amounts(
             if it.section == section
             and not it.canceled
             and not it.is_cancel_record
+            and not it.rank_inferred  # 앞뒤 순위로 채운 항목의 금액으로 빈 금액을 채우지 않는다(2026-11-03 규칙 감사)
             and rank
             and it.rank == rank
             and purpose.search(it.purpose)

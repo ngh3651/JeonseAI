@@ -1,8 +1,9 @@
 """Document OCR 응답의 레이아웃 해석 — 단어 → 줄 → **등기 항목**.
 
-⚠ 이 모듈은 **표시(하이라이트) 전용**이다. 위험 판정(규칙 엔진)에 어떤 영향도 주지 않는다.
-  여기서 나오는 말소 판정은 "어디에 칠하지 **않을지**"를 정할 뿐, 등급·점수·근거 카드를
-  바꾸지 않는다. 판정은 Information Extract + rule_engine 경로 그대로다.
+⚠ 이 모듈은 **읽기·표시** 계층이다. 위험 판정 규칙(rule_engine)은 여기 값을 직접 보지 않는다.
+  단, 두 곳이 여기서 만든 항목을 **판정 재료를 바로잡는 데** 쓴다 — 말소 확인분 제외(`cancellation`,
+  [2026-08-14] D10 — 근거가 결합된 말소만, 빚은 금액으로만)와 빈 금액 다시 읽기(`amount_recovery`).
+  앞뒤 순위로 **채운** 순위번호(`rank_inferred`, 2026-11-03)는 그 둘에서 빚(금액 있는 종류)에 쓰지 않는다.
 
 왜 이런 구조인가 (2026-07-27 실측 근거 — docs/ocr-highlight-findings.md):
 - OCR은 **텍스트와 좌표만** 준다. 선·스타일이 없어 **취소선으로 말소를 알 수 없다**.
@@ -77,6 +78,8 @@ _ENTRY_START = re.compile(
     r"|신탁|환매|질권|등기명의인|공동담보)"
 )
 _RECEIPT_DATE = re.compile(r"\d{4}년\s*\d{1,2}월\s*\d{1,2}일")
+# 접수·등기원인 칸 = 등기목적 칸 오른쪽 끝부터 그 폭의 이만큼 안(사진 기하 — 판정 수치 아님). 권리자 칸의 날짜는 보지 않는다.
+_BESIDE_RATIO = 1.3
 # 페이지 머리말(주소 줄) — 항목 본문이 아니므로 항목에 붙이지 않는다.
 # 2026-10-31: 전각 괄호(［ ］)·괄호 안 띄어쓰기('[집합 건물]')도 같은 머리말로 본다(사진 OCR에서 흔하다).
 _PAGE_HEADER = re.compile(r"^\s*[\[［]\s*(집합\s*건물|건물|토지)\s*[\]］]")
@@ -867,7 +870,7 @@ def _entry_start_word(line: Line, bands: ColumnBands | None) -> Word | None:
     lo, hi = bands.purpose
     width = max(1.0, hi - lo)
     # 접수·등기원인 칸 = 등기목적 칸 바로 오른쪽(가운데가 등기목적 칸 끝 ~ 그 폭의 1.3배 안). 권리자 칸의 날짜는 보지 않는다.
-    beside = [w for w in line.words if hi < w.lcx <= hi + 1.3 * width]
+    beside = [w for w in line.words if hi < w.lcx <= hi + _BESIDE_RATIO * width]
     if any(_RECEIPT_DATE.search(w.text) for w in beside):
         return purpose[0]
     return purpose[0] if _RECEIPT_DATE.search("".join(w.text for w in beside)) else None
@@ -1430,8 +1433,13 @@ def _apply_cancellations(items: list[RegistryItem]) -> None:
         for target in items:
             if target is item:
                 continue
-            if target.rank_inferred and not _purpose_agrees(m.group(2), target.purpose):
-                continue  # 앞뒤 순위로 정한 항목은 말소 문구의 등기목적까지 같아야 짝짓는다(2026-11-03 — 이중 확인)
+            if target.rank_inferred and (
+                not _purpose_agrees(m.group(2), target.purpose)
+                or any(o is not target and o.rank == target.rank and o.section == target.section for o in items)
+            ):
+                # 앞뒤 순위로 정한 항목은 말소 문구의 등기목적까지 같고, 같은 번호를 읽은 다른 항목이 없을 때만 짝짓는다
+                # (2026-11-03 — 이중 확인 · 규칙 감사: 한 말소 행이 두 항목을 지우지 않게)
+                continue
             if target.rank == target_rank and _same_section(target.section, item.section):
                 target.canceled = True
                 target.cancel_evidence = evidence
@@ -1439,9 +1447,12 @@ def _apply_cancellations(items: list[RegistryItem]) -> None:
 
 
 def _purpose_agrees(cancel_phrase: str, target_purpose: str) -> bool:
-    """말소 문구 속 등기목적('강제경매개시결정등기')과 대상 항목의 등기목적이 같은 종류인가 — 앞 4글자로 본다."""
+    """말소 문구 속 등기목적('강제경매개시결정등기')과 대상 항목의 등기목적이 **같은 낱말**인가.
+
+    2026-11-03 규칙 감사: 앞 4글자만 보면 '근저당권'설정·변경·이전이 모두 같다고 나왔다 — 등기목적 전체(최대 8자)를 본다.
+    """
     phrase = re.sub(r"등기$", "", cancel_phrase or "")
-    head = phrase[:4]
+    head = phrase[:8]
     return len(head) >= 2 and target_purpose.startswith(head)
 
 

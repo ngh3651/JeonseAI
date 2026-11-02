@@ -179,6 +179,20 @@ void main() {
       expect(loadingTimeText(_s(31)), '거의 다 됐어요');
     });
 
+    test('예상 시간은 사진 장수에 맞춘다 (2026-11-03 — 4장이면 40초)', () {
+      expect(analysisExpectedSeconds(2), 30);
+      expect(analysisExpectedSeconds(1), 25);
+      expect(analysisExpectedSeconds(4), 40);
+      expect(analysisExpectedSeconds(0), 25);
+      expect(analysisExpectedSeconds(20), 75);
+      // 4장: 30초에는 아직 10초가 남았다고 말한다(예전엔 '거의 다 됐어요')
+      expect(loadingTimeText(_s(30), 40), '약 10초 남았어요');
+      expect(loadingTimeText(_s(41), 40), '거의 다 됐어요');
+      // 단계·진행률도 같은 비율로 늘어난다 — 4장 20초는 2장 15초와 같은 자리
+      expect(loadingStageAt(_s(20), 40), loadingStageAt(_s(15)));
+      expect(loadingProgress(_s(38), 40), closeTo(loadingProgress(_s(28.5)), 0.001));
+    });
+
     test('세이프 10초 한 바퀴', () {
       expect(inspectFrameAt(0), 0);
       expect(inspectFrameAt(2.7), 1);

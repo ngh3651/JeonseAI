@@ -25,6 +25,15 @@ import 'loading_tips.dart';
 /// (로딩 막대의 %·남은 초·단계 나누기가 함께 바뀐다).
 const int kAnalysisExpectedSeconds = 30;
 
+/// 사진 장수에 맞춘 예상 시간(초) — 2026-11-03 실측(판례를 설명과 동시에 찾은 뒤): 2장 약 30초 · 4장 약 40초.
+/// 예전엔 장수와 상관없이 30초라, 4장이면 '약 1초 남았어요'에서 20~40초를 더 기다렸다.
+/// 늘 [kAnalysisExpectedSeconds]가 2장 값이 되도록 맞춘다(2장 = 30초 — 기존 시안·테스트 기준 그대로).
+int analysisExpectedSeconds(int pages) {
+  final n = pages < 1 ? 1 : pages;
+  final s = kAnalysisExpectedSeconds + (n - 2) * 5;
+  return s < 25 ? 25 : (s > 75 ? 75 : s);
+}
+
 /// 로딩 단계 — 서버가 단계를 알려 주지 않아 **예상 시간으로 나눈다**(30초 기준 0~8·8~15·15~22·22~28·그 뒤).
 enum LoadingStage {
   read('AI가 등기부를 한 장씩 읽고 있어요', 8),
@@ -45,19 +54,19 @@ enum LoadingStage {
   static const List<String> stepLabels = ['읽기', '갑구', '을구', '판례'];
 }
 
-double _scaled(Duration elapsed) =>
-    elapsed.inMicroseconds / 1e6 * 30 / kAnalysisExpectedSeconds;
+double _scaled(Duration elapsed, [int expected = kAnalysisExpectedSeconds]) =>
+    elapsed.inMicroseconds / 1e6 * 30 / expected;
 
 /// 지금 단계 — 예상 시간(30초)을 기준으로 비율대로 늘리거나 줄인다.
-LoadingStage loadingStageAt(Duration elapsed) {
-  final s = _scaled(elapsed);
+LoadingStage loadingStageAt(Duration elapsed, [int expected = kAnalysisExpectedSeconds]) {
+  final s = _scaled(elapsed, expected);
   return LoadingStage.values.firstWhere((st) => s < st.untilSecond);
 }
 
 /// 진행률(0~0.99) — 처음엔 빨리, 끝으로 갈수록 천천히. **99%에서 멈춘다**(100%는 서버가 답했을 때만).
 /// 30초 기준 4초 20% · 13초 60% · 20초 83% · 29초 99% (시안 ①~④).
-double loadingProgress(Duration elapsed) {
-  final t = (elapsed.inMicroseconds / 1e6 / kAnalysisExpectedSeconds).clamp(
+double loadingProgress(Duration elapsed, [int expected = kAnalysisExpectedSeconds]) {
+  final t = (elapsed.inMicroseconds / 1e6 / expected).clamp(
     0.0,
     1.0,
   );
@@ -65,17 +74,17 @@ double loadingProgress(Duration elapsed) {
 }
 
 /// 앞 종이에 보일 쪽수 — 읽기 단계 동안 1/N → N/N 으로 고르게 넘기고, 그 뒤로는 N/N.
-int loadingPageAt(Duration elapsed, int totalPages) {
+int loadingPageAt(Duration elapsed, int totalPages, [int expected = kAnalysisExpectedSeconds]) {
   final total = math.max(1, totalPages);
-  final s = _scaled(elapsed);
+  final s = _scaled(elapsed, expected);
   final readEnd = LoadingStage.read.untilSecond;
   if (s >= readEnd) return total;
   return math.min(total, 1 + (s / readEnd * total).floor());
 }
 
 /// "약 N초 남았어요" — 예상 시간을 넘기면 "거의 다 됐어요".
-String loadingTimeText(Duration elapsed) {
-  final left = (kAnalysisExpectedSeconds - elapsed.inMicroseconds / 1e6).ceil();
+String loadingTimeText(Duration elapsed, [int expected = kAnalysisExpectedSeconds]) {
+  final left = (expected - elapsed.inMicroseconds / 1e6).ceil();
   return left >= 1 ? '약 $left초 남았어요' : '거의 다 됐어요';
 }
 

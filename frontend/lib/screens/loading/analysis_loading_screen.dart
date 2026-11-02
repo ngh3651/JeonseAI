@@ -346,13 +346,15 @@ class _AnalysisLoadingScreenState extends State<AnalysisLoadingScreen>
   /// 화면보다 길면 스크롤된다.
   Widget _loadingBody() {
     final elapsed = _elapsed;
-    final stage = _done ? LoadingStage.finish : loadingStageAt(elapsed);
-    final progress = _done ? 1.0 : loadingProgress(elapsed);
-    final timeText = _done ? '다 됐어요' : loadingTimeText(elapsed);
     final total = widget.request.imagePaths.isEmpty
         ? 1
         : widget.request.imagePaths.length;
-    final page = _done ? total : loadingPageAt(elapsed, total);
+    // 사진 장수에 맞춘 예상 시간(2026-11-03) — 4장이면 약 40초(예전엔 늘 30초라 '1초 남았어요'에서 오래 멈췄다)
+    final expected = analysisExpectedSeconds(total);
+    final stage = _done ? LoadingStage.finish : loadingStageAt(elapsed, expected);
+    final progress = _done ? 1.0 : loadingProgress(elapsed, expected);
+    final timeText = _done ? '다 됐어요' : loadingTimeText(elapsed, expected);
+    final page = _done ? total : loadingPageAt(elapsed, total, expected);
     final scale = MediaQuery.textScalerOf(context).scale(100) / 100;
 
     final content = Column(

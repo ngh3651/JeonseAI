@@ -10,40 +10,22 @@
 library;
 
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// 태블릿에서 서버로 보낼 사진의 **짧은 변** 크기(px) — 원본이 더 크면 짧은 변이 이 값이 되게 줄이고, 작으면 그대로 둔다.
+/// 서버로 보낼 사진의 **짧은 변** 크기(px) — 원본이 더 크면 짧은 변이 이 값이 되게 줄이고, 작으면 그대로 둔다.
 ///
-/// 2026-11-03 (규혁 결정 — **태블릿에만**): 라이브러리 기본값(가로 1920·세로 1080)이면 태블릿 1300만 화소 사진이
-/// 약 500만 화소로, **가로로 찍으면** 1920×1440(돌려 세우면 1440 폭)까지 줄었다 → 결선 부스 태블릿으로 멀리서·비스듬히
-/// 찍으면 글자가 작아 OCR이 이름·금액 위치를 놓쳤다. 가로·세로 같은 값을 줘서 방향과 상관없이 짧은 변을 2560으로
-/// 맞춘다(4:3 → 2560×3413 ≈ 870만 화소, 9:21도 서버 상한 1600만 화소 `MAX_IMAGE_PIXELS` 안).
-/// 폰은 지금도 잘 읽혀서 **예전 그대로**(올리는 시간이 늘지 않게).
-const int kTabletUploadShortSide = 2560;
+/// 2026-11-03 마지막 정리 (규혁: "화소 늘린 게 필요 없고 용량만 먹으면 돌려놔도 좋다"):
+/// - 태블릿만 2560으로 올렸던 것을 **되돌린다.** 같은 4쪽 등기부에서 사진 용량이 2.6MB → 7.6MB가 되어
+///   올리는 데 +4초, IE가 +5초 늘었는데, 형광펜을 놓친 까닭(말소 줄 연결·순위번호 한 글자·회사 이름)은
+///   화소와 상관이 없었다(2560에서도 똑같이 놓침 — 진단 로그).
+/// - 대신 **가로·세로 같은 값**을 준다. 예전 라이브러리 기본값(가로 1920·세로 1080)은 기기를 **가로로** 들고 찍으면
+///   짧은 변이 1080~1440까지 줄었다. 이제 어느 방향이든 짧은 변 1920(세로로 찍은 사진은 예전과 똑같다).
+const int kUploadShortSide = 1920;
 
-/// 태블릿으로 보는 화면 짧은 변(논리 px) — 안드로이드·머티리얼 관행(600dp 이상 = 태블릿).
-const double kTabletShortestSideDp = 600;
-
-/// 압축 크기 기준 (minWidth, minHeight). 폰 = 라이브러리 기본값 그대로(1920, 1080), 태블릿 = 짧은 변 2560.
-(int, int) uploadMinSize(double shortestSideDp) => shortestSideDp >= kTabletShortestSideDp
-    ? (kTabletUploadShortSide, kTabletUploadShortSide)
-    : (1920, 1080);
-
-/// 이 기기 화면의 짧은 변(논리 px). 화면 정보를 못 얻으면 0(= 폰으로 보고 예전 그대로).
-double _deviceShortestSideDp() {
-  try {
-    final views = ui.PlatformDispatcher.instance.views;
-    if (views.isEmpty) return 0;
-    final view = views.first;
-    if (view.devicePixelRatio <= 0) return 0;
-    return (view.physicalSize / view.devicePixelRatio).shortestSide;
-  } catch (_) {
-    return 0;
-  }
-}
+/// 압축 크기 기준 (minWidth, minHeight) — 기기·방향과 상관없이 짧은 변 [kUploadShortSide].
+(int, int) uploadMinSize() => (kUploadShortSide, kUploadShortSide);
 
 class RegistryUploadService {
   /// 입력 이미지를 JPEG로 변환합니다.
@@ -61,13 +43,13 @@ class RegistryUploadService {
       final String targetPath =
           '${tempDir.path}/upload_${DateTime.now().millisecondsSinceEpoch}$suffix.jpg';
 
-      final (minWidth, minHeight) = uploadMinSize(_deviceShortestSideDp());
+      final (minWidth, minHeight) = uploadMinSize();
       final XFile? converted = await FlutterImageCompress.compressAndGetFile(
         sourcePath,
         targetPath,
         format: CompressFormat.jpeg,
         quality: 90, // OCR 가독성을 위해 화질을 비교적 높게 유지
-        // 폰은 예전 그대로, 태블릿은 짧은 변 2560(가로·세로 같은 값 = 찍은 방향과 상관없이 같은 크기) — 위 [uploadMinSize]
+        // 짧은 변 1920(가로·세로 같은 값 = 찍은 방향과 상관없이 같은 크기) — 위 [uploadMinSize]
         minWidth: minWidth,
         minHeight: minHeight,
         // EXIF 회전을 **픽셀에 반영해 올바로 세운 뒤 EXIF 자체는 남기지 않는다**.

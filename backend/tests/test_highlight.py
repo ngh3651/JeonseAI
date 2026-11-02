@@ -882,3 +882,114 @@ def test_갑구_말소_행을_못_맞춰도_을구_빚은_칠한다():
     assert "mortgage" in kinds, "을구 빚은 칠한다"
     assert "seizure" not in kinds, "말소를 못 가린 갑구 항목은 칠하지 않는다"
     assert result.notice and "압류" in result.notice and "빚" not in result.notice
+
+
+def test_법인_등록번호를_가린_등기부에서도_회사_집주인을_찾는다():
+    """시연 샘플: '소유자 주식회사가상건설 110111-*******' — 번호만 보면 개인이라 8자 이름을 버렸다(2026-11-03 진단 로그)."""
+    rows = [
+        section_row("갑구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("소유권보존", 117, 150, 75), W("2019년11월5일", 269, 150, 98),
+         W("소유자", 516, 150, 44), W("주식회사가상건설", 566, 150, 110), W("110111-*******", 682, 150, 107)],
+    ]
+    page = make_page(0, rows)
+    result = highlight.build_highlights(extract_with(current_owners=[Owner(name="주식회사가상건설")]), as_result(page))
+    owners = [h for h in result.highlights if h.kind == "owner"]
+    assert len(owners) == 1
+
+
+def test_개인_이름은_그대로_개인으로_본다():
+    from app.services.ocr_layout import extract_names, median_height
+
+    rows = [[W("소유자", 516, 150, 44), W("김가상", 566, 150, 44), W("750312-*******", 616, 150, 107)]]
+    page = make_page(0, rows)
+    hits = extract_names(page.lines[0], 0, median_height(page.words))
+    assert [(h.name, h.kind) for h in hits] == [("김가상", "개인")]
+
+
+def _seoul_gap_gu_missing_rank3() -> OcrPage:
+    """실촬영 서초 4쪽 갑구 모양 — 순위번호 '3'을 OCR이 못 읽었다(2026-11-03 진단 로그)."""
+    rows = [
+        section_row("갑구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("소유권보존", 117, 150, 75), W("2019년11월5일", 269, 150, 98),
+         W("소유자", 516, 150, 44), W("주식회사가상건설", 566, 150, 110), W("110111-*******", 682, 150, 107)],
+        [W("2", 66, 230, 11), W("가압류", 117, 230, 45), W("2021년3월2일", 269, 230, 90),
+         W("2021년2월26일", 391, 230, 98), W("청구금액", 516, 230, 60)],
+        [W("제11111호", 271, 270, 67), W("서울중앙지방법원의", 391, 270, 110)],
+        # 순위번호 '3'이 빠진 줄 — 등기목적이 새로 시작하고 접수 칸에 날짜가 있다
+        [W("강제경매개시결정", 117, 330, 110), W("2021년5월7일", 269, 330, 90), W("2021년5월6일", 391, 330, 98),
+         W("채권자", 516, 330, 44)],
+        [W("제22222호", 271, 370, 67), W("서울중앙지방법원의", 391, 370, 110)],
+        [W("4", 66, 430, 11), W("압류", 117, 430, 30), W("2022년1월3일", 269, 430, 90), W("권리자", 516, 430, 44)],
+        [W("5", 66, 500, 11), W("4번압류등기말소", 117, 500, 110), W("2022년6월1일", 269, 500, 90)],
+        [W("6", 66, 570, 11), W("3번강제경매개시결정등", 117, 570, 140), W("2022년7월1일", 269, 570, 90)],
+        [W("기말소", 117, 600, 45)],
+        [W("7", 66, 660, 11), W("압류", 117, 660, 30), W("2023년2월3일", 269, 660, 90), W("권리자", 516, 660, 44)],
+    ]
+    return make_page(0, rows)
+
+
+def test_순위번호_하나를_못_읽어도_항목을_가르고_앞뒤_순위로_채운다():
+    items = [it for it in build_items([_seoul_gap_gu_missing_rank3()]) if it.section == "갑구"]
+    by_rank = {it.rank: it for it in items}
+    assert sorted(by_rank) == ["1", "2", "3", "4", "5", "6", "7"]
+    assert by_rank["3"].rank_inferred and by_rank["3"].purpose.startswith("강제경매")
+    assert by_rank["2"].purpose == "가압류", "2번에 3번이 붙지 않는다"
+    assert by_rank["3"].canceled, "6번 '3번강제경매…말소'가 3번과 짝지어진다"
+    assert by_rank["4"].canceled
+    assert by_rank["6"].cancel_bound and by_rank["5"].cancel_bound
+
+
+def test_순위번호를_못_읽은_항목이_앞뒤로_하나로_정해지지_않으면_비워_두고_짝짓지_않는다():
+    rows = [
+        section_row("갑구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("소유권보존", 117, 150, 75), W("2019년11월5일", 269, 150, 98)],
+        [W("가압류", 117, 230, 45), W("2021년3월2일", 269, 230, 90)],
+        [W("강제경매개시결정", 117, 330, 110), W("2021년5월7일", 269, 330, 90)],
+        [W("3", 66, 430, 11), W("압류", 117, 430, 30), W("2022년1월3일", 269, 430, 90)],
+    ]
+    items = [it for it in build_items([make_page(0, rows)]) if it.section == "갑구"]
+    assert [it.rank for it in items] == ["1", None, None, "3"], "1과 3 사이에 둘 — 하나로 정해지지 않는다"
+
+
+def test_한_항목의_둘째_줄은_새_항목으로_가르지_않는다():
+    """'1번근저당권설정등'/'기말소'처럼 이어지는 줄, 접수 칸에 '제1234호'만 있는 줄은 그대로 한 항목이다."""
+    items = build_items([eul_gu_page()])
+    assert [it.rank for it in items if it.section == "을구"] == ["1", "2"]
+    assert not any(it.rank_inferred for it in items)
+
+
+def test_순위번호를_못_읽은_갑구_항목도_형광펜과_말소_짝이_맞는다():
+    page = _seoul_gap_gu_missing_rank3()
+    extract = extract_with(
+        current_owners=[Owner(name="주식회사가상건설")],
+        provisional_seizures=[RegistryEntry(rank_number="2")],
+        auction_commencements=[RegistryEntry(rank_number="3")],
+        seizures=[RegistryEntry(rank_number="4"), RegistryEntry(rank_number="7")],
+    )
+    result = highlight.build_highlights(extract, as_result(page))
+    kinds = sorted(h.kind for h in result.highlights)
+    assert result.notice is None, f"말소를 다 가려냈으니 '생략' 안내가 없어야 한다: {result.notice}"
+    assert kinds.count("provisional_seizure") == 1 and kinds.count("seizure") == 1  # 4번 압류는 말소
+    assert "auction" not in kinds, "3번 강제경매는 6번에서 말소됐다"
+    assert "owner" in kinds
+
+
+def test_IE_순위번호가_사진과_달라도_접수일과_금액이_맞으면_그_줄을_칠한다():
+    """실촬영: IE가 '을구 11번'이라고 읽었지만 사진엔 11번이 없다 — 접수일·금액·등기목적이 맞는 줄이 하나면 그 줄."""
+    page = eul_gu_page(with_cancel_row=False)
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="11", amount=36_000_000, receipt_date="2004-06-25", is_canceled=False)]
+    )
+    marks = [h for h in _run(extract, as_result(page)) if h.kind == "mortgage"]
+    assert len(marks) == 1
+
+
+def test_접수일이_다르면_내용으로도_칠하지_않는다():
+    page = eul_gu_page(with_cancel_row=False)
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="11", amount=36_000_000, receipt_date="2010-01-01", is_canceled=False)]
+    )
+    assert [h for h in _run(extract, as_result(page)) if h.kind == "mortgage"] == []

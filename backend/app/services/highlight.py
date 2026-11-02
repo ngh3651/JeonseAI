@@ -292,6 +292,9 @@ class RankedRule:
 #: 말소를 못 가린 구(區)를 사용자 말로 — 안내 문구용(2026-11-03)
 _SECTION_WORDS = {"갑구": "압류·가압류·경매·신탁", "을구": "빚(근저당·전세권)"}
 
+#: 금액을 못 읽어도 순위번호 + 등기목적으로 자리를 짚는 종류 (2026-11-03) — 금액이 표시의 핵심이 아니다
+_AMOUNT_OPTIONAL_KINDS = frozenset({"provisional_seizure"})
+
 _RANKED_RULES: tuple[RankedRule, ...] = (
     RankedRule("mortgage", "을구", _rx(r"근저당권설정"), "mortgages", "amount", "집에 잡힌 빚 (근저당권)"),
     RankedRule("jeonse", "을구", _rx(r"전세권설정"), "jeonse_rights", "amount", "다른 사람의 전세권"),
@@ -560,7 +563,11 @@ def _match_ranked(
     if not rank:
         return "순위번호 없음 — 같은 종류의 다른 항목과 구분할 수 없음"
     if rule.amount_attr and amount is None:
-        return "금액 미상 — 앵커로 쓸 금액 문자열이 없음"
+        if rule.kind not in _AMOUNT_OPTIONAL_KINDS:
+            return "금액 미상 — 앵커로 쓸 금액 문자열이 없음"
+        # 가압류 청구금액은 IE가 자주 비운다(2026-11-03). 금액은 이 표시의 핵심이 아니라 자리만 짚으면 된다 —
+        # 순위번호 + 등기목적(2앵커)으로 찾는다. 빚(근저당·전세권·임차권)은 금액이 핵심이라 그대로 엄격하다.
+        rule = replace(rule, amount_attr=None)
 
     candidates = [it for it in _active_rights_items(items, rule.section) if it.rank == rank]
     if not candidates:
@@ -616,6 +623,78 @@ def _match_ranked(
         return page_index, _union([item.rank_box] + purpose_boxes)
 
     return f"{rule.section} 순위{rank}의 순위번호 줄을 찾지 못함"
+
+
+_KO_DATE = re.compile(r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일")
+_ANY_DATE = re.compile(r"(\d{4})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})")
+
+
+def _ie_date(value: object) -> tuple[int, int, int] | None:
+    """IE 접수일('2019-11-05' · '2019.11.5' · '2019년 11월 5일') → (년, 월, 일)."""
+    m = _ANY_DATE.search(str(value or ""))
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+
+def _item_dates(item: RegistryItem) -> set[tuple[int, int, int]]:
+    out: set[tuple[int, int, int]] = set()
+    for _, _, line in item.lines:
+        for m in _KO_DATE.finditer(line.squeezed):
+            out.add((int(m.group(1)), int(m.group(2)), int(m.group(3))))
+    return out
+
+
+def _match_by_content(
+    rule: RankedRule,
+    entry: RegistryEntry,
+    amount: int | None,
+    items: list[RegistryItem],
+    pages: dict[int, OcrPage],
+    skip: set[int],
+) -> tuple[RegistryItem, int, tuple[float, float, float, float]] | str:
+    """순위번호로 못 찾았을 때 **내용으로** 찾는다 (2026-11-03) — 같은 구역의 살아 있는 항목 중
+    등기목적이 같고 + IE 접수일이 그 항목에 있고 + (빚이면) 금액도 그 항목에 있는 것이 **딱 하나**일 때만.
+
+    실촬영: IE가 '1-1'을 '11'로 읽거나, OCR이 순위번호 한 글자를 놓쳐 순위로는 짝이 안 맞았다. 접수일·금액은 긴 글자라
+    OCR이 잘 읽고 항목마다 다르다. 접수일이 없으면 가를 수 없으니 칠하지 않는다(엉뚱한 줄 금지).
+    """
+    receipt = _ie_date(getattr(entry, "receipt_date", None))
+    amount_text = f"{amount:,}" if amount is not None else None
+    if receipt is None:
+        # 접수일이 없으면 가르지 않는다 — 빚은 같은 금액이 여러 곳에 나온다(금액만으로는 항목을 지목할 수 없다).
+        return "IE 접수일이 없어 내용으로도 가를 수 없음"
+    if rule.amount_attr and amount_text is None:
+        return "금액 미상 — 빚은 접수일과 금액이 둘 다 맞아야 짚는다"
+    found: list[RegistryItem] = []
+    for it in _active_rights_items(items, rule.section):
+        if id(it) in skip or not rule.purpose.search(it.purpose):
+            continue
+        if receipt is not None and receipt not in _item_dates(it):
+            continue
+        if amount_text is not None and not any(amount_text in m.text for m in it.moneys):
+            continue
+        found.append(it)
+    if len(found) != 1:
+        return f"접수일·금액으로 찾은 후보가 {len(found)}개 — 하나가 아니라 칠하지 않음"
+    item = found[0]
+    anchor_page = item.rank_page_index if item.rank_box else item.lines[0][0]
+    if anchor_page not in pages:
+        return f"좌표가 있는 페이지({anchor_page})의 OCR 결과가 없음"
+    boxes: list[tuple[float, float, float, float]] = []
+    if item.rank_box and item.rank_page_index == anchor_page:
+        boxes.append(item.rank_box)
+    for page_index, _, line in item.lines:
+        if page_index != anchor_page:
+            continue
+        band = [w for w in line.words if any(w is pw for pw in item.purpose_words)]
+        if band:
+            boxes.extend(_words_matching(Line(index=line.index, words=band), rule.purpose))
+        if amount_text is not None:
+            boxes.extend(w.box for w in line.words if amount_text in w.text)
+        if boxes and (amount_text is None or any(amount_text in w.text for w in line.words)):
+            break
+    if not boxes:
+        return "내용으로 찾은 항목의 등기목적·금액 자리를 사진에서 못 찾음"
+    return item, anchor_page, _union(boxes)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1029,15 +1108,32 @@ def build_highlights(
             continue
         if rule.amount_attr and not money_allowed:
             continue
+        # 순위번호로 짝지은 항목 — 내용으로 찾을 때 같은 항목을 두 번 칠하지 않게(같은 종류 안에서)
+        taken: set[int] = {
+            id(it)
+            for e in entries
+            for it in _active_rights_items(items, rule.section)
+            if it.rank == str(getattr(e, "rank_number", "") or "").strip()
+        }
         for i, entry in enumerate(entries):
             rank = str(getattr(entry, "rank_number", "") or "").strip()
             amount = _entry_amount(entry, rule.amount_attr) if rule.amount_attr else None
             matched = _match_ranked(rule, rank, amount, items, pages)
             if isinstance(matched, str):
-                failures.append(f"{rule.section} 순위{rank or '?'} {rule.label} — {matched}")
-                unplaced[rule.ie_field] = unplaced.get(rule.ie_field, 0) + 1
-                continue
-            page_index, box = matched
+                again = _match_by_content(rule, entry, amount, items, pages, taken)
+                if isinstance(again, str):
+                    failures.append(f"{rule.section} 순위{rank or '?'} {rule.label} — {matched} · 내용으로도: {again}")
+                    unplaced[rule.ie_field] = unplaced.get(rule.ie_field, 0) + 1
+                    continue
+                hit_item, page_index, box = again
+                taken.add(id(hit_item))
+                _log.info(
+                    f"[매칭] ↺ {rule.section} 순위{rank or '?'} {rule.label} — 순위번호로 못 찾아({matched})"
+                    f" 접수일·금액으로 찾음 → 사진의 {hit_item.rank or '?'}번 @{hit_item.location}"
+                )
+                rank = hit_item.rank or rank
+            else:
+                page_index, box = matched
             norm = _normalize(box, pages[page_index], pad_ratio=0.05)
             if norm is None:
                 failures.append(f"{rule.section} 순위{rank} {rule.label} — 원본 크기를 몰라 정규화 실패")

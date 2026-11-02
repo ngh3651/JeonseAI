@@ -993,3 +993,36 @@ def test_접수일이_다르면_내용으로도_칠하지_않는다():
         mortgages=[MoneyEntry(rank_number="11", amount=36_000_000, receipt_date="2010-01-01", is_canceled=False)]
     )
     assert [h for h in _run(extract, as_result(page)) if h.kind == "mortgage"] == []
+
+
+def test_두_낱말로_쪼개진_회사_이름도_집주인으로_찾는다():
+    rows = [
+        section_row("갑구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("소유권보존", 117, 150, 75), W("2019년11월5일", 269, 150, 98),
+         W("소유자", 516, 150, 44), W("주식회사", 566, 150, 55), W("가상건설", 626, 150, 55),
+         W("110111-0012345", 690, 150, 107)],
+    ]
+    result = highlight.build_highlights(
+        extract_with(current_owners=[Owner(name="주식회사가상건설")]), as_result(make_page(0, rows))
+    )
+    assert [h.kind for h in result.highlights].count("owner") == 1
+
+
+def test_한_글자_다르게_읽힌_집주인_이름도_소유권_항목에서만_찾는다():
+    rows = [
+        section_row("갑구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("소유권이전", 117, 150, 75), W("2023년6월15일", 269, 150, 98),
+         W("소유자", 516, 150, 44), W("김기상", 566, 150, 44), W("750312-*******", 616, 150, 107)],
+        [W("2", 66, 250, 11), W("가압류", 117, 250, 45), W("2024년1월2일", 269, 250, 90),
+         W("채권자", 516, 250, 44), W("이가상", 566, 250, 44), W("680905-*******", 616, 250, 107)],
+    ]
+    page = make_page(0, rows)
+    ok = highlight.build_highlights(extract_with(current_owners=[Owner(name="김가상")]), as_result(page))
+    owner = [h for h in ok.highlights if h.kind == "owner"]
+    assert len(owner) == 1 and owner[0].box.y < 0.2, "소유권이전 줄(김기상)을 짚는다 — 가압류 채권자(이가상)가 아니다"
+    # 소유권 항목에 한 글자 다른 이름이 둘이면 고르지 않는다
+    rows2 = rows[:3] + [[W("공유자", 516, 190, 44), W("김가산", 566, 190, 44), W("800101-*******", 616, 190, 107)]]
+    none = highlight.build_highlights(extract_with(current_owners=[Owner(name="김가상")]), as_result(make_page(0, rows2)))
+    assert [h for h in none.highlights if h.kind == "owner"] == []

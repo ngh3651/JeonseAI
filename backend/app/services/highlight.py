@@ -67,6 +67,12 @@ from .ocr_layout import (
 # 'N번○○말소' 대상 순위를 읽는 정규식. **한 벌만 둔다** — 여기서 다시 쓰면 두 곳이
 # 갈라져 "말소를 보는 눈"이 경로마다 달라진다(그 갈림이 바로 D17의 사고였다).
 from .ocr_layout import _CANCEL_TARGET as CANCEL_TARGET_RE
+from .ocr_layout import _CORP_NAME as _OCR_CORP_NAME
+
+
+def ocr_layout_corp(name: str) -> bool:
+    """이름 모양이 법인인가(`ocr_layout._CORP_NAME`과 같은 기준 — 한 벌만 둔다)."""
+    return bool(_OCR_CORP_NAME.search(name or ""))
 
 _log = logging.getLogger("jeonseai")
 
@@ -527,6 +533,10 @@ def _match_owner(
         if hit.name == target
     ]
     if not hits:
+        # 사진 글자가 조금 달라도 찾는다 (2026-11-03 실촬영) — 실패 사유를 가르기 전에 한 번 더
+        loose = _match_owner_loose(target, items, pages)
+        if loose is not None:
+            return loose
         # 왜 못 찾았는지를 갈라서 남긴다 — 아침 진단의 핵심
         anywhere = [hit for it in items for hit in it.names if hit.name == target]
         if not anywhere:
@@ -540,6 +550,69 @@ def _match_owner(
     _, hit = hits[-1]
     if hit.page_index not in pages:
         return f"좌표가 있는 페이지({hit.page_index})의 OCR 결과가 없음"
+    return hit.page_index, hit.box, hit.kind
+
+
+_OWNERSHIP_PURPOSE = re.compile(r"소유권")
+
+
+def _one_letter_apart(a: str, b: str) -> bool:
+    """두 이름이 **한 글자만** 다른가(같은 길이에서 한 자리, 또는 한 글자 빠짐) — OCR이 한 자를 잘못·덜 읽은 경우."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    return any(long_[:k] + long_[k + 1:] == short for k in range(len(long_)))
+
+
+def _match_owner_loose(
+    target: str, items: list[RegistryItem], pages: dict[int, OcrPage]
+) -> tuple[int, tuple[float, float, float, float], str] | None:
+    """집주인 이름을 **조금 느슨하게** 한 번 더 찾는다 (2026-11-03 실촬영 — 정확히 같은 글자만 찾으면 자주 놓쳤다).
+
+    ⑴ 두 낱말로 쪼개진 이름: 등록번호 앞 낱말과 그 앞 낱말을 이으면 IE 이름과 **정확히** 같다('주식회사'+'가상건설').
+    ⑵ 한 글자 다르게 읽힌 이름: **소유권 항목**(소유권보존·이전) 안에서, 3자 이상, IE 이름과 한 글자만 다른 이름이
+       **딱 하나**일 때만(채권자·근저당권자 등 다른 사람 이름과 헷갈리지 않게 소유권 항목으로 좁힌다).
+    둘 다 아니면 None — 예전처럼 실패 사유를 남긴다.
+    """
+    active = _active_rights_items(items, "갑구")
+    # ⑴ 쪼개진 이름
+    joined_hits = []
+    for it in active:
+        for hit in it.names:
+            page = pages.get(hit.page_index)
+            if page is None or not (0 <= hit.line_index < len(page.lines)) or hit.word_index < 1:
+                continue
+            words = page.lines[hit.line_index].words
+            if hit.word_index >= len(words):
+                continue
+            prev = words[hit.word_index - 1]
+            if prev.text.strip() + hit.name == target:
+                joined_hits.append((hit, _union([prev.box, hit.box])))
+    if joined_hits:
+        joined_hits.sort(key=lambda pair: (pair[0].page_index, pair[0].box[1]))
+        hit, box = joined_hits[-1]
+        _log.info(f"[매칭] ↺ 집주인 {mask_name(target)} — 두 낱말로 쪼개진 이름을 이어서 찾음")
+        return hit.page_index, box, "법인" if ocr_layout_corp(target) else hit.kind
+    # ⑵ 한 글자 다른 이름 — 소유권 항목 안에서만, 딱 하나일 때만
+    if len(target) < 3:
+        return None
+    near = [
+        hit
+        for it in active
+        if _OWNERSHIP_PURPOSE.search(it.purpose)
+        for hit in it.names
+        if _one_letter_apart(hit.name, target)
+    ]
+    names = {h.name for h in near}
+    if len(names) != 1:
+        return None
+    near.sort(key=lambda h: (h.page_index, h.box[1]))
+    hit = near[-1]
+    if hit.page_index not in pages:
+        return None
+    _log.info(f"[매칭] ↺ 집주인 {mask_name(target)} — 사진에선 한 글자 다르게 읽혀({mask_name(hit.name)}) 그 자리를 짚음")
     return hit.page_index, hit.box, hit.kind
 
 

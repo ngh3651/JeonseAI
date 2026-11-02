@@ -9,6 +9,7 @@ sourceText·deposit·marketPrice·seniorDebtAmount·gaugeProgress)는 **RuleVerd
 from __future__ import annotations
 
 import logging
+import re
 import os
 import threading
 import time
@@ -75,9 +76,21 @@ def ie_deadline_seconds() -> float:
         return 35.0
 
 
+_HEADER_TAG = re.compile(r"^\s*[\[［]\s*[^\]］]*[\]］]\s*")
+
+
 def _price_key(address: str | None, area: float | None) -> tuple[str, float | None]:
-    """시세 조회 입력이 같은지 견주는 열쇠 — 띄어쓰기는 무시, 면적은 소수 첫째 자리."""
-    return ("".join((address or "").split()), round(area, 1) if area else None)
+    """시세 조회 입력이 같은지 견주는 열쇠 — 띄어쓰기는 무시, 면적은 소수 첫째 자리.
+
+    2026-11-03: 호수까지 있는 주소면 머리표('[집합건물] ')를 뗀다 — 두 번째 읽기 주소(호수 있음)와 IE 주소(호수 없음 →
+    쪽 머리 '[집합건물] … 제401호')가 같은 집인데 열쇠가 달라 IE 뒤에 시세를 **다시** 조회했다(3초, 헤이든2 로그).
+    호수가 있으면 머리표가 있든 없든 같은 조회다(집합건물). 호수가 없으면 머리표가 통건물 여부를 가르므로 그대로 둔다.
+    """
+    text = address or ""
+    stripped = _HEADER_TAG.sub("", text)
+    if stripped != text and price_normalize.has_unit_designation(stripped):
+        text = stripped
+    return ("".join(text.split()), round(area, 1) if area else None)
 
 
 class AnalysisCancelled(Exception):

@@ -381,6 +381,39 @@ def test_설명이_숫자_뜻에_걸리면_한_번_고쳐_쓰게_하고_통과�
     assert result.evidence_sources["senior_debt"] != explanation.FALLBACK_SOURCE_LABEL
 
 
+_WALL = "**빚이 집값보다 커요** " + "먼저 갚을 빚이 4억 1,200만원이에요. " * 6  # 머리말 하나 + 문장 6개(pro4 실기기 모양)
+
+
+def test_모양만_어긋나면_고쳐_쓰게_하고_나아지면_고친_글을_쓴다(monkeypatch, solar_key):
+    v = sample_verdict()
+    calls: list[str] = []
+    fixed = "**빚이 집값보다 커요** 먼저 갚을 빚이 4억 1,200만원이에요.\n**경매로 가면** 빚이 먼저 빠져요."
+    answers = iter([
+        _payload(v, _WALL),
+        json.dumps({"evidences": [{"id": "senior_debt", "easy_explanation": fixed}]}, ensure_ascii=False),
+    ])
+
+    def mock(messages, key):
+        calls.append(messages[-1]["content"])
+        return next(answers)
+
+    monkeypatch.setattr(explanation, "_call_solar", mock)
+    result = explanation.generate(v, ledger=sample_ledger())
+    assert len(calls) == 2 and "1번째 문단 본문이" in calls[1]  # 몇 자·몇 문장인지 숫자로 알려 준다
+    assert result.texts["evidences"]["senior_debt"]["easy_explanation"] == fixed
+    assert result.evidence_sources["senior_debt"] != explanation.FALLBACK_SOURCE_LABEL
+
+
+def test_모양을_못_고쳐도_준비된_문구로_내리지_않는다(monkeypatch, solar_key):
+    """모양만 어긋난 글엔 틀린 말이 없다 — 이 집 맞춤 AI 글이 준비된 문구보다 낫다."""
+    v = sample_verdict()
+    answers = iter([_payload(v, _WALL), "고쳐 쓰기 실패"])
+    monkeypatch.setattr(explanation, "_call_solar", lambda m, k: next(answers))
+    result = explanation.generate(v, ledger=sample_ledger())
+    assert result.texts["evidences"]["senior_debt"]["easy_explanation"].startswith("**빚이 집값보다 커요**")
+    assert result.evidence_sources["senior_debt"] != explanation.FALLBACK_SOURCE_LABEL
+
+
 def test_고쳐_쓴_글도_틀리면_준비된_문구(monkeypatch, solar_key):
     v = sample_verdict()
     bad = _payload(v, "**빚이 집값보다 커요** 이 집에는 3억 6,000만원 선순위 근저당이 있어요.")

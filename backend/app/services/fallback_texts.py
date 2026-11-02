@@ -228,20 +228,22 @@ def easy_explanation(ev: EvidenceVerdict, verdict: RuleVerdict) -> str:
             jeonse = f.get("jeonse_right_count") or 0
             ratio = f.get("senior_ratio_pct")
             combined = f.get("combined_ratio_pct")
+            # 2026-11-02: AI 글과 같은 모양(굵은 머리말 문단)으로 — 폴백이 나가도 리포트 모양이 들쭉날쭉하지 않게
             head = f"이 집에는 나보다 먼저 갚아야 할 빚(선순위 채권)이 {format_won(total)} 있어요"
             kinds = ([f"근저당 {count}건"] if count else []) + ([f"전세권 {jeonse}건"] if jeonse else [])
             if kinds:
                 head += f". {'과 '.join(kinds)}이에요"
-            body = ""
+            paras = [f"**먼저 갚을 빚이 있어요** {head}."]
             if ratio is not None:
-                body = f" 이 빚만으로 {price_call(verdict)}의 {ratio}%예요."
+                body = f"이 빚만으로 {price_call(verdict)}의 {ratio}%예요."
                 if combined is not None:
                     body += f" 내 보증금까지 더하면 {combined}%가 돼요."
-            return (
-                # 2026-11-01: '이 빚을 **진** 쪽이 먼저 받아가고' → 빚을 진 쪽은 집주인이다. 먼저 받는 쪽은 **빌려준** 곳.
-                f"{head}.{body} 집이 경매로 넘어가면 이 돈을 빌려준 곳이 먼저 받아가고, "
-                "남는 금액에서 보증금을 돌려받게 돼요."
+                paras.append(f"**집값과 견주면** {body}")
+            # 2026-11-01: '이 빚을 **진** 쪽이 먼저 받아가고' → 빚을 진 쪽은 집주인이다. 먼저 받는 쪽은 **빌려준** 곳.
+            paras.append(
+                "**경매로 가면** 이 돈을 빌려준 곳이 먼저 받아가고, 남는 금액에서 보증금을 돌려받게 돼요."
             )
+            return "\n".join(paras)
         if f.get("unknown_amount_count"):
             return (
                 "등기부등본에서 빚 항목을 찾았지만 금액을 정확히 읽지 못했어요. "

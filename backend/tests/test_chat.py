@@ -762,3 +762,44 @@ def test_열람일을_잘못_읽어_미래면_며칠_전인지_말하지_않는�
     system = p.calls[0]["system"]
     assert "-5일" not in system and f"등기부 열람일 {future.strftime('%Y.%m.%d')} ·" in system
     assert "(오늘 뗀 서류)" in system
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2026-11-02 solar-pro4 — 고정 문구가 나가지 않게: 길면 줄이고, 깨진 JSON은 살리고, 잠깐 실패는 한 번 더
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_길게_쓴_답은_다시_쓰게_하지_않고_온전한_문장으로_줄인다(fake_llm):
+    long = "\n".join(f"· {i}번째로 등기부에서 근저당과 압류를 확인하는 방법을 알려 드려요." for i in range(1, 40))
+    provider = fake_llm(_a(long))
+    r = chat.reply([_u("등기부 보는 법 2000자로 자세히 알려줘")])
+    assert r.mode == chat.MODE_NORMAL and r.layer == "AI-줄임"
+    assert len(provider.calls) == 1, "길이만 넘었으면 다시 부르지 않는다(시간)"
+    assert len(r.answer) <= text_guard.CHAT_MAX_LEN
+    assert r.answer.endswith(chat.CONTINUE_HINT)
+    body = r.answer.split("\n")[:-1]
+    assert all(line.endswith("알려 드려요.") for line in body), "줄 중간에서 자르지 않는다"
+
+
+def test_JSON이_잘린_답에서도_글을_살린다(fake_llm):
+    err = chat.llm.LlmError("fake: JSON 파싱 실패 — Unterminated string")
+    err.raw_text = '{"answer": "근저당은 집을 담보로 잡힌 빚이에요.\\n경매로 가면 먼저 받아가요.\\n더 자세히는'
+    provider = fake_llm(err)
+    r = chat.reply([_u("근저당이 뭐야")])
+    assert r.mode == chat.MODE_NORMAL
+    assert r.answer.startswith("근저당은 집을 담보로 잡힌 빚이에요.")
+    assert chat.OFFLINE_FALLBACK not in r.answer
+    assert len(provider.calls) == 1
+
+
+def test_잠깐의_실패는_한_번_더_부른다(fake_llm):
+    provider = fake_llm(chat.llm.LlmError("fake: 연결 실패 ReadTimeout"), _a("안녕하세요! 무엇이든 물어보세요.", "small_talk"))
+    r = chat.reply([_u("안녕?")])
+    assert r.mode == chat.MODE_NORMAL and len(provider.calls) == 2
+
+
+def test_잔액_부족_같은_실패는_다시_부르지_않는다(fake_llm):
+    provider = fake_llm(chat.llm.LlmError("fake: HTTP 403 — API key suspended due to insufficient credit"))
+    r = chat.reply([_u("안녕?")])
+    assert r.mode == chat.MODE_FALLBACK and len(provider.calls) == 1

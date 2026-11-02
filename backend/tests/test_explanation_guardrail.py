@@ -353,12 +353,21 @@ def test_출처_라벨이_리포트_카드까지_실려_나간다(danger_case, s
     assert all(ev.explanationSource for ev in report.evidences)
 
 
-# ── 2026-11-01 '이 집 핵심' 문단 모양 — 깨진 굵은 표시만 막는다 ─────────────────────────────
-def test_이_집_핵심_머리말_모양_검사():
-    from app.services.explanation import _lead_format_reason
+# ── 2026-11-02 '이 집 핵심' 문단 모양 — 숫자 예산(pro4). 모양만 어긋나면 고쳐 쓰게만 한다 ───────────────────────
+def test_이_집_핵심_모양_검사():
+    from app.services.explanation import _shape_reason, _tidy_shape
 
-    assert _lead_format_reason("**집을 산 날 바로 빌렸어요** 같은 날 근저당을 잡았어요.\n**경매로 가면** 남는 돈이 없어요.") is None
-    assert _lead_format_reason("머리말 없는 문단도 괜찮아요.") is None
-    assert _lead_format_reason("**짝이 안 맞아요 본문이에요.") is not None
-    assert _lead_format_reason("본문 가운데 **굵게** 쓰면 별표가 보여요.") is not None
-    assert _lead_format_reason("**머리말** 본문 **또 굵게**") is not None
+    good = "**집을 산 날 바로 빌렸어요** 같은 날 근저당을 잡았어요.\n**경매로 가면** 내 보증금 중 **5,000만원**만 남아요."
+    assert _shape_reason(good) is None
+    assert _shape_reason("머리말 없는 문단도 괜찮아요.") is None
+    assert _shape_reason("본문 가운데 **굵게** 한 곳은 괜찮아요.") is None
+    assert "짝이 안 맞아요" in _shape_reason("**짝이 안 맞아요 본문이에요.")
+    # 실기기(pro4): 머리말 하나에 문장 10개 — 숫자로 사유를 준다
+    wall = "**나보다 먼저 받아갈 빚이 시세의 97%예요** " + "지금 살아 있는 빚 2건 합계가 4억 1,200만원이에요. " * 6
+    why = _shape_reason(wall)
+    assert why and "1번째 문단 본문이" in why and "문장" in why
+    assert "문단이 5개예요" in _shape_reason("\n".join(f"**머리{i}** 본문이에요." for i in range(5)))
+    assert "머리말이" in _shape_reason("**" + "아주 긴 머리말이 한 줄을 훌쩍 넘어가요 정말로" + "** 본문.")
+    assert "굵게가 너무" in _shape_reason("**머리** 본문 **하나** 그리고 **둘** 이에요.")
+    # 다듬기: 빈 줄·짝 없는 별표
+    assert _tidy_shape("**머리** 본문.\n\n짝 없는 ** 별표") == "**머리** 본문.\n짝 없는  별표"

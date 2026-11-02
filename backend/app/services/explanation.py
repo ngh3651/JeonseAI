@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import re
 import logging
 import os
 import time
@@ -326,8 +327,6 @@ def _field_reason(
     2026-11-01: 숫자가 재료에 **있는지**에 더해 **제자리에 쓰였는지**(fact_ledger)도 본다.
     """
     reason = text_guard.check(text, max_len=_MAX_LEN[kind], allowed=allowed, grade=grade)
-    if reason is None and kind == "easy_explanation":
-        reason = _lead_format_reason(text)
     if reason is None:
         try:
             meaning = fact_ledger.check(text, ledger)
@@ -339,22 +338,61 @@ def _field_reason(
     return reason
 
 
-def _lead_format_reason(text: str) -> str | None:
-    """'이 집 핵심' 문단 모양 검사 (2026-11-01) — 깨진 굵은 표시만 막는다.
+#: '이 집 핵심' 모양 예산 (2026-11-02 solar-pro4) — 화면 폭에 맞춘 **표시** 수치(판정 아님).
+#: pro4는 하고 싶은 말이 많아 머리말 하나에 문장 10개를 붙인 벽돌 글을 썼다(실기기). 숫자로 묶고, 넘으면 숫자로 고쳐 쓰게 한다.
+SHAPE_MAX_PARAGRAPHS = 4
+SHAPE_LEAD_MAX_CHARS = 24  # 머리말 = 굵은 한 줄(폰 폭)
+SHAPE_BODY_MAX_CHARS = 170  # 문단 본문(지시는 120자 안)
+SHAPE_BODY_MAX_SENTENCES = 3  # 문단 본문 문장 수(지시는 1~2문장)
+SHAPE_BODY_BOLD_MAX = 1  # 본문 안 굵게(머리말 말고) — 문단마다
+SHAPE_BOLD_MAX_CHARS = 16
 
-    앱은 문단 맨 앞 `**머리말**`을 굵은 한 줄로 따로 세운다(`splitLeadParagraph`). `**`가 짝이 안 맞으면
-    화면에 별표가 그대로 보이므로 그 카드만 준비된 문구로 돌린다. 머리말이 없는 문단은 그냥 문단으로 그려지니
-    **막지 않는다**(괜히 폴백을 늘리지 않게).
+_SENTENCE_END = re.compile(r"[.!?。](?=\s|$)")
+_BOLD_SPAN = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _sentence_count(text: str) -> int:
+    t = text.strip()
+    if not t:
+        return 0
+    n = len(_SENTENCE_END.findall(t))
+    return n + (0 if _SENTENCE_END.search(t[-1:] + " ") else 1)
+
+
+def _shape_reason(text: str) -> str | None:
+    """'이 집 핵심' 모양 검사 (2026-11-02) — **고쳐 쓰게만** 한다. 틀린 말을 막는 검사가 아니라 읽기 좋은 모양을 지키는 검사다.
+
+    모양만 어긋난 글은 준비된 문구로 내리지 않는다(이 집 맞춤 내용이 더 낫다) — 한 번 고쳐 쓰게 하고, 그래도 어긋나면 나은 쪽을 쓴다.
+    통과면 None, 아니면 **숫자를 담은** 고쳐 쓰기 사유.
     """
-    for para in text.split("\n"):
-        n = para.count("**")
-        if n == 0:
-            continue
-        if n != 2 or not para.lstrip().startswith("**"):
-            return "굵은 표시(**)는 문단 맨 앞 머리말에만"
+    paras = [p.strip() for p in text.split("\n") if p.strip()]
+    if len(paras) > SHAPE_MAX_PARAGRAPHS:
+        return f"문단이 {len(paras)}개예요. 가장 중요한 것만 남겨 문단 2~{SHAPE_MAX_PARAGRAPHS}개로 묶어 주세요"
+    for i, para in enumerate(paras, 1):
+        if para.count("**") % 2:
+            return f"{i}번째 문단의 굵은 표시(**)가 짝이 안 맞아요. **머리말**처럼 짝을 맞춰 주세요"
+        m = re.match(r"^\*\*(.+?)\*\*\s*(.*)$", para, re.S)
+        lead, body = (m.group(1).strip(), m.group(2).strip()) if m else (None, para)
+        if lead is not None and len(lead) > SHAPE_LEAD_MAX_CHARS:
+            return f"{i}번째 머리말이 {len(lead)}자예요. 머리말은 한 줄(20자 안)로 줄이고 나머지는 본문에 쓰세요"
+        plain = _BOLD_SPAN.sub(lambda x: x.group(1), body)
+        n_sent = _sentence_count(plain)
+        if len(plain) > SHAPE_BODY_MAX_CHARS or n_sent > SHAPE_BODY_MAX_SENTENCES:
+            return (
+                f"{i}번째 문단 본문이 {len(plain)}자·{n_sent}문장이에요. 문단마다 굵은 머리말 + 1~2문장(120자 안)으로 쓰고,"
+                f" 넘치는 내용은 머리말을 단 새 문단으로 나누세요(문단은 {SHAPE_MAX_PARAGRAPHS}개까지, 덜 중요한 말은 빼세요)"
+            )
+        spans = _BOLD_SPAN.findall(body)
+        if len(spans) > SHAPE_BODY_BOLD_MAX or any(len(x) > SHAPE_BOLD_MAX_CHARS for x in spans):
+            return f"{i}번째 문단 본문의 굵게가 너무 많거나 길어요. 본문 굵게는 문단마다 1곳, 핵심 숫자나 말 3~12자만"
     return None
 
 
+def _tidy_shape(text: str) -> str:
+    """모양을 기계로 다듬는다(뜻은 그대로) — 빈 줄 없애기 · 짝 없는 별표 지우기. 고쳐 쓰기로도 남은 작은 흠만."""
+    paras = [p.strip() for p in (text or "").replace("\r", "").split("\n") if p.strip()]
+    paras = [p.replace("**", "") if p.count("**") % 2 else p for p in paras]
+    return "\n".join(paras)
 
 
 class _RepairPayload(BaseModel):
@@ -527,18 +565,25 @@ def _generate_with_llm(
     by_id = {e.id: e.easy_explanation for e in payload.evidences}
     grade_of = {e.id: e.grade.value for e in verdict.evidences}
     card_reason: dict[str, str | None] = {}
+    #: 모양만 어긋난 카드(틀린 말은 없다) — 고쳐 쓰게 하되 준비된 문구로 내리지는 않는다(2026-11-02 pro4)
+    shape_reason: dict[str, str] = {}
     for eid in texts["evidences"]:
         candidate = by_id.get(eid)
         card_reason[eid] = (
             "응답 누락" if candidate is None
             else _field_reason("easy_explanation", candidate, allowed, grade_of.get(eid), ledger)
         )
+        if candidate is not None and card_reason[eid] is None:
+            shape = _shape_reason(candidate)
+            if shape:
+                shape_reason[eid] = shape
 
     # ── 고쳐 쓰기 한 번 (2026-11-01) ───────────────────────────────────────
     # 검사에 걸린 칸을 바로 준비된 문구로 내리지 않고, **왜 걸렸는지**를 알려 그 칸만 한 번 다시 쓰게 한다.
     # AI 문장을 틀에 가두지 않으면서(고정 문구로 바꾸지 않는다) 틀린 숫자·뜻은 화면에 닿지 못하게 하는 자리.
     # 다시 쓴 글도 **같은 검사**를 다시 통과해야 쓴다. 그래도 걸리면 준비된 문구.
     retry = {k: v for k, v in card_reason.items() if v}
+    retry.update({k: f"모양: {v}" for k, v in shape_reason.items()})
     if head_reason:
         retry["headline"] = head_reason
     if retry:
@@ -557,6 +602,17 @@ def _generate_with_llm(
                     card_reason[eid] = None
                 else:
                     card_reason[eid] = f"{card_reason[eid]} → 고쳐 쓴 글도 {again}"
+            elif eid in shape_reason and text_fixed:
+                # 모양만 고쳐 쓴 글 — 틀린 말 검사를 다시 지나야 쓰고, 모양이 더 나빠지지 않았을 때만 바꾼다
+                if _field_reason("easy_explanation", text_fixed, allowed, grade_of.get(eid), ledger) is None:
+                    if _shape_reason(text_fixed) is None or len(text_fixed) <= len(by_id[eid]):
+                        by_id[eid] = text_fixed
+        if shape_reason:
+            still = [eid for eid in shape_reason if _shape_reason(by_id[eid])]
+            _log.info(
+                f"[설명:{provider.name}] 모양 고쳐 쓰기 {len(shape_reason)}칸 → 그대로 남은 {len(still)}칸"
+                " (모양만 어긋난 칸은 AI 글을 그대로 씀)"
+            )
 
     if head_reason is None:
         texts["headline"] = payload.headline.strip()
@@ -572,7 +628,7 @@ def _generate_with_llm(
     for eid in texts["evidences"]:
         reason = card_reason.get(eid)
         if reason is None:
-            texts["evidences"][eid]["easy_explanation"] = by_id[eid].strip()
+            texts["evidences"][eid]["easy_explanation"] = _tidy_shape(by_id[eid])
             applied += 1
             evidence_sources[eid] = provider.model
         else:

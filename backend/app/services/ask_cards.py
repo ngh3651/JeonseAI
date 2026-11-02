@@ -299,14 +299,16 @@ def build(report: Report) -> AskCards:
 # ══════════════════════════════════════════════════════════════════════════════
 
 _POLISH_CACHE: dict[tuple[str, str], dict[str, str]] = {}
-_POLISH_MAX_LEN = 150
+#: 2026-11-02 pro4: 153자로 3자 넘겨 버려졌다(실기기) — 지시는 그대로 짧게, 상한만 조금 넓힌다
+_POLISH_MAX_LEN = 180
 
 _POLISH_PROMPT = """당신은 전세 계약 앱에서 '중개사에게 물어볼 질문' 카드의 "왜 물어봐야 하나" 문장을 쓰는 역할입니다.
 읽는 사람은 부동산을 처음 해 보는 사회초년생입니다.
 
 입력: 질문 카드 목록. 카드마다 제목, '이_집에서_본_것'(등기부 사실), '기본_문장'(우리가 쓴 문장)이 있습니다.
 
-할 일: 카드마다 기본_문장을 **이 집 사실이 드러나게** 2~3문장(80~130자)으로 다시 쓰세요.
+할 일: 카드마다 기본_문장을 **이 집 사실이 드러나게** 2~3문장(90~150자, 많아야 170자)으로 다시 쓰세요.
+가장 중요한 말 1곳(3~12자)만 **굵게** 해도 돼요.
 1. 숫자(금액·날짜·건수·개월)는 입력에 있는 것만 쓰세요. 입력에 없는 숫자를 쓰면 그 카드는 버려집니다.
 2. 집이 위험하다/안전하다, 계약해도 된다/안 된다 같은 판정을 하지 마세요. "괜찮아요" "걱정 마세요" 금지.
 3. "~해요" 말투로 쓰세요. 쉬운 말을 먼저 쓰고, 꼭 필요한 용어만 쓰세요.
@@ -367,12 +369,25 @@ def _polish_call(report: Report, bundle: AskCards, *, call=None) -> dict[str, st
     ids = {c.id for c in bundle.cards}
     out: dict[str, str] = {}
     drops: list[str] = []
+    # 숫자가 **제자리에** 쓰였나(2026-11-02) — 리포트·판례와 같은 이 집 숫자 장부로 본다
+    try:
+        from . import fact_ledger
+
+        ledger = fact_ledger.for_report(report, loss_estimate.estimate(report))
+    except Exception:  # noqa: BLE001 — 장부를 못 만들면 예전 검사만
+        _log.error("[4장 질문] ⚠ 숫자 장부를 만들지 못함 — 예전 검사만", exc_info=True)
+        ledger = None
     for item in (data.get("cards") or []) if isinstance(data, dict) else []:
         cid = str(item.get("id") or "")
         why = re.sub(r"\s+", " ", str(item.get("why") or "")).strip()
         if cid not in ids or not why:
             continue
         reason = text_guard.check(why, max_len=_POLISH_MAX_LEN, allowed=allowed, grade=report.grade)
+        if not reason and ledger is not None:
+            try:
+                reason = fact_ledger.check(why, ledger)
+            except Exception:  # noqa: BLE001
+                reason = None
         if reason:
             drops.append(f"{cid}:{reason}")
             continue

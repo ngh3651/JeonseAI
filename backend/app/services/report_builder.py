@@ -8,6 +8,7 @@ sourceText·deposit·marketPrice·seniorDebtAmount·gaugeProgress)는 **RuleVerd
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import re
 import os
@@ -57,6 +58,9 @@ from .patterns import tags_from_verdict as issue_tags_from_verdict
 
 KST = timezone(timedelta(hours=9))
 _log = logging.getLogger("jeonseai")
+
+#: 설명 쓰기·판례 미리 찾기를 리포트 조립과 나란히 돌리는 일꾼 (2026-11-03 속도)
+_BG_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="bg")
 
 # 근거 카드 표시 순서: 심각한 것 먼저(결론 먼저 원칙), 같은 등급 안에서는 고정 순서
 #: 앱이 분석을 중단했는지(연결을 끊었는지) IE·OCR을 기다리는 동안 몇 초마다 볼지 (2026-10-29)
@@ -184,6 +188,7 @@ def _build(
     blacklist_override: "EvidenceVerdict | None" = None,
     house_types: list[str] | None = None,
     property_address: str | None = None,
+    on_draft: "Callable[[Report], None] | None" = None,
 ) -> tuple[Report, "explanation.ExplanationResult"]:
     """조립 본체 — (Report, 설명 생성 결과)를 돌려준다.
 
@@ -221,6 +226,97 @@ def _build(
     # 카드 펼침(숫자 줄·할 일·큰 줄·그림)은 규칙 값만으로 먼저 만든다 — 설명이 할 일을 되풀이하지 않게 할 일을 재료로 넘긴다
     views = {ev.id: evidence_view.build(ev, verdict, risk_facts, loss) for ev in verdict.evidences}
     verdict.card_todo = {eid: list(v["todo"]) for eid, v in views.items() if v["todo"]}
+
+    def assemble(texts: dict, evidence_sources: dict) -> Report:
+        """설명 문장(texts) + 규칙 값 → Report. 초안(준비된 문구)과 완성본이 **같은 조립**을 지나게 한 곳에 둔다."""
+
+        # 용어 툴팁 자동 부착 (2026-08-05) — **최종 문장**을 훑는다.
+        # LLM 문장이든 폴백 문장이든 여기를 지나므로, '용어가 본문에 등장해야 한다'는
+        # 계약 §2.2 전제가 어느 경로에서도 깨지지 않는다.
+        for _body in texts["evidences"].values():
+            _body["term_glossary"] = terms.attach(_body.get("easy_explanation") or "")
+
+        address = verdict.address or "주소 미확인 (등기부 원본 확인 필요)"
+        # 별칭 폴백은 축약 주소('○○동'부터) — 홈 카드 제목이 전체 주소로 길어지지 않게.
+        # Report.address는 전체 주소 유지(리포트 화면에서 확인) — 계약 §3.1 해석 범위 내.
+        resolved_alias = alias.strip() if (alias and alias.strip()) else short_address(address)
+
+        ordered = sorted(
+            verdict.evidences,
+            key=lambda e: (_SEVERITY_ORDER[e.grade], _CANONICAL_ORDER.index(e.id)),
+        )
+        evidences = []
+        for ev in ordered:
+            t = texts["evidences"][ev.id]
+            view = views[ev.id]  # [UI — 규칙 값만] 펼침의 숫자 줄·막대·할 일·큰 줄·그림
+            evidences.append(
+                Evidence(
+                    id=ev.id,
+                    title=t["title"],
+                    termSubtitle=t["term_subtitle"],
+                    grade=ev.grade.value,  # [판정] — RuleVerdict에서만
+                    statusLabel=ev.status_label,  # [판정]
+                    easyExplanation=text_guard.soften_dashes(t["easy_explanation"]),  # [설명] 줄표 없이(2026-10-31)
+                    detailText=ev.detail_text,  # [판정]
+                    sourceText=ev.source_text,  # [판정]
+                    actionLabel=t["action_label"],  # [UI]
+                    # [설명] 설명 속 용어 + '이 집에서 할 일' 속 용어(말소·특약 등 — 2026-10-31 페르소나 리뷰: 할 일에 풀이가 없었다)
+                    termGlossary=_merge_glossary(t["term_glossary"], terms.attach("\n".join(view["todo"]))),
+                    # [설명 출처 · D26] 이 카드의 문장을 모델이 썼는지 준비된 문구인지.
+                    # 카드마다 다를 수 있다(설명 폴백은 필드 단위다 — explanation.py 참고).
+                    explanationSource=evidence_sources.get(ev.id),
+                    points=view["points"],
+                    meter=view["meter"],
+                    todo=view["todo"],
+                    hero=view["hero"],  # [UI — 규칙 값만] 2026-11-01 맨 위 큰 한 줄
+                    visual=view["visual"],  # [UI — 규칙 값만] 2026-11-01 그림(줄 서기·조건 칸·구간)
+                )
+            )
+
+        report = Report(
+            id=resolved_id,
+            alias=resolved_alias,
+            address=address,
+            analyzedAt=now.isoformat(),
+            grade=verdict.grade.value,  # [판정]
+            gaugeProgress=verdict.gauge_progress,  # [메타 — 판정 파생 공식]
+            headline=text_guard.soften_dashes(texts["headline"]),  # [설명]
+            nextAction=texts["next_action"],  # [설명 — 결정적 템플릿 유지 (decisions.md 2026-07-07)]
+            topRiskSummary=texts["top_risk_summary"],  # [설명]
+            deposit=verdict.deposit,  # [판정]
+            marketPrice=verdict.market_price,  # [판정]
+            # [출처 — 표시 전용] 판정에 쓰인 값이 어디서 왔는지. 판정에는 영향이 없다.
+            marketPriceSource=price_info.source if price_info else None,
+            marketPriceAsOf=(price_info.as_of or None) if price_info else None,
+            marketPriceSampleCount=price_info.sample_count if price_info else None,
+            marketPriceGapPct=price_info.gap_pct if price_info else None,
+            marketPriceAlternatives=(
+                [
+                    MarketPriceAlternative(
+                        source=c.source,
+                        sourceName=c.source_name,
+                        price=c.price_won,
+                        asOf=c.as_of or None,
+                        sampleCount=c.sample_count,
+                        detail=c.detail or None,
+                    )
+                    for c in price_info.alternatives
+                ]
+                if price_info
+                else []
+            ),
+            seniorDebtAmount=verdict.senior_debt_amount,  # [판정]
+            evidences=evidences,
+            highlights=highlights or [],  # [표시 전용] — 판정에 영향 없음
+            highlightNotice=highlight_notice,  # [표시 전용] 사진 묶음 안내 (없으면 None)
+            checkedNotes=checked_notes or [],  # [표시 전용] 무엇을 찾아봤는지 요약
+            registryViewedAt=registry_viewed_at,  # [표시 전용] 등기부 열람일시 (없으면 None)
+            riskFacts=risk_facts,  # [판례 설명 재료] 판정·화면에 쓰지 않음, 이름 없음
+            ownerFacts=registry_facts.owner_facts(extract),  # [4장 질문 재료] 판정·화면에 쓰지 않음, 이름 없음
+            riskTags=issue_tags_from_verdict(verdict),  # [판례·질문 재료] 이 집에 실제로 걸린 문제 — 판정에 쓰지 않음
+        )
+        return report
+
     if use_llm:
         # LLM은 설명 문장만 — 실패 시 내부에서 폴백으로 완성돼 돌아온다(리포트 항상 완성)
         # 이 집 숫자 장부(2026-11-01) — AI 문장의 숫자가 **제자리에** 쓰였는지 보는 기준(fact_ledger). 판정 뒤라 등급과 무관하다.
@@ -229,7 +325,22 @@ def _build(
         except Exception:  # noqa: BLE001 — 장부를 못 만들면 숫자 뜻 검사만 빠진다(리포트는 그대로)
             _log.error("[설명] ⚠ 이 집 숫자 장부를 못 만들었어요 — 숫자 뜻 검사 없이", exc_info=True)
             ledger = None
-        explanation_result = explanation.generate(verdict, report_id=resolved_id, ledger=ledger)
+        if on_draft is None:
+            explanation_result = explanation.generate(verdict, report_id=resolved_id, ledger=ledger)
+        else:
+            # 판례를 설명과 **동시에** (2026-11-03 속도) — 설명(Solar 6~20초)을 뒤에서 쓰는 동안, 규칙 값은 같고 문장만
+            # 준비된 문구인 '초안 리포트'를 넘겨 판례 찾기를 먼저 시작한다. 판례는 문장(설명)을 보지 않으니 결과가 같다.
+            # 예전엔 리포트가 나온 뒤 앱이 판례를 따로 불러 9~14초를 더 기다렸다(로딩 '1초 남았어요'에서 멈춰 보이던 까닭).
+            exp_future = _BG_POOL.submit(
+                contextvars.copy_context().run,
+                explanation.generate, verdict, report_id=resolved_id, ledger=ledger,
+            )
+            try:
+                _draft_texts = fallback_texts.build(verdict)
+                on_draft(assemble(_draft_texts, {}))
+            except Exception:  # noqa: BLE001 — 판례 미리 찾기가 리포트를 막지 못한다(앱이 따로 부르면 그때 찾는다)
+                _log.error("[판례] ⚠ 미리 찾기 시작 실패 — 리포트 뒤에 찾습니다", exc_info=True)
+            explanation_result = exp_future.result()
     else:
         _forced = fallback_texts.build(verdict)
         explanation_result = explanation.ExplanationResult(
@@ -240,93 +351,7 @@ def _build(
                 eid: explanation.FALLBACK_SOURCE_LABEL for eid in _forced["evidences"]
             },
         )
-    texts = explanation_result.texts
-
-    # 용어 툴팁 자동 부착 (2026-08-05) — **최종 문장**을 훑는다.
-    # LLM 문장이든 폴백 문장이든 여기를 지나므로, '용어가 본문에 등장해야 한다'는
-    # 계약 §2.2 전제가 어느 경로에서도 깨지지 않는다.
-    for _body in texts["evidences"].values():
-        _body["term_glossary"] = terms.attach(_body.get("easy_explanation") or "")
-
-    address = verdict.address or "주소 미확인 (등기부 원본 확인 필요)"
-    # 별칭 폴백은 축약 주소('○○동'부터) — 홈 카드 제목이 전체 주소로 길어지지 않게.
-    # Report.address는 전체 주소 유지(리포트 화면에서 확인) — 계약 §3.1 해석 범위 내.
-    resolved_alias = alias.strip() if (alias and alias.strip()) else short_address(address)
-
-    ordered = sorted(
-        verdict.evidences,
-        key=lambda e: (_SEVERITY_ORDER[e.grade], _CANONICAL_ORDER.index(e.id)),
-    )
-    evidences = []
-    for ev in ordered:
-        t = texts["evidences"][ev.id]
-        view = views[ev.id]  # [UI — 규칙 값만] 펼침의 숫자 줄·막대·할 일·큰 줄·그림
-        evidences.append(
-            Evidence(
-                id=ev.id,
-                title=t["title"],
-                termSubtitle=t["term_subtitle"],
-                grade=ev.grade.value,  # [판정] — RuleVerdict에서만
-                statusLabel=ev.status_label,  # [판정]
-                easyExplanation=text_guard.soften_dashes(t["easy_explanation"]),  # [설명] 줄표 없이(2026-10-31)
-                detailText=ev.detail_text,  # [판정]
-                sourceText=ev.source_text,  # [판정]
-                actionLabel=t["action_label"],  # [UI]
-                # [설명] 설명 속 용어 + '이 집에서 할 일' 속 용어(말소·특약 등 — 2026-10-31 페르소나 리뷰: 할 일에 풀이가 없었다)
-                termGlossary=_merge_glossary(t["term_glossary"], terms.attach("\n".join(view["todo"]))),
-                # [설명 출처 · D26] 이 카드의 문장을 모델이 썼는지 준비된 문구인지.
-                # 카드마다 다를 수 있다(설명 폴백은 필드 단위다 — explanation.py 참고).
-                explanationSource=explanation_result.evidence_sources.get(ev.id),
-                points=view["points"],
-                meter=view["meter"],
-                todo=view["todo"],
-                hero=view["hero"],  # [UI — 규칙 값만] 2026-11-01 맨 위 큰 한 줄
-                visual=view["visual"],  # [UI — 규칙 값만] 2026-11-01 그림(줄 서기·조건 칸·구간)
-            )
-        )
-
-    report = Report(
-        id=resolved_id,
-        alias=resolved_alias,
-        address=address,
-        analyzedAt=now.isoformat(),
-        grade=verdict.grade.value,  # [판정]
-        gaugeProgress=verdict.gauge_progress,  # [메타 — 판정 파생 공식]
-        headline=text_guard.soften_dashes(texts["headline"]),  # [설명]
-        nextAction=texts["next_action"],  # [설명 — 결정적 템플릿 유지 (decisions.md 2026-07-07)]
-        topRiskSummary=texts["top_risk_summary"],  # [설명]
-        deposit=verdict.deposit,  # [판정]
-        marketPrice=verdict.market_price,  # [판정]
-        # [출처 — 표시 전용] 판정에 쓰인 값이 어디서 왔는지. 판정에는 영향이 없다.
-        marketPriceSource=price_info.source if price_info else None,
-        marketPriceAsOf=(price_info.as_of or None) if price_info else None,
-        marketPriceSampleCount=price_info.sample_count if price_info else None,
-        marketPriceGapPct=price_info.gap_pct if price_info else None,
-        marketPriceAlternatives=(
-            [
-                MarketPriceAlternative(
-                    source=c.source,
-                    sourceName=c.source_name,
-                    price=c.price_won,
-                    asOf=c.as_of or None,
-                    sampleCount=c.sample_count,
-                    detail=c.detail or None,
-                )
-                for c in price_info.alternatives
-            ]
-            if price_info
-            else []
-        ),
-        seniorDebtAmount=verdict.senior_debt_amount,  # [판정]
-        evidences=evidences,
-        highlights=highlights or [],  # [표시 전용] — 판정에 영향 없음
-        highlightNotice=highlight_notice,  # [표시 전용] 사진 묶음 안내 (없으면 None)
-        checkedNotes=checked_notes or [],  # [표시 전용] 무엇을 찾아봤는지 요약
-        registryViewedAt=registry_viewed_at,  # [표시 전용] 등기부 열람일시 (없으면 None)
-        riskFacts=risk_facts,  # [판례 설명 재료] 판정·화면에 쓰지 않음, 이름 없음
-        ownerFacts=registry_facts.owner_facts(extract),  # [4장 질문 재료] 판정·화면에 쓰지 않음, 이름 없음
-        riskTags=issue_tags_from_verdict(verdict),  # [판례·질문 재료] 이 집에 실제로 걸린 문제 — 판정에 쓰지 않음
-    )
+    report = assemble(explanation_result.texts, explanation_result.evidence_sources)
     return report, explanation_result
 
 
@@ -684,6 +709,26 @@ def rejudge(
     return fresh.model_copy(update=keep)
 
 
+def _masked_draft(
+    draft: Report,
+    extract: RegistryExtract,
+    house_types: list[str],
+    doc_check: "ocr_layout.DocumentCheck | None",
+) -> Report:
+    """초안 리포트 → **저장될 가린 사본과 같은 모양** (2026-11-03 속도 — 설명을 쓰는 동안 판례를 먼저 찾게).
+
+    앱이 판례를 부를 때 읽는 것은 저장된 가린 사본이다 — 아래에서 analyze가 채우는 값(쪽 머리 주소·용도·사람 이름)을
+    같게 채우고 같은 방법으로 가린다. 판정은 이미 끝났다(이 사본은 등급을 못 움직인다).
+    """
+    draft.propertyAddress = doc_check.header_address if doc_check is not None else None
+    draft.houseTypes = list(house_types or [])
+    try:
+        draft.personNames = name_privacy.person_names(extract)
+    except Exception:  # noqa: BLE001
+        draft.personNames = name_privacy.owner_names_fallback(extract)
+    return name_privacy.mask_report_for_storage(draft)
+
+
 def price_address(ie_address: str | None, doc_check: "ocr_layout.DocumentCheck | None") -> str | None:
     """시세 조회에 쓸 주소 (2026-10-31) — IE 주소에 **호수가 없고** 쪽 머리 주소에 있으면 쪽 머리 주소.
 
@@ -729,8 +774,12 @@ def analyze(
     device_id: str,
     capture: CaptureCheck | None = None,
     cancelled: Callable[[], bool] | None = None,
+    draft_hook: "Callable[[Report], None] | None" = None,
 ) -> Report:
     """업로드 이미지 → (IE ∥ OCR→구조화) → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)
+
+    `draft_hook`(2026-11-03 속도): 판정이 끝나 설명을 쓰기 시작할 때 **저장될 가린 사본과 같은 모양의 초안**을 받는다
+    (설명 문장만 준비된 문구). 라우터가 이것으로 판례 찾기를 먼저 시작한다 — 이 모듈은 판례를 모른다.
 
     `cancelled`: 앱이 분석을 중단했는가(연결을 끊었나)를 묻는 함수(2026-10-29, 라우터가 준다). 단계 사이마다 물어
     참이면 [AnalysisCancelled] — **아직 시작 안 한** IE·OCR·Solar 호출을 건너뛰고 아무것도 저장하지 않는다.
@@ -1090,6 +1139,11 @@ def analyze(
         price_info=price_info,
         house_types=house_types,
         property_address=doc_check.header_address if doc_check is not None else None,
+        on_draft=(
+            (lambda draft: draft_hook(_masked_draft(draft, extract, house_types, doc_check)))
+            if draft_hook is not None
+            else None
+        ),
     )
     if mask_result is not None:
         report.privacyMasks = mask_result.masks

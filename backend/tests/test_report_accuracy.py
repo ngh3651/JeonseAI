@@ -470,3 +470,12 @@ def test_고쳐_쓰기는_짧게_기다린다(monkeypatch, solar_key):
     with pytest.raises(explainer.requests.exceptions.ReadTimeout):
         explainer._call_solar([], "key")
     assert sent == [explainer._REPAIR_TIMEOUT, explainer._REQUEST_TIMEOUT]
+
+
+def test_챗봇_답_길이는_900자까지_넘으면_몇_자인지_알려_준다():
+    """solar-pro4는 답이 더 자세하다 — 700자 목록 답은 통과, 넘으면 고쳐 쓸 목표를 숫자로(2026-11-02)."""
+    ok = "· 이 앱은 등기부의 빚과 압류를 찾아요.\n" * 30  # 약 690자
+    assert len(ok) < text_guard.CHAT_MAX_LEN
+    assert text_guard.check_chat_reply(ok, allowed={0.0}) is None
+    hit = text_guard.check_chat_reply("가" * 950, allowed={0.0})
+    assert hit is not None and hit[0] == "길이" and "950자" in hit[1] and "700자" in hit[1]

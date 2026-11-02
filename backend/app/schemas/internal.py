@@ -197,9 +197,6 @@ class RegistryExtract(BaseModel):
     # 왜 불완전한가 한 줄 (2026-10-29 QA) — "1·5쪽이 빠졌어요" · "2쪽이 잘 안 읽혔어요".
     # 게이트가 '확인 필요'로 올린 카드가 **그 이유**를 말하게 하는 설명 재료다. 판정에 쓰지 않는다.
     pages_incomplete_reason: Optional[str] = None
-    # IE가 늦어 두 번째 읽기(OCR 글자 → 구조화)로만 판정했다 (2026-11-02, IE 35초 상한) — 분석 조립이 켠다.
-    # 두 방법을 맞춰 보지 못했으니 아래 [doc_incomplete] 게이트가 '양호'를 막는다. 사진 탓이 아니라서 pages_incomplete와 따로 둔다.
-    read_by_second_only: bool = False
     # 등기부에 '신청사건 처리중' 표시가 있다 (2026-10-31 잔금 당일 빈틈) — IE가 아니라 분석 조립이 OCR 글자로 켠다.
     # 등기소에 접수돼 아직 기록되지 않은 신청이 있다는 뜻이다(등기예규 제1815호 2.다.1). 켜지면 규칙 엔진이
     # '확인 필요' 카드 하나를 더한다 — 무엇인지 모르는 변화라 위험도 양호도 아니다(보수적 편향 §2-3).
@@ -269,7 +266,6 @@ class RegistryExtract(BaseModel):
             or self.address is None
             or not self.current_owners
             or self.pages_incomplete
-            or self.read_by_second_only
         )
 
 

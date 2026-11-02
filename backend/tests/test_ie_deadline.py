@@ -2,7 +2,7 @@
 
 2026-11-02 아침 IE가 88초·150초 걸려 앱이 99%에서 멈췄다(같은 키로 곧 17.5초로 돌아옴 — Upstage 서버 지연).
 상한이 지나도 IE가 안 왔고 두 번째 읽기(OCR 글자 → 구조화, IE와 같은 모양)가 끝나 있으면 그 결과로 판정한다.
-판정은 그대로 규칙 엔진이 하고, 두 방법을 맞춰 보지 못했으니 '양호'는 막는다.
+판정은 그대로 규칙 엔진이 한다. 2026-11-03 규혁 결정: '양호'도 막지 않는다 — IE로 읽은 것과 같은 판정이 나온다.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def _slow_ie(monkeypatch, seconds: float, raw: dict) -> list[float]:
     return started
 
 
-def test_IE가_상한을_넘으면_두_번째_읽기로_판정하고_양호를_막는다(client, no_network, monkeypatch):
+def test_IE가_상한을_넘으면_두_번째_읽기로_판정한다(client, no_network, monkeypatch):
     monkeypatch.setenv("IE_DEADLINE_SECONDS", "0.3")
     no_network(registry_raw(), [GOOD])
     _with_second(monkeypatch, registry_raw())
@@ -59,7 +59,7 @@ def test_IE가_상한을_넘으면_두_번째_읽기로_판정하고_양호를_�
     late = [n for n in body["checkedNotes"] if "문서 읽기 서버가 늦어" in n]
     assert late and "한 가지 방법으로만" in late[0], "앱 뷰어가 보여 주는 낱말이 들어 있어야 한다"
     assert not any("분석 결과에는 영향이 없어요" in n for n in body["checkedNotes"]), "늦은 IE면 틀린 말"
-    assert body["grade"] != "양호"
+    assert not any("양호" in n and "단정" in n for n in body["checkedNotes"]), "'양호'를 막는다는 말은 이제 틀린 말"
 
 
 def test_두_번째_읽기가_없으면_IE를_끝까지_기다린다(client, no_network, monkeypatch):
@@ -116,15 +116,11 @@ def test_미리_조회한_주소가_IE와_다르면_IE_주소로_다시_조회�
     assert len(calls) == 2 and "다른동" in (calls[0] or "") and "다른동" not in (calls[1] or "")
 
 
-def test_늦은_IE_판정은_사진_탓으로_말하지_않는다():
-    """'양호'를 막는 이유가 사진 문제가 아니라 서버가 늦은 것임을 설명 재료가 그대로 말한다(2026-11-02 검토)."""
+def test_늦은_IE여도_두_번째_읽기_재료면_IE와_같은_판정이_나온다():
+    """2026-11-03 규혁 결정 — IE가 늦어 두 번째 읽기로 판정해도 '양호'를 막지 않는다(시연 중 전부 '확인 필요'가 되던 문제)."""
     from app.services import rule_engine
 
-    extract = RegistryExtract.from_raw(registry_raw())
-    extract.read_by_second_only = True
-    assert extract.doc_incomplete
+    extract = RegistryExtract.from_raw({**registry_raw(), "mortgages": []})
+    assert not extract.doc_incomplete
     v = rule_engine.evaluate(extract, deposit=100_000_000, market_price=400_000_000, blacklist_entries=[])
-    assert v.grade.value != "양호"
-    assert "사진 쪽 빠짐·잘 안 읽힘" not in v.doc_flags
-    assert any("서버가 늦어" in f for f in v.doc_flags)
-    assert "서버가 늦어" in rule_engine.incomplete_reason(extract)
+    assert not any("서버가 늦어" in f for f in v.doc_flags)

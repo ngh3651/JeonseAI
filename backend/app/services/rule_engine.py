@@ -713,16 +713,11 @@ def _judge_pending(extract: RegistryExtract) -> EvidenceVerdict | None:
 # ── 종합 파생 ────────────────────────────────────────────────────────────────
 
 
-#: IE가 늦어 두 번째 읽기로만 판정했을 때의 이유 한 줄(2026-11-02) — 카드가 '확인 필요'로 올라간 까닭
-SECOND_ONLY_REASON = "문서 읽기 서버가 늦어 사진 글자로만 읽었어요 — 잠시 뒤 다시 분석하면 '양호'까지 판정할 수 있어요"
-
 
 def incomplete_reason(extract: RegistryExtract) -> str:
     """문서가 불완전한 이유 한 줄 — 사진 점검이 준 이유가 먼저, 없으면 추출이 비운 칸으로."""
     if extract.pages_incomplete_reason:
         return extract.pages_incomplete_reason
-    if extract.read_by_second_only:
-        return SECOND_ONLY_REASON
     if extract.address is None:
         return "등기부에서 주소를 읽지 못했어요"
     if not extract.current_owners:
@@ -742,8 +737,6 @@ def _doc_flags(extract: RegistryExtract) -> list[str]:
         flags.append(f"{key} 항목 누락")
     if extract.pages_incomplete:
         flags.append("사진 쪽 빠짐·잘 안 읽힘")
-    if extract.read_by_second_only:
-        flags.append("문서 읽기 서버가 늦어 사진 글자로만 읽음 — 두 방법 대조 못 함(사진 탓 아님)")
     return flags
 
 

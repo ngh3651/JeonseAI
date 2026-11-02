@@ -40,7 +40,11 @@ _MAX_ATTEMPTS = 2
 _REPAIR_TIMEOUT = 30
 #: 이번 호출에만 쓸 기다림 상한 — `_call_solar(messages, api_key)` 모양을 그대로 두려고(테스트 이음매) 문맥 값으로 넘긴다
 _CALL_TIMEOUT: contextvars.ContextVar[float | None] = contextvars.ContextVar("precedent_call_timeout", default=None)
-_MAX_LEN = {"easy_summary": 220, "common_point": 240, "advice": 260}  # 표시 안정용 인프라 수치
+#: 표시 안정용 인프라 수치. 2026-11-02 pro4: 이 집 사실(순서·날짜·비율)을 더 엮어 쓰느라 살짝 길어져 조금 넓혔다
+#: (220·240·260 → 260·300·300). 지시는 그보다 짧게 준다 — 상한은 넘치면 고쳐 쓰게 하는 선이다.
+_MAX_LEN = {"easy_summary": 260, "common_point": 300, "advice": 300}
+#: 지시하는 목표 길이(자) — 길이에 걸렸을 때 숫자로 돌려준다
+_TARGET_LEN = {"easy_summary": "60~110", "common_point": "100~170", "advice": "80~160"}
 MAX_PICK = 4  # AI가 고를 최대 판례 수 (화면 카드 수)
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _HOLDING_EXCERPT_CHARS = 600  # 프롬프트에 싣는 요지 발췌 길이
@@ -87,15 +91,15 @@ _SYSTEM_PROMPT = """당신은 전세 위험 분석 앱의 '판례 통역사'입�
 - 용어(가압류·전입신고 같은 낱말)만 따로 굵게 하지 마세요.
 
 칸별로:
-- easy_summary (2문장, 60~90자): [판례 속에서 무슨 일이 있었나] + [법원이 어떻게 판단했나]. 판례 이야기만 하고 이 집 이야기는 하지 마세요.
+- easy_summary (2문장, 60~110자): [판례 속에서 무슨 일이 있었나] + [법원이 어떻게 판단했나]. 판례 이야기만 하고 이 집 이야기는 하지 마세요.
   사람이 쓴 '요약'이 있으면 그 뜻을 바꾸지 마세요.
-- common_point (2~3문장, 80~130자) — 이 칸이 가장 중요합니다:
+- common_point (2~3문장, 100~170자) — 이 칸이 가장 중요합니다:
   ① "판례 속 집은 ~였어요" (판결을 가른 핵심 조건 하나)
   ② "이 집도 ~예요" — **'이_매물'의 숫자나 사실을 반드시 하나 이상** (금액·건수·접수일·순서). 없으면 이 칸은 버려집니다.
   ③ (선택) "그래서 ~하면 판례처럼 ~될 수 있어요" 또는 "다만 ~는 달라요"(다른 점이 중요하면 솔직하게).
   "확인이 필요해요"처럼 어느 집에나 맞는 말로 끝내지 마세요.
   예: "판례 속 임차인은\n가압류가 걸린 뒤에\n이사 들어왔어요.\n이 집에도 **4억원** 가압류가\n이미 걸려 있어요.\n지금 계약하면\n판례와 같은 순서가 돼요."
-- advice (행동 2~3개, 70~120자): 한 행동에 한 문장, **[언제] [누구에게/어디서] [무엇을] 하세요**. 언제 = 계약 전 / 잔금 전 / 입주 다음 날.
+- advice (행동 2~3개, 80~160자): 한 행동에 한 문장, **[언제] [누구에게/어디서] [무엇을] 하세요**. 언제 = 계약 전 / 잔금 전 / 입주 다음 날.
   바로 할 수 있는 행동만 쓰고 "주의하세요"는 쓰지 마세요. common_point를 되풀이하지 마세요. 이 집 상황에 맞추세요.
   사람이 쓴 '조언'이 있으면 그 내용을 빠뜨리지 말고 이 집에 맞게 고쳐 쓰세요.
   예: "계약 전에 집주인에게\n가압류를 언제 풀지\n물어보세요.\n잔금 전까지 말소하겠다는\n약속을 **특약**에 넣으세요."
@@ -254,7 +258,7 @@ def _reason_text(kind: str, text: str, source: str, ledger: "fact_ledger.Ledger 
             return legal[1]
         return {
             "빈칸": "칸이 비었어요",
-            "길이": f"{_MAX_LEN[kind]}자를 넘었어요. 더 짧게 써 주세요",
+            "길이": f"지금 {len(text or '')}자라 {_MAX_LEN[kind]}자를 넘었어요. {_TARGET_LEN[kind]}자로 핵심만 남겨 주세요",
             "금지표현": "'안전해요·문제없어요·걱정 마세요' 같은 단정은 쓸 수 없어요",
             "등급단어": "'양호·확인 필요·위험' 같은 등급 이름은 쓸 수 없어요",
             "숫자": "입력에 없는 숫자를 썼어요. 입력의 '금액_표기'·숫자만 쓰세요",
@@ -506,6 +510,11 @@ def explain_matches(
         return {}, "폴백"
     missing = len(matches) - len(out)
     source = "AI 생성" if missing == 0 and dropped == 0 else "AI 생성(일부 폴백)"
-    _log.info(f"[Solar/판례] 응답 OK ({elapsed:.1f}초) — 설명 {len(out)}건 · 폐기/누락 {dropped + missing}건")
+    # 2026-11-02: '폐기/누락'이 버린 것과 **안 고른 것**(닮지 않아 고르지 않음 — 정상)을 같이 세서 원인을 못 봤다 → 나눠 찍는다
+    not_picked = max(0, len(matches) - len(seen_ids))
+    _log.info(
+        f"[Solar/판례] 응답 OK ({elapsed:.1f}초) — 설명 {len(out)}건 · 안 고름 {not_picked}건 · 버림 {dropped}건"
+        + (f" · 이유 {drops}" if drops else "")
+    )
     _remember("AI", kept=len(out), drops=drops, elapsed=elapsed)
     return out, source

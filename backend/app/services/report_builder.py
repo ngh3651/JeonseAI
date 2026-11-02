@@ -17,6 +17,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import wait as wait_futures
 from dataclasses import dataclass
+from typing import Any
 from datetime import datetime, timedelta, timezone
 
 from ..schemas.contract import CaptureCheck, Evidence, Highlight, MarketPriceAlternative, Report
@@ -59,6 +60,24 @@ _log = logging.getLogger("jeonseai")
 # 근거 카드 표시 순서: 심각한 것 먼저(결론 먼저 원칙), 같은 등급 안에서는 고정 순서
 #: 앱이 분석을 중단했는지(연결을 끊었는지) IE·OCR을 기다리는 동안 몇 초마다 볼지 (2026-10-29)
 CANCEL_POLL_SECONDS = 0.5
+
+
+def ie_deadline_seconds() -> float:
+    """IE(Information Extract)를 기다리는 상한 — 인프라 수치(판정 아님, 2026-11-02 규혁 결정 35초).
+
+    IE는 평소 17~26초인데 2026-11-02 아침 88초·150초가 나왔다(Upstage 서버 쪽 지연 — 같은 키로 곧 17.5초로 돌아옴).
+    분석 시작부터 이만큼 지나도 IE가 안 왔고 두 번째 읽기(OCR+구조화)가 끝나 있으면 그 결과로 판정한다.
+    `IE_DEADLINE_SECONDS=0`이면 끈다(예전처럼 IE를 끝까지 기다림).
+    """
+    try:
+        return max(0.0, float(os.environ.get("IE_DEADLINE_SECONDS", "35")))
+    except ValueError:
+        return 35.0
+
+
+def _price_key(address: str | None, area: float | None) -> tuple[str, float | None]:
+    """시세 조회 입력이 같은지 견주는 열쇠 — 띄어쓰기는 무시, 면적은 소수 첫째 자리."""
+    return ("".join((address or "").split()), round(area, 1) if area else None)
 
 
 class AnalysisCancelled(Exception):
@@ -753,20 +772,64 @@ def analyze(
     # 앱이 분석을 중단했으면(2026-10-29) 여기서 멈춘다 — IE·OCR을 한 번도 부르지 않는다(크레딧 0원)
     _raise_if_cancelled(cancelled, "IE·OCR")
     stop = threading.Event()  # 켜지면 OCR 쪽이 남은 장·구조화(Solar)를 건너뛴다
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="analyze") as pool:
+    deadline = ie_deadline_seconds()
+    ie_late = False  # IE를 기다리지 않고 두 번째 읽기로 판정한다(2026-11-02)
+    early_price: tuple[tuple[str, float | None], "Any"] | None = None  # (입력 열쇠, 미리 받아 둔 시세 조회 future)
+    # `with`를 쓰지 않는다 — 블록을 나갈 때 늦은 IE를 끝까지 기다리게 되기 때문이다(늦은 IE는 뒤에서 끝나고 버려진다).
+    pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="analyze")
+    try:
         ie_future = pool.submit(_timed, extraction.extract_registry, images, run_id=run_id)
         ocr_future = pool.submit(_timed, _ocr_then_second_opinion, images, run_id, stop)
-        if cancelled is not None:
-            # 기다리는 동안 앱이 끊었는지 본다. IE는 이미 보낸 한 번의 호출이라 멈출 수 없고 끝날 때까지 기다린다.
-            while not (ie_future.done() and ocr_future.done()):
-                wait_futures([ie_future, ocr_future], timeout=CANCEL_POLL_SECONDS)
-                if not stop.is_set() and cancelled():
-                    stop.set()
-        extract, ie_error, ie_elapsed = ie_future.result()
+        while not (ie_future.done() and ocr_future.done()):
+            wait_futures(
+                [f for f in (ie_future, ocr_future) if not f.done()],
+                timeout=CANCEL_POLL_SECONDS,
+                return_when="FIRST_COMPLETED",
+            )
+            if cancelled is not None and not stop.is_set() and cancelled():
+                stop.set()
+            if stop.is_set():
+                break  # 앱이 끊었다 — 결과를 버릴 테니 IE를 끝까지 기다리지 않는다
+            if not ocr_future.done():
+                continue
+            bundle_now = ocr_future.result()[0]
+            second_now = bundle_now.second_extract if bundle_now is not None else None
+            if second_now is None:
+                continue  # 두 번째 읽기가 없으면 IE를 끝까지 기다린다(대신할 재료가 없다)
+            if early_price is None and not ie_future.done():
+                # B(2026-11-02): IE를 기다리는 동안 두 번째 읽기의 주소로 시세를 **미리** 조회한다 — IE가 같은 주소를
+                # 읽으면 그대로 쓰고, 다르면 버리고 다시 조회한다(판정 재료는 그대로 IE가 먼저).
+                addr = price_address(second_now.address, bundle_now.doc_check)
+                key = _price_key(addr, second_now.exclusive_area_sqm)
+                early_price = (key, pool.submit(
+                    _timed, price_lookup.collect,
+                    address=addr, area_sqm=second_now.exclusive_area_sqm,
+                    manual_price_won=market_price, run_id=run_id,
+                ))
+            if deadline and not ie_future.done() and time.perf_counter() - t0 >= deadline:
+                ie_late = True
+                break
+        if stop.is_set():
+            _log.info("[분석 중단] 앱이 연결을 끊음 — IE·OCR 결과를 버림(판정·설명·저장 안 함)")
+            raise AnalysisCancelled("IE·OCR 뒤")
         ocr_bundle, ocr_error, ocr_path_elapsed = ocr_future.result()
+        if ie_late:
+            extract, ie_error, ie_elapsed = None, None, time.perf_counter() - t0
+        else:
+            extract, ie_error, ie_elapsed = ie_future.result()
+    finally:
+        pool.shutdown(wait=False)
     if stop.is_set():
         _log.info("[분석 중단] 앱이 연결을 끊음 — IE·OCR 결과를 버림(판정·설명·저장 안 함)")
         raise AnalysisCancelled("IE·OCR 뒤")
+    if ie_late:
+        # 판정은 그대로 규칙 엔진이 한다 — 재료(등기 필드)만 두 번째 읽기(OCR 글자 → 구조화, IE와 같은 모양)에서 온다.
+        # 두 방법을 맞춰 보지 못했으니 아래에서 '양호'를 막는다(보수적 편향, CLAUDE.md §2-3).
+        _log.info(
+            f"[IE 늦음] {deadline:.0f}초가 지나도 IE가 안 와서 사진 글자 읽기(OCR+구조화) 결과로 판정합니다"
+            " — 늦은 IE 응답은 버림 · '양호' 금지"
+        )
+        extract = ocr_bundle.second_extract.model_copy(deep=True)
 
     total = time.perf_counter() - t0
     _log.info(
@@ -790,12 +853,19 @@ def analyze(
     # 가로·거꾸로 찍은 장을 OCR이 바로 세웠으면(2026-10-26) IE도 **바로 선 사진으로** 한 번 더 읽는다 —
     # 판정 재료(IE)가 누운 글자를 잘못 읽은 채로 남지 않게. 실패하면 처음 읽은 결과를 그대로 쓴다.
     rotation_note: str | None = None
-    if ocr_result.rotated:
+    if ocr_result.rotated and not ie_late:
         _raise_if_cancelled(cancelled, "바로 세운 사진 다시 읽기(IE)")
         turned = [i + 1 for i, r in enumerate(ocr_result.rotations(len(images))) if r]
         _log.info(f"[방향] {turned}번째 사진을 바로 세움 → IE를 바로 선 사진으로 다시 읽음")
         try:
-            reread = extraction.extract_registry(ocr_result.upright_images, run_id=run_id)
+            # 다시 읽기에도 상한(2026-11-02 검토) — Upstage가 느린 날 여기서 앱의 분석 대기(180초)를 넘기지 않게
+            reread_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="reread")
+            try:
+                reread = reread_pool.submit(
+                    extraction.extract_registry, ocr_result.upright_images, run_id=run_id
+                ).result(timeout=deadline or None)
+            finally:
+                reread_pool.shutdown(wait=False)
             # 보수적 편향(CLAUDE.md §2-3): 다시 읽은 쪽이 위험 항목을 **덜** 찾았으면 처음 결과를 쓴다 —
             # 위험을 놓치는 쪽으로 바뀌지 않게. 같거나 더 찾았으면 바로 선 사진으로 읽은 결과를 쓴다.
             before, after = document_gate.entry_count(extract), document_gate.entry_count(reread)
@@ -863,7 +933,10 @@ def analyze(
     # 두 경로 대조 — **표시와 고지에만** 쓴다. 아래 `rule_engine`에는 `extract`(IE)만 간다.
     try:
         check = cross_check.compare(
-            extract, second_extract, provider=second_provider, error=second_error
+            extract,
+            None if ie_late else second_extract,  # IE가 늦었으면 견줄 상대가 없다(같은 것끼리 견주지 않는다)
+            provider=second_provider,
+            error=cross_check.IE_LATE_ERROR if ie_late else second_error,
         )
     except Exception as e:  # noqa: BLE001 — 고지 계층이 분석을 깨뜨리면 안 된다
         _log.error("[교차검증] ⚠ 예기치 못한 예외 — 교차검증 없이 진행", exc_info=True)
@@ -902,12 +975,21 @@ def analyze(
         lookup_address = price_address(extract.address, doc_check)
         if lookup_address != extract.address:
             _log.info("[시세] IE 주소에 호수가 없어 쪽 머리 주소(호수 있음)로 조회합니다")
-        price_info = price_lookup.collect(
-            address=lookup_address,
-            area_sqm=extract.exclusive_area_sqm,
-            manual_price_won=market_price,
-            run_id=run_id,
-        )
+        price_info = None
+        if early_price is not None and early_price[0] == _price_key(lookup_address, extract.exclusive_area_sqm):
+            got, err, _ = early_price[1].result()  # 미리 시작한 조회 — 남은 시간만 기다린다
+            if err is None and got is not None:
+                price_info = got
+                _log.info("[시세] IE를 기다리는 동안 미리 조회한 결과를 씁니다(같은 주소·면적)")
+        elif early_price is not None:
+            _log.info("[시세] 미리 조회한 주소·면적이 IE와 달라 IE 기준으로 다시 조회합니다")
+        if price_info is None:
+            price_info = price_lookup.collect(
+                address=lookup_address,
+                area_sqm=extract.exclusive_area_sqm,
+                manual_price_won=market_price,
+                run_id=run_id,
+            )
     except Exception as e:  # noqa: BLE001
         _log.error(f"[시세] ⚠ 자동조회에서 예기치 못한 예외 — 입력값만 사용 ({type(e).__name__})", exc_info=True)
         price_info = price_lookup.collect(
@@ -947,6 +1029,9 @@ def analyze(
             f"[판정] 사진 묶음 불완전 — 빠진 쪽 {missing_pages or '없음'} · 잘 안 읽힌 장 "
             f"{[p.index + 1 for p in (capture_after.pages if capture_after else [])] or '없음'} → '양호' 금지"
         )
+
+    if ie_late:
+        extract.read_by_second_only = True  # 문서 게이트가 '양호'를 막는다(사진 탓이 아니라 따로 둔다)
 
     # 그래도 못 읽은 빚 → 그 쪽을 '다시 찍기' 대상으로(2순위). 게이트 계산 **뒤에** 더한다 — 금액 하나 못 읽은 것으로
     # 다른 카드(소유권 등)까지 '확인 필요'로 올리지 않는다. 빚 카드는 금액 미상으로 이미 '확인 필요'다.
@@ -1089,7 +1174,11 @@ def analyze(
         _log.info(
             _summary_block(
                 stages=[
-                    ("① 정보 추출(IE)", _vendor("upstage", extraction.MODEL), ie_elapsed),
+                    (
+                        "① 정보 추출(IE)" + (" 늦어서 안 씀" if ie_late else ""),
+                        _vendor("upstage", extraction.MODEL),
+                        ie_elapsed,
+                    ),
                     (
                         "② 문서 OCR",
                         f"{_vendor('upstage', ocr.OCR_MODEL)} · {len(ocr_result.pages)}장",

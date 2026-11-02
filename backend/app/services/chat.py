@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -67,7 +68,16 @@ MAX_TURNS = 8
 MAX_USER_CHARS = 500
 MAX_HISTORY_CHARS = 800
 #: 생성 상한 — 목록 답(500자 안)이 JSON 안에서 잘리지 않게 (2026-10-30: 700 → 1000)
-MAX_OUTPUT_TOKENS = 1000
+#: 2026-11-02 1000 → 1600: solar-pro4는 "2000자로 알려줘" 같은 말에 길게 쓰다 JSON 중간에 잘렸다 → 끝까지 받고 우리가 줄인다
+MAX_OUTPUT_TOKENS = 1600
+#: 챗봇 AI 한 번 부를 때 기다리는 상한(초) — 앱이 챗봇 답을 30초 기다린다(api_content_repository.dart)
+CHAT_CALL_TIMEOUT_SECONDS = 25
+#: 이만큼 안에 빨리 실패했을 때만 한 번 더 부른다(연결 끊김·5xx) — 시간 초과 뒤에 또 부르면 앱이 먼저 포기한다
+RETRY_IF_FAILED_WITHIN_SECONDS = 8
+#: 길게 써서 상한을 넘은 답을 **줄로·문장으로** 줄일 목표(자) — 상한(text_guard.CHAT_MAX_LEN 900)보다 넉넉히 아래
+TRIM_TARGET_CHARS = 760
+#: 줄인 답 끝에 붙이는 한 줄 — 더 들을 수 있다는 것만 알린다(숫자·판정 없음)
+CONTINUE_HINT = "더 궁금한 부분을 말해 주시면 이어서 알려 드릴게요."
 #: 대화 온도 — 설명 생성(0.3)보다 조금 높게: 같은 말만 되풀이하지 않고 자연스럽게(2026-10-24 '자율성').
 #: 날조는 온도가 아니라 참고 자료 + 출력 검사로 막는다.
 CHAT_TEMPERATURE = 0.5
@@ -944,6 +954,85 @@ def answer(query: str) -> ChatReply:
     return reply([{"role": "user", "content": query or ""}])
 
 
+#: 다시 부르면 될 수도 있는 실패 — 연결·시간 초과·서버 5xx·빈 답(키·잔액·요청 제한은 아니다)
+_TRANSIENT_RE = re.compile(r"연결 실패|HTTP 5\d\d|응답 본문이 비었음|응답 형식을 해석")
+_ANSWER_RE = re.compile(r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)', re.S)
+
+
+def _salvage_answer(raw: str | None) -> str | None:
+    """JSON이 길게 쓰다 **잘린** 응답에서 answer 글을 살린다 — 마지막 온전한 문장까지만. 못 살리면 None (2026-11-02).
+
+    문자열이 따옴표로 닫혔는데 JSON이 깨졌으면(글 속 따옴표 등) 살리지 않는다 — 앞 조각만 보여 주면 뜻이 바뀐다(검토 지적).
+    """
+    m = _ANSWER_RE.search(raw or "")
+    if not m or (raw or "").rstrip()[m.end(1):]:
+        return None  # 문자열이 잘린 채 끝나지 않았다 — 조각일 수 있다
+    body = m.group(1)
+    text = None
+    for cut in range(len(body), max(len(body) - 6, -1), -1):  # 끝이 이스케이프 중간에서 잘렸으면 몇 글자 덜어 본다
+        try:
+            text = json.loads(f'"{body[:cut]}"')
+            break
+        except ValueError:
+            continue
+    if not text:
+        return None
+    ends = [mm.end() for mm in re.finditer(r"[.!?](?=\s|$)|\n", text)]
+    if not ends:
+        return None  # 온전한 문장이 하나도 없다
+    kept = text[: ends[-1]].strip()
+    return kept if re.search(r"[.!?]$", kept) else None
+
+
+def _ask(provider, system: str, user_msg: str, history: list[dict]):
+    """AI에게 한 번 묻는다 → (payload, resp). 잠깐의 실패(연결·5xx)는 **한 번 더** 부르고,
+    JSON이 깨졌으면 받은 글에서 답을 살린다(2026-11-02 — 그때도 '연결이 불안정해요'가 나갔다). 그 밖엔 LlmError."""
+    for attempt in (1, 2):
+        t0 = time.perf_counter()
+        try:
+            return provider.chat_json(
+                system, user_msg, max_tokens=MAX_OUTPUT_TOKENS, temperature=CHAT_TEMPERATURE, history=history,
+                timeout=CHAT_CALL_TIMEOUT_SECONDS,
+            )
+        except llm.LlmError as e:
+            salvaged = _salvage_answer(getattr(e, "raw_text", None))
+            if salvaged:
+                _log.info(f"[챗봇:{provider.name}] JSON이 깨진 답에서 글을 살림 ({len(salvaged)}자)")
+                resp = getattr(e, "response", None)
+                return {"answer": salvaged}, resp
+            if attempt == 1 and _TRANSIENT_RE.search(str(e)) and time.perf_counter() - t0 < RETRY_IF_FAILED_WITHIN_SECONDS:
+                _log.info(f"[챗봇:{provider.name}] 잠깐의 실패 — 한 번 더 부름 ({str(e)[:60]})")
+                continue
+            raise
+    raise llm.LlmError("다시 불러도 실패")  # 도달하지 않는다
+
+
+def _trim_to_fit(text: str) -> str | None:
+    """상한을 넘은 답을 **온전한 줄·문장 단위로** 줄인다(뜻을 바꾸는 중간 자르기 없음) + 이어서 물어보라는 한 줄."""
+    budget = TRIM_TARGET_CHARS - len(CONTINUE_HINT) - 1
+    kept: list[str] = []
+    used = 0
+    for line in [ln.strip() for ln in (text or "").split("\n") if ln.strip()]:
+        pieces = [line] if used + len(line) + bool(kept) <= budget else [
+            p.strip() for p in _SENTENCE_SPLIT_RE.split(line) if p.strip()
+        ]
+        stop = False
+        for piece in pieces:
+            if used + len(piece) + bool(kept) > budget:
+                stop = True
+                break
+            kept.append(piece)
+            used += len(piece) + (1 if len(kept) > 1 else 0)
+        if stop:
+            break
+    if len(kept) < 2:
+        return None
+    out = "\n".join(kept)
+    if out.count("**") % 2:
+        out = out.replace("**", "")
+    return f"{out}\n{CONTINUE_HINT}"
+
+
 def _parse(payload: dict) -> tuple[str | None, str | None, str]:
     """AI 응답 → (답, 분류, 실패 사유). 성공이면 사유가 빈 문자열."""
     try:
@@ -988,13 +1077,7 @@ def _generate(turns: list[Turn], careful: bool, report=None, *, houses=None, jou
     last_reason = ""
     for attempt in (1, 2):  # 처음 + 한 번 고쳐 쓰기
         try:
-            payload, resp = provider.chat_json(
-                system,
-                user_msg,
-                max_tokens=MAX_OUTPUT_TOKENS,
-                temperature=CHAT_TEMPERATURE,
-                history=history,
-            )
+            payload, resp = _ask(provider, system, user_msg, history)
         except llm.LlmError as e:
             calls += 1
             _log.info(f"[챗봇:{provider.name}] 호출 실패 → 기본 문장 ({str(e)[:80]})")
@@ -1015,16 +1098,33 @@ def _generate(turns: list[Turn], careful: bool, report=None, *, houses=None, jou
             if verdict is None:
                 mix = criteria_mixup(text or "")
                 verdict = ("기준혼동", mix) if mix else None
+            if verdict is not None and verdict[0] == "길이":
+                # 길게 쓴 것뿐이면 다시 쓰게 하지 않고(시간) **온전한 줄·문장으로 줄인다** — 줄인 글도 같은 검사를 지나야 쓴다
+                short = _trim_to_fit(text or "")
+                again = None if short is None else text_guard.check_chat_reply(
+                    short, allowed=allowed, careful=careful, report_grades=grades,
+                    quote_report=report_set is not None, context_numbers=rate_context,
+                ) or (("기준혼동", "") if criteria_mixup(short) else None)
+                if short is not None and again is None:
+                    _log.info(f"[챗봇:{provider.name}] 길어서 줄임 {len(text or '')}자 → {len(short)}자 · 분류 {kind or '-'}")
+                    return ChatReply(
+                        answer=text_guard.soften_dashes(short),
+                        mode=MODE_CAREFUL if careful else MODE_NORMAL,
+                        model=getattr(resp, "model", None) or provider.model,
+                        llm_calls=calls,
+                        layer="AI-줄임",
+                        kind=kind,
+                    )
             if verdict is None:
                 _log.info(
                     f"[챗봇:{provider.name}] 답 {'(고쳐 쓴 뒤) ' if attempt == 2 else ''}통과"
                     f" · {'조심' if careful else '보통'} · 분류 {kind or '-'}"
-                    f" · {resp.elapsed:.1f}초 · {len(text or '')}자"
+                    f" · {getattr(resp, 'elapsed', 0.0):.1f}초 · {len(text or '')}자"
                 )
                 return ChatReply(
                     answer=text_guard.soften_dashes(text or ""),  # 줄표 없이(2026-10-31)
                     mode=MODE_CAREFUL if careful else MODE_NORMAL,
-                    model=resp.model or provider.model,
+                    model=getattr(resp, "model", None) or provider.model,
                     llm_calls=calls,
                     layer="AI" if attempt == 1 else "AI-고쳐씀",
                     kind=kind,
@@ -1036,7 +1136,7 @@ def _generate(turns: list[Turn], careful: bool, report=None, *, houses=None, jou
         # 고쳐 쓰기: 방금 답을 대화에 넣고, 이유를 알려 준다
         history = history + [
             {"role": "user", "content": user_msg},
-            {"role": "assistant", "content": resp.text[:MAX_HISTORY_CHARS]},
+            {"role": "assistant", "content": (getattr(resp, "text", None) or text or "")[:MAX_HISTORY_CHARS]},
         ]
         user_msg = CHAT_REPAIR_MESSAGE.format(reason=why)
 

@@ -242,7 +242,11 @@ class LlmProvider(ABC):
         try:
             return _loads_lenient(resp.text), resp
         except ValueError as e:
-            raise LlmError(f"{self.name}: JSON 파싱 실패 — {str(e)[:120]}") from e
+            err = LlmError(f"{self.name}: JSON 파싱 실패 — {str(e)[:120]}")
+            # 받은 글은 **예외에만** 싣는다(로그에 남기지 않는다) — 챗봇이 길게 쓰다 잘린 답을 살리는 데 쓴다(2026-11-02)
+            err.raw_text = resp.text  # type: ignore[attr-defined]
+            err.response = resp  # type: ignore[attr-defined]
+            raise err from e
 
 
 def _loads_lenient(text: str) -> dict:

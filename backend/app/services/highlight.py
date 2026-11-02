@@ -457,6 +457,54 @@ def _entry_amount(entry: RegistryEntry, attr: str) -> int | None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+def _diag_log(items: list[RegistryItem], ordered_pages: list[OcrPage], owner_names: list[str]) -> None:
+    """[진단] 실촬영에서 형광펜을 못 칠한 까닭을 로그만 보고 가르게 (2026-11-03, 판정·표시와 무관).
+
+    ⚠ 실명은 남기지 않는다(CLAUDE.md §2-5) — 이름은 `mask_name` + 글자 수, 등기목적은 앞 14자(이름이 없는 칸).
+    ⑴ 갑구·을구 항목: 순위·등기목적·말소 여부 — 말소 행의 대상 순위가 항목 목록에 있는지 보인다.
+    ⑵ 집주인 이름: IE 이름과, 사진의 등록번호 바로 앞 낱말 1~2개 — 이름이 두 낱말로 쪼개졌는지 보인다.
+    """
+    try:
+        for sec in ("갑구", "을구"):
+            parts = []
+            for it in items:
+                if it.section != sec:
+                    continue
+                mark = " ✂말소됨" if it.canceled else ""
+                if it.is_cancel_record:
+                    m = CANCEL_TARGET_RE.search(it.purpose)
+                    mark += f" ↯말소행→{m.group(1) if m else '?'}번 {'연결O' if it.cancel_bound else '연결X'}"
+                parts.append(f"{it.rank or '?'} {it.purpose[:14]}{mark} @{it.location}")
+            if parts:
+                _log.info(f"[진단:항목] {sec} {len(parts)}개 — " + " | ".join(parts))
+        if not owner_names:
+            return
+        before_ids: list[str] = []
+        for page in ordered_pages:
+            for line in page.lines:
+                for k, w in enumerate(line.words):
+                    if not _ID_RE.search(w.text):
+                        continue
+                    prev = [x.text.strip() for x in line.words[max(0, k - 2):k]]
+                    joined = "".join(prev)
+                    hit = next((n for n in owner_names if n and (n in (prev[-1:] or [""]) or n == joined)), None)
+                    tag = "" if hit is None else (" =IE이름" if prev and prev[-1] == hit else " =IE이름(두 낱말을 이으면)")
+                    before_ids.append(
+                        "+".join(f"{mask_name(p)}({len(p)}자)" for p in prev) + tag + f" @{page.name}:L{line.index}"
+                    )
+        ie = ", ".join(f"{mask_name(n)}({len(n)}자)" for n in owner_names)
+        _log.info(
+            f"[진단:이름] IE 집주인 {ie} | 등록번호 앞 낱말 {len(before_ids)}곳 — "
+            + (" | ".join(before_ids[:8]) or "등록번호를 하나도 못 찾음")
+        )
+    except Exception:  # noqa: BLE001 — 진단 로그가 분석을 깨뜨리면 안 된다
+        _log.error("[진단] 로그 만들기 실패", exc_info=True)
+
+
+#: 등록번호 모양(주민·법인) — 진단 로그용(`ocr_layout._ID_PATTERN`과 같은 모양)
+_ID_RE = re.compile(r"(\d{6})\s*[-－]\s*([0-9*]{6,8})")
+
+
 def _match_owner(
     name: str, items: list[RegistryItem], pages: dict[int, OcrPage]
 ) -> tuple[int, tuple[float, float, float, float], str] | str:
@@ -860,6 +908,8 @@ def build_highlights(
     ordered_pages, to_upload, reorder_applied = _apply_page_order(ocr.pages, check.page_order)
     items = build_items(ordered_pages)
     pages = {p.index: p for p in ordered_pages}  # 문서 순서 인덱스로 키를 잡는다
+
+    _diag_log(items, ordered_pages, [o.name.strip() for o in extract.current_owners if o.name and o.name.strip()])
 
     canceled_items = [it for it in items if it.canceled]
     if canceled_items:

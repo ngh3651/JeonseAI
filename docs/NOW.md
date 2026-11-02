@@ -497,4 +497,5 @@ iOS · 월세·반전세 · 계약서 교차검증(보류 확정) · 소액임�
 - `compare_llm_backends.py` — `compare_llm.py`와 중복. 판례 역할을 옮긴 뒤 삭제
 - `backend/app/services/document_parse.py` — `LAYOUT_SOURCE=document_parse`일 때만 동작. 안 쓰기로 정하면 삭제
 - 원응답 저장 코드(`artifacts.py` · IE/OCR `_save_raw_*`) — 이제 `SAVE_RAW_RESPONSES=1`일 때만 저장. 진단이 끝나면 삭제
+- `[진단:항목]`·`[진단:이름]` 로그(`highlight._diag_log`, 2026-11-03) — 실촬영에서 말소 행·집주인 이름을 못 맞추는 까닭을 가르려고. 이름은 가려서(`홍○○(3자)`) 찍는다. 원인을 고치면 삭제
 - `backend/out/` · 로컬 `design_handoff_*/` 폴더 — 실명 샘플 포함(커밋 안 됨). 로컬에서 지운다

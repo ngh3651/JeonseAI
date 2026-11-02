@@ -53,6 +53,10 @@ class _Repo extends AnalysisRepository {
 
 Duration _s(num seconds) => Duration(milliseconds: (seconds * 1000).round());
 
+/// 화면 테스트는 5장을 올린다 — 예상 시간이 장수에 맞춰 늘어나므로(2026-11-03, 5장 45초) 시안의 30초 기준 시각을 같은 비율로 늘린다.
+Duration _w(num seconds) =>
+    _s(seconds * analysisExpectedSeconds(5) / kAnalysisExpectedSeconds);
+
 Future<void> _open(
   WidgetTester tester, {
   int pages = 5,
@@ -239,18 +243,19 @@ void main() {
   group('화면', () {
     testWidgets('시안 ①~④: 제목 · 쪽수 · % · 남은 초', (tester) async {
       await _open(tester);
-      await tester.pump(_s(4));
+      await tester.pump(_w(4));
       expect(find.koText('AI가 등기부를 한 장씩 읽고 있어요'), findsOneWidget);
       expect(_textOf(tester, 'loading-page'), '3 / 5쪽');
-      expect(_textOf(tester, 'loading-time'), '약 26초 남았어요');
+      // 5장 = 45초 예상 — 6초 지났으니 39초 남음(장수에 맞춘 예상 시간, 2026-11-03)
+      expect(_textOf(tester, 'loading-time'), '약 39초 남았어요');
       expect(find.koText(kLoadingTipsTitle), findsOneWidget);
 
-      await tester.pump(_s(9));
+      await tester.pump(_w(9));
       expect(find.koText('집주인과 압류를 살펴보고 있어요'), findsOneWidget);
       expect(_textOf(tester, 'loading-page'), '5 / 5쪽');
-      await tester.pump(_s(7));
+      await tester.pump(_w(7));
       expect(find.koText('집에 걸린 빚을 살펴보고 있어요'), findsOneWidget);
-      await tester.pump(_s(9));
+      await tester.pump(_w(9));
       expect(find.koText('리포트를 정리하고 있어요'), findsOneWidget);
       expect(_textOf(tester, 'loading-percent'), '99%');
       expect(tester.takeException(), isNull);
@@ -328,9 +333,9 @@ void main() {
 
     testWidgets('동작 줄이기 — 세이프는 들여다보는 한 장, 화면은 멈춤', (tester) async {
       await _open(tester, reduceMotion: true);
-      await tester.pump(_s(4));
+      await tester.pump(_w(4));
       expect(_visibleFrame(tester), 2);
-      await tester.pump(_s(5));
+      await tester.pump(_w(5));
       expect(_visibleFrame(tester), 2);
       // 제목·퍼센트는 그대로 바뀐다
       expect(find.koText('집주인과 압류를 살펴보고 있어요'), findsOneWidget);

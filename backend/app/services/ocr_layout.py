@@ -857,15 +857,47 @@ class DocumentCheck:
     inferred_pages: list[int] = field(default_factory=list)
 
 
+#: 쪽 머리 주소 끝에 붙는 층·호·동 꼬리('제1층' · '제101호' · '제101동') — 띄어쓰기는 지운 뒤 본다 (2026-11-03)
+_UNIT_TAIL = re.compile(r"(?:제[0-9A-Za-z가-힣\-]+(?:층|호|동))+")
+
+
+def is_unit_extension(longer: str, shorter: str) -> bool:
+    """`longer`가 `shorter` 뒤에 층·호·동 꼬리만 더 붙은 주소인가(띄어쓰기 무시) — 같은 집의 덜 읽힌 쪽 머리 (2026-11-03).
+
+    실촬영(태블릿): 한 쪽은 '…593-92 제1층', 다른 쪽은 '…593-92 제1층 제101호'로 읽혔다 — OCR이 줄 끝 '제101호'를
+    놓친 것이지 다른 등기부가 아니다. 번지가 다르면(`…593-9` vs `…593-92`) 꼬리가 '2제1층'이라 아니다.
+    """
+    a, b = re.sub(r"\s+", "", longer), re.sub(r"\s+", "", shorter)
+    return len(a) > len(b) and a.startswith(b) and _UNIT_TAIL.fullmatch(a[len(b):]) is not None
+
+
+def distinct_addresses(addresses: set[str]) -> list[str]:
+    """쪽 머리 주소들 중 **서로 다른 집**만 남긴다 — 층·호·동 꼬리만 빠진 것은 더 긴 쪽과 같은 집으로 합친다."""
+    keep: list[str] = []
+    for addr in sorted(addresses, key=len, reverse=True):
+        if not any(addr == k or is_unit_extension(k, addr) for k in keep):
+            keep.append(addr)
+    return keep
+
+
 def header_address(pages: list[OcrPage]) -> str | None:
-    """쪽 머리의 '[집합건물] 서울특별시 … 제602호' → '서울특별시 … 제602호'. 없으면 None."""
+    """쪽 머리의 '[집합건물] 서울특별시 … 제602호' → '서울특별시 … 제602호'. 없으면 None.
+
+    2026-11-03: 다른 쪽 머리가 같은 주소에 층·호 꼬리만 더 붙었으면(첫 쪽이 '제101호'를 놓친 사진) 그 더 온전한 주소를 쓴다.
+    """
+    found: list[str] = []
     for page in pages:
         for line in page.lines:
             if _PAGE_HEADER.match(line.display):
                 text = " ".join(_PAGE_HEADER.sub("", line.display).split())
                 if text:
-                    return text
-    return None
+                    found.append(text)
+                    break
+    if not found:
+        return None
+    first = found[0]
+    longer = [t for t in found[1:] if is_unit_extension(t, first)]
+    return max(longer, key=len) if longer else first
 
 
 # 표제부 '건물내역'의 용도 낱말 → 경매 통계 용도 이름 (`loss_estimate`와 같은 글자).
@@ -1080,7 +1112,8 @@ def check_document(pages: list[OcrPage]) -> DocumentCheck:
         check.notice = "올린 사진들이 서로 다른 등기부로 보여요. 한 건물의 등기부만 올려 주세요."
         check.reasons.append(f"발급확인번호가 서로 다름: {sorted(issues)}")
         return check
-    if not issues and len(addresses) > 1:
+    # 층·호 꼬리만 빠진 쪽 머리는 같은 집이다(2026-11-03 실촬영 — 줄 끝 '제101호'를 놓친 쪽) — 번지·건물이 다를 때만 섞임
+    if not issues and len(distinct_addresses(addresses)) > 1:
         check.ok_to_highlight_any = False
         check.ok_to_highlight_money = False
         check.notice = "올린 사진들의 주소가 서로 달라요. 한 건물의 등기부만 올려 주세요."

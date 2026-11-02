@@ -14,6 +14,14 @@ import 'dart:io';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 
+/// 서버로 보낼 사진의 **짧은 변** 최소 크기(px) — 이보다 크면 짧은 변이 이 값이 되게 줄이고, 작으면 그대로 둔다.
+///
+/// 2026-11-03: 예전엔 라이브러리 기본값(가로 1920·세로 1080)이라 태블릿 1300만 화소 사진이 약 500만 화소로,
+/// **가로로 찍으면** 1920×1440(돌려 세우면 1440 폭)까지 줄었다 → 멀리서·비스듬히 찍으면 글자가 작아 OCR이
+/// 이름·금액 위치를 놓쳤다. 가로·세로 같은 값을 줘서 방향과 상관없이 짧은 변을 2560으로 맞춘다
+/// (4:3 → 2560×3413 ≈ 870만 화소). 가장 길쭉한 사진(9:21)도 서버 상한 1600만 화소(`MAX_IMAGE_PIXELS`) 안이다.
+const int kUploadShortSide = 2560;
+
 class RegistryUploadService {
   /// 입력 이미지를 JPEG로 변환합니다.
   ///
@@ -35,6 +43,9 @@ class RegistryUploadService {
         targetPath,
         format: CompressFormat.jpeg,
         quality: 90, // OCR 가독성을 위해 화질을 비교적 높게 유지
+        // 짧은 변 기준으로 줄인다(가로·세로 같은 값 = 찍은 방향과 상관없이 같은 크기) — 위 [kUploadShortSide]
+        minWidth: kUploadShortSide,
+        minHeight: kUploadShortSide,
         // EXIF 회전을 **픽셀에 반영해 올바로 세운 뒤 EXIF 자체는 남기지 않는다**.
         // 이래야 서버(Pillow)가 재는 크기와 앱(Flutter 디코더)이 그리는 크기가 같아진다.
         // EXIF 방향 태그가 남으면 한쪽만 회전을 적용해 좌표가 통째로 어긋난다.

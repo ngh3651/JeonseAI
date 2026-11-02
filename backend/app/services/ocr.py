@@ -19,11 +19,13 @@ Information Extract는 필드를 구조화해주지만 **좌표를 주지 않는
 from __future__ import annotations
 
 import io
+import os
 import json
 import logging
 import mimetypes
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -161,9 +163,8 @@ def run_ocr(
     형광펜을 칠할 수 있다. 전부 실패하면 pages가 빈 채로 돌아가고, 리포트는
     좌표 없이 지금과 똑같이 완성된다.
 
-    장별 호출은 **순차**로 한다. 실측 장당 1.6~3.1초이고 IE가 30초 이상 걸리므로,
-    OCR을 더 병렬화해도 전체 시간이 줄지 않는다. 대신 동시 요청을 늘리면 429(요청 제한)
-    위험만 커진다.
+    장별 호출은 **2장씩 동시에** 한다(2026-11-03, `OCR_CONCURRENCY`). 예전엔 순차였다(장당 1.6~3.1초라
+    IE보다 빨랐다) — 지금은 장당 4~5초 + 2차 구조화가 뒤따라 4장이면 IE보다 늦게 끝났다.
 
     `stop`이 켜지면(앱이 분석을 중단 — 2026-10-29) **아직 안 부른 장**은 부르지 않는다.
     """
@@ -180,29 +181,38 @@ def run_ocr(
         return result
 
     total = len(images)
-    _log.info(f"[OCR] 호출 시작 — 사진 {total}장, 장별 개별 호출 (⚠ 크레딧 소모)")
-    extra_budget = [orientation.MAX_EXTRA_CALLS]  # 방향 찾기 추가 호출 상한(분석 1회 전체)
+    workers = max(1, min(ocr_concurrency(), total))
+    _log.info(
+        f"[OCR] 호출 시작 — 사진 {total}장, 장별 호출 {workers}장씩 동시 (⚠ 크레딧 소모)"
+    )
+    budget = _Budget(orientation.MAX_EXTRA_CALLS)  # 방향 찾기 추가 호출 상한(분석 1회 전체, 여러 장이 나눠 쓴다)
     result.upright_images = list(images)
-    for i, (filename, data) in enumerate(images):
+    pages: list[OcrPage | None] = [None] * total
+    errors: list[list[str]] = [[] for _ in range(total)]
+
+    def one(i: int) -> None:
+        """사진 한 장 — 결과는 `pages[i]`·`errors[i]`에 담는다. 예외를 밖으로 내지 않는다."""
+        filename, data = images[i]
         if stop is not None and stop.is_set():
-            _log.info(f"[OCR] 앱이 분석을 중단 — 남은 {total - i}장은 부르지 않음")
-            break
+            return
+        if i < workers:
+            time.sleep(i * _OCR_STAGGER_SECONDS)  # 첫 묶음이 같은 순간에 몰리지 않게(요청 제한 3회/초)
         t1 = time.perf_counter()
         try:
-            raw = call_document_ocr(api_key, filename, data)
+            raw = _call_with_retry(api_key, filename, data, i, total)
         except ExtractionError as e:
             _log.info(f"[OCR] {i + 1}/{total} {filename} → 실패 HTTP {e.status_code} — {e.detail}")
-            result.errors.append(f"{filename}: {e.detail}")
-            continue
+            errors[i].append(f"{filename}: {e.detail}")
+            return
         except Exception as e:  # noqa: BLE001 — OCR은 어떤 이유로도 분석을 막지 못한다
             _log.info(f"[OCR] {i + 1}/{total} {filename} → 예기치 못한 실패 {type(e).__name__}")
-            result.errors.append(f"{filename}: {type(e).__name__}")
-            continue
+            errors[i].append(f"{filename}: {type(e).__name__}")
+            return
 
         # 가로·거꾸로 찍은 사진이면 바로 세운 방향으로 다시 읽는다 (2026-10-26) — 바로 찍었으면 추가 호출 0회
         rotation = 0
         if orientation.enabled():
-            raw, data, rotation = _upright(api_key, filename, data, raw, extra_budget, i, total)
+            raw, data, rotation = _upright(api_key, filename, data, raw, budget, i, total)
             if rotation:
                 result.upright_images[i] = (filename, data)
 
@@ -214,8 +224,8 @@ def run_ocr(
             width, height = _image_size(data)
         except Exception as e:  # noqa: BLE001 — 크기를 못 읽으면 정규화가 불가능하다
             _log.info(f"[OCR] {i + 1}/{total} {filename} → 이미지 크기를 읽지 못함 ({type(e).__name__})")
-            result.errors.append(f"{filename}: 이미지 크기 확인 실패")
-            continue
+            errors[i].append(f"{filename}: 이미지 크기 확인 실패")
+            return
 
         # 비스듬히 찍은 사진이면 기울기만큼 바로잡아 줄을 묶는다(2026-10-31, 좌표 계산 — 사진은 그대로)
         skew = estimate_skew(words)
@@ -228,20 +238,91 @@ def run_ocr(
                 else ""
             )
         )
-        result.pages.append(
-            OcrPage(
-                name=filename,
-                index=i,
-                words=words,
-                lines=group_lines(words, skew=skew),
-                width=width,
-                height=height,
-                rotation=rotation,
-            )
+        pages[i] = OcrPage(
+            name=filename,
+            index=i,
+            words=words,
+            lines=group_lines(words, skew=skew),
+            width=width,
+            height=height,
+            rotation=rotation,
         )
 
+    # 장별 호출을 **동시에** 한다 (2026-11-03) — 장당 4~5초라 4장이면 순차 18초였고, 그 뒤 2차 구조화(14초)까지
+    # 이어져 IE(25~30초)보다 늦게 끝나 분석 전체를 붙잡았다. 동시 2장이면 4장도 약 9초.
+    # 요청 제한(3회/초) 안에서 — 첫 묶음은 0.3초씩 엇갈려 보내고, 429·5xx는 한 번 더 부른다.
+    if workers == 1:
+        for i in range(total):
+            if stop is not None and stop.is_set():
+                _log.info(f"[OCR] 앱이 분석을 중단 — 남은 {total - i}장은 부르지 않음")
+                break
+            _run_page(one, i)
+    else:
+        pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ocr")
+        try:
+            for fut in [pool.submit(_run_page, one, i) for i in range(total)]:
+                fut.result()
+        finally:
+            pool.shutdown(wait=True)
+        if stop is not None and stop.is_set():
+            _log.info("[OCR] 앱이 분석을 중단 — 아직 부르지 않은 장은 부르지 않음")
+
+    # 결과는 **올린 순서 그대로** 쌓는다 — 뒤 단계(쪽 순서·항목 잇기)가 이 순서를 믿는다
+    result.pages = [p for p in pages if p is not None]
+    result.errors = [msg for errs in errors for msg in errs]
     result.elapsed = time.perf_counter() - t0
     return result
+
+
+#: OCR 동시 호출 장수 기본값 (2026-11-03) — `OCR_CONCURRENCY`로 바꾼다(1 = 예전처럼 한 장씩)
+OCR_CONCURRENCY_DEFAULT = 2
+#: 첫 묶음을 엇갈려 보내는 간격(초) — Upstage OCR 요청 제한 3회/초
+_OCR_STAGGER_SECONDS = 0.3
+#: 요청 제한(429)·서버 오류(5xx)면 이만큼 쉬고 **한 번만** 다시 부른다
+_OCR_RETRY_WAIT_SECONDS = 1.0
+
+
+def ocr_concurrency() -> int:
+    """OCR 장별 동시 호출 수 — 인프라 수치(판정 아님). 잘못된 값이면 기본값."""
+    try:
+        return max(1, min(4, int(os.environ.get("OCR_CONCURRENCY", str(OCR_CONCURRENCY_DEFAULT)))))
+    except ValueError:
+        return OCR_CONCURRENCY_DEFAULT
+
+
+def _call_with_retry(api_key: str, filename: str, data: bytes, i: int, total: int) -> dict:
+    """OCR 한 번 — 요청 제한·서버 오류면 잠깐 쉬고 한 번 더(한 장을 잃으면 그 쪽 형광펜이 통째로 빠진다)."""
+    try:
+        return call_document_ocr(api_key, filename, data)
+    except ExtractionError as e:
+        if e.status_code != 429 and e.status_code < 500:
+            raise
+        _log.info(f"[OCR] {i + 1}/{total} {filename} → HTTP {e.status_code} — {_OCR_RETRY_WAIT_SECONDS:.0f}초 뒤 한 번 더")
+        time.sleep(_OCR_RETRY_WAIT_SECONDS)
+        return call_document_ocr(api_key, filename, data)
+
+
+def _run_page(one, i: int) -> None:
+    """한 장 처리 — 우리 코드의 예기치 못한 예외도 그 장만 잃고 넘어간다(OCR은 분석을 막지 못한다)."""
+    try:
+        one(i)
+    except Exception:  # noqa: BLE001
+        _log.error(f"[OCR] {i + 1}번째 사진 처리 중 예기치 못한 예외 — 이 장은 좌표 없이", exc_info=True)
+
+
+class _Budget:
+    """여러 장이 나눠 쓰는 방향 찾기 추가 호출 상한 — 동시에 꺼내도 넘치지 않게 잠근다."""
+
+    def __init__(self, n: int) -> None:
+        self._left = n
+        self._lock = threading.Lock()
+
+    def take(self) -> bool:
+        with self._lock:
+            if self._left <= 0:
+                return False
+            self._left -= 1
+            return True
 
 
 def _upright(
@@ -249,7 +330,7 @@ def _upright(
     filename: str,
     data: bytes,
     raw: dict,
-    budget: list[int],
+    budget: "_Budget",
     i: int,
     total: int,
 ) -> tuple[dict, bytes, int]:
@@ -261,10 +342,9 @@ def _upright(
     if first.upright:
         return raw, data, 0
     for turn in orientation.candidate_turns(data):
-        if budget[0] <= 0:
+        if not budget.take():
             _log.info(f"[OCR] {i + 1}/{total} {filename} 방향 찾기 — 추가 호출 상한에 닿아 그대로 둠")
             break
-        budget[0] -= 1
         try:
             turned = orientation.rotate_jpeg(data, turn)
             raw2 = call_document_ocr(api_key, filename, turned)

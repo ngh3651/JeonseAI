@@ -289,6 +289,9 @@ class RankedRule:
 
 # ⚠ `압류`는 `가압류`의 부분 문자열이다. 부정 전방탐색이 없으면 가압류 행이 압류로도
 #   잡혀 같은 자리에 표시가 두 개 생긴다(실측: IE도 같은 순위번호를 두 배열에 중복 배정한다).
+#: 말소를 못 가린 구(區)를 사용자 말로 — 안내 문구용(2026-11-03)
+_SECTION_WORDS = {"갑구": "압류·가압류·경매·신탁", "을구": "빚(근저당·전세권)"}
+
 _RANKED_RULES: tuple[RankedRule, ...] = (
     RankedRule("mortgage", "을구", _rx(r"근저당권설정"), "mortgages", "amount", "집에 잡힌 빚 (근저당권)"),
     RankedRule("jeonse", "을구", _rx(r"전세권설정"), "jeonse_rights", "amount", "다른 사람의 전세권"),
@@ -872,16 +875,34 @@ def build_highlights(
     #   - `cancel_reliable=False` (말소 미결)  : 올린 쪽에 말소 행이 **있는데 대상을 못 찾았다** — 사실
     # 두 번째는 "우리 말소 판정이 지금 깨져 있다"는 구체적 증거라 훨씬 무겁다.
     cancel_reliable = True
+    # 말소 판정이 깨진 **구(갑구·을구)** (2026-11-03) — 말소등기는 지우는 등기가 있는 구에만 기록된다
+    # ('3번강제경매개시결정등기말소'는 갑구, '1번근저당권설정등기말소'는 을구). 그래서 갑구 말소 행 하나를 못 맞췄다고
+    # 을구 근저당까지 숨길 까닭이 없다 — 그 구의 항목만 막는다. 판정 쪽도 같은 단위다('갑구는 종전대로 계산').
+    # 구를 모르는 말소 행이 있으면 예전처럼 표 항목 전체를 막는다.
+    blocked_sections: set[str] = set()
     notice = check.notice
     if unbound:
-        money_allowed = False
-        cancel_reliable = False
         detail = "; ".join(f"{it.location} '{it.purpose[:24]}'" for it in unbound)
-        _log.info(
-            f"[매칭] ⚠ 말소 근거 행 {len(unbound)}건이 대상 항목을 못 찾음"
-            f" → 표 항목 표시 전체 보류 ({detail})"
-        )
-        notice = notice or "말소된 항목을 정확히 가려내지 못해 등기 항목 표시는 생략했어요."
+        sections = {it.section for it in unbound}
+        if sections <= {"갑구", "을구"}:
+            blocked_sections = sections
+            if "을구" in sections:
+                money_allowed = False  # 빚(근저당·전세권)은 을구 — 을구 말소를 못 가리면 빚 표시를 막는다
+            where = "·".join(sorted(sections))
+            _log.info(
+                f"[매칭] ⚠ 말소 근거 행 {len(unbound)}건이 대상 항목을 못 찾음"
+                f" → {where} 항목 표시만 보류 ({detail})"
+            )
+            kinds = " · ".join(_SECTION_WORDS[sec] for sec in sorted(sections))
+            notice = notice or f"말소된 항목을 정확히 가려내지 못해 {kinds} 표시는 생략했어요."
+        else:
+            money_allowed = False
+            cancel_reliable = False
+            _log.info(
+                f"[매칭] ⚠ 말소 근거 행 {len(unbound)}건이 대상 항목을 못 찾음"
+                f" → 표 항목 표시 전체 보류 ({detail})"
+            )
+            notice = notice or "말소된 항목을 정확히 가려내지 못해 등기 항목 표시는 생략했어요."
 
     candidates: list[_Candidate] = []
     failures: list[str] = []
@@ -954,7 +975,7 @@ def build_highlights(
         #    - 2앵커 종류(압류·경매·신탁): 금액이 없고, 문구가 **스스로 교정한다**
         #      ("이 압류가 풀렸는지 등기부에서 직접 확인한 뒤에 계약하세요").
         #      여기까지 막으면 쪽이 한 장만 잘려도 가장 심각한 위험이 화면에서 사라진다.
-        if not cancel_reliable:
+        if not cancel_reliable or rule.section in blocked_sections:
             continue
         if rule.amount_attr and not money_allowed:
             continue

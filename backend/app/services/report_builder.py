@@ -183,7 +183,8 @@ def _build(
     if price_info is not None:
         market_price = price_info.price_won
     verdict: RuleVerdict = rule_engine.evaluate(
-        extract, deposit=deposit, market_price=market_price, blacklist_override=blacklist_override
+        extract, deposit=deposit, market_price=market_price, blacklist_override=blacklist_override,
+        header_address=property_address,
     )
     # 시세 **출처**를 설명 계층에 넘긴다 (2026-08-05).
     # ⚠ 규칙 엔진이 판정을 끝낸 **뒤에** 붙인다 — 판정이 이 값을 볼 수 없게 하려는 것이다.

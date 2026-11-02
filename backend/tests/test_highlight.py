@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from app.schemas.internal import MoneyEntry, Owner, RegistryExtract
+from app.schemas.internal import MoneyEntry, Owner, RegistryEntry, RegistryExtract
 from app.services import highlight
 from app.services.ocr import OcrResult
 from app.services.ocr_layout import OcrPage, Word, build_items, group_lines, parse_words
@@ -815,3 +815,70 @@ def test_공동명의_안내는_단정이_아니라_권고형이다():
     caution = highlight.build_highlights(extract, as_result(gap_gu_page())).highlights[0].caution
     assert caution and "가장 안전합니다" in caution
     assert "필요합니다" not in caution
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2026-11-03 — 작은 OCR 실수 하나로 형광펜을 통째로 끄지 않는다 (실촬영 태블릿)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _two_pages_with_headers(a: str, b: str) -> list[OcrPage]:
+    p1 = eul_gu_page(with_cancel_row=False)
+    p2 = gap_gu_page(index=1)
+    w1 = list(p1.words) + address_row(10, a)
+    w2 = list(p2.words) + address_row(10, b)
+    return [
+        OcrPage(name="a", index=0, words=w1, lines=group_lines(w1), width=PAGE_W, height=PAGE_H),
+        OcrPage(name="b", index=1, words=w2, lines=group_lines(w2), width=PAGE_W, height=PAGE_H),
+    ]
+
+
+def test_쪽_머리_주소_끝_호수만_빠진_쪽은_같은_등기부다():
+    """실촬영: 1쪽 '…593-92제1층' · 2쪽 '…593-92제1층제101호' — OCR이 줄 끝 '제101호'를 놓친 것."""
+    from app.services.ocr_layout import check_document, header_address
+
+    pages = _two_pages_with_headers("서울특별시서초구방배동593-92제1층", "서울특별시서초구방배동593-92제1층제101호")
+    check = check_document(pages)
+    assert check.notice is None and check.ok_to_highlight_any is True
+    assert header_address(pages) == "서울특별시서초구방배동593-92제1층제101호", "더 온전한 주소를 쓴다(시세 조회)"
+
+
+@pytest.mark.parametrize("a, b", [
+    ("서울특별시서초구방배동593-9", "서울특별시서초구방배동593-92제1층"),  # 번지가 다르다
+    ("서울특별시서초구방배동593-92제1층제101호", "서울특별시서초구방배동593-92제1층제102호"),  # 호수가 다르다
+    ("행복아파트", "전혀다른아파트"),
+])
+def test_번지나_호수가_다르면_여전히_다른_등기부다(a, b):
+    from app.services.ocr_layout import check_document
+
+    check = check_document(_two_pages_with_headers(a, b))
+    assert check.ok_to_highlight_any is False
+    assert check.notice and "주소가 서로 달라요" in check.notice
+
+
+def test_갑구_말소_행을_못_맞춰도_을구_빚은_칠한다():
+    """말소등기는 지우는 등기가 있는 구에만 기록된다 — 갑구 '9번압류등기말소'의 대상을 못 찾았다고
+    을구 근저당까지 숨기지 않는다(실촬영 4쪽 등기부: 갑구 말소 하나로 빚 표시 0건). 갑구 항목은 그대로 막는다."""
+    gap_rows = [
+        section_row("갑구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("소유권이전", 117, 150, 75), W("2006년6월23일", 269, 150, 98),
+         W("소유자", 516, 150, 44), W("홍길동", 570, 150, 44)],
+        [W("2", 66, 250, 11), W("압류", 117, 250, 30), W("2020년1월2일", 269, 250, 98)],
+        [W("3", 66, 350, 11), W("9번압류등기말소", 117, 350, 120), W("2021년1월2일", 269, 350, 98)],
+    ]
+    gap = make_page(0, gap_rows)
+    eul = eul_gu_page(with_cancel_row=False)
+    eul.index = 1
+    unbound = [it for it in build_items([gap, eul]) if it.is_cancel_record and not it.cancel_bound]
+    assert [it.section for it in unbound] == ["갑구"]
+
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="1", amount=36_000_000, is_canceled=False)],
+        seizures=[RegistryEntry(rank_number="2")],
+    )
+    result = highlight.build_highlights(extract, as_result(gap, eul))
+    kinds = [h.kind for h in result.highlights]
+    assert "mortgage" in kinds, "을구 빚은 칠한다"
+    assert "seizure" not in kinds, "말소를 못 가린 갑구 항목은 칠하지 않는다"
+    assert result.notice and "압류" in result.notice and "빚" not in result.notice

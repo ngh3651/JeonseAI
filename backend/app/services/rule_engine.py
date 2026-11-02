@@ -85,14 +85,24 @@ def evaluate(
     blacklist_entries: list[dict] | None = None,
     supplementary: object | None = None,  # 추가 서류 확인(소액임차인 등) 대비 자리 — 팀 미결, 미사용
     blacklist_override: EvidenceVerdict | None = None,
+    header_address: str | None = None,
 ) -> RuleVerdict:
-    """추출 결과와 입력값으로 근거 카드 5종을 판정하고 종합 등급을 결합한다."""
+    """추출 결과와 입력값으로 근거 카드 5종을 판정하고 종합 등급을 결합한다.
+
+    `header_address`: 쪽 머리 주소('[집합건물] … 제401호', 모든 쪽에 찍힘) — 집 유형(통건물인가)을 볼 때만 쓴다(2026-11-03).
+    """
     if blacklist_entries is None:
         blacklist_entries = load_blacklist()
 
     # 단독·다가구(통건물 등기) 판별 — 전세가율 판정을 보류시키는 안전망.
     # 주소가 없을 때도 True가 되지만 그쪽은 doc_incomplete가 이미 막고 있어 방향이 같다.
-    whole_building = price_normalize.is_whole_building(extract.address or "")
+    # 통건물(단독·다가구)인가 — IE 주소는 표제부 '소재지'라 집합건물이어도 호수 없이 오는 일이 많다(그러면 통건물로
+    # 의심돼 전세가율을 보류했다 — 실촬영: 쪽 머리 '[집합건물] … 헤이든2 제4층 제401호'인데 '단독·다가구로 보여요').
+    # 쪽 머리 주소가 집합건물(머리표 또는 호수)이라고 **스스로 말하면** 통건물이 아니다. 시세·손실·질문 카드는 이미
+    # 쪽 머리 주소로 유형을 본다 — 같은 등기부를 두고 화면끼리 말이 다르지 않게(2026-11-03 규혁).
+    whole_building = price_normalize.is_whole_building(extract.address or "") and not (
+        header_address and not price_normalize.is_whole_building(header_address)
+    )
 
     ev_jeonse = _judge_jeonse_ratio(deposit, market_price, whole_building=whole_building)
     ev_senior, senior_total = _judge_senior_debt(extract, deposit, market_price)

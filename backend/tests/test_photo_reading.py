@@ -598,3 +598,107 @@ def test_쪽마다_머리표_모양이_달라도_같은_등기부다():
 def test_한_장만_못_읽고_빈_쪽도_하나면_순서와_상관없이_채운다(footers, expected):
     check = check_document(_pages_with_footers(footers))
     assert check.page_numbers == expected and check.missing_pages == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 사진이 커져도 같은 결과 (2026-11-03 — 앱이 짧은 변 1920 → 2560으로 보낸다, `kUploadShortSide`)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _scaled_page(page, k: float, index: int | None = None):
+    """같은 등기부를 k배 큰 사진으로 찍은 것 — OCR 좌표·사진 크기가 모두 k배."""
+    from app.services.ocr_layout import OcrPage, Word
+
+    words = [Word(w.text, w.confidence, w.x0 * k, w.y0 * k, w.x1 * k, w.y1 * k) for w in page.words]
+    return OcrPage(name=page.name, index=page.index if index is None else index, words=words,
+                   lines=group_lines(words), width=round(page.width * k), height=round(page.height * k))
+
+
+def _boxes(highlights):
+    return sorted((h.kind, h.page, (h.box.x, h.box.y, h.box.w, h.box.h)) for h in highlights)
+
+
+def _same_boxes(a, b, tol: float = 0.002) -> bool:
+    """종류·쪽·개수가 같고 상자가 사진 폭의 0.2% 안에서 같다(반올림 차이만 허용)."""
+    return len(a) == len(b) and all(
+        x[0] == y[0] and x[1] == y[1] and all(abs(p - q) <= tol for p, q in zip(x[2], y[2])) for x, y in zip(a, b)
+    )
+
+
+@pytest.mark.parametrize("k", [2560 / 1920, 2560 / 1440])
+def test_사진이_커져도_형광펜이_같은_자리에_같은_개수(k):
+    from app.services.ocr import OcrResult
+
+    gap, eul = gap_gu_page(index=0), eul_gu_page(with_cancel_row=True)
+    eul.index = 1
+    extract = extract_with(
+        mortgages=[MoneyEntry(rank_number="2", amount=300_000_000)],
+        current_owners=[{"name": "홍길동"}, {"name": "김영희"}],
+    )
+    small = highlight.build_highlights(extract, OcrResult(pages=[gap, eul])).highlights
+    big = highlight.build_highlights(
+        extract, OcrResult(pages=[_scaled_page(gap, k), _scaled_page(eul, k)])
+    ).highlights
+    assert small, "비교할 형광펜이 있어야 한다"
+    assert _same_boxes(_boxes(big), _boxes(small)), "좌표는 0~1로 정규화되므로 사진 크기와 상관없이 같아야 한다"
+
+
+@pytest.mark.parametrize("k", [2560 / 1920, 2560 / 1440])
+def test_사진이_커져도_줄_묶기와_기울기가_같다(k):
+    words = warp(tall_eul_gu(), roll(4))
+    page = page_of(0, words)
+    big = _scaled_page(page, k)
+    s_small, s_big = estimate_skew(page.words), estimate_skew(big.words)
+    assert s_small is not None and s_big is not None
+    assert abs(s_small.degrees - s_big.degrees) < 0.05
+    assert [[w.text for w in ln.words] for ln in group_lines(page.words)] == [
+        [w.text for w in ln.words] for ln in group_lines(big.words)
+    ]
+
+
+@pytest.mark.parametrize("k", [2560 / 1920])
+def test_사진이_커져도_이름_가리기가_같다(k):
+    from app.services import privacy_masks
+    from app.services.ocr import OcrResult
+
+    gap = gap_gu_page(index=0)
+    small = privacy_masks.build_privacy_masks(OcrResult(pages=[gap]), None, page_count=1)
+    big = privacy_masks.build_privacy_masks(OcrResult(pages=[_scaled_page(gap, k)]), None, page_count=1)
+
+    def norm(res):
+        return sorted(("mask", 0, (m.x, m.y, m.w, m.h)) for m in res.masks)
+
+    assert norm(small) and _same_boxes(norm(big), norm(small))
+    assert big.counts == small.counts
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 집 유형 — IE 주소에 호수가 없어도 쪽 머리가 집합건물이면 통건물로 보지 않는다 (2026-11-03 규혁 실촬영)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _jeonse_card(extract, **kw):
+    from app.services import rule_engine
+
+    v = rule_engine.evaluate(extract, deposit=300_000_000, market_price=425_600_000, blacklist_entries=[], **kw)
+    return next(e for e in v.evidences if e.id == "jeonse_ratio")
+
+
+def test_쪽_머리가_집합건물이면_전세가율을_보류하지_않는다():
+    """실촬영: IE 주소 '서울특별시 동작구 상도1동 455-7 헤이든2'(표제부 소재지 — 호수 없음) ·
+    쪽 머리 '[집합건물] … 헤이든2 제4층 제401호' → 예전엔 '단독·다가구로 보여요'(시세·손실 화면은 연립다세대)."""
+    from app.schemas.internal import RegistryExtract
+
+    extract = RegistryExtract.from_raw({**registry_raw(), "address": "서울특별시 동작구 상도1동 455-7 헤이든2"})
+    assert _jeonse_card(extract).facts.get("whole_building") is True, "쪽 머리를 모르면 예전처럼 보류(보수적)"
+    card = _jeonse_card(extract, header_address="서울특별시 동작구 상도1동 455-7 헤이든2 제4층 제401호")
+    assert not card.facts.get("whole_building")
+    assert card.facts.get("jeonse_ratio_pct") is not None
+
+
+def test_쪽_머리도_통건물이면_그대로_보류한다():
+    from app.schemas.internal import RegistryExtract
+
+    extract = RegistryExtract.from_raw({**registry_raw(), "address": "서울특별시 관악구 신림동 123-4"})
+    assert _jeonse_card(extract, header_address="[건물] 서울특별시 관악구 신림동 123-4").facts.get("whole_building") is True
+    assert _jeonse_card(extract, header_address="서울특별시 관악구 신림동 123-4").facts.get("whole_building") is True

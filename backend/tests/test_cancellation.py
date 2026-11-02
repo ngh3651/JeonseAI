@@ -312,3 +312,72 @@ def test_제외해도_규칙_임계값은_그대로다():
     assert a.grade == b.grade
     assert a.senior_debt_amount == b.senior_debt_amount
     assert [e.grade for e in a.evidences] == [e.grade for e in b.evidences]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2026-11-03 규칙 감사 — 순위번호를 앞뒤 순위로 채운 항목 · 금액을 못 읽은 빚
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_순위_3을_못_읽은_갑구에서도_말소된_강제경매와_압류는_계산에서_빠진다():
+    """실촬영 서초 4쪽 모양 — 3번 강제경매는 6번에서, 4번 압류는 5번에서 말소됐다(갑구 = 금액 없는 종류)."""
+    from tests.test_highlight import _seoul_gap_gu_missing_rank3
+
+    extract = _extract(
+        provisional_seizures=[{"rank_number": "2"}],
+        auction_commencements=[{"rank_number": "3"}],
+        seizures=[{"rank_number": "4"}, {"rank_number": "7"}],
+    )
+    result = _apply(extract, _seoul_gap_gu_missing_rank3())
+    got = sorted((ex.ie_field, ex.rank) for ex in result.excluded)
+    assert got == [("auction_commencements", "3"), ("seizures", "4")], got
+    assert [e.is_active for e in extract.auction_commencements] == [False]
+    assert [e.is_active for e in extract.seizures] == [False, True]
+    assert [e.is_active for e in extract.provisional_seizures] == [True]
+
+
+def _eul_with_unread_bugi_and_main() -> OcrPage:
+    """감사 시나리오: 1번 근저당(살아 있음) · '1-1' 변경(번호 못 읽음) · 2번 설정(번호·날짜 못 읽어 1-1에 붙음)
+    · 3번 '2번근저당권설정등기말소'. 순위로는 [1, ?, 3] → ?를 2로 채울 수 있지만, 그 ?는 1-1 변경+2번 설정이 섞였다."""
+    rows = [
+        section_row("을구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("근저당권설정", 117, 150, 91), W("2020년1월2일", 269, 150, 98),
+         W("채권최고액", 515, 150, 74), W("금100,000,000원", 606, 150, 115)],
+        [W("근저당권변경", 117, 230, 91), W("2021년3월4일", 269, 230, 98),
+         W("채권최고액", 515, 230, 74), W("금120,000,000원", 606, 230, 115)],
+        [W("근저당권설정", 117, 300, 91), W("채권최고액", 515, 300, 74)],
+        [W("3", 66, 380, 11), W("2번근저당권설정등기말소", 117, 380, 150), W("2022년5월6일", 269, 380, 98)],
+    ]
+    return make_page(0, rows)
+
+
+def test_부기와_다음_주등기를_못_읽어_섞인_항목으로는_살아_있는_빚을_빼지_않는다():
+    extract = _extract(
+        mortgages=[
+            {"rank_number": "1", "max_claim_amount": "금120,000,000원", "is_canceled": False},
+            {"rank_number": "2", "max_claim_amount": "금50,000,000원", "is_canceled": False},
+        ]
+    )
+    before = cancellation.senior_debt_total(extract)
+    result = _apply(extract, _eul_with_unread_bugi_and_main())
+    assert result.excluded == []
+    assert cancellation.senior_debt_total(extract) == before
+    assert all(m.is_active for m in extract.mortgages)
+
+
+def test_말소된_근저당의_금액을_OCR이_못_읽으면_순위번호로_잇지_않는다():
+    """빚은 금액으로만 잇는다(모듈 docstring — IE의 을구 순위번호는 실측으로 틀렸다). 예전엔 금액을 못 읽으면
+    순위번호 경로로 떨어져 IE가 '1'이라 붙인 근저당을 뺐다 — IE의 1이 살아 있는 빚이면 위험을 숨긴다."""
+    rows = [
+        section_row("을구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("근저당권설정", 117, 150, 91), W("2004년6월25일", 269, 150, 98),
+         W("채권최고액", 515, 150, 74), W("급3b,OOO,OOO원", 606, 150, 110)],  # 금액 글자를 못 읽음
+        [W("2", 66, 250, 11), W("1번근저당권설정등", 117, 250, 124), W("2005년6월29일", 269, 250, 98)],
+        [W("기말소", 117, 290, 44)],
+    ]
+    extract = _extract()
+    result = _apply(extract, make_page(0, rows))
+    assert result.excluded == []
+    assert extract.mortgages[0].is_active

@@ -1,8 +1,9 @@
 """Document OCR 응답의 레이아웃 해석 — 단어 → 줄 → **등기 항목**.
 
-⚠ 이 모듈은 **표시(하이라이트) 전용**이다. 위험 판정(규칙 엔진)에 어떤 영향도 주지 않는다.
-  여기서 나오는 말소 판정은 "어디에 칠하지 **않을지**"를 정할 뿐, 등급·점수·근거 카드를
-  바꾸지 않는다. 판정은 Information Extract + rule_engine 경로 그대로다.
+⚠ 이 모듈은 **읽기·표시** 계층이다. 위험 판정 규칙(rule_engine)은 여기 값을 직접 보지 않는다.
+  단, 두 곳이 여기서 만든 항목을 **판정 재료를 바로잡는 데** 쓴다 — 말소 확인분 제외(`cancellation`,
+  [2026-08-14] D10 — 근거가 결합된 말소만, 빚은 금액으로만)와 빈 금액 다시 읽기(`amount_recovery`).
+  앞뒤 순위로 **채운** 순위번호(`rank_inferred`, 2026-11-03)는 그 둘에서 빚(금액 있는 종류)에 쓰지 않는다.
 
 왜 이런 구조인가 (2026-07-27 실측 근거 — docs/ocr-highlight-findings.md):
 - OCR은 **텍스트와 좌표만** 준다. 선·스타일이 없어 **취소선으로 말소를 알 수 없다**.
@@ -46,6 +47,13 @@ _NAME_GAP_RATIO = 2.5
 _ID_PATTERN = re.compile(r"(\d{6})\s*[-－]\s*([0-9*]{6,8})")
 _RANK_TEXT = re.compile(r"^(\d{1,3})(?:[-－](\d{1,2}))?$")
 _PERSON_NAME = re.compile(r"^[가-힣]{2,4}$")
+# 이름 모양만 봐도 법인인 것 (2026-11-03) — 시연 샘플처럼 **법인 등록번호도 뒷자리를 가린** 등기부(`110111-*******`)에서
+# 번호만 보고 '개인'으로 갈라, 개인 이름치고 길다며(8자 '주식회사○○○○') 버렸다 → 집주인 형광펜이 늘 빠졌다(진단 로그).
+_CORP_NAME = re.compile(
+    r"^(?:\(주\)|㈜|주식회사|유한회사|유한책임회사|합자회사|합명회사|사단법인|재단법인|사회복지법인|학교법인|의료법인"
+    r"|농업협동조합|수산업협동조합|새마을금고|신용협동조합)"
+    r"|(?:주식회사|\(주\)|㈜|은행|공사|조합|금고|신탁|캐피탈|보험|법인)$"
+)
 _MONEY = re.compile(r"\d{1,3}(?:,\d{3})+")
 # 말소 근거 행: "1번근저당권설정등기말소" — 등기목적 칸 텍스트에서만 찾는다.
 _CANCEL_TARGET = re.compile(r"(\d{1,3})번([가-힣]{1,20}?)말소")
@@ -61,6 +69,17 @@ _CANCEL_TARGET = re.compile(r"(\d{1,3})번([가-힣]{1,20}?)말소")
 # 보수적 편향은 그대로다: 진짜 `N번…말소` 행이 대상을 못 찾으면 여전히 보류한다.
 # 여기서 좁힌 것은 "산문 속의 말소"뿐이다.
 _CANCEL_ANY = re.compile(r"등기말소|말소등기|말소$")
+# 순위번호 없이 **새 항목이 시작되는 줄**을 알아보는 표지 (2026-11-03, 실촬영 서초 4쪽: 갑구 '3'을 못 읽어
+# 2번 가압류와 3번 강제경매가 한 항목으로 붙었다 → '3번강제경매…말소'가 짝을 못 찾아 갑구 형광펜 전부 보류).
+# 등기목적 칸이 등기목적 낱말로 **시작**하고, 같은 줄 접수 칸에 **새 날짜**가 있으면 새 항목이다.
+# (한 항목의 둘째 줄은 등기목적이 '기말소'처럼 이어지거나, 접수 칸에 날짜가 아니라 '제1234호'가 온다.)
+_ENTRY_START = re.compile(
+    r"^(?:\d{1,3}번)?(?:소유권|근저당|저당권|전세권|지상권|지역권|주택임차권|임차권|가압류|압류|가처분|가등기|강제경매"
+    r"|임의경매|경매개시|공매|신탁|환매|질권|등기명의인|공동담보)"
+)
+_RECEIPT_DATE = re.compile(r"\d{4}년\s*\d{1,2}월\s*\d{1,2}일")
+# 접수·등기원인 칸 = 등기목적 칸 오른쪽 끝부터 그 폭의 이만큼 안(사진 기하 — 판정 수치 아님). 권리자 칸의 날짜는 보지 않는다.
+_BESIDE_RATIO = 1.3
 # 페이지 머리말(주소 줄) — 항목 본문이 아니므로 항목에 붙이지 않는다.
 # 2026-10-31: 전각 괄호(［ ］)·괄호 안 띄어쓰기('[집합 건물]')도 같은 머리말로 본다(사진 OCR에서 흔하다).
 _PAGE_HEADER = re.compile(r"^\s*[\[［]\s*(집합\s*건물|건물|토지)\s*[\]］]")
@@ -308,6 +327,9 @@ class RegistryItem:
     # 말소 근거 행이 **대상 항목을 실제로 찾았는가**. False면 "무언가 말소됐는데 무엇인지
     # 모른다"는 뜻이라, 금액 하이라이트를 통째로 보류해야 한다(잘못 칠하면 최악의 오류).
     cancel_bound: bool = False
+    # 순위번호를 OCR이 못 읽어(한 글자 '3'은 잘 빠진다) **앞뒤 순위로 정한** 항목인가 (2026-11-03).
+    # 이때 `rank_box`는 순위번호 대신 그 줄 등기목적 첫 낱말 자리다(형광펜 앵커).
+    rank_inferred: bool = False
 
     @property
     def purpose(self) -> str:
@@ -728,6 +750,8 @@ def extract_names(line: Line, page_index: int, med_h: float) -> list[NameHit]:
 
         for raw, j in candidates:
             name, removed = strip_prefixes(raw)
+            if kind == "개인" and _CORP_NAME.search(name):
+                kind = "법인"  # 번호를 가렸어도 이름이 법인이다(위 `_CORP_NAME`)
             if not _is_valid_name(name, kind):
                 continue
             src = line.words[j]
@@ -805,6 +829,19 @@ def build_items(pages: list[OcrPage], tol_ratio: float = 0.6) -> list[RegistryIt
                     rank_line_index=line.index,
                 )
                 items.append(current)
+            elif section in RIGHTS_SECTIONS and (current is None or current.purpose_words):
+                starter = _entry_start_word(line, bands)
+                if starter is not None:
+                    # 순위번호를 못 읽었지만 새 항목이 시작됐다 — 앞 항목에 붙이지 않고 따로 연다(순위는 뒤에서 정한다)
+                    current = RegistryItem(
+                        section=section,
+                        rank=None,
+                        rank_box=starter.box,
+                        rank_page_index=page.index,
+                        rank_line_index=line.index,
+                        rank_inferred=True,
+                    )
+                    items.append(current)
             if current is None:
                 continue
 
@@ -813,8 +850,70 @@ def build_items(pages: list[OcrPage], tol_ratio: float = 0.6) -> list[RegistryIt
             current.names.extend(extract_names(line, page.index, med_h))
             current.moneys.extend(extract_moneys(line, page.index))
 
+    _infer_missing_ranks(items)
     _apply_cancellations(items)
     return items
+
+
+def _entry_start_word(line: Line, bands: ColumnBands | None) -> Word | None:
+    """이 줄이 순위번호 없이 **새 항목을 시작**하면 등기목적 첫 낱말을, 아니면 None.
+
+    조건 둘 다: ⑴ 등기목적 칸 글이 등기목적 낱말로 시작한다 ⑵ 같은 줄의 접수 칸(등기목적 칸 바로 오른쪽)에 날짜가 있다.
+    """
+    if bands is None:
+        return None
+    purpose = _purpose_words(line, bands)
+    if not purpose:
+        return None
+    if not _ENTRY_START.match("".join(w.text.strip() for w in purpose)):
+        return None
+    lo, hi = bands.purpose
+    width = max(1.0, hi - lo)
+    # 접수·등기원인 칸 = 등기목적 칸 바로 오른쪽(가운데가 등기목적 칸 끝 ~ 그 폭의 1.3배 안). 권리자 칸의 날짜는 보지 않는다.
+    beside = [w for w in line.words if hi < w.lcx <= hi + _BESIDE_RATIO * width]
+    if any(_RECEIPT_DATE.search(w.text) for w in beside):
+        return purpose[0]
+    return purpose[0] if _RECEIPT_DATE.search("".join(w.text for w in beside)) else None
+
+
+def _main_rank(rank: str | None) -> int | None:
+    """'3' → 3 · '3-1' → 3(부기는 주등기 번호) · 못 읽으면 None."""
+    m = _RANK_TEXT.match((rank or "").strip())
+    return int(m.group(1)) if m else None
+
+
+def _infer_missing_ranks(items: list[RegistryItem]) -> None:
+    """순위번호를 못 읽은 항목의 순위를 **앞뒤 순위로 하나로 정해질 때만** 채운다 (2026-11-03).
+
+    주등기 순위번호는 구역마다 1부터 빠짐없이 1씩 늘어난다(말소된 것도 번호를 차지한다). 그래서 앞 항목이 2번,
+    뒤 항목이 4번이고 그 사이에 번호 없는 항목이 **딱 하나**면 그것은 3번이다. 사이 개수가 맞지 않으면(부기 '3-1'을
+    못 읽은 경우 등) 비워 둔다 — 비워 두면 형광펜·말소 짝짓기에서 빠질 뿐 잘못 짝짓지 않는다.
+    """
+    for section in RIGHTS_SECTIONS:
+        seq = [it for it in items if it.section == section]
+        i = 0
+        while i < len(seq):
+            if seq[i].rank is not None:
+                i += 1
+                continue
+            j = i
+            while j < len(seq) and seq[j].rank is None:
+                j += 1
+            gap = seq[i:j]
+            before = next((_main_rank(it.rank) for it in reversed(seq[:i]) if _main_rank(it.rank) is not None), None)
+            after = _main_rank(seq[j].rank) if j < len(seq) else None
+            if before is not None and after is not None and after - before == len(gap) + 1:
+                for k, it in enumerate(gap, start=1):
+                    it.rank = str(before + k)
+                _log.info(
+                    f"[항목] {section} 순위번호를 못 읽은 {len(gap)}건을 앞뒤 순위({before}·{after})로 정함: "
+                    + ", ".join(f"{it.rank}번 '{it.purpose[:10]}' @{it.location}" for it in gap)
+                )
+            else:
+                _log.info(
+                    f"[항목] {section} 순위번호를 못 읽은 {len(gap)}건 — 앞뒤 순위({before}·{after})로 하나로 정해지지 않아 비워 둠"
+                )
+            i = j
 
 
 @dataclass
@@ -1334,10 +1433,27 @@ def _apply_cancellations(items: list[RegistryItem]) -> None:
         for target in items:
             if target is item:
                 continue
+            if target.rank_inferred and (
+                not _purpose_agrees(m.group(2), target.purpose)
+                or any(o is not target and o.rank == target.rank and o.section == target.section for o in items)
+            ):
+                # 앞뒤 순위로 정한 항목은 말소 문구의 등기목적까지 같고, 같은 번호를 읽은 다른 항목이 없을 때만 짝짓는다
+                # (2026-11-03 — 이중 확인 · 규칙 감사: 한 말소 행이 두 항목을 지우지 않게)
+                continue
             if target.rank == target_rank and _same_section(target.section, item.section):
                 target.canceled = True
                 target.cancel_evidence = evidence
                 item.cancel_bound = True
+
+
+def _purpose_agrees(cancel_phrase: str, target_purpose: str) -> bool:
+    """말소 문구 속 등기목적('강제경매개시결정등기')과 대상 항목의 등기목적이 **같은 낱말**인가.
+
+    2026-11-03 규칙 감사: 앞 4글자만 보면 '근저당권'설정·변경·이전이 모두 같다고 나왔다 — 등기목적 전체(최대 8자)를 본다.
+    """
+    phrase = re.sub(r"등기$", "", cancel_phrase or "")
+    head = phrase[:8]
+    return len(head) >= 2 and target_purpose.startswith(head)
 
 
 def _same_section(a: str, b: str) -> bool:

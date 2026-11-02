@@ -24,6 +24,8 @@ import secrets
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -160,12 +162,14 @@ def reset() -> None:
     with _store_lock:
         _store = None
     _cases_cache.clear()
+    _cases_pending.clear()
     _writable_cache = None
 
 
 def clear_all_cases() -> None:
     """판례 카드 캐시를 전부 비운다 — 판례 창고가 새로 바뀌었을 때(자동 업데이트, 2026-10-24)."""
     _cases_cache.clear()
+    _cases_pending.clear()  # 옛 창고로 찾던 결과도 남기지 않는다
 
 
 def name_salt() -> bytes:
@@ -385,6 +389,7 @@ def remove(report_id: str, *, device_id: str) -> None:
         "DELETE FROM rejudge_kits WHERE device_id = ? AND report_id = ?", (device_id, report_id)
     )
     _cases_cache.pop((device_id, report_id), None)
+    _cases_pending.pop((device_id, report_id), None)
 
 
 # ── 등기부 스냅샷 (S-11 대조, 2026-08-14) ────────────────────────────────────
@@ -461,12 +466,63 @@ def get_cases(report_id: str, *, device_id: str) -> list[CaseMatch] | None:
     return _cases_cache.get(_cases_key(report_id, device_id))
 
 
+# ── 판례 미리 찾기 (2026-11-03 속도) ─────────────────────────────────────────
+# 분석이 설명을 쓰는 동안 판례를 먼저 찾아 둔다(`report_builder.analyze`). 앱이 판례를 부르면 끝난 결과를 주고,
+# 아직이면 그 일을 기다린다 — 같은 판례 찾기(크레딧)를 두 번 하지 않는다. 실패하면 캐시하지 않는다(다시 부르면 다시 찾음).
+_cases_pending: dict[tuple[str, str], tuple[object, "Future"]] = {}
+_cases_lock = threading.Lock()
+_CASES_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cases")
+
+
+def start_cases(report_id: str, compute: "Callable[[], list[CaseMatch]]", *, device_id: str) -> None:
+    """판례 찾기를 뒤에서 시작한다. 이미 결과가 있거나 찾는 중이면 아무것도 안 한다."""
+    key = _cases_key(report_id, device_id)
+    token = object()
+    with _cases_lock:
+        if key in _cases_cache or key in _cases_pending:
+            return
+
+        def run() -> list[CaseMatch]:
+            try:
+                cases = compute()
+                with _cases_lock:
+                    # 기다리는 사이 지워졌으면(보증금 고치기 등 `clear_cases`) 낡은 결과를 남기지 않는다
+                    current = _cases_pending.get(key)
+                    if current is not None and current[0] is token:
+                        _cases_cache[key] = cases
+                return cases
+            finally:
+                with _cases_lock:
+                    current = _cases_pending.get(key)
+                    if current is not None and current[0] is token:
+                        _cases_pending.pop(key, None)
+
+        _cases_pending[key] = (token, _CASES_POOL.submit(run))
+
+
+def wait_cases(report_id: str, *, device_id: str, timeout: float) -> list[CaseMatch] | None:
+    """미리 찾는 중인 판례를 기다려 받는다. 찾는 중이 아니거나 실패·시간 초과면 None(부른 쪽이 직접 찾는다)."""
+    key = _cases_key(report_id, device_id)
+    with _cases_lock:
+        if key in _cases_cache:
+            return _cases_cache[key]
+        pending = _cases_pending.get(key)
+    if pending is None:
+        return None
+    try:
+        return pending[1].result(timeout=timeout)
+    except Exception:  # noqa: BLE001 — 기다리다 실패하면 부른 쪽이 직접 찾는다
+        return None
+
+
 def put_cases(report_id: str, cases: list[CaseMatch], *, device_id: str) -> None:
     _cases_cache[_cases_key(report_id, device_id)] = cases
 
 
 def clear_cases(report_id: str, *, device_id: str) -> None:
-    _cases_cache.pop(_cases_key(report_id, device_id), None)
+    with _cases_lock:
+        _cases_cache.pop(_cases_key(report_id, device_id), None)
+        _cases_pending.pop(_cases_key(report_id, device_id), None)  # 찾는 중이던 결과는 남기지 않는다
 
 
 # ── 주인 바꾸기·지우기 (카카오 로그인 — 2026-10-22, P2-1) ─────────────────────────

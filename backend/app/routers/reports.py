@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 from .. import settings
 from ..dependencies import get_current_user, limit_global, limit_requester
 from ..schemas.contract import AskCards, CaptureCheck, CaseMatch, CompareResult, LossEstimate, QuestionGroup, Report
-from ..services import ask_cards, analysis_cache, capture_check, compare, loss_estimate, patterns, questions, report_builder, store
+from ..services import ask_cards, analysis_cache, capture_check, compare, cross_check, loss_estimate, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
@@ -218,6 +218,7 @@ def analyze(
             device_id=device_id,
             capture=capture,
             cancelled=gone,
+            draft_hook=lambda draft: _start_cases_early(draft, device_id),
         )
     except report_builder.AnalysisCancelled:
         return _cancelled_response()  # 아무것도 저장하지 않았다 · replaces도 그대로
@@ -233,7 +234,10 @@ def analyze(
     _drop_replaced(report, replaces, device_id=device_id)
     # 같은 집 바로 전 리포트와 견준 결과를 싣는다 — 홈에서 다시 분석해도 '등기부 변동 기록'에 남게 (2026-10-27)
     report = _attach_change(report, device_id=device_id)
-    analysis_cache.remember(cache_key, report, device_id=device_id)
+    # IE가 늦거나 실패해 두 번째 읽기로만 판정한 리포트는 캐시하지 않는다(2026-11-03 버그 검토) — 같은 사진을 다시 보내면
+    # IE로 다시 읽게(안내 문장 '잠시 뒤 다시 분석하면 더 정확해요'가 참이 되게).
+    if cross_check.IE_LATE_NOTE not in (report.checkedNotes or []):
+        analysis_cache.remember(cache_key, report, device_id=device_id)
     # 같은 집은 최신 5건만 (화면엔 최신 1개 — 앱이 고유번호·주소로 묶는다)
     store.prune_versions(report, device_id=device_id)
     return report
@@ -412,6 +416,9 @@ def compare_registry(
             alias=base_report.alias,
             device_id=device_id,
             capture=capture,
+            # 대조는 기준과 **같은 방법(IE)**으로 읽는다 — IE가 늦어도 두 번째 읽기로 대신하지 않는다(2026-11-03 버그 검토:
+            # 두 방법의 읽기 차이가 '등기부 변동'처럼 보이게 된다)
+            ie_deadline=0,
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
@@ -487,6 +494,28 @@ def report_loss_estimate(
     return loss_estimate.estimate(report, price=price)
 
 
+#: 미리 찾는 중인 판례를 기다리는 상한(초) — 판례 찾기는 보통 6~14초. 넘으면 직접 찾는다
+_EARLY_CASES_WAIT_SECONDS = 40
+
+
+def _match_cases(report: Report) -> list[CaseMatch]:
+    """리포트(저장된 가린 사본 모양) → 판례 카드. 실패는 부른 쪽이 다룬다."""
+    section = precedent_service.get_service().match_for_report(report, explain=True)
+    return [CaseMatch.model_validate(c) for c in section.cases]
+
+
+def _start_cases_early(draft: Report, device_id: str) -> None:
+    """분석이 설명을 쓰는 동안 판례를 먼저 찾는다 (2026-11-03 속도 — `report_builder.analyze`의 draft_hook).
+
+    예전엔 리포트가 나온 뒤 앱이 판례를 따로 불러 9~14초를 더 기다렸다. 실패하면 캐시하지 않아 앱이 부를 때 다시 찾는다.
+    """
+    try:
+        store.start_cases(draft.id, lambda: _match_cases(draft), device_id=device_id)
+        _log.info("[판례] 설명을 쓰는 동안 판례를 먼저 찾습니다")
+    except Exception:  # noqa: BLE001 — 미리 찾기가 분석을 막지 못한다
+        _log.error("[판례] ⚠ 미리 찾기 시작 실패 — 앱이 부를 때 찾습니다", exc_info=True)
+
+
 @router.get("/reports/{report_id}/cases", response_model=list[CaseMatch])
 def report_cases(
     report_id: str, device_id: str = Depends(get_current_user)
@@ -504,6 +533,10 @@ def report_cases(
     cached = store.get_cases(report_id, device_id=device_id)
     if cached is not None:
         return cached
+    # 분석이 설명을 쓰는 동안 미리 찾기 시작했으면 그 결과를 기다린다(2026-11-03) — 같은 찾기를 두 번 하지 않는다
+    early = store.wait_cases(report_id, device_id=device_id, timeout=_EARLY_CASES_WAIT_SECONDS)
+    if early is not None:
+        return early
 
     # ⚠ 이 경로 전체를 감싼다 (2026-08-14 D7). 판례 매칭은 임베딩 호출 → 벡터 검색 →
     #   Solar 설명 생성으로 이어지는데, 그 어느 단계든 밖에서 끊길 수 있다(크레딧 소진,
@@ -516,8 +549,7 @@ def report_cases(
     #   ⚠ 실패한 결과는 **캐시하지 않는다.** 캐시하면 원인이 사라진 뒤에도 이 리포트는
     #     영원히 판례 없음으로 굳는다. 다시 들어오면 다시 시도하게 둔다.
     try:
-        section = precedent_service.get_service().match_for_report(report, explain=True)
-        cases = [CaseMatch.model_validate(c) for c in section.cases]
+        cases = _match_cases(report)
     except Exception:  # noqa: BLE001 — 판례가 리포트 화면을 깨뜨리지 못하게 하는 방어선
         _log.error(
             "[판례] ⚠ 매칭 실패 — 빈 목록으로 응답합니다"

@@ -702,3 +702,23 @@ def test_쪽_머리도_통건물이면_그대로_보류한다():
     extract = RegistryExtract.from_raw({**registry_raw(), "address": "서울특별시 관악구 신림동 123-4"})
     assert _jeonse_card(extract, header_address="[건물] 서울특별시 관악구 신림동 123-4").facts.get("whole_building") is True
     assert _jeonse_card(extract, header_address="서울특별시 관악구 신림동 123-4").facts.get("whole_building") is True
+
+
+def test_쪽_머리표가_건물이면_호수_글자가_있어도_통건물로_본다():
+    """버그 검토(2026-11-03): 머리표를 떼고 넘겨 '[건물] … 행복하우스 3호'가 집합건물로 보여 안전망이 꺼졌다."""
+    from app.schemas.internal import RegistryExtract
+
+    extract = RegistryExtract.from_raw({**registry_raw(), "address": "서울특별시 관악구 신림동 123-4"})
+    card = _jeonse_card(extract, header_address="[건물] 서울특별시 관악구 신림동 123-4 행복하우스 3호")
+    assert card.facts.get("whole_building") is True
+    # 머리표가 집합건물이면 호수를 못 읽었어도 집합건물
+    card2 = _jeonse_card(extract, header_address="[집합건물] 서울특별시 관악구 신림동 123-4 헤이든2 제4층")
+    assert not card2.facts.get("whole_building")
+
+
+def test_리포트는_쪽_머리표를_남겨_다시_판정에서도_같은_유형으로_본다():
+    from app.services import report_builder as rb2
+
+    assert rb2._tagged("서울 … 제401호", "집합건물") == "[집합건물] 서울 … 제401호"
+    assert rb2._tagged("서울 … 제401호", None) == "서울 … 제401호"
+    assert "propertyKind" in rb2._KEEP_ON_REJUDGE

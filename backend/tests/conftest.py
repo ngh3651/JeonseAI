@@ -40,6 +40,9 @@ os.environ["SESSION_DAYS"] = ""
 # 사진 방향 바로 세우기(2026-10-26): 가짜 OCR 응답 순서(장마다 1번 호출)를 가정한 테스트가 많아 기본은 끈다.
 # 방향 찾기 자체는 `test_orientation.py`가 켜고 시험한다.
 os.environ["AUTO_ROTATE"] = "off"
+# OCR 장별 동시 호출(2026-11-03): 가짜 OCR 응답을 **부른 순서대로** 내주는 테스트가 많아 기본은 한 장씩.
+# 동시 호출 자체는 `test_ocr_concurrency.py`가 켜고(사진마다 정해진 응답) 시험한다.
+os.environ["OCR_CONCURRENCY"] = "1"
 
 import pytest  # noqa: E402
 

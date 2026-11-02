@@ -413,6 +413,11 @@ _REPAIR_NOTE = (
 )
 
 
+def shape_repair_enabled() -> bool:
+    """모양만 어긋난 칸도 고쳐 쓰게 할지 (2026-11-03 기본 끔 — 속도). `EXPLAIN_SHAPE_REPAIR=1`이면 예전처럼."""
+    return os.environ.get("EXPLAIN_SHAPE_REPAIR", "").strip().lower() in ("1", "true", "on", "yes")
+
+
 def _repair(
     material: dict, payload: "ExplanationPayload", retry: dict[str, str], api_key: str, name: str,
     *, timeout: float = REPAIR_TIMEOUT_SECONDS,
@@ -591,8 +596,16 @@ def _generate_with_llm(
     retry.update({k: f"모양: {v}" for k, v in shape_reason.items()})
     if head_reason:
         retry["headline"] = head_reason
+    only_shape = bool(retry) and not head_reason and not any(card_reason.values())
+    if only_shape and not shape_repair_enabled():
+        # 모양만 어긋났다(틀린 말은 없다) — 고쳐 쓰기 한 번에 5초 안팎이 들고 실측으로 절반쯤은 고쳐지지도 않았다
+        # (2026-11-03 로그 '모양 고쳐 쓰기 3칸 → 그대로 남은 2칸'). AI 글을 그대로 쓰고(줄바꿈 다듬기는 그대로) 시간을 아낀다.
+        # 틀린 말·등급 방향 문제는 지금처럼 고쳐 쓴다. 다시 켜려면 `EXPLAIN_SHAPE_REPAIR=1`.
+        _log.info(
+            f"[설명:{provider.name}] 모양만 어긋난 {len(shape_reason)}칸 — 고쳐 쓰기 생략(속도), AI 글을 그대로 씀"
+        )
+        retry = {}
     if retry:
-        only_shape = not head_reason and not any(card_reason.values())
         fixed = _repair(
             material, payload, retry, api_key, provider.name,
             timeout=SHAPE_REPAIR_TIMEOUT_SECONDS if only_shape else REPAIR_TIMEOUT_SECONDS,

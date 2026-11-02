@@ -67,6 +67,12 @@ from .ocr_layout import (
 # 'N번○○말소' 대상 순위를 읽는 정규식. **한 벌만 둔다** — 여기서 다시 쓰면 두 곳이
 # 갈라져 "말소를 보는 눈"이 경로마다 달라진다(그 갈림이 바로 D17의 사고였다).
 from .ocr_layout import _CANCEL_TARGET as CANCEL_TARGET_RE
+from .ocr_layout import _CORP_NAME as _OCR_CORP_NAME
+
+
+def ocr_layout_corp(name: str) -> bool:
+    """이름 모양이 법인인가(`ocr_layout._CORP_NAME`과 같은 기준 — 한 벌만 둔다)."""
+    return bool(_OCR_CORP_NAME.search(name or ""))
 
 _log = logging.getLogger("jeonseai")
 
@@ -292,6 +298,9 @@ class RankedRule:
 #: 말소를 못 가린 구(區)를 사용자 말로 — 안내 문구용(2026-11-03)
 _SECTION_WORDS = {"갑구": "압류·가압류·경매·신탁", "을구": "빚(근저당·전세권)"}
 
+#: 금액을 못 읽어도 순위번호 + 등기목적으로 자리를 짚는 종류 (2026-11-03) — 금액이 표시의 핵심이 아니다
+_AMOUNT_OPTIONAL_KINDS = frozenset({"provisional_seizure"})
+
 _RANKED_RULES: tuple[RankedRule, ...] = (
     RankedRule("mortgage", "을구", _rx(r"근저당권설정"), "mortgages", "amount", "집에 잡힌 빚 (근저당권)"),
     RankedRule("jeonse", "을구", _rx(r"전세권설정"), "jeonse_rights", "amount", "다른 사람의 전세권"),
@@ -460,7 +469,8 @@ def _entry_amount(entry: RegistryEntry, attr: str) -> int | None:
 def _diag_log(items: list[RegistryItem], ordered_pages: list[OcrPage], owner_names: list[str]) -> None:
     """[진단] 실촬영에서 형광펜을 못 칠한 까닭을 로그만 보고 가르게 (2026-11-03, 판정·표시와 무관).
 
-    ⚠ 실명은 남기지 않는다(CLAUDE.md §2-5) — 이름은 `mask_name` + 글자 수, 등기목적은 앞 14자(이름이 없는 칸).
+    ⚠ 실명은 남기지 않는다(CLAUDE.md §2-5) — 이름은 **글자 수·일치 여부만**(첫 글자도 안 찍는다 — 2026-11-03 버그 검토:
+    `mask_name`은 낱말 조각마다 첫 글자를 남겨 '홍(1자)+길○(2자)'처럼 이름이 드러났다), 등기목적은 앞 14자(이름이 없는 칸).
     ⑴ 갑구·을구 항목: 순위·등기목적·말소 여부 — 말소 행의 대상 순위가 항목 목록에 있는지 보인다.
     ⑵ 집주인 이름: IE 이름과, 사진의 등록번호 바로 앞 낱말 1~2개 — 이름이 두 낱말로 쪼개졌는지 보인다.
     """
@@ -490,9 +500,9 @@ def _diag_log(items: list[RegistryItem], ordered_pages: list[OcrPage], owner_nam
                     hit = next((n for n in owner_names if n and (n in (prev[-1:] or [""]) or n == joined)), None)
                     tag = "" if hit is None else (" =IE이름" if prev and prev[-1] == hit else " =IE이름(두 낱말을 이으면)")
                     before_ids.append(
-                        "+".join(f"{mask_name(p)}({len(p)}자)" for p in prev) + tag + f" @{page.name}:L{line.index}"
+                        "+".join(f"{len(p)}자" for p in prev) + tag + f" @{page.name}:L{line.index}"
                     )
-        ie = ", ".join(f"{mask_name(n)}({len(n)}자)" for n in owner_names)
+        ie = ", ".join(f"{len(n)}자{'(법인 모양)' if ocr_layout_corp(n) else ''}" for n in owner_names)
         _log.info(
             f"[진단:이름] IE 집주인 {ie} | 등록번호 앞 낱말 {len(before_ids)}곳 — "
             + (" | ".join(before_ids[:8]) or "등록번호를 하나도 못 찾음")
@@ -524,6 +534,10 @@ def _match_owner(
         if hit.name == target
     ]
     if not hits:
+        # 사진 글자가 조금 달라도 찾는다 (2026-11-03 실촬영) — 실패 사유를 가르기 전에 한 번 더
+        loose = _match_owner_loose(target, items, pages)
+        if loose is not None:
+            return loose
         # 왜 못 찾았는지를 갈라서 남긴다 — 아침 진단의 핵심
         anywhere = [hit for it in items for hit in it.names if hit.name == target]
         if not anywhere:
@@ -537,6 +551,69 @@ def _match_owner(
     _, hit = hits[-1]
     if hit.page_index not in pages:
         return f"좌표가 있는 페이지({hit.page_index})의 OCR 결과가 없음"
+    return hit.page_index, hit.box, hit.kind
+
+
+_OWNERSHIP_PURPOSE = re.compile(r"소유권")
+
+
+def _one_letter_apart(a: str, b: str) -> bool:
+    """두 이름이 **한 글자만** 다른가(같은 길이에서 한 자리, 또는 한 글자 빠짐) — OCR이 한 자를 잘못·덜 읽은 경우."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    return any(long_[:k] + long_[k + 1:] == short for k in range(len(long_)))
+
+
+def _match_owner_loose(
+    target: str, items: list[RegistryItem], pages: dict[int, OcrPage]
+) -> tuple[int, tuple[float, float, float, float], str] | None:
+    """집주인 이름을 **조금 느슨하게** 한 번 더 찾는다 (2026-11-03 실촬영 — 정확히 같은 글자만 찾으면 자주 놓쳤다).
+
+    ⑴ 두 낱말로 쪼개진 이름: 등록번호 앞 낱말과 그 앞 낱말을 이으면 IE 이름과 **정확히** 같다('주식회사'+'가상건설').
+    ⑵ 한 글자 다르게 읽힌 이름: **소유권 항목**(소유권보존·이전) 안에서, 3자 이상, IE 이름과 한 글자만 다른 이름이
+       **딱 하나**일 때만(채권자·근저당권자 등 다른 사람 이름과 헷갈리지 않게 소유권 항목으로 좁힌다).
+    둘 다 아니면 None — 예전처럼 실패 사유를 남긴다.
+    """
+    active = _active_rights_items(items, "갑구")
+    # ⑴ 쪼개진 이름
+    joined_hits = []
+    for it in active:
+        for hit in it.names:
+            page = pages.get(hit.page_index)
+            if page is None or not (0 <= hit.line_index < len(page.lines)) or hit.word_index < 1:
+                continue
+            words = page.lines[hit.line_index].words
+            if hit.word_index >= len(words):
+                continue
+            prev = words[hit.word_index - 1]
+            if prev.text.strip() + hit.name == target:
+                joined_hits.append((hit, _union([prev.box, hit.box])))
+    if joined_hits:
+        joined_hits.sort(key=lambda pair: (pair[0].page_index, pair[0].box[1]))
+        hit, box = joined_hits[-1]
+        _log.info(f"[매칭] ↺ 집주인 {mask_name(target)} — 두 낱말로 쪼개진 이름을 이어서 찾음")
+        return hit.page_index, box, "법인" if ocr_layout_corp(target) else hit.kind
+    # ⑵ 한 글자 다른 이름 — 소유권 항목 안에서만, 딱 하나일 때만
+    if len(target) < 3:
+        return None
+    near = [
+        hit
+        for it in active
+        if _OWNERSHIP_PURPOSE.search(it.purpose)
+        for hit in it.names
+        if _one_letter_apart(hit.name, target)
+    ]
+    names = {h.name for h in near}
+    if len(names) != 1:
+        return None
+    near.sort(key=lambda h: (h.page_index, h.box[1]))
+    hit = near[-1]
+    if hit.page_index not in pages:
+        return None
+    _log.info(f"[매칭] ↺ 집주인 {mask_name(target)} — 사진에선 한 글자 다르게 읽혀({mask_name(hit.name)}) 그 자리를 짚음")
     return hit.page_index, hit.box, hit.kind
 
 
@@ -560,7 +637,11 @@ def _match_ranked(
     if not rank:
         return "순위번호 없음 — 같은 종류의 다른 항목과 구분할 수 없음"
     if rule.amount_attr and amount is None:
-        return "금액 미상 — 앵커로 쓸 금액 문자열이 없음"
+        if rule.kind not in _AMOUNT_OPTIONAL_KINDS:
+            return "금액 미상 — 앵커로 쓸 금액 문자열이 없음"
+        # 가압류 청구금액은 IE가 자주 비운다(2026-11-03). 금액은 이 표시의 핵심이 아니라 자리만 짚으면 된다 —
+        # 순위번호 + 등기목적(2앵커)으로 찾는다. 빚(근저당·전세권·임차권)은 금액이 핵심이라 그대로 엄격하다.
+        rule = replace(rule, amount_attr=None)
 
     candidates = [it for it in _active_rights_items(items, rule.section) if it.rank == rank]
     if not candidates:
@@ -591,7 +672,7 @@ def _match_ranked(
 
         if rule.amount_attr:
             amount_text = f"{amount:,}"
-            money_words = [w for w in line.words if amount_text in w.text]
+            money_words = [w for w in line.words if _has_amount(w.text, amount_text)]
             if not money_words:
                 return f"앵커 '{amount_text}'이 순위번호와 같은 줄({page_index}:L{line.index})에 없음"
             return page_index, _union([item.rank_box] + [w.box for w in money_words])
@@ -616,6 +697,87 @@ def _match_ranked(
         return page_index, _union([item.rank_box] + purpose_boxes)
 
     return f"{rule.section} 순위{rank}의 순위번호 줄을 찾지 못함"
+
+
+def _has_amount(text: str, amount_text: str) -> bool:
+    """`36,000,000`이 글자 속에 **한 덩어리 숫자로** 있는가 (2026-11-03 버그 검토).
+
+    그냥 포함(`in`)으로 보면 `금136,000,000원` 속의 `36,000,000`도 맞다고 나와, IE가 숫자 하나를 빠뜨려 빚을 적게
+    읽었을 때 사진이 오히려 그 금액을 확인해 주는 것처럼 칠해졌다. 앞뒤가 숫자·쉼표가 아니어야 같은 금액이다.
+    """
+    return re.search(r"(?<![\d,])" + re.escape(amount_text) + r"(?![\d,])", text) is not None
+
+
+_KO_DATE = re.compile(r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일")
+_ANY_DATE = re.compile(r"(\d{4})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})")
+
+
+def _ie_date(value: object) -> tuple[int, int, int] | None:
+    """IE 접수일('2019-11-05' · '2019.11.5' · '2019년 11월 5일') → (년, 월, 일)."""
+    m = _ANY_DATE.search(str(value or ""))
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+
+def _item_dates(item: RegistryItem) -> set[tuple[int, int, int]]:
+    out: set[tuple[int, int, int]] = set()
+    for _, _, line in item.lines:
+        for m in _KO_DATE.finditer(line.squeezed):
+            out.add((int(m.group(1)), int(m.group(2)), int(m.group(3))))
+    return out
+
+
+def _match_by_content(
+    rule: RankedRule,
+    entry: RegistryEntry,
+    amount: int | None,
+    items: list[RegistryItem],
+    pages: dict[int, OcrPage],
+    skip: set[int],
+) -> tuple[RegistryItem, int, tuple[float, float, float, float]] | str:
+    """순위번호로 못 찾았을 때 **내용으로** 찾는다 (2026-11-03) — 같은 구역의 살아 있는 항목 중
+    등기목적이 같고 + IE 접수일이 그 항목에 있고 + (빚이면) 금액도 그 항목에 있는 것이 **딱 하나**일 때만.
+
+    실촬영: IE가 '1-1'을 '11'로 읽거나, OCR이 순위번호 한 글자를 놓쳐 순위로는 짝이 안 맞았다. 접수일·금액은 긴 글자라
+    OCR이 잘 읽고 항목마다 다르다. 접수일이 없으면 가를 수 없으니 칠하지 않는다(엉뚱한 줄 금지).
+    """
+    receipt = _ie_date(getattr(entry, "receipt_date", None))
+    amount_text = f"{amount:,}" if amount is not None else None
+    if receipt is None:
+        # 접수일이 없으면 가르지 않는다 — 빚은 같은 금액이 여러 곳에 나온다(금액만으로는 항목을 지목할 수 없다).
+        return "IE 접수일이 없어 내용으로도 가를 수 없음"
+    if rule.amount_attr and amount_text is None:
+        return "금액 미상 — 빚은 접수일과 금액이 둘 다 맞아야 짚는다"
+    found: list[RegistryItem] = []
+    for it in _active_rights_items(items, rule.section):
+        if id(it) in skip or not rule.purpose.search(it.purpose):
+            continue
+        if receipt is not None and receipt not in _item_dates(it):
+            continue
+        if amount_text is not None and not any(_has_amount(m.text, amount_text) for m in it.moneys):
+            continue
+        found.append(it)
+    if len(found) != 1:
+        return f"접수일·금액으로 찾은 후보가 {len(found)}개 — 하나가 아니라 칠하지 않음"
+    item = found[0]
+    anchor_page = item.rank_page_index if item.rank_box else item.lines[0][0]
+    if anchor_page not in pages:
+        return f"좌표가 있는 페이지({anchor_page})의 OCR 결과가 없음"
+    boxes: list[tuple[float, float, float, float]] = []
+    if item.rank_box and item.rank_page_index == anchor_page:
+        boxes.append(item.rank_box)
+    for page_index, _, line in item.lines:
+        if page_index != anchor_page:
+            continue
+        band = [w for w in line.words if any(w is pw for pw in item.purpose_words)]
+        if band:
+            boxes.extend(_words_matching(Line(index=line.index, words=band), rule.purpose))
+        if amount_text is not None:
+            boxes.extend(w.box for w in line.words if _has_amount(w.text, amount_text))
+        if boxes and (amount_text is None or any(_has_amount(w.text, amount_text) for w in line.words)):
+            break
+    if not boxes:
+        return "내용으로 찾은 항목의 등기목적·금액 자리를 사진에서 못 찾음"
+    return item, anchor_page, _union(boxes)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -935,9 +1097,9 @@ def build_highlights(
         detail = "; ".join(f"{it.location} '{it.purpose[:24]}'" for it in unbound)
         sections = {it.section for it in unbound}
         if sections <= {"갑구", "을구"}:
+            # 그 구의 표 항목만 막는다 — 을구가 막혀도 갑구 가압류(금액 있는 갑구 종류)는 칠한다(2026-11-03 버그 검토:
+            # 예전엔 여기서 money_allowed를 꺼 갑구 가압류까지 숨겼다). 빚 안내 문장은 아래에서 막힌 구를 보고 고른다.
             blocked_sections = sections
-            if "을구" in sections:
-                money_allowed = False  # 빚(근저당·전세권)은 을구 — 을구 말소를 못 가리면 빚 표시를 막는다
             where = "·".join(sorted(sections))
             _log.info(
                 f"[매칭] ⚠ 말소 근거 행 {len(unbound)}건이 대상 항목을 못 찾음"
@@ -1029,15 +1191,32 @@ def build_highlights(
             continue
         if rule.amount_attr and not money_allowed:
             continue
+        # 순위번호로 짝지은 항목 — 내용으로 찾을 때 같은 항목을 두 번 칠하지 않게(같은 종류 안에서)
+        taken: set[int] = {
+            id(it)
+            for e in entries
+            for it in _active_rights_items(items, rule.section)
+            if it.rank == str(getattr(e, "rank_number", "") or "").strip()
+        }
         for i, entry in enumerate(entries):
             rank = str(getattr(entry, "rank_number", "") or "").strip()
             amount = _entry_amount(entry, rule.amount_attr) if rule.amount_attr else None
             matched = _match_ranked(rule, rank, amount, items, pages)
             if isinstance(matched, str):
-                failures.append(f"{rule.section} 순위{rank or '?'} {rule.label} — {matched}")
-                unplaced[rule.ie_field] = unplaced.get(rule.ie_field, 0) + 1
-                continue
-            page_index, box = matched
+                again = _match_by_content(rule, entry, amount, items, pages, taken)
+                if isinstance(again, str):
+                    failures.append(f"{rule.section} 순위{rank or '?'} {rule.label} — {matched} · 내용으로도: {again}")
+                    unplaced[rule.ie_field] = unplaced.get(rule.ie_field, 0) + 1
+                    continue
+                hit_item, page_index, box = again
+                taken.add(id(hit_item))
+                _log.info(
+                    f"[매칭] ↺ {rule.section} 순위{rank or '?'} {rule.label} — 순위번호로 못 찾아({matched})"
+                    f" 접수일·금액으로 찾음 → 사진의 {hit_item.rank or '?'}번 @{hit_item.location}"
+                )
+                rank = hit_item.rank or rank
+            else:
+                page_index, box = matched
             norm = _normalize(box, pages[page_index], pad_ratio=0.05)
             if norm is None:
                 failures.append(f"{rule.section} 순위{rank} {rule.label} — 원본 크기를 몰라 정규화 실패")
@@ -1151,6 +1330,7 @@ def build_highlights(
         unplaced=unplaced,
         reordered=reorder_applied,
         canceled_excluded=canceled_excluded,
+        blocked_sections=blocked_sections,
     )
     if highlights:
         pages_used = sorted({h.page for h in highlights})
@@ -1295,14 +1475,21 @@ def _build_checked_notes(
     unplaced: dict[str, int] | None = None,
     reordered: bool = False,
     canceled_excluded: int = 0,
+    blocked_sections: set[str] | None = None,
 ) -> list[str]:
     """**"무엇을 찾아봤고 무엇을 왜 표시하지 않았는지"** 를 사용자 말로 정리한다.
 
     이 함수가 하는 일은 설명뿐이다 — 판정을 만들지도, 바꾸지도 않는다.
     (2026-07-27 페르소나 2인 + 디자인 리뷰가 공통으로 지적한 최우선 항목:
      "표시가 없는 것"과 "안 본 것"이 화면에서 구분되지 않아 신뢰가 깎인다.)
+
+    `blocked_sections`(2026-11-03): 말소 줄의 짝을 못 찾아 표시를 막은 구 — 그 구 문장은 '막은 까닭'을 말하고,
+    '없었어요' 같은 단정·안심 문장을 달지 않는다(버그 검토: 안내와 문장이 서로 어긋났다).
     """
     notes: list[str] = []
+    blocked = blocked_sections or set()
+    # 빚(을구) 문장은 을구가 막혔으면 '못 본 쪽'과 같은 쪽으로 말한다(숨김이지 없음이 아니다)
+    money_allowed = money_allowed and "을구" not in blocked
 
     # ① 집주인 이름
     owner_marks = [h for h in highlights if h.kind == "owner"]
@@ -1397,7 +1584,12 @@ def _build_checked_notes(
         h for h in highlights
         if h.kind in ("seizure", "provisional_seizure", "auction", "trust")
     ]
-    if active_signals and signal_marks:
+    if "갑구" in blocked:
+        notes.append(
+            "말소된 항목을 정확히 가려내지 못해 압류·가압류·경매·신탁 표시는 생략했어요 "
+            "— 리포트의 '근거 살펴보기'를 꼭 보세요"
+        )
+    elif active_signals and signal_marks:
         notes.append(
             f"압류·가압류·경매 같은 표시 {len(signal_marks)}곳을 사진에서 찾아 표시했어요 "
             "— 리포트의 '근거 살펴보기'도 꼭 보세요"
@@ -1444,7 +1636,7 @@ def _build_checked_notes(
 
     # ⚠ 이 안심 문장은 **정말 다 본 경우에만** 붙인다. 금액 보류·상한 생략·위치 실패가
     #   있는데 이 말을 하면 정확히 거짓말이 된다(2026-07-28 gap-checker 지적).
-    if money_allowed and not trimmed and not (unplaced or {}):
+    if money_allowed and not blocked and not trimmed and not (unplaced or {}):
         notes.append("표시가 적다는 건 확인할 게 적다는 뜻이에요. 못 읽었다는 뜻이 아니에요.")
 
     # [진단] checkedNotes 생성 결과 요약 — 개수/참·거짓만 (이름·번호 금지).

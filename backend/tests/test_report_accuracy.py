@@ -385,6 +385,7 @@ _WALL = "**빚이 집값보다 커요** " + "먼저 갚을 빚이 4억 1,200만�
 
 
 def test_모양만_어긋나면_고쳐_쓰게_하고_나아지면_고친_글을_쓴다(monkeypatch, solar_key):
+    monkeypatch.setenv("EXPLAIN_SHAPE_REPAIR", "1")  # 2026-11-03부터 기본 끔(속도) — 켰을 때의 동작을 본다
     v = sample_verdict()
     calls: list[str] = []
     fixed = "**빚이 집값보다 커요** 먼저 갚을 빚이 4억 1,200만원이에요.\n**경매로 가면** 빚이 먼저 빠져요."
@@ -512,3 +513,21 @@ def test_챗봇_답_길이는_900자까지_넘으면_몇_자인지_알려_준다
     assert text_guard.check_chat_reply(ok, allowed={0.0}) is None
     hit = text_guard.check_chat_reply("가" * 950, allowed={0.0})
     assert hit is not None and hit[0] == "길이" and "950자" in hit[1] and "700자" in hit[1]
+
+
+def test_모양만_어긋나면_기본은_고쳐_쓰지_않고_AI_글을_그대로_쓴다(monkeypatch, solar_key):
+    """2026-11-03 속도 — 모양만의 고쳐 쓰기(5초 안팎)를 건너뛴다. 틀린 말 검사는 그대로라 AI 글이 그대로 나간다."""
+    monkeypatch.delenv("EXPLAIN_SHAPE_REPAIR", raising=False)
+    v = sample_verdict()
+    calls: list[str] = []
+    answers = iter([_payload(v, _WALL)])
+
+    def fake(messages, api_key):
+        calls.append(messages[-1]["content"][:20])
+        return next(answers)
+
+    monkeypatch.setattr(explanation, "_call_solar", fake)
+    result = explanation.generate(v)
+    assert len(calls) == 1, "고쳐 쓰기 호출이 없어야 한다"
+    assert result.evidence_sources["senior_debt"] != explanation.FALLBACK_SOURCE_LABEL
+    assert "먼저 갚을 빚이 4억 1,200만원이에요" in result.texts["evidences"]["senior_debt"]["easy_explanation"]

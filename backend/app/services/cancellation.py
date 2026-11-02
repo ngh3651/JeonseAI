@@ -210,7 +210,14 @@ def _pick_target(rule, item: RegistryItem, items: list[RegistryItem], extract: R
     ]
 
     amount = _ocr_amount(item)
-    if rule.amount_attr and amount is not None:
+    if rule.amount_attr:
+        # 금액이 있는 종류는 **금액으로만** 잇는다(위 모듈 docstring — IE의 을구 순위번호는 실측으로 틀렸다).
+        # 2026-11-03 규칙 감사: 예전엔 OCR 금액을 못 읽으면 아래 순위번호 경로로 떨어져, IE가 '1'이라 붙인 **살아 있는**
+        #   근저당을 뺄 수 있었다(보수적 편향 위반). 금액을 못 읽으면 빼지 않는다(종전대로 센다).
+        # 순위번호를 앞뒤 순위로 **채운** 항목(`rank_inferred`)도 빚에는 쓰지 않는다 — 부기('1-1')를 못 읽고 다음 주등기가
+        #   붙는 겹친 실패에서 채운 순위·금액이 다른 항목 것일 수 있다(감사 시나리오). 갑구(금액 없는 종류)에만 쓴다.
+        if amount is None or item.rank_inferred:
+            return None, None
         if any(_ocr_amount(s) == amount for s in siblings):
             # 같은 금액이 유효분에도 있다 → 어느 쪽이 말소분인지 가릴 수 없다(실측 사례).
             return None, None

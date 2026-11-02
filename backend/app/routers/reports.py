@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 from .. import settings
 from ..dependencies import get_current_user, limit_global, limit_requester
 from ..schemas.contract import AskCards, CaptureCheck, CaseMatch, CompareResult, LossEstimate, QuestionGroup, Report
-from ..services import ask_cards, analysis_cache, capture_check, compare, loss_estimate, patterns, questions, report_builder, store
+from ..services import ask_cards, analysis_cache, capture_check, compare, cross_check, loss_estimate, patterns, questions, report_builder, store
 from ..services.precedent import service as precedent_service
 from ..services.extraction import ExtractionError
 
@@ -234,7 +234,10 @@ def analyze(
     _drop_replaced(report, replaces, device_id=device_id)
     # 같은 집 바로 전 리포트와 견준 결과를 싣는다 — 홈에서 다시 분석해도 '등기부 변동 기록'에 남게 (2026-10-27)
     report = _attach_change(report, device_id=device_id)
-    analysis_cache.remember(cache_key, report, device_id=device_id)
+    # IE가 늦거나 실패해 두 번째 읽기로만 판정한 리포트는 캐시하지 않는다(2026-11-03 버그 검토) — 같은 사진을 다시 보내면
+    # IE로 다시 읽게(안내 문장 '잠시 뒤 다시 분석하면 더 정확해요'가 참이 되게).
+    if cross_check.IE_LATE_NOTE not in (report.checkedNotes or []):
+        analysis_cache.remember(cache_key, report, device_id=device_id)
     # 같은 집은 최신 5건만 (화면엔 최신 1개 — 앱이 고유번호·주소로 묶는다)
     store.prune_versions(report, device_id=device_id)
     return report
@@ -413,6 +416,9 @@ def compare_registry(
             alias=base_report.alias,
             device_id=device_id,
             capture=capture,
+            # 대조는 기준과 **같은 방법(IE)**으로 읽는다 — IE가 늦어도 두 번째 읽기로 대신하지 않는다(2026-11-03 버그 검토:
+            # 두 방법의 읽기 차이가 '등기부 변동'처럼 보이게 된다)
+            ie_deadline=0,
         )
     except ExtractionError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)

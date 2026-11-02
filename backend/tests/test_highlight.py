@@ -1026,3 +1026,57 @@ def test_한_글자_다르게_읽힌_집주인_이름도_소유권_항목에서�
     rows2 = rows[:3] + [[W("공유자", 516, 190, 44), W("김가산", 566, 190, 44), W("800101-*******", 616, 190, 107)]]
     none = highlight.build_highlights(extract_with(current_owners=[Owner(name="김가상")]), as_result(make_page(0, rows2)))
     assert [h for h in none.highlights if h.kind == "owner"] == []
+
+
+def test_금액은_더_큰_숫자_속에서_찾지_않는다():
+    """IE가 1억 3,600만원을 3,600만원으로 잘못 읽었을 때, 사진의 '금136,000,000원'이 3,600만원을 확인해 주면 안 된다."""
+    from app.services.highlight import _has_amount
+
+    assert _has_amount("금36,000,000원", "36,000,000")
+    assert not _has_amount("금136,000,000원", "36,000,000")
+    assert not _has_amount("금36,000,000,000원", "36,000,000")
+
+
+def test_진단_로그에_이름_글자가_남지_않는다(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="jeonseai")
+    rows = [
+        section_row("갑구", 40),
+        header_row(90),
+        [W("1", 66, 150, 11), W("소유권이전", 117, 150, 75), W("2023년6월15일", 269, 150, 98),
+         W("소유자", 516, 150, 44), W("홍", 566, 150, 14), W("길동", 584, 150, 30), W("750312-*******", 620, 150, 107)],
+    ]
+    highlight.build_highlights(extract_with(current_owners=[Owner(name="홍길동")]), as_result(make_page(0, rows)))
+    diag = "\n".join(r.getMessage() for r in caplog.records if "[진단" in r.getMessage())
+    assert diag and "홍" not in diag and "길" not in diag
+
+
+def test_을구_말소_줄을_못_맞춰도_갑구_가압류는_칠한다():
+    """버그 검토(2026-11-03): 을구 미결 말소가 money_allowed를 꺼서 갑구 가압류까지 숨겼다."""
+    gap = make_page(0, [
+        section_row("갑구", 40), header_row(90),
+        [W("1", 66, 150, 11), W("가압류", 117, 150, 45), W("2021년3월2일", 269, 150, 90),
+         W("청구금액", 515, 150, 60), W("금50,000,000원", 606, 150, 110)],
+    ])
+    eul = make_page(1, [
+        section_row("을구", 40), header_row(90),
+        [W("1", 66, 150, 11), W("7번근저당권설정등기말소", 117, 150, 150), W("2022년1월1일", 269, 150, 90)],
+    ])
+    extract = extract_with(provisional_seizures=[RegistryEntry(rank_number="1", claim_amount="금50,000,000원")])
+    result = highlight.build_highlights(extract, as_result(gap, eul))
+    assert [h.kind for h in result.highlights] == ["provisional_seizure"]
+    assert not any("못 읽었다는 뜻이 아니에요" in n for n in result.checked_notes)
+
+
+def test_갑구가_막히면_안내와_찾아본_것이_같은_말을_한다():
+    page = _seoul_gap_gu_missing_rank3()
+    # 6번 말소 줄의 짝(3번)을 못 찾게 3번 줄의 날짜를 지운다 → 갑구 보류
+    words = [w for w in page.words if not (w.text == "2021년5월7일" or w.text == "2021년5월6일")]
+    broken = OcrPage(name=page.name, index=0, words=words, lines=group_lines(words), width=PAGE_W, height=PAGE_H)
+    extract = extract_with(seizures=[RegistryEntry(rank_number="7")])
+    result = highlight.build_highlights(extract, as_result(broken))
+    assert result.notice and "압류" in result.notice
+    assert any("생략했어요" in n and "압류" in n for n in result.checked_notes)
+    assert not any("없었어요" in n and "압류" in n for n in result.checked_notes)
+    assert not any("못 읽었다는 뜻이 아니에요" in n for n in result.checked_notes)

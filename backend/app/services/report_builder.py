@@ -83,6 +83,13 @@ def ie_deadline_seconds() -> float:
 _HEADER_TAG = re.compile(r"^\s*[\[［]\s*[^\]］]*[\]］]\s*")
 
 
+def _tagged(address: str | None, kind: str | None) -> str | None:
+    """쪽 머리 주소 + 머리표 → '[집합건물] …' (집 유형 판단용, 2026-11-03). 머리표를 모르면 주소 그대로."""
+    if not address:
+        return address
+    return f"[{kind}] {address}" if kind else address
+
+
 def _price_key(address: str | None, area: float | None) -> tuple[str, float | None]:
     """시세 조회 입력이 같은지 견주는 열쇠 — 띄어쓰기는 무시, 면적은 소수 첫째 자리.
 
@@ -188,6 +195,7 @@ def _build(
     blacklist_override: "EvidenceVerdict | None" = None,
     house_types: list[str] | None = None,
     property_address: str | None = None,
+    property_kind: str | None = None,
     on_draft: "Callable[[Report], None] | None" = None,
 ) -> tuple[Report, "explanation.ExplanationResult"]:
     """조립 본체 — (Report, 설명 생성 결과)를 돌려준다.
@@ -202,7 +210,8 @@ def _build(
         market_price = price_info.price_won
     verdict: RuleVerdict = rule_engine.evaluate(
         extract, deposit=deposit, market_price=market_price, blacklist_override=blacklist_override,
-        header_address=property_address,
+        # 집 유형은 머리표까지 붙여 본다('[집합건물] …'·'[건물] …') — 호수 글자 하나로 갈리지 않게(2026-11-03 버그 검토)
+        header_address=_tagged(property_address, property_kind),
     )
     # 시세 **출처**를 설명 계층에 넘긴다 (2026-08-05).
     # ⚠ 규칙 엔진이 판정을 끝낸 **뒤에** 붙인다 — 판정이 이 값을 볼 수 없게 하려는 것이다.
@@ -525,7 +534,7 @@ def _layout_text_for(
 _KEEP_ON_REJUDGE = (
     "address", "analyzedAt", "highlights", "highlightNotice", "checkedNotes", "registryViewedAt",
     "privacyMasks", "privacyMasksReady", "captureCheck", "personNames", "pageOrder", "pageRotations",
-    "propertyId", "propertyAddress", "missingPages", "pageNumbers", "houseTypes", "comparable",
+    "propertyId", "propertyAddress", "propertyKind", "missingPages", "pageNumbers", "houseTypes", "comparable",
     "changeFromPrevious",
 )
 
@@ -704,6 +713,7 @@ def rejudge(
         # 손실 계산 입력을 분석 때와 같게 — 카드 그림이 시뮬레이터와 같은 숫자를 내게(2026-11-01)
         house_types=list(old.houseTypes or []),
         property_address=old.propertyAddress,
+        property_kind=old.propertyKind,
     )
     keep = {k: getattr(old, k) for k in _KEEP_ON_REJUDGE if hasattr(old, k)}
     return fresh.model_copy(update=keep)
@@ -721,6 +731,7 @@ def _masked_draft(
     같게 채우고 같은 방법으로 가린다. 판정은 이미 끝났다(이 사본은 등급을 못 움직인다).
     """
     draft.propertyAddress = doc_check.header_address if doc_check is not None else None
+    draft.propertyKind = doc_check.header_kind if doc_check is not None else None
     draft.houseTypes = list(house_types or [])
     try:
         draft.personNames = name_privacy.person_names(extract)
@@ -775,8 +786,12 @@ def analyze(
     capture: CaptureCheck | None = None,
     cancelled: Callable[[], bool] | None = None,
     draft_hook: "Callable[[Report], None] | None" = None,
+    ie_deadline: float | None = None,
 ) -> Report:
     """업로드 이미지 → (IE ∥ OCR→구조화) → 판정 → 설명 생성 → 이력 저장. (/api/analyze의 본체)
+
+    `ie_deadline`(2026-11-03 버그 검토): IE를 기다리는 상한(초). None이면 `IE_DEADLINE_SECONDS`, 0이면 IE를 끝까지 기다리고
+    두 번째 읽기로 대신하지 않는다 — 대조(다시 뗀 등기부)는 기준과 **같은 방법(IE)**으로 읽어야 차이가 진짜 변동이다.
 
     `draft_hook`(2026-11-03 속도): 판정이 끝나 설명을 쓰기 시작할 때 **저장될 가린 사본과 같은 모양의 초안**을 받는다
     (설명 문장만 준비된 문구). 라우터가 이것으로 판례 찾기를 먼저 시작한다 — 이 모듈은 판례를 모른다.
@@ -835,8 +850,9 @@ def analyze(
     # 앱이 분석을 중단했으면(2026-10-29) 여기서 멈춘다 — IE·OCR을 한 번도 부르지 않는다(크레딧 0원)
     _raise_if_cancelled(cancelled, "IE·OCR")
     stop = threading.Event()  # 켜지면 OCR 쪽이 남은 장·구조화(Solar)를 건너뛴다
-    deadline = ie_deadline_seconds()
+    deadline = ie_deadline_seconds() if ie_deadline is None else max(0.0, ie_deadline)
     ie_late = False  # IE를 기다리지 않고 두 번째 읽기로 판정한다(2026-11-02)
+    late_reason = ""
     early_price: tuple[tuple[str, float | None], "Any"] | None = None  # (입력 열쇠, 미리 받아 둔 시세 조회 future)
     # `with`를 쓰지 않는다 — 블록을 나갈 때 늦은 IE를 끝까지 기다리게 되기 때문이다(늦은 IE는 뒤에서 끝나고 버려진다).
     pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="analyze")
@@ -876,8 +892,11 @@ def analyze(
             _log.info("[분석 중단] 앱이 연결을 끊음 — IE·OCR 결과를 버림(판정·설명·저장 안 함)")
             raise AnalysisCancelled("IE·OCR 뒤")
         ocr_bundle, ocr_error, ocr_path_elapsed = ocr_future.result()
+        if ie_late and ie_future.done():
+            ie_late = False  # 상한에 닿은 바로 그 순간 IE가 도착했다 — 버리지 않고 쓴다(2026-11-03 버그 검토)
         if ie_late:
             extract, ie_error, ie_elapsed = None, None, time.perf_counter() - t0
+            late_reason = f"{deadline:.0f}초가 지나도 IE가 안 와서"
         else:
             extract, ie_error, ie_elapsed = ie_future.result()
     finally:
@@ -885,14 +904,31 @@ def analyze(
     if stop.is_set():
         _log.info("[분석 중단] 앱이 연결을 끊음 — IE·OCR 결과를 버림(판정·설명·저장 안 함)")
         raise AnalysisCancelled("IE·OCR 뒤")
+    # IE가 잠깐 실패했는데(서버 오류·요청 제한·시간 초과) 두 번째 읽기가 있으면 그것으로 판정한다 (2026-11-03 버그 검토 —
+    # 늦을 때는 대신하면서 실패할 때는 분석 전체를 잃던 비대칭). 사진·문서 문제(400·413·415)는 그대로 분석 실패다.
+    if (
+        not ie_late
+        and deadline
+        and ie_error is not None
+        and getattr(ie_error, "status_code", None) not in (400, 413, 415)
+        and ocr_bundle is not None
+        and ocr_bundle.second_extract is not None
+    ):
+        ie_late = True
+        late_reason = f"IE가 실패해서(HTTP {getattr(ie_error, 'status_code', '?')})"
+        ie_error = None
     if ie_late:
         # 판정은 그대로 규칙 엔진이 한다 — 재료(등기 필드)만 두 번째 읽기(OCR 글자 → 구조화, IE와 같은 모양)에서 온다.
         # 2026-11-03 규혁 결정: 두 번째 읽기 결과로 판정을 **그대로** 낸다('양호'도 막지 않음 — 시연 중 IE 지연으로
         # 모든 리포트가 '확인 필요'가 되던 문제). 다른 안전장치(빠진 쪽·주소 못 읽음 등 문서 게이트)는 그대로다.
         _log.info(
-            f"[IE 늦음] {deadline:.0f}초가 지나도 IE가 안 와서 사진 글자 읽기(OCR+구조화) 결과로 판정합니다"
-            " — 늦은 IE 응답은 버림"
+            f"[IE 늦음] {late_reason} 사진 글자 읽기(OCR+구조화) 결과로 판정합니다 — 늦은 IE 응답은 버림"
         )
+        # 요약본 거절은 IE 경로에만 있었다(버그 검토) — 사진 글자로도 본다. 요약본이면 판정하지 않는다.
+        ocr_text = "".join(line.squeezed for p in ocr_bundle.ocr.pages for line in p.lines)
+        if "주요등기사항요약" in ocr_text:
+            _log.info("[분석 중단] 요약본 — 사진 글자에 '주요 등기사항 요약'")
+            raise extraction.ExtractionError(400, extraction.SUMMARY_REJECT_DETAIL)
         extract = ocr_bundle.second_extract.model_copy(deep=True)
 
     total = time.perf_counter() - t0
@@ -1121,7 +1157,8 @@ def analyze(
     try:
         house_types = loss_estimate.house_types_from(
             list(price_info.candidates) if price_info else [],
-            (doc_check.header_address if doc_check is not None else None) or extract.address,
+            _tagged(doc_check.header_address, doc_check.header_kind) if doc_check is not None and doc_check.header_address
+            else extract.address,
             registry_use=ocr_layout.building_use(ocr_result.pages),
         )
     except Exception:  # noqa: BLE001 — 용도를 못 정해도 리포트는 나간다(손실 예상이 세 용도 중 낮은 값을 쓴다)
@@ -1139,6 +1176,7 @@ def analyze(
         price_info=price_info,
         house_types=house_types,
         property_address=doc_check.header_address if doc_check is not None else None,
+        property_kind=doc_check.header_kind if doc_check is not None else None,
         on_draft=(
             (lambda draft: draft_hook(_masked_draft(draft, extract, house_types, doc_check)))
             if draft_hook is not None
@@ -1167,6 +1205,7 @@ def analyze(
     if doc_check is not None:
         # 두 번째 기준(쪽 머리 주소) · 빠진 쪽 · 장마다 쪽 번호 — 표시·묶기 전용
         report.propertyAddress = doc_check.header_address
+        report.propertyKind = doc_check.header_kind
         report.missingPages = missing_pages
         report.pageNumbers = list(doc_check.page_numbers)
     # 화면엔 실명, 저장은 가린 사본 (2026-10-22) — 사람 이름 목록. 앱 가리기 스위치가 쓰고, `store.add`가 이 목록으로

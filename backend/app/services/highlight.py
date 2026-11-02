@@ -469,7 +469,8 @@ def _entry_amount(entry: RegistryEntry, attr: str) -> int | None:
 def _diag_log(items: list[RegistryItem], ordered_pages: list[OcrPage], owner_names: list[str]) -> None:
     """[진단] 실촬영에서 형광펜을 못 칠한 까닭을 로그만 보고 가르게 (2026-11-03, 판정·표시와 무관).
 
-    ⚠ 실명은 남기지 않는다(CLAUDE.md §2-5) — 이름은 `mask_name` + 글자 수, 등기목적은 앞 14자(이름이 없는 칸).
+    ⚠ 실명은 남기지 않는다(CLAUDE.md §2-5) — 이름은 **글자 수·일치 여부만**(첫 글자도 안 찍는다 — 2026-11-03 버그 검토:
+    `mask_name`은 낱말 조각마다 첫 글자를 남겨 '홍(1자)+길○(2자)'처럼 이름이 드러났다), 등기목적은 앞 14자(이름이 없는 칸).
     ⑴ 갑구·을구 항목: 순위·등기목적·말소 여부 — 말소 행의 대상 순위가 항목 목록에 있는지 보인다.
     ⑵ 집주인 이름: IE 이름과, 사진의 등록번호 바로 앞 낱말 1~2개 — 이름이 두 낱말로 쪼개졌는지 보인다.
     """
@@ -499,9 +500,9 @@ def _diag_log(items: list[RegistryItem], ordered_pages: list[OcrPage], owner_nam
                     hit = next((n for n in owner_names if n and (n in (prev[-1:] or [""]) or n == joined)), None)
                     tag = "" if hit is None else (" =IE이름" if prev and prev[-1] == hit else " =IE이름(두 낱말을 이으면)")
                     before_ids.append(
-                        "+".join(f"{mask_name(p)}({len(p)}자)" for p in prev) + tag + f" @{page.name}:L{line.index}"
+                        "+".join(f"{len(p)}자" for p in prev) + tag + f" @{page.name}:L{line.index}"
                     )
-        ie = ", ".join(f"{mask_name(n)}({len(n)}자)" for n in owner_names)
+        ie = ", ".join(f"{len(n)}자{'(법인 모양)' if ocr_layout_corp(n) else ''}" for n in owner_names)
         _log.info(
             f"[진단:이름] IE 집주인 {ie} | 등록번호 앞 낱말 {len(before_ids)}곳 — "
             + (" | ".join(before_ids[:8]) or "등록번호를 하나도 못 찾음")
@@ -671,7 +672,7 @@ def _match_ranked(
 
         if rule.amount_attr:
             amount_text = f"{amount:,}"
-            money_words = [w for w in line.words if amount_text in w.text]
+            money_words = [w for w in line.words if _has_amount(w.text, amount_text)]
             if not money_words:
                 return f"앵커 '{amount_text}'이 순위번호와 같은 줄({page_index}:L{line.index})에 없음"
             return page_index, _union([item.rank_box] + [w.box for w in money_words])
@@ -696,6 +697,15 @@ def _match_ranked(
         return page_index, _union([item.rank_box] + purpose_boxes)
 
     return f"{rule.section} 순위{rank}의 순위번호 줄을 찾지 못함"
+
+
+def _has_amount(text: str, amount_text: str) -> bool:
+    """`36,000,000`이 글자 속에 **한 덩어리 숫자로** 있는가 (2026-11-03 버그 검토).
+
+    그냥 포함(`in`)으로 보면 `금136,000,000원` 속의 `36,000,000`도 맞다고 나와, IE가 숫자 하나를 빠뜨려 빚을 적게
+    읽었을 때 사진이 오히려 그 금액을 확인해 주는 것처럼 칠해졌다. 앞뒤가 숫자·쉼표가 아니어야 같은 금액이다.
+    """
+    return re.search(r"(?<![\d,])" + re.escape(amount_text) + r"(?![\d,])", text) is not None
 
 
 _KO_DATE = re.compile(r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일")
@@ -743,7 +753,7 @@ def _match_by_content(
             continue
         if receipt is not None and receipt not in _item_dates(it):
             continue
-        if amount_text is not None and not any(amount_text in m.text for m in it.moneys):
+        if amount_text is not None and not any(_has_amount(m.text, amount_text) for m in it.moneys):
             continue
         found.append(it)
     if len(found) != 1:
@@ -762,8 +772,8 @@ def _match_by_content(
         if band:
             boxes.extend(_words_matching(Line(index=line.index, words=band), rule.purpose))
         if amount_text is not None:
-            boxes.extend(w.box for w in line.words if amount_text in w.text)
-        if boxes and (amount_text is None or any(amount_text in w.text for w in line.words)):
+            boxes.extend(w.box for w in line.words if _has_amount(w.text, amount_text))
+        if boxes and (amount_text is None or any(_has_amount(w.text, amount_text) for w in line.words)):
             break
     if not boxes:
         return "내용으로 찾은 항목의 등기목적·금액 자리를 사진에서 못 찾음"
@@ -1087,9 +1097,9 @@ def build_highlights(
         detail = "; ".join(f"{it.location} '{it.purpose[:24]}'" for it in unbound)
         sections = {it.section for it in unbound}
         if sections <= {"갑구", "을구"}:
+            # 그 구의 표 항목만 막는다 — 을구가 막혀도 갑구 가압류(금액 있는 갑구 종류)는 칠한다(2026-11-03 버그 검토:
+            # 예전엔 여기서 money_allowed를 꺼 갑구 가압류까지 숨겼다). 빚 안내 문장은 아래에서 막힌 구를 보고 고른다.
             blocked_sections = sections
-            if "을구" in sections:
-                money_allowed = False  # 빚(근저당·전세권)은 을구 — 을구 말소를 못 가리면 빚 표시를 막는다
             where = "·".join(sorted(sections))
             _log.info(
                 f"[매칭] ⚠ 말소 근거 행 {len(unbound)}건이 대상 항목을 못 찾음"
@@ -1320,6 +1330,7 @@ def build_highlights(
         unplaced=unplaced,
         reordered=reorder_applied,
         canceled_excluded=canceled_excluded,
+        blocked_sections=blocked_sections,
     )
     if highlights:
         pages_used = sorted({h.page for h in highlights})
@@ -1464,14 +1475,21 @@ def _build_checked_notes(
     unplaced: dict[str, int] | None = None,
     reordered: bool = False,
     canceled_excluded: int = 0,
+    blocked_sections: set[str] | None = None,
 ) -> list[str]:
     """**"무엇을 찾아봤고 무엇을 왜 표시하지 않았는지"** 를 사용자 말로 정리한다.
 
     이 함수가 하는 일은 설명뿐이다 — 판정을 만들지도, 바꾸지도 않는다.
     (2026-07-27 페르소나 2인 + 디자인 리뷰가 공통으로 지적한 최우선 항목:
      "표시가 없는 것"과 "안 본 것"이 화면에서 구분되지 않아 신뢰가 깎인다.)
+
+    `blocked_sections`(2026-11-03): 말소 줄의 짝을 못 찾아 표시를 막은 구 — 그 구 문장은 '막은 까닭'을 말하고,
+    '없었어요' 같은 단정·안심 문장을 달지 않는다(버그 검토: 안내와 문장이 서로 어긋났다).
     """
     notes: list[str] = []
+    blocked = blocked_sections or set()
+    # 빚(을구) 문장은 을구가 막혔으면 '못 본 쪽'과 같은 쪽으로 말한다(숨김이지 없음이 아니다)
+    money_allowed = money_allowed and "을구" not in blocked
 
     # ① 집주인 이름
     owner_marks = [h for h in highlights if h.kind == "owner"]
@@ -1566,7 +1584,12 @@ def _build_checked_notes(
         h for h in highlights
         if h.kind in ("seizure", "provisional_seizure", "auction", "trust")
     ]
-    if active_signals and signal_marks:
+    if "갑구" in blocked:
+        notes.append(
+            "말소된 항목을 정확히 가려내지 못해 압류·가압류·경매·신탁 표시는 생략했어요 "
+            "— 리포트의 '근거 살펴보기'를 꼭 보세요"
+        )
+    elif active_signals and signal_marks:
         notes.append(
             f"압류·가압류·경매 같은 표시 {len(signal_marks)}곳을 사진에서 찾아 표시했어요 "
             "— 리포트의 '근거 살펴보기'도 꼭 보세요"
@@ -1613,7 +1636,7 @@ def _build_checked_notes(
 
     # ⚠ 이 안심 문장은 **정말 다 본 경우에만** 붙인다. 금액 보류·상한 생략·위치 실패가
     #   있는데 이 말을 하면 정확히 거짓말이 된다(2026-07-28 gap-checker 지적).
-    if money_allowed and not trimmed and not (unplaced or {}):
+    if money_allowed and not blocked and not trimmed and not (unplaced or {}):
         notes.append("표시가 적다는 건 확인할 게 적다는 뜻이에요. 못 읽었다는 뜻이 아니에요.")
 
     # [진단] checkedNotes 생성 결과 요약 — 개수/참·거짓만 (이름·번호 금지).

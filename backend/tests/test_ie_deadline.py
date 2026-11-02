@@ -124,3 +124,41 @@ def test_늦은_IE여도_두_번째_읽기_재료면_IE와_같은_판정이_나�
     assert not extract.doc_incomplete
     v = rule_engine.evaluate(extract, deposit=100_000_000, market_price=400_000_000, blacklist_entries=[])
     assert not any("서버가 늦어" in f for f in v.doc_flags)
+
+
+def _failing_ie(monkeypatch, status: int) -> None:
+    def fail(images, run_id=None):
+        raise extraction.ExtractionError(status, "일부러 낸 실패")
+
+    monkeypatch.setattr(extraction, "extract_registry", fail)
+
+
+def test_IE가_잠깐_실패해도_두_번째_읽기가_있으면_판정한다(client, no_network, monkeypatch):
+    """2026-11-03 버그 검토 — 늦으면 대신하면서 실패하면 분석 전체를 잃던 비대칭."""
+    monkeypatch.setenv("IE_DEADLINE_SECONDS", "35")
+    no_network(registry_raw(), [GOOD])
+    _with_second(monkeypatch, registry_raw())
+    _failing_ie(monkeypatch, 503)
+    resp = post_analyze(client, [dotted(PAGE_W, PAGE_H)])
+    assert resp.status_code == 200, resp.text
+    assert any("한 가지 방법으로만" in n for n in resp.json()["checkedNotes"])
+
+
+def test_사진_문제로_IE가_거절하면_두_번째_읽기로_대신하지_않는다(client, no_network, monkeypatch):
+    monkeypatch.setenv("IE_DEADLINE_SECONDS", "35")
+    no_network(registry_raw(), [GOOD])
+    _with_second(monkeypatch, registry_raw())
+    _failing_ie(monkeypatch, 400)
+    resp = post_analyze(client, [dotted(PAGE_W, PAGE_H)])
+    assert resp.status_code == 400
+
+
+def test_IE_없이_판정한_리포트는_같은_사진_캐시에_남기지_않는다(client, no_network, monkeypatch):
+    monkeypatch.setenv("IE_DEADLINE_SECONDS", "35")
+    no_network(registry_raw(), [GOOD, GOOD])
+    _with_second(monkeypatch, registry_raw())
+    _failing_ie(monkeypatch, 503)
+    photo = dotted(PAGE_W, PAGE_H)
+    first = post_analyze(client, [photo]).json()["id"]
+    second = post_analyze(client, [photo]).json()["id"]
+    assert first != second, "같은 사진을 다시 보내면 IE로 다시 읽어야 한다(캐시 안 씀)"

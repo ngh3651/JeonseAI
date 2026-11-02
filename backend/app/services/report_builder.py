@@ -824,10 +824,11 @@ def analyze(
         raise AnalysisCancelled("IE·OCR 뒤")
     if ie_late:
         # 판정은 그대로 규칙 엔진이 한다 — 재료(등기 필드)만 두 번째 읽기(OCR 글자 → 구조화, IE와 같은 모양)에서 온다.
-        # 두 방법을 맞춰 보지 못했으니 아래에서 '양호'를 막는다(보수적 편향, CLAUDE.md §2-3).
+        # 2026-11-03 규혁 결정: 두 번째 읽기 결과로 판정을 **그대로** 낸다('양호'도 막지 않음 — 시연 중 IE 지연으로
+        # 모든 리포트가 '확인 필요'가 되던 문제). 다른 안전장치(빠진 쪽·주소 못 읽음 등 문서 게이트)는 그대로다.
         _log.info(
             f"[IE 늦음] {deadline:.0f}초가 지나도 IE가 안 와서 사진 글자 읽기(OCR+구조화) 결과로 판정합니다"
-            " — 늦은 IE 응답은 버림 · '양호' 금지"
+            " — 늦은 IE 응답은 버림"
         )
         extract = ocr_bundle.second_extract.model_copy(deep=True)
 
@@ -1029,9 +1030,6 @@ def analyze(
             f"[판정] 사진 묶음 불완전 — 빠진 쪽 {missing_pages or '없음'} · 잘 안 읽힌 장 "
             f"{[p.index + 1 for p in (capture_after.pages if capture_after else [])] or '없음'} → '양호' 금지"
         )
-
-    if ie_late:
-        extract.read_by_second_only = True  # 문서 게이트가 '양호'를 막는다(사진 탓이 아니라 따로 둔다)
 
     # 그래도 못 읽은 빚 → 그 쪽을 '다시 찍기' 대상으로(2순위). 게이트 계산 **뒤에** 더한다 — 금액 하나 못 읽은 것으로
     # 다른 카드(소유권 등)까지 '확인 필요'로 올리지 않는다. 빚 카드는 금액 미상으로 이미 '확인 필요'다.

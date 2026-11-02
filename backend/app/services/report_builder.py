@@ -75,14 +75,6 @@ def ie_deadline_seconds() -> float:
         return 35.0
 
 
-#: IE를 기다리지 않고 두 번째 읽기로 판정했을 때 — 리포트 '찾아본 것'과 '양호' 금지 사유(사용자 말)
-IE_LATE_NOTE = (
-    "문서 읽기 서버가 늦어, 사진 글자를 읽은 결과로 판정했어요 — 두 가지 방법으로 맞춰 보지 못해 "
-    "'양호'라고 단정하지 않았어요. 잠시 뒤 다시 분석하면 더 정확해요"
-)
-IE_LATE_REASON = "문서 읽기 서버가 늦어 사진 글자로만 읽었어요"
-
-
 def _price_key(address: str | None, area: float | None) -> tuple[str, float | None]:
     """시세 조회 입력이 같은지 견주는 열쇠 — 띄어쓰기는 무시, 면적은 소수 첫째 자리."""
     return ("".join((address or "").split()), round(area, 1) if area else None)
@@ -796,7 +788,9 @@ def analyze(
             )
             if cancelled is not None and not stop.is_set() and cancelled():
                 stop.set()
-            if stop.is_set() or not ocr_future.done():
+            if stop.is_set():
+                break  # 앱이 끊었다 — 결과를 버릴 테니 IE를 끝까지 기다리지 않는다
+            if not ocr_future.done():
                 continue
             bundle_now = ocr_future.result()[0]
             second_now = bundle_now.second_extract if bundle_now is not None else None
@@ -815,6 +809,9 @@ def analyze(
             if deadline and not ie_future.done() and time.perf_counter() - t0 >= deadline:
                 ie_late = True
                 break
+        if stop.is_set():
+            _log.info("[분석 중단] 앱이 연결을 끊음 — IE·OCR 결과를 버림(판정·설명·저장 안 함)")
+            raise AnalysisCancelled("IE·OCR 뒤")
         ocr_bundle, ocr_error, ocr_path_elapsed = ocr_future.result()
         if ie_late:
             extract, ie_error, ie_elapsed = None, None, time.perf_counter() - t0
@@ -861,7 +858,14 @@ def analyze(
         turned = [i + 1 for i, r in enumerate(ocr_result.rotations(len(images))) if r]
         _log.info(f"[방향] {turned}번째 사진을 바로 세움 → IE를 바로 선 사진으로 다시 읽음")
         try:
-            reread = extraction.extract_registry(ocr_result.upright_images, run_id=run_id)
+            # 다시 읽기에도 상한(2026-11-02 검토) — Upstage가 느린 날 여기서 앱의 분석 대기(180초)를 넘기지 않게
+            reread_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="reread")
+            try:
+                reread = reread_pool.submit(
+                    extraction.extract_registry, ocr_result.upright_images, run_id=run_id
+                ).result(timeout=deadline or None)
+            finally:
+                reread_pool.shutdown(wait=False)
             # 보수적 편향(CLAUDE.md §2-3): 다시 읽은 쪽이 위험 항목을 **덜** 찾았으면 처음 결과를 쓴다 —
             # 위험을 놓치는 쪽으로 바뀌지 않게. 같거나 더 찾았으면 바로 선 사진으로 읽은 결과를 쓴다.
             before, after = document_gate.entry_count(extract), document_gate.entry_count(reread)
@@ -932,7 +936,7 @@ def analyze(
             extract,
             None if ie_late else second_extract,  # IE가 늦었으면 견줄 상대가 없다(같은 것끼리 견주지 않는다)
             provider=second_provider,
-            error=IE_LATE_REASON if ie_late else second_error,
+            error=cross_check.IE_LATE_ERROR if ie_late else second_error,
         )
     except Exception as e:  # noqa: BLE001 — 고지 계층이 분석을 깨뜨리면 안 된다
         _log.error("[교차검증] ⚠ 예기치 못한 예외 — 교차검증 없이 진행", exc_info=True)
@@ -1027,8 +1031,7 @@ def analyze(
         )
 
     if ie_late:
-        extract.pages_incomplete = True
-        extract.pages_incomplete_reason = extract.pages_incomplete_reason or IE_LATE_REASON
+        extract.read_by_second_only = True  # 문서 게이트가 '양호'를 막는다(사진 탓이 아니라 따로 둔다)
 
     # 그래도 못 읽은 빚 → 그 쪽을 '다시 찍기' 대상으로(2순위). 게이트 계산 **뒤에** 더한다 — 금액 하나 못 읽은 것으로
     # 다른 카드(소유권 등)까지 '확인 필요'로 올리지 않는다. 빚 카드는 금액 미상으로 이미 '확인 필요'다.
@@ -1086,8 +1089,6 @@ def analyze(
         report.pageRotations = ocr_result.rotations(len(images))
     if rotation_note:
         report.checkedNotes = [*report.checkedNotes, rotation_note]
-    if ie_late:
-        report.checkedNotes = [IE_LATE_NOTE, *report.checkedNotes]
     if recovery.notes:
         report.checkedNotes = [*report.checkedNotes, *recovery.notes]
     # 같은 집 묶기의 첫 기준 (2026-10-27) — 표시·판정에 쓰지 않는다. 주소는 읽을 때마다 글자가 조금씩 달라진다.

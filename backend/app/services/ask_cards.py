@@ -373,7 +373,7 @@ def _polish_call(report: Report, bundle: AskCards, *, call=None) -> dict[str, st
     try:
         from . import fact_ledger
 
-        ledger = fact_ledger.for_report(report, loss_estimate.estimate(report))
+        ledger = fact_ledger.for_report(report, loss_estimate.estimate(report, priority=False))  # 카드 숫자와 같은 계산
     except Exception:  # noqa: BLE001 — 장부를 못 만들면 예전 검사만
         _log.error("[4장 질문] ⚠ 숫자 장부를 만들지 못함 — 예전 검사만", exc_info=True)
         ledger = None

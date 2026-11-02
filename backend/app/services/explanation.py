@@ -51,6 +51,8 @@ MAX_ATTEMPTS = 2  # 최초 1회 + 재시도 1회
 #: 고쳐 쓰기 호출의 기다림 상한(인프라 수치, 2026-11-01) — 걸린 칸 몇 개만 다시 쓰는 짧은 호출이다.
 #: 첫 호출에 이어 오래 기다리면 앱의 분석 대기(180초)를 넘길 수 있어 짧게 끊고, 넘으면 준비된 문구로 간다.
 REPAIR_TIMEOUT_SECONDS = 30
+#: 모양만 고쳐 쓸 때(틀린 말 없음)는 더 짧게 — 못 고쳐도 AI 글을 그대로 쓰니 오래 기다릴 까닭이 없다(2026-11-02)
+SHAPE_REPAIR_TIMEOUT_SECONDS = 15
 #: 이번 호출에만 쓸 기다림 상한 — `_call_solar(messages, api_key)` 모양을 그대로 두려고(테스트 이음매) 문맥 값으로 넘긴다
 _CALL_TIMEOUT: contextvars.ContextVar[float | None] = contextvars.ContextVar("explain_call_timeout", default=None)
 
@@ -411,7 +413,10 @@ _REPAIR_NOTE = (
 )
 
 
-def _repair(material: dict, payload: "ExplanationPayload", retry: dict[str, str], api_key: str, name: str) -> dict:
+def _repair(
+    material: dict, payload: "ExplanationPayload", retry: dict[str, str], api_key: str, name: str,
+    *, timeout: float = REPAIR_TIMEOUT_SECONDS,
+) -> dict:
     """걸린 칸만 한 번 다시 쓰게 한다 → {칸 id 또는 'headline': 새 글}. 실패하면 빈 dict(예외를 내지 않는다)."""
     first = {e.id: e.easy_explanation for e in payload.evidences}
     asks = [
@@ -427,7 +432,7 @@ def _repair(material: dict, payload: "ExplanationPayload", retry: dict[str, str]
         },
     ]
     t0 = time.perf_counter()
-    token = _CALL_TIMEOUT.set(REPAIR_TIMEOUT_SECONDS)
+    token = _CALL_TIMEOUT.set(timeout)
     try:
         fixed = _RepairPayload.model_validate(json.loads(_call_solar(messages, api_key)))
     except Exception as e:  # noqa: BLE001 — 고쳐 쓰기는 덤이다. 실패하면 준비된 문구로 간다
@@ -587,7 +592,11 @@ def _generate_with_llm(
     if head_reason:
         retry["headline"] = head_reason
     if retry:
-        fixed = _repair(material, payload, retry, api_key, provider.name)
+        only_shape = not head_reason and not any(card_reason.values())
+        fixed = _repair(
+            material, payload, retry, api_key, provider.name,
+            timeout=SHAPE_REPAIR_TIMEOUT_SECONDS if only_shape else REPAIR_TIMEOUT_SECONDS,
+        )
         if head_reason and fixed.get("headline"):
             again = _field_reason("headline", fixed["headline"], allowed, verdict.grade.value, ledger)
             if again is None:

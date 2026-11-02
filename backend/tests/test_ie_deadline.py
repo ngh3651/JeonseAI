@@ -56,7 +56,9 @@ def test_IE가_상한을_넘으면_두_번째_읽기로_판정하고_양호를_�
     body = resp.json()
     assert took < 2.5, f"늦은 IE를 기다렸어요({took:.1f}초)"
     assert body["seniorDebtAmount"] > 0, "두 번째 읽기 결과로 판정했다"
-    assert body["checkedNotes"][0].startswith("문서 읽기 서버가 늦어")
+    late = [n for n in body["checkedNotes"] if "문서 읽기 서버가 늦어" in n]
+    assert late and "한 가지 방법으로만" in late[0], "앱 뷰어가 보여 주는 낱말이 들어 있어야 한다"
+    assert not any("분석 결과에는 영향이 없어요" in n for n in body["checkedNotes"]), "늦은 IE면 틀린 말"
     assert body["grade"] != "양호"
 
 
@@ -66,7 +68,7 @@ def test_두_번째_읽기가_없으면_IE를_끝까지_기다린다(client, no_
     _slow_ie(monkeypatch, 0.8, registry_raw())
     resp = post_analyze(client, [dotted(PAGE_W, PAGE_H)])
     assert resp.status_code == 200, resp.text
-    assert not any(n.startswith("문서 읽기 서버가 늦어") for n in resp.json()["checkedNotes"])
+    assert not any("문서 읽기 서버가 늦어" in n for n in resp.json()["checkedNotes"])
 
 
 def test_IE가_제때_오면_예전과_같다(client, no_network, monkeypatch):
@@ -75,7 +77,7 @@ def test_IE가_제때_오면_예전과_같다(client, no_network, monkeypatch):
     _with_second(monkeypatch, registry_raw())
     resp = post_analyze(client, [dotted(PAGE_W, PAGE_H)])
     assert resp.status_code == 200, resp.text
-    assert not any(n.startswith("문서 읽기 서버가 늦어") for n in resp.json()["checkedNotes"])
+    assert not any("문서 읽기 서버가 늦어" in n for n in resp.json()["checkedNotes"])
 
 
 def test_시세는_IE를_기다리는_동안_미리_조회하고_같은_주소면_다시_조회하지_않는다(client, no_network, monkeypatch):
@@ -112,3 +114,17 @@ def test_미리_조회한_주소가_IE와_다르면_IE_주소로_다시_조회�
     resp = post_analyze(client, [dotted(PAGE_W, PAGE_H)])
     assert resp.status_code == 200, resp.text
     assert len(calls) == 2 and "다른동" in (calls[0] or "") and "다른동" not in (calls[1] or "")
+
+
+def test_늦은_IE_판정은_사진_탓으로_말하지_않는다():
+    """'양호'를 막는 이유가 사진 문제가 아니라 서버가 늦은 것임을 설명 재료가 그대로 말한다(2026-11-02 검토)."""
+    from app.services import rule_engine
+
+    extract = RegistryExtract.from_raw(registry_raw())
+    extract.read_by_second_only = True
+    assert extract.doc_incomplete
+    v = rule_engine.evaluate(extract, deposit=100_000_000, market_price=400_000_000, blacklist_entries=[])
+    assert v.grade.value != "양호"
+    assert "사진 쪽 빠짐·잘 안 읽힘" not in v.doc_flags
+    assert any("서버가 늦어" in f for f in v.doc_flags)
+    assert "서버가 늦어" in rule_engine.incomplete_reason(extract)

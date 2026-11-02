@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -69,6 +70,10 @@ MAX_HISTORY_CHARS = 800
 #: 생성 상한 — 목록 답(500자 안)이 JSON 안에서 잘리지 않게 (2026-10-30: 700 → 1000)
 #: 2026-11-02 1000 → 1600: solar-pro4는 "2000자로 알려줘" 같은 말에 길게 쓰다 JSON 중간에 잘렸다 → 끝까지 받고 우리가 줄인다
 MAX_OUTPUT_TOKENS = 1600
+#: 챗봇 AI 한 번 부를 때 기다리는 상한(초) — 앱이 챗봇 답을 30초 기다린다(api_content_repository.dart)
+CHAT_CALL_TIMEOUT_SECONDS = 25
+#: 이만큼 안에 빨리 실패했을 때만 한 번 더 부른다(연결 끊김·5xx) — 시간 초과 뒤에 또 부르면 앱이 먼저 포기한다
+RETRY_IF_FAILED_WITHIN_SECONDS = 8
 #: 길게 써서 상한을 넘은 답을 **줄로·문장으로** 줄일 목표(자) — 상한(text_guard.CHAT_MAX_LEN 900)보다 넉넉히 아래
 TRIM_TARGET_CHARS = 760
 #: 줄인 답 끝에 붙이는 한 줄 — 더 들을 수 있다는 것만 알린다(숫자·판정 없음)
@@ -955,27 +960,39 @@ _ANSWER_RE = re.compile(r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)', re.S)
 
 
 def _salvage_answer(raw: str | None) -> str | None:
-    """JSON이 깨진 응답(길게 쓰다 잘림 등)에서 answer 글만 꺼낸다 — 못 꺼내면 None (2026-11-02)."""
+    """JSON이 길게 쓰다 **잘린** 응답에서 answer 글을 살린다 — 마지막 온전한 문장까지만. 못 살리면 None (2026-11-02).
+
+    문자열이 따옴표로 닫혔는데 JSON이 깨졌으면(글 속 따옴표 등) 살리지 않는다 — 앞 조각만 보여 주면 뜻이 바뀐다(검토 지적).
+    """
     m = _ANSWER_RE.search(raw or "")
-    if not m:
-        return None
+    if not m or (raw or "").rstrip()[m.end(1):]:
+        return None  # 문자열이 잘린 채 끝나지 않았다 — 조각일 수 있다
     body = m.group(1)
+    text = None
     for cut in range(len(body), max(len(body) - 6, -1), -1):  # 끝이 이스케이프 중간에서 잘렸으면 몇 글자 덜어 본다
         try:
             text = json.loads(f'"{body[:cut]}"')
-            return text.strip() or None
+            break
         except ValueError:
             continue
-    return None
+    if not text:
+        return None
+    ends = [mm.end() for mm in re.finditer(r"[.!?](?=\s|$)|\n", text)]
+    if not ends:
+        return None  # 온전한 문장이 하나도 없다
+    kept = text[: ends[-1]].strip()
+    return kept if re.search(r"[.!?]$", kept) else None
 
 
 def _ask(provider, system: str, user_msg: str, history: list[dict]):
     """AI에게 한 번 묻는다 → (payload, resp). 잠깐의 실패(연결·5xx)는 **한 번 더** 부르고,
     JSON이 깨졌으면 받은 글에서 답을 살린다(2026-11-02 — 그때도 '연결이 불안정해요'가 나갔다). 그 밖엔 LlmError."""
     for attempt in (1, 2):
+        t0 = time.perf_counter()
         try:
             return provider.chat_json(
-                system, user_msg, max_tokens=MAX_OUTPUT_TOKENS, temperature=CHAT_TEMPERATURE, history=history
+                system, user_msg, max_tokens=MAX_OUTPUT_TOKENS, temperature=CHAT_TEMPERATURE, history=history,
+                timeout=CHAT_CALL_TIMEOUT_SECONDS,
             )
         except llm.LlmError as e:
             salvaged = _salvage_answer(getattr(e, "raw_text", None))
@@ -983,7 +1000,7 @@ def _ask(provider, system: str, user_msg: str, history: list[dict]):
                 _log.info(f"[챗봇:{provider.name}] JSON이 깨진 답에서 글을 살림 ({len(salvaged)}자)")
                 resp = getattr(e, "response", None)
                 return {"answer": salvaged}, resp
-            if attempt == 1 and _TRANSIENT_RE.search(str(e)):
+            if attempt == 1 and _TRANSIENT_RE.search(str(e)) and time.perf_counter() - t0 < RETRY_IF_FAILED_WITHIN_SECONDS:
                 _log.info(f"[챗봇:{provider.name}] 잠깐의 실패 — 한 번 더 부름 ({str(e)[:60]})")
                 continue
             raise

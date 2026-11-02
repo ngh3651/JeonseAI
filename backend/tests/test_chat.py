@@ -788,7 +788,7 @@ def test_JSON이_잘린_답에서도_글을_살린다(fake_llm):
     provider = fake_llm(err)
     r = chat.reply([_u("근저당이 뭐야")])
     assert r.mode == chat.MODE_NORMAL
-    assert r.answer.startswith("근저당은 집을 담보로 잡힌 빚이에요.")
+    assert r.answer == "근저당은 집을 담보로 잡힌 빚이에요.\n경매로 가면 먼저 받아가요."  # 잘린 끝 조각은 버린다
     assert chat.OFFLINE_FALLBACK not in r.answer
     assert len(provider.calls) == 1
 
@@ -801,5 +801,21 @@ def test_잠깐의_실패는_한_번_더_부른다(fake_llm):
 
 def test_잔액_부족_같은_실패는_다시_부르지_않는다(fake_llm):
     provider = fake_llm(chat.llm.LlmError("fake: HTTP 403 — API key suspended due to insufficient credit"))
+    r = chat.reply([_u("안녕?")])
+    assert r.mode == chat.MODE_FALLBACK and len(provider.calls) == 1
+
+
+
+def test_따옴표로_닫힌_조각은_살리지_않는다():
+    """글 속 따옴표 때문에 JSON이 깨졌으면 앞 조각만 보여 주지 않는다 — 뜻이 바뀐다(2026-11-02 검토)."""
+    assert chat._salvage_answer('{"answer": "등기부의 "을구"에는 빚이 적혀 있어요.", "kind": "부동산"}') is None
+    assert chat._salvage_answer('{"answer": "돌려받기 어렵지 않') is None  # 온전한 문장이 없다
+    assert chat._salvage_answer('{"answer": "빚이 있어요.\\n돌려받기 어렵지 않') == "빚이 있어요."
+
+
+def test_시간_초과_뒤에는_다시_부르지_않는다(fake_llm, monkeypatch):
+    """앱은 챗봇 답을 30초 기다린다 — 오래 걸려 실패한 뒤 또 부르면 앱이 먼저 포기한다."""
+    monkeypatch.setattr(chat, "RETRY_IF_FAILED_WITHIN_SECONDS", -1)
+    provider = fake_llm(chat.llm.LlmError("fake: 연결 실패 ReadTimeout"), _a("안녕하세요!", "small_talk"))
     r = chat.reply([_u("안녕?")])
     assert r.mode == chat.MODE_FALLBACK and len(provider.calls) == 1

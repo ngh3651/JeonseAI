@@ -61,6 +61,15 @@ class FieldComparison:
         return self.ie_count == 0 and self.llm_count == 0
 
 
+#: IE가 늦어 두 번째 읽기로만 판정했다(2026-11-02) — `CrossCheck.error`에 이 값이 오면 아래 고지를 낸다
+IE_LATE_ERROR = "IE 늦음"
+#: 앱 뷰어는 정해 둔 낱말('한 가지 방법으로만')이 든 문장만 보여 준다 — 그 낱말을 꼭 넣는다
+IE_LATE_NOTE = (
+    "이번엔 한 가지 방법으로만 읽었어요 — 문서 읽기 서버가 늦어 사진 글자를 읽은 결과로 판정했고, "
+    "두 방법을 맞춰 보지 못해 '양호'라고 단정하지 않았어요. 잠시 뒤 다시 분석하면 더 정확해요"
+)
+
+
 @dataclass
 class CrossCheck:
     """교차검증 결과. `ran=False`면 두 번째 경로가 없었다는 뜻이다."""
@@ -124,6 +133,8 @@ def to_notes(check: CrossCheck, *, unplaced: dict[str, int] | None = None) -> li
     스스로 풀 수 있다.
     """
     notes: list[str] = []
+    if not check.ran and check.error == IE_LATE_ERROR:
+        return [IE_LATE_NOTE]
     if not check.ran:
         # **실패도 말한다.** 예전에는 빈 목록이라, 두 번째 경로가 429·타임아웃·스키마
         # 위반·키 없음 중 무엇으로 빠졌든 화면 결과가 전부 똑같이 '무음'이었다.

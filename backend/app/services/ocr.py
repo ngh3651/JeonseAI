@@ -19,6 +19,7 @@ Information Extract는 필드를 구조화해주지만 **좌표를 주지 않는
 from __future__ import annotations
 
 import io
+import os
 import json
 import logging
 import mimetypes
@@ -32,12 +33,21 @@ from PIL import Image
 
 from . import artifacts, orientation
 from .extraction import _USER_FACING_STATUS, ExtractionError, _load_api_key
-from .ocr_layout import OcrPage, estimate_skew, group_lines, parse_words
+from .ocr_layout import OcrPage, choose_lines, estimate_skew, parse_words
 
 _log = logging.getLogger("jeonseai")
 
 OCR_URL = "https://api.upstage.ai/v1/document-digitization"
 OCR_MODEL = "ocr"
+
+
+def skew_mode() -> str:
+    """줄 묶기 기울기 보정 — `OCR_SKEW_CORRECTION`: auto(기본, 보정한 쪽·안 한 쪽 중 표 모양이 맞는 쪽) · on(늘 보정) · off.
+
+    2026-11-03: 진짜 카메라 사진에서 보정이 헛짚는지 부스에서 같은 종이로 비교하려고 둔 스위치(인프라, 판정 아님).
+    """
+    mode = os.environ.get("OCR_SKEW_CORRECTION", "auto").strip().lower()
+    return mode if mode in ("auto", "on", "off") else "auto"
 REQUEST_TIMEOUT_SECONDS = 120  # IE(300초)보다 짧게 — 장당 1.6~3.1초가 실측치라 넉넉하다
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -217,23 +227,35 @@ def run_ocr(
             result.errors.append(f"{filename}: 이미지 크기 확인 실패")
             continue
 
-        # 비스듬히 찍은 사진이면 기울기만큼 바로잡아 줄을 묶는다(2026-10-31, 좌표 계산 — 사진은 그대로)
+        # 비스듬히 찍은 사진이면 기울기만큼 바로잡아 줄을 묶는다(2026-10-31, 좌표 계산 — 사진은 그대로).
+        # 2026-11-03: 보정한 묶기·안 한 묶기 중 등기부 표 모양(순위번호+등기목적 같은 줄)이 더 맞는 쪽을 쓴다.
         skew = estimate_skew(words)
+        mode = skew_mode()
+        choice = choose_lines(words, skew, mode)
+        if skew is None:
+            skew_note = ""
+        else:
+            used = "보정 씀" if choice.skewed else "보정 안 씀"
+            rows = (
+                f"표 행 보정 {choice.rows_skewed}·안 함 {choice.rows_plain}"
+                if mode == "auto"
+                else f"강제 {mode}"
+            )
+            skew_note = (
+                f", 기울기 {skew.degrees:+.1f}°(위·아래 차 {abs(skew.per_y) * height * 57.3:.1f}°)"
+                f" → {used} ({rows})"
+            )
         _log.info(
             f"[OCR] {i + 1}/{total} {filename} → HTTP 200 ({time.perf_counter() - t1:.1f}초)"
-            f" 단어 {len(words)}개, 원본 {width}x{height}px"
-            + (
-                f", 기울기 {skew.degrees:+.1f}° 보정(위·아래 차 {abs(skew.per_y) * height * 57.3:.1f}°)"
-                if skew is not None
-                else ""
-            )
+            f" 단어 {len(words)}개, 원본 {width}x{height}px · 모델 {raw.get('modelVersion') or '?'}"
+            + skew_note
         )
         result.pages.append(
             OcrPage(
                 name=filename,
                 index=i,
                 words=words,
-                lines=group_lines(words, skew=skew),
+                lines=choice.lines,
                 width=width,
                 height=height,
                 rotation=rotation,

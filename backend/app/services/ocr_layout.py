@@ -572,6 +572,60 @@ def group_lines(
     return [Line(index=i, words=sorted(b, key=lambda w: w.lx0)) for i, b in enumerate(buckets)]
 
 
+#: 등기부 표의 한 항목 줄 = 맨 앞 순위번호('1'·'2-1') + 같은 줄에 등기목적·접수 날짜·금액 (2026-11-03 줄 묶기 고르기)
+_ROW_RANK = re.compile(r"^\d{1,3}(?:-\d{1,3})?$")
+_ROW_PURPOSE = re.compile(r"설정|이전|압류|경매|신탁|말소|변경|보존|임차권|전세권|가등기|가처분|등기")
+_ROW_DATE = re.compile(r"\d{4}년")
+_ROW_AMOUNT = re.compile(r"금[\d,]+원|금[일이삼사오육칠팔구십백천만억]+")
+
+
+def table_rows(lines: list[Line]) -> int:
+    """줄 묶기가 얼마나 등기부 표 모양인가 — 순위번호로 시작하는 줄마다 **같은 줄에** 든 칸(등기목적·날짜·금액) 수의 합.
+
+    줄이 잘못 묶이면 순위번호에서 먼 칸(날짜·금액)부터 다른 줄로 떨어져 이 수가 준다(빚 형광펜이 사라지는 바로 그 모양).
+    """
+    n = 0
+    for line in lines:
+        texts = [w.text.strip() for w in line.words if w.text.strip()]
+        if len(texts) < 2 or not _ROW_RANK.match(texts[0]):
+            continue
+        rest = texts[1:]
+        n += sum(1 for pat in (_ROW_PURPOSE, _ROW_DATE, _ROW_AMOUNT) if any(pat.search(t) for t in rest))
+    return n
+
+
+@dataclass
+class LineChoice:
+    lines: list[Line]
+    skewed: bool  # 기울기 보정한 줄 묶기를 썼나
+    rows_skewed: int | None  # 보정한 묶기의 표 점수(보정할 기울기가 없었으면 None)
+    rows_plain: int  # 보정 안 한 묶기의 표 점수
+
+
+def choose_lines(words: list[Word], skew: Skew | None, mode: str = "auto") -> LineChoice:
+    """기울기 보정한 묶기와 안 한 묶기 중 **등기부 표 모양에 더 맞는 쪽**을 고른다 (2026-11-03).
+
+    왜: 보정([2026-10-31])은 합성 사진(정확히 한 방향으로 돈 좌표)으로만 맞췄다. 진짜 카메라 사진은 종이가 휘고
+    OCR 좌표가 흔들려 보정이 헛짚을 수 있다 — 그럴 때 보정 안 한 쪽이 낫다. 둘 다 해 보고 순위번호·등기목적이
+    같은 줄에 더 많이 든 쪽을 쓴다(순위번호 줄마다 등기목적·날짜·금액이 같은 줄에 있나). 같으면 보정 쪽(지금까지와 같음). 좌표 계산뿐 — 크레딧 0원, AI 아님.
+    `mode`: "auto"(고르기) · "on"(늘 보정, 10-31 동작) · "off"(보정 안 함). 마지막에 고른 쪽으로 다시 묶는다 —
+    묶기가 낱말의 보정 좌표(`ly`)를 바꿔 두므로 뒤 단계(칸 찾기)가 고른 쪽 좌표를 보게.
+    """
+    if skew is None or mode == "off":
+        lines = group_lines(words, skew=None)
+        return LineChoice(lines, False, None, table_rows(lines))
+    if mode == "on":
+        lines = group_lines(words, skew=skew)
+        return LineChoice(lines, True, table_rows(lines), 0)  # 비교하지 않았다(강제)
+    rows_plain = table_rows(group_lines(words, skew=None))
+    lines = group_lines(words, skew=skew)
+    rows_skewed = table_rows(lines)
+    if rows_plain > rows_skewed:
+        lines = group_lines(words, skew=None)
+        return LineChoice(lines, False, rows_skewed, rows_plain)
+    return LineChoice(lines, True, rows_skewed, rows_plain)
+
+
 def median_height(words: list[Word]) -> float:
     """글자 높이 가운데 값 — 칸 사이 간격·이름 간격의 잣대. 기울어진 사진이면 바로 세운 높이로(상자 높이는 부풀어 있다)."""
     return statistics.median([w.lheight for w in words]) if words else 16.0

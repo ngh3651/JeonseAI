@@ -598,3 +598,63 @@ def test_쪽마다_머리표_모양이_달라도_같은_등기부다():
 def test_한_장만_못_읽고_빈_쪽도_하나면_순서와_상관없이_채운다(footers, expected):
     check = check_document(_pages_with_footers(footers))
     assert check.page_numbers == expected and check.missing_pages == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 줄 묶기 고르기 (2026-11-03) — 보정한 쪽·안 한 쪽 중 등기부 표 모양이 맞는 쪽
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_기울어진_사진은_보정한_묶기를_고른다():
+    from app.services.ocr_layout import choose_lines, table_rows
+
+    words = warp(tall_eul_gu(), roll(4))
+    skew = estimate_skew(words)
+    assert skew is not None
+    choice = choose_lines(words, skew)
+    assert choice.skewed is True
+    assert choice.rows_skewed == 24 and choice.rows_plain < 24, "순위번호 8줄 × (등기목적·날짜·금액) 3칸"
+    assert table_rows(choice.lines) == 24
+
+
+def test_보정이_헛짚으면_보정_안_한_묶기를_고른다():
+    """바로 선 사진인데 기울기를 잘못 쟀다고 치면(진짜 사진에서 걱정하는 모양) 보정 안 한 쪽을 쓴다."""
+    from app.services.ocr_layout import choose_lines, table_rows
+
+    words = tall_eul_gu()
+    wrong = estimate_skew(warp(tall_eul_gu(), roll(4)))
+    assert wrong is not None
+    choice = choose_lines(words, wrong)
+    assert choice.skewed is False
+    assert table_rows(choice.lines) == 24
+    assert all(w.ly is None for w in words), "고른 쪽(보정 안 함) 좌표로 다시 묶어야 뒤 단계가 같은 좌표를 본다"
+
+
+def test_스위치로_보정을_강제로_켜고_끈다():
+    from app.services.ocr_layout import choose_lines
+
+    words = tall_eul_gu()
+    wrong = estimate_skew(warp(tall_eul_gu(), roll(4)))
+    assert choose_lines(words, wrong, "on").skewed is True
+    assert choose_lines(words, wrong, "off").skewed is False
+    assert choose_lines(words, None, "auto").skewed is False
+
+
+def test_스위치_값은_모르는_값이면_auto(monkeypatch):
+    from app.services import ocr
+
+    monkeypatch.delenv("OCR_SKEW_CORRECTION", raising=False)
+    assert ocr.skew_mode() == "auto"
+    monkeypatch.setenv("OCR_SKEW_CORRECTION", "OFF")
+    assert ocr.skew_mode() == "off"
+    monkeypatch.setenv("OCR_SKEW_CORRECTION", "아무거나")
+    assert ocr.skew_mode() == "auto"
+
+
+@pytest.mark.parametrize("f", [roll(2), roll(-8), roll(12), yaw(0.00012), pitch(0.0002)])
+def test_고른_묶기는_두_쪽_중_표_모양이_나은_쪽이다(f):
+    from app.services.ocr_layout import choose_lines, table_rows
+
+    words = warp(tall_eul_gu(), f)
+    choice = choose_lines(words, estimate_skew(words))
+    assert table_rows(choice.lines) == max(choice.rows_plain, choice.rows_skewed or 0)

@@ -670,3 +670,35 @@ def test_사진이_커져도_이름_가리기가_같다(k):
 
     assert norm(small) and _same_boxes(norm(big), norm(small))
     assert big.counts == small.counts
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 집 유형 — IE 주소에 호수가 없어도 쪽 머리가 집합건물이면 통건물로 보지 않는다 (2026-11-03 규혁 실촬영)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _jeonse_card(extract, **kw):
+    from app.services import rule_engine
+
+    v = rule_engine.evaluate(extract, deposit=300_000_000, market_price=425_600_000, blacklist_entries=[], **kw)
+    return next(e for e in v.evidences if e.id == "jeonse_ratio")
+
+
+def test_쪽_머리가_집합건물이면_전세가율을_보류하지_않는다():
+    """실촬영: IE 주소 '서울특별시 동작구 상도1동 455-7 헤이든2'(표제부 소재지 — 호수 없음) ·
+    쪽 머리 '[집합건물] … 헤이든2 제4층 제401호' → 예전엔 '단독·다가구로 보여요'(시세·손실 화면은 연립다세대)."""
+    from app.schemas.internal import RegistryExtract
+
+    extract = RegistryExtract.from_raw({**registry_raw(), "address": "서울특별시 동작구 상도1동 455-7 헤이든2"})
+    assert _jeonse_card(extract).facts.get("whole_building") is True, "쪽 머리를 모르면 예전처럼 보류(보수적)"
+    card = _jeonse_card(extract, header_address="서울특별시 동작구 상도1동 455-7 헤이든2 제4층 제401호")
+    assert not card.facts.get("whole_building")
+    assert card.facts.get("jeonse_ratio_pct") is not None
+
+
+def test_쪽_머리도_통건물이면_그대로_보류한다():
+    from app.schemas.internal import RegistryExtract
+
+    extract = RegistryExtract.from_raw({**registry_raw(), "address": "서울특별시 관악구 신림동 123-4"})
+    assert _jeonse_card(extract, header_address="[건물] 서울특별시 관악구 신림동 123-4").facts.get("whole_building") is True
+    assert _jeonse_card(extract, header_address="서울특별시 관악구 신림동 123-4").facts.get("whole_building") is True

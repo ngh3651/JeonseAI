@@ -34,8 +34,7 @@
 /// 왜 '건'이 아니라 '집'으로 세나 (2026-11-03 부스 1일차): 예전엔 **모든 분석을 합쳐 최근 5건**이었다. 그러면
 /// 다른 집을 5번 분석하거나 같은 집을 5번 다시 대조하는 순간, 계약 여정으로 몇 달 지켜야 할 집의 사진이
 /// 하루도 안 돼 지워져 "이 폰에 사진이 없어요"가 떴다. 이제는 집 단위로 센다 — 서버가 같은 집을 최신 5건만
-/// 남기는 규칙(`store.prune_versions`)과 같다. 부스 모드에서는 시연 폰 한 대를 여러 사람이 쓰므로 집 수 상한만
-/// [boothKeepHomes]곳으로 늘린다(부스 폰에는 시연용 등기부만 들어간다).
+/// 남기는 규칙(`store.prune_versions`)과 같다. 같은 집 = 같은 집주인이라 집 단위로 묶는 게 맞다(규혁).
 library;
 
 import 'dart:convert';
@@ -46,7 +45,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/config.dart';
-import 'booth_mode.dart';
 
 class RegistryPhotoStore {
   RegistryPhotoStore._();
@@ -60,9 +58,6 @@ class RegistryPhotoStore {
 
   /// 남겨 둘 최근 **집** 수. 넘치면 가장 오래 안 본 집부터 통째로 지운다.
   static const int keepRecentHomes = 5;
-
-  /// 부스 모드일 때 남길 집 수 — 시연 폰 한 대로 하루 수십 건을 분석해도 시연용 집이 밀려나지 않게.
-  static const int boothKeepHomes = 30;
 
   /// 사진·이름을 **어디에 얼마나** 남기는지 — 화면 문구는 전부 이 한 줄에서 가져온다 (2026-10-22).
   ///
@@ -321,10 +316,6 @@ class RegistryPhotoStore {
     return Directory('${docs.path}/$_folderName');
   }
 
-  /// 지금 남길 집 수 — 부스 모드면 [boothKeepHomes], 아니면 [keepRecentHomes].
-  static int get homeCap =>
-      BoothMode.instance.on ? boothKeepHomes : keepRecentHomes;
-
   /// 지울 리포트를 고른다 — 최신순 [order]를 집별로 묶어, 최근 [homes]곳 · 집마다 최근 [perHome]건 밖이면 지운다.
   /// 집 열쇠를 모르는 리포트는 그 리포트 하나가 집 하나다(옛 기록).
   @visibleForTesting
@@ -354,9 +345,9 @@ class RegistryPhotoStore {
     return dropped;
   }
 
-  /// 최근 집 [homeCap]곳 · 집마다 [keepRecentReports]건만 남기고 오래된 폴더를 지운 뒤 목록을 기록한다.
+  /// 최근 집 [keepRecentHomes]곳 · 집마다 [keepRecentReports]건만 남기고 오래된 폴더를 지운 뒤 목록을 기록한다.
   Future<void> _pruneAndSave(Directory root) async {
-    final dropped = pickDropped(_order, homeOf, homes: homeCap);
+    final dropped = pickDropped(_order, homeOf, homes: keepRecentHomes);
     if (dropped.isNotEmpty) {
       for (final id in dropped) {
         _order.remove(id);
@@ -366,7 +357,7 @@ class RegistryPhotoStore {
         if (dir.existsSync()) await dir.delete(recursive: true);
       }
       debugPrint(
-        '[사진보관] 오래된 ${dropped.length}건 삭제 (최근 집 $homeCap곳 · 집마다 $keepRecentReports건만 유지)',
+        '[사진보관] 오래된 ${dropped.length}건 삭제 (최근 집 $keepRecentHomes곳 · 집마다 $keepRecentReports건만 유지)',
       );
     }
     final prefs = await SharedPreferences.getInstance();

@@ -410,16 +410,6 @@ void main() {
       expect(dropped, ['A-2', 'A-1']);
     });
 
-    test('부스 모드 상한(30곳)이면 시연용 집이 하루 분석으로 밀려나지 않는다', () {
-      final order = [for (var i = 20; i >= 1; i--) 'V$i-1', '신혼집-1'];
-      final dropped = RegistryPhotoStore.pickDropped(
-        order,
-        home,
-        homes: RegistryPhotoStore.boothKeepHomes,
-      );
-      expect(dropped, isEmpty);
-    });
-
     test('집 열쇠를 모르는 옛 기록은 한 건이 집 하나', () {
       final order = ['x1', 'x2', 'x3', 'x4', 'x5', 'x6'];
       final dropped = RegistryPhotoStore.pickDropped(order, (_) => null, homes: 5);

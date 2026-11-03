@@ -394,12 +394,36 @@ void main() {
     });
   });
 
+  group('사진 보관은 집 단위 (2026-11-03 부스 1일차 — 다른 집 5번이면 계약 중인 집 사진이 지워지던 것)', () {
+    String? home(String id) => id.split('-').first; // 'A-1' → 집 A
+
+    test('같은 집을 여러 번 분석해도 다른 집은 밀려나지 않는다', () {
+      // 최신순: 집 B 6건, 그다음 집 A 1건
+      final order = ['B-6', 'B-5', 'B-4', 'B-3', 'B-2', 'B-1', 'A-1'];
+      final dropped = RegistryPhotoStore.pickDropped(order, home, homes: 5);
+      expect(dropped, ['B-1'], reason: '집 B는 최근 5건만, 집 A는 그대로');
+    });
+
+    test('집이 상한을 넘으면 가장 오래된 집부터 통째로', () {
+      final order = ['F-1', 'E-1', 'D-1', 'C-1', 'B-1', 'A-2', 'A-1'];
+      final dropped = RegistryPhotoStore.pickDropped(order, home, homes: 5);
+      expect(dropped, ['A-2', 'A-1']);
+    });
+
+    test('집 열쇠를 모르는 옛 기록은 한 건이 집 하나', () {
+      final order = ['x1', 'x2', 'x3', 'x4', 'x5', 'x6'];
+      final dropped = RegistryPhotoStore.pickDropped(order, (_) => null, homes: 5);
+      expect(dropped, ['x6']);
+    });
+  });
+
   group('사진 보관 문구 — 앱 어디서나 같은 사실 하나', () {
-    test('사진은 국내 AI가 읽기만, 서버엔 사진·실명 없음, 원본은 이 폰에만 최근 5건 (지금 설정 기준)', () {
+    test('사진은 국내 AI가 읽기만, 서버엔 사진·실명 없음, 원본은 이 폰에만 최근 집 5곳·집마다 5건 (지금 설정 기준)', () {
       expect(RegistryPhotoStore.keepRecentReports, 5);
+      expect(RegistryPhotoStore.keepRecentHomes, 5);
       expect(RegistryPhotoStore.retentionNotice, contains('국내 AI(Upstage)가 글자를 읽는 데만'));
       expect(RegistryPhotoStore.retentionNotice, contains('서버에는 사진도 실명도 남지 않아요'));
-      expect(RegistryPhotoStore.retentionNotice, contains('원본 리포트와 사진은 이 휴대폰에만 최근 5건'));
+      expect(RegistryPhotoStore.retentionNotice, contains('원본 리포트와 사진은 이 휴대폰에만 최근 집 5곳, 집마다 최근 5건'));
       // 예전 문구("등기부 사진은 안전을 위해 저장하지 않아요")는 폰 보관과 모순이었다
       expect(RegistryPhotoStore.retentionNotice, isNot(contains('안전을 위해')));
     });

@@ -14,6 +14,7 @@ import 'package:http_parser/http_parser.dart';
 import '../models/analysis_report.dart';
 import '../models/compare_result.dart';
 import '../models/loss_estimate.dart';
+import '../models/property_reports.dart';
 import '../services/api_client.dart';
 import '../services/registry_upload_service.dart';
 import '../state/journey_progress_store.dart';
@@ -117,6 +118,14 @@ class ApiAnalysisRepository extends AnalysisRepository {
       report.id,
       sentJpegPaths,
       reportJson: jsonEncode(keepJson),
+      // 집 단위로 센다 — 같은 집을 다시 분석해도 다른 집 사진이 밀려나지 않게 (2026-11-03 부스)
+      homeKey: propertyKeyFor(
+        propertyId: report.propertyId,
+        address: (report.propertyAddress ?? '').isNotEmpty
+            ? report.propertyAddress
+            : report.address,
+        reportId: report.id,
+      ),
     );
     debugPrint(
       '[하이라이트] 리포트 ${report.id} — 좌표 ${report.highlights.length}건 수신, '
@@ -301,7 +310,15 @@ class ApiAnalysisRepository extends AnalysisRepository {
     final newId = result.newReportId;
     if (newId != null && sentJpegPaths.isNotEmpty) {
       RegistryPhotoStore.instance.register(newId, sentJpegPaths);
-      await RegistryPhotoStore.instance.keep(newId, sentJpegPaths);
+      // 대조는 늘 **같은 집** — 원래 리포트의 집 열쇠를 그대로 잇는다
+      await RegistryPhotoStore.instance.keep(
+        newId,
+        sentJpegPaths,
+        homeKey: RegistryPhotoStore.instance.homeOf(reportId) ??
+            (result.current.propertyId != null
+                ? propertyKeyFor(propertyId: result.current.propertyId)
+                : null),
+      );
     }
     await _afterReplace(replaces, newId);
     // 이력이 바뀌었다(새 분석 추가 또는 다른 집이라 취소) → 홈·여정 갱신

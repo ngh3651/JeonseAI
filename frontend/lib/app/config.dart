@@ -100,7 +100,7 @@ const String kPrivacyContact = 'namgh3651@gmail.com';
 /// **폰 원본 보관** — "폰엔 원본, 서버엔 가린 사본" (2026-10-22 규혁 결정).
 ///
 /// true(기본)면 분석에 **실제로 전송한 JPEG**와 **원본 리포트**(실명이 보이는 분석 응답 JSON)를
-/// 이 폰의 앱 저장소에 최근 [RegistryPhotoStore.keepRecentReports]건 남긴다. 서버 기록에는 이름을 가린 사본만
+/// 이 폰의 앱 저장소에 최근 집 [RegistryPhotoStore.keepRecentHomes]곳(집마다 [RegistryPhotoStore.keepRecentReports]건) 남긴다. 서버 기록에는 이름을 가린 사본만
 /// 있으므로, 리포트를 다시 열 때(기록 목록·같은 사진 캐시 포함) **이 폰의 원본을 먼저** 쓴다 — 그래야 실제 만난
 /// 계약자와 이름을 맞춰 볼 수 있다. 기록을 지우면 폰 사본도 함께 지운다. 오래된 것부터 자동으로 지운다.
 ///

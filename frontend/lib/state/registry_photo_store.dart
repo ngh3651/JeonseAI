@@ -28,8 +28,13 @@
 /// prefs에는 절대경로가 아니라 **폴더 안 파일 이름**만 적는다. 앱 문서 경로는 런타임에
 /// 다시 물어보면 되고, 절대경로를 굳혀 두면 경로가 바뀌었을 때 통째로 못 읽는다.
 ///
-/// ⚠ 등기부 사진·원본 리포트에는 소유자 실명·주소가 있다. 그래서 최근 [keepRecentReports]건만 남기고
-/// 오래된 폴더는 통째로 지운다(원본 리포트는 사진과 같은 폴더라 함께 지워진다).
+/// ⚠ 등기부 사진·원본 리포트에는 소유자 실명·주소가 있다. 그래서 **최근 집 [keepRecentHomes]곳, 집마다 최근
+/// [keepRecentReports]건**만 남기고 오래된 폴더는 통째로 지운다(원본 리포트는 사진과 같은 폴더라 함께 지워진다).
+///
+/// 왜 '건'이 아니라 '집'으로 세나 (2026-11-03 부스 1일차): 예전엔 **모든 분석을 합쳐 최근 5건**이었다. 그러면
+/// 다른 집을 5번 분석하거나 같은 집을 5번 다시 대조하는 순간, 계약 여정으로 몇 달 지켜야 할 집의 사진이
+/// 하루도 안 돼 지워져 "이 폰에 사진이 없어요"가 떴다. 이제는 집 단위로 센다 — 서버가 같은 집을 최신 5건만
+/// 남기는 규칙(`store.prune_versions`)과 같다. 같은 집 = 같은 집주인이라 집 단위로 묶는 게 맞다(규혁).
 library;
 
 import 'dart:convert';
@@ -48,7 +53,11 @@ class RegistryPhotoStore {
 
   /// 남겨 둘 최근 분석 건수. 넘치면 오래된 폴더부터 통째로 지운다.
   /// 무한정 쌓이면 기기 용량도 문제지만, 실명이 담긴 사진이 계속 남는 것이 더 문제다.
+  /// 집마다 남길 최근 분석 건수 — 서버의 같은 집 보관 수(`kKeepReportVersions`)와 같다.
   static const int keepRecentReports = 5;
+
+  /// 남겨 둘 최근 **집** 수. 넘치면 가장 오래 안 본 집부터 통째로 지운다.
+  static const int keepRecentHomes = 5;
 
   /// 사진·이름을 **어디에 얼마나** 남기는지 — 화면 문구는 전부 이 한 줄에서 가져온다 (2026-10-22).
   ///
@@ -58,7 +67,8 @@ class RegistryPhotoStore {
   /// 스위치·건수가 바뀌면 문구도 저절로 따라간다 — 문구와 동작이 다시 갈라지지 않게.
   static const String retentionNotice = keepOriginalsOnPhone
       ? '사진은 국내 AI(Upstage)가 글자를 읽는 데만 써요. 저희 서버에는 사진도 실명도 남지 않아요. '
-            '실명이 보이는 원본 리포트와 사진은 이 휴대폰에만 최근 $keepRecentReports건 남아요.'
+            '실명이 보이는 원본 리포트와 사진은 이 휴대폰에만 최근 집 $keepRecentHomes곳, '
+            '집마다 최근 $keepRecentReports건 남아요.'
       : '사진은 국내 AI(Upstage)가 글자를 읽는 데만 써요. 저희 서버에는 사진도 실명도 남지 않아요. '
             '이 휴대폰에도 남기지 않아요.';
 
@@ -71,6 +81,12 @@ class RegistryPhotoStore {
 
   /// 보관 순서 (앞이 최신) — 오래된 것부터 지우기 위해 필요하다.
   final List<String> _order = [];
+
+  /// reportId → 집 열쇠([propertyKeyFor]). 모르면(옛 기록) 그 리포트 하나가 집 하나다.
+  final Map<String, String> _homeOf = {};
+
+  /// 이 리포트가 속한 집 열쇠 — 대조로 생긴 새 리포트를 같은 집에 묶을 때 쓴다.
+  String? homeOf(String reportId) => _homeOf[reportId];
 
   // ── 읽기 (동기) ───────────────────────────────────────────────────────────
   // 화면 build()에서 바로 부르므로 동기여야 한다. 그래서 앱 시작 시 restore()로
@@ -103,6 +119,7 @@ class RegistryPhotoStore {
   void clear() {
     _byReportId.clear();
     _order.clear();
+    _homeOf.clear();
   }
 
   /// 테스트에서 보관 폴더를 임시 폴더로 바꾼다(위젯 테스트에는 앱 문서 폴더 플러그인이 없다).
@@ -133,6 +150,8 @@ class RegistryPhotoStore {
         final id = entry['id'] as String;
         final names = (entry['photos'] as List).cast<String>();
         _order.add(id);
+        final home = entry['home'];
+        if (home is String && home.isNotEmpty) _homeOf[id] = home;
         _byReportId[id] = List.unmodifiable([
           for (final name in names) '${root.path}/$id/$name',
         ]);
@@ -153,8 +172,10 @@ class RegistryPhotoStore {
     String reportId,
     List<String> jpegPaths, {
     String? reportJson,
+    String? homeKey,
   }) async {
     if (!keepOriginalsOnPhone || jpegPaths.isEmpty) return;
+    if (homeKey != null && homeKey.isNotEmpty) _homeOf[reportId] = homeKey;
     try {
       final root = await _root();
       final dir = Directory('${root.path}/$reportId');
@@ -181,7 +202,7 @@ class RegistryPhotoStore {
       await _pruneAndSave(root);
       debugPrint(
         '[사진보관] 저장 — $reportId 사진 ${names.length}장'
-        '${reportJson != null ? ' + 원본 리포트' : ''} (보관 ${_order.length}/$keepRecentReports건)',
+        '${reportJson != null ? ' + 원본 리포트' : ''} (보관 ${_order.length}건)',
       );
     } catch (e) {
       debugPrint('[사진보관] 저장 실패 — 메모리 전용으로 계속 (${e.runtimeType})');
@@ -224,6 +245,7 @@ class RegistryPhotoStore {
   /// 기록을 지울 때 — 이 리포트의 사진·원본 리포트를 **이 폰에서도** 지운다. 실패해도 넘어간다.
   Future<void> forget(String reportId) async {
     _byReportId.remove(reportId);
+    _homeOf.remove(reportId);
     final removed = _order.remove(reportId);
     if (!keepOriginalsOnPhone) return;
     try {
@@ -294,18 +316,48 @@ class RegistryPhotoStore {
     return Directory('${docs.path}/$_folderName');
   }
 
-  /// 최근 [keepRecentReports]건만 남기고 오래된 폴더를 지운 뒤 목록을 기록한다.
+  /// 지울 리포트를 고른다 — 최신순 [order]를 집별로 묶어, 최근 [homes]곳 · 집마다 최근 [perHome]건 밖이면 지운다.
+  /// 집 열쇠를 모르는 리포트는 그 리포트 하나가 집 하나다(옛 기록).
+  @visibleForTesting
+  static List<String> pickDropped(
+    List<String> order,
+    String? Function(String id) homeOf, {
+    required int homes,
+    int perHome = keepRecentReports,
+  }) {
+    final seen = <String, int>{}; // 집 → 지금까지 남긴 건수
+    final dropped = <String>[];
+    for (final id in order) {
+      final home = homeOf(id) ?? '리포트:$id';
+      final kept = seen[home];
+      if (kept == null) {
+        if (seen.length >= homes) {
+          dropped.add(id);
+          continue;
+        }
+        seen[home] = 1;
+      } else if (kept >= perHome) {
+        dropped.add(id);
+      } else {
+        seen[home] = kept + 1;
+      }
+    }
+    return dropped;
+  }
+
+  /// 최근 집 [keepRecentHomes]곳 · 집마다 [keepRecentReports]건만 남기고 오래된 폴더를 지운 뒤 목록을 기록한다.
   Future<void> _pruneAndSave(Directory root) async {
-    if (_order.length > keepRecentReports) {
-      final dropped = _order.sublist(keepRecentReports);
-      _order.removeRange(keepRecentReports, _order.length);
+    final dropped = pickDropped(_order, homeOf, homes: keepRecentHomes);
+    if (dropped.isNotEmpty) {
       for (final id in dropped) {
+        _order.remove(id);
         _byReportId.remove(id);
+        _homeOf.remove(id);
         final dir = Directory('${root.path}/$id');
         if (dir.existsSync()) await dir.delete(recursive: true);
       }
       debugPrint(
-        '[사진보관] 오래된 ${dropped.length}건 삭제 (최근 $keepRecentReports건만 유지)',
+        '[사진보관] 오래된 ${dropped.length}건 삭제 (최근 집 $keepRecentHomes곳 · 집마다 $keepRecentReports건만 유지)',
       );
     }
     final prefs = await SharedPreferences.getInstance();
@@ -315,6 +367,7 @@ class RegistryPhotoStore {
         for (final id in _order)
           {
             'id': id,
+            if (_homeOf[id] != null) 'home': _homeOf[id],
             'photos': [
               for (final p in _byReportId[id] ?? const []) _basename(p),
             ],
